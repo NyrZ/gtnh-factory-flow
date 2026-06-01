@@ -98,7 +98,6 @@ jobs:
             -e HOME=/tmp \
             -e NODE_ENV=production \
             -e PORT="$port" \
-            -e GTNH_PREWARM_ALL_DATASETS=1 \
             -e NODE_OPTIONS=--max-old-space-size=2048 \
             --env-file "$analytics_env_file" \
             -v "$release_dir:/app" \
