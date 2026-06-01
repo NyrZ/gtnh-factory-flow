@@ -49,16 +49,31 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
+      - name: Build dataset Docker image
+        run: docker build -t gtnh-factory-flow-dataset:ci -f tools/dataset-pipeline/docker/Dockerfile .
 
       - id: detect
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CHANNEL: ${{ github.event.client_payload.channel || (github.event.action == 'gtnh-daily-published' && 'daily') || (github.event.action == 'gtnh-stable-published' && 'stable') || inputs.channel || 'both' }}
           FORCE_REBUILD: ${{ github.event.client_payload.force_rebuild || inputs.force_rebuild || false }}
-        run: GTNH_DATASETS_ROOT="$HOME/data/gtnh-factory-flow/datasets/gtnh" node tools/dataset-pipeline/scripts/detect-gtnh-versions.mjs
+        run: |
+          mkdir -p "$HOME/data/gtnh-factory-flow/datasets/gtnh"
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --memory=1g \
+            --memory-swap=2g \
+            --cpus=1 \
+            -e HOME=/tmp \
+            -e GITHUB_TOKEN \
+            -e CHANNEL \
+            -e FORCE_REBUILD \
+            -e GTNH_DATASETS_ROOT=/datasets \
+            -v "$HOME/data/gtnh-factory-flow/datasets/gtnh:/datasets:ro" \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            gtnh-factory-flow-dataset:ci \
+            node tools/dataset-pipeline/scripts/detect-gtnh-versions.mjs
 
       - uses: actions/upload-artifact@v7
         with:
@@ -204,6 +219,9 @@ jobs:
           name: detected-gtnh-versions
           path: .pipeline
 
+      - name: Build dataset Docker image
+        run: docker build -t gtnh-factory-flow-dataset:ci -f tools/dataset-pipeline/docker/Dockerfile .
+
       - name: Publish staged datasets to persistent volume
         run: |
           set -euo pipefail
@@ -212,7 +230,16 @@ jobs:
           mkdir -p "$dataset_root"
 
           mapfile -t versions < <(
-            node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('.pipeline/detected-versions.json','utf8')); for (const v of data.detected) console.log(v.channel + '\t' + v.id)"
+            docker run --rm \
+              --user "$(id -u):$(id -g)" \
+              --memory=512m \
+              --memory-swap=1g \
+              --cpus=1 \
+              -e HOME=/tmp \
+              -v "$PWD:/workspace:ro" \
+              -w /workspace \
+              gtnh-factory-flow-dataset:ci \
+              node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('.pipeline/detected-versions.json','utf8')); for (const v of data.detected) console.log(v.channel + '\t' + v.id)"
           )
 
           if [ "${#versions[@]}" -eq 0 ]; then
@@ -312,8 +339,8 @@ jobs:
           app_root="$HOME/apps/gtnh-factory-flow"
           dataset_root="$HOME/data/gtnh-factory-flow/datasets/gtnh"
           release_dir="$app_root/releases/$release_sha"
-          service_file="$HOME/.config/systemd/user/gtnh-factory-flow.service"
           analytics_env_file="$app_root/analytics.env"
+          build_container="gtnh-factory-flow-build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           rm -rf "$release_dir"
           mkdir -p "$release_dir"
@@ -322,9 +349,15 @@ jobs:
 
           mkdir -p "$dataset_root"
 
+          docker rm -f "$build_container" >/dev/null 2>&1 || true
           docker run --rm \
+            --name "$build_container" \
             --user "$(id -u):$(id -g)" \
+            --memory=6g \
+            --memory-swap=8g \
+            --cpus=4 \
             -e HOME=/tmp \
+            -e NODE_OPTIONS=--max-old-space-size=4096 \
             --env-file "$analytics_env_file" \
             -v "$release_dir:/workspace" \
             -w /workspace \
@@ -338,32 +371,31 @@ jobs:
           ln -sfn "$release_dir" "$app_root/current.next"
           mv -Tf "$app_root/current.next" "$app_root/current"
 
-          mkdir -p "$HOME/.config/systemd/user"
-          cat > "$service_file" <<EOF
-          [Unit]
-          Description=GTNH Factory Flow (main) Next.js app
-          After=network.target
-
-          [Service]
-          Type=simple
-          WorkingDirectory=$app_root/current
-          Environment=NODE_ENV=production
-          Environment=PORT=8580
-          Environment=GTNH_PREWARM_ALL_DATASETS=1
-          ExecStart=/usr/bin/npm run start -- --hostname 0.0.0.0 --port 8580
-          Restart=always
-          RestartSec=5
-
-          [Install]
-          WantedBy=default.target
-          EOF
-
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
-          systemctl --user daemon-reload
-          systemctl --user enable --now gtnh-factory-flow.service
-          systemctl --user restart gtnh-factory-flow.service
-          systemctl --user --no-pager --full status gtnh-factory-flow.service
+          systemctl --user disable --now gtnh-factory-flow.service >/dev/null 2>&1 || true
+
+          docker rm -f gtnh-factory-flow >/dev/null 2>&1 || true
+          docker run -d \
+            --name gtnh-factory-flow \
+            --restart unless-stopped \
+            --user "$(id -u):$(id -g)" \
+            --memory=3g \
+            --memory-swap=4g \
+            --cpus=2 \
+            -p "127.0.0.1:8580:8580" \
+            -e HOME=/tmp \
+            -e NODE_ENV=production \
+            -e PORT=8580 \
+            -e GTNH_PREWARM_ALL_DATASETS=1 \
+            -e NODE_OPTIONS=--max-old-space-size=2048 \
+            --env-file "$analytics_env_file" \
+            -v "$release_dir:/app" \
+            -v "$dataset_root:/app/public/datasets/gtnh:ro" \
+            -w /app \
+            gtnh-factory-flow-site:ci \
+            npm run start -- --hostname 0.0.0.0 --port 8580
+          docker ps --filter "name=^/gtnh-factory-flow$"
 
           if [ -f "$dataset_root/datasets.manifest.json" ]; then
             manifest_url="http://127.0.0.1:8580/datasets/gtnh/datasets.manifest.json"

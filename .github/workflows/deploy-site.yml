@@ -46,8 +46,8 @@ jobs:
           app_root="$HOME/apps/$deploy_name"
           dataset_root="$HOME/data/gtnh-factory-flow/datasets/gtnh"
           release_dir="$app_root/releases/$release_sha"
-          service_file="$HOME/.config/systemd/user/$deploy_name.service"
           analytics_env_file="$app_root/analytics.env"
+          build_container="$deploy_name-build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           rm -rf "$release_dir"
           mkdir -p "$release_dir"
@@ -60,9 +60,15 @@ jobs:
             cp -aL "$app_root/current/public/datasets/gtnh" "$dataset_root"
           fi
 
+          docker rm -f "$build_container" >/dev/null 2>&1 || true
           docker run --rm \
+            --name "$build_container" \
             --user "$(id -u):$(id -g)" \
+            --memory=6g \
+            --memory-swap=8g \
+            --cpus=4 \
             -e HOME=/tmp \
+            -e NODE_OPTIONS=--max-old-space-size=4096 \
             --env-file "$analytics_env_file" \
             -v "$release_dir:/workspace" \
             -w /workspace \
@@ -76,32 +82,31 @@ jobs:
           ln -sfn "$release_dir" "$app_root/current.next"
           mv -Tf "$app_root/current.next" "$app_root/current"
 
-          mkdir -p "$HOME/.config/systemd/user"
-          cat > "$service_file" <<EOF
-          [Unit]
-          Description=GTNH Factory Flow (${GITHUB_REF_NAME}) Next.js app
-          After=network.target
-
-          [Service]
-          Type=simple
-          WorkingDirectory=$app_root/current
-          Environment=NODE_ENV=production
-          Environment=PORT=$port
-          Environment=GTNH_PREWARM_ALL_DATASETS=1
-          ExecStart=/usr/bin/npm run start -- --hostname 0.0.0.0 --port $port
-          Restart=always
-          RestartSec=5
-
-          [Install]
-          WantedBy=default.target
-          EOF
-
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
-          systemctl --user daemon-reload
-          systemctl --user enable --now "$deploy_name.service"
-          systemctl --user restart "$deploy_name.service"
-          systemctl --user --no-pager --full status "$deploy_name.service"
+          systemctl --user disable --now "$deploy_name.service" >/dev/null 2>&1 || true
+
+          docker rm -f "$deploy_name" >/dev/null 2>&1 || true
+          docker run -d \
+            --name "$deploy_name" \
+            --restart unless-stopped \
+            --user "$(id -u):$(id -g)" \
+            --memory=3g \
+            --memory-swap=4g \
+            --cpus=2 \
+            -p "127.0.0.1:$port:$port" \
+            -e HOME=/tmp \
+            -e NODE_ENV=production \
+            -e PORT="$port" \
+            -e GTNH_PREWARM_ALL_DATASETS=1 \
+            -e NODE_OPTIONS=--max-old-space-size=2048 \
+            --env-file "$analytics_env_file" \
+            -v "$release_dir:/app" \
+            -v "$dataset_root:/app/public/datasets/gtnh:ro" \
+            -w /app \
+            gtnh-factory-flow-site:ci \
+            npm run start -- --hostname 0.0.0.0 --port "$port"
+          docker ps --filter "name=^/${deploy_name}$"
 
           if [ -f "$dataset_root/datasets.manifest.json" ]; then
             manifest_url="http://127.0.0.1:$port/datasets/gtnh/datasets.manifest.json"
