@@ -255,7 +255,7 @@ function AspectIconImage({
       className={
         iconPixelSize
           ? "minecraft-pixel-art relative block max-w-none"
-          : "minecraft-pixel-art relative block h-[calc(200%-8px)] w-[calc(200%-8px)] max-w-none"
+          : "minecraft-pixel-art relative block h-[72%] w-[72%] max-w-none"
       }
       style={sizeStyle}
     >

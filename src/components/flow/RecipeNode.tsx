@@ -363,7 +363,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             recipe={overclockedRecipe}
             scale={2}
             compact
-            className={nodeColor ? "recipe-node-nei-tint" : undefined}
+            className={["mx-auto", nodeColor ? "recipe-node-nei-tint" : undefined]
+              .filter(Boolean)
+              .join(" ")}
             canvasClassName={nodeColor ? "recipe-node-canvas-tint" : undefined}
             statsAction={
               machineParallelMultiplier > 1 ? (

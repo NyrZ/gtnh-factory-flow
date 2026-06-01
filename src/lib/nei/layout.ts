@@ -224,6 +224,20 @@ const THAUMCRAFT_ARCANE_LAYOUT: RecipeMapLayoutDefinition = {
     thaumcraftOverlayDecoration(34, 149, 68, 76, 12, 12, 2, 0.4),
   ],
 };
+const THAUMCRAFT_ESSENTIA_SMELTING_LAYOUT: RecipeMapLayoutDefinition = {
+  id: "thaumcraft-essentia-smelting",
+  chrome: "native",
+  title: "Essentia Smelting",
+  canvas: { width: 170, height: 82 },
+  maxItemInputs: 1,
+  maxItemOutputs: 0,
+  maxFluidInputs: 0,
+  maxFluidOutputs: 0,
+  progressBars: [],
+  unframedSlotKinds: ["aspect"],
+  itemInputPositions: (count) => (count > 0 ? [{ x: 42, y: 34 }] : []),
+  decorations: [thaumcraftOverlayDecoration(75, 29, 100, 84, 11, 13, 1.75)],
+};
 
 const LARGE_NEI_MAPS = new Set([
   "Entropic Processing",
@@ -353,6 +367,7 @@ const RECIPE_MAP_LAYOUTS: Record<string, RecipeMapLayoutDefinition> = {
   "Arcane Infusion": THAUMCRAFT_INFUSION_LAYOUT,
   "Thaumcraft Crucible": THAUMCRAFT_CRUCIBLE_LAYOUT,
   "Thaumcraft Arcane Crafting": THAUMCRAFT_ARCANE_LAYOUT,
+  "Thaumcraft Essentia Smelting": THAUMCRAFT_ESSENTIA_SMELTING_LAYOUT,
   "Shaped Arcane Crafting": THAUMCRAFT_ARCANE_LAYOUT,
   "Shapeless Arcane Crafting": {
     ...THAUMCRAFT_ARCANE_LAYOUT,
@@ -796,12 +811,20 @@ function inferThaumcraftLayoutFromLabel(label: string): RecipeMapLayoutDefinitio
     return THAUMCRAFT_CRUCIBLE_LAYOUT;
   }
 
+  if (normalized.includes("essentia") || normalized.includes("alchemy furnace")) {
+    return THAUMCRAFT_ESSENTIA_SMELTING_LAYOUT;
+  }
+
   return undefined;
 }
 
 function isThaumcraftLabel(label: string): boolean {
   const normalized = normalizeRecipeMapName(label);
-  return normalized.includes("thaumcraft") || normalized.includes("arcane");
+  return (
+    normalized.includes("thaumcraft") ||
+    normalized.includes("arcane") ||
+    normalized.includes("essentia")
+  );
 }
 
 function isPlainFurnaceRecipeMap(recipeMap: string): boolean {

@@ -450,6 +450,52 @@ describe("NEI layout", () => {
     });
   });
 
+  it("uses a native Thaumcraft layout for essentia smelting", () => {
+    const layout = getNeiRecipeLayout(
+      recipe({
+        machineType: "Thaumcraft Essentia Smelting",
+        sourceRecipeMap: "Thaumcraft Essentia Smelting",
+        inputs: [
+          { kind: "item", id: "minecraft:rotten_flesh", amount: 1, neiSlot: { x: 42, y: 34 } },
+        ],
+        outputs: [
+          {
+            kind: "aspect",
+            id: "thaumcraft:aspect:corpus",
+            amount: 4,
+            neiSlot: { x: 112, y: 34 },
+          },
+          {
+            kind: "aspect",
+            id: "thaumcraft:aspect:exanimis",
+            amount: 2,
+            neiSlot: { x: 132, y: 34 },
+          },
+        ],
+        nei: {
+          slots: [
+            { side: "input", kind: "item", slotIndex: 0, x: 42, y: 34 },
+            { side: "output", kind: "aspect", slotIndex: 0, x: 112, y: 34 },
+            { side: "output", kind: "aspect", slotIndex: 1, x: 132, y: 34 },
+          ],
+          progressBars: [],
+        },
+      }),
+    );
+
+    expect(layout).toMatchObject({
+      id: "thaumcraft-essentia-smelting",
+      chrome: "native",
+      title: "Essentia Smelting",
+    });
+    expect(layout.unframedSlotKinds).toEqual(["aspect"]);
+    expect(layout.slots.map((slot) => [slot.kind, slot.side, slot.x, slot.y])).toEqual([
+      ["item", "input", 42, 34],
+      ["aspect", "output", 112, 34],
+      ["aspect", "output", 132, 34],
+    ]);
+  });
+
   it("does not let an infusion source label override an explicit arcane crafting machine type", () => {
     expect(
       getNeiRecipeLayout(
