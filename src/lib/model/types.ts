@@ -190,6 +190,10 @@ export interface Recipe {
   };
   nei?: {
     iconPath?: string;
+    source?: string;
+    handlerClass?: string;
+    canvas?: { width: number; height: number };
+    backgroundImage?: string;
     itemInputGrid?: { width: number; height: number };
     itemOutputGrid?: { width: number; height: number };
     fluidInputGrid?: { width: number; height: number };

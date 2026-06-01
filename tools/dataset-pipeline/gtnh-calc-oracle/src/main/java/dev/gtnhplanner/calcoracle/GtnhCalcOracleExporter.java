@@ -2,6 +2,7 @@ package dev.gtnhplanner.calcoracle;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Loader;
 import dev.gtnhplanner.calcoracle.icons.FluidStackIconExporter;
 import dev.gtnhplanner.calcoracle.icons.ItemStackIconExporter;
@@ -297,6 +298,7 @@ public final class GtnhCalcOracleExporter {
         Map<String, Object> domain = domain("thaumcraft");
         List<Map<String, Object>> recipes = new ArrayList<Map<String, Object>>();
         boolean present = isClassPresent("thaumcraft.api.ThaumcraftApi") || GtnhCalcOracleMod.isModLoaded("Thaumcraft");
+        Map<String, Map<String, Object>> neiLayoutsBySignature = Collections.emptyMap();
 
         if (!present) {
             adapters.add(adapter("thaumcraft-crafting", "not_present", false, 0, 0, started, null));
@@ -306,6 +308,7 @@ public final class GtnhCalcOracleExporter {
 
         try {
             unlockThaumcraftKnowledgeForOracle();
+            neiLayoutsBySignature = exportThaumcraftNeiLayoutsBySignature(adapters);
             Class<?> api = Class.forName("thaumcraft.api.ThaumcraftApi");
             for (Field field : api.getDeclaredFields()) {
                 if (!Modifier.isStatic(field.getModifiers()) || !Collection.class.isAssignableFrom(field.getType())) {
@@ -324,6 +327,11 @@ public final class GtnhCalcOracleExporter {
                 for (Object rawRecipe : rawRecipes) {
                     Map<String, Object> recipe = thaumcraftRecipe(field.getName(), index, rawRecipe);
                     if (recipe != null) {
+                        Map<String, Object> neiLayout = neiLayoutsBySignature.get(thaumcraftRecipeSignature(recipe));
+                        if (neiLayout == null) {
+                            neiLayout = neiLayoutsBySignature.get(thaumcraftSimpleRecipeSignature(recipe));
+                        }
+                        putIfPresent(recipe, "neiLayout", neiLayout);
                         recipes.add(recipe);
                     }
                     index++;
@@ -337,6 +345,367 @@ public final class GtnhCalcOracleExporter {
         }
 
         return domain;
+    }
+
+    private Map<String, Map<String, Object>> exportThaumcraftNeiLayoutsBySignature(List<Map<String, Object>> adapters) {
+        long started = System.currentTimeMillis();
+        Map<String, Map<String, Object>> layoutsBySignature = new LinkedHashMap<String, Map<String, Object>>();
+
+        if (!FMLCommonHandler.instance().getSide().isClient()) {
+            return layoutsBySignature;
+        }
+
+        String[][] handlers = new String[][] {
+            { "infusion", "ru.timeconqueror.tcneiadditions.nei.TCNAInfusionRecipeHandler" },
+            { "crucible", "ru.timeconqueror.tcneiadditions.nei.TCNACrucibleRecipeHandler" },
+            { "arcane", "ru.timeconqueror.tcneiadditions.nei.arcaneworkbench.ArcaneCraftingShapedHandler" },
+            { "arcane", "ru.timeconqueror.tcneiadditions.nei.arcaneworkbench.ArcaneCraftingShapelessHandler" },
+            { "infusion", "com.djgiannuzz.thaumcraftneiplugin.nei.recipehandler.InfusionRecipeHandler" },
+            { "crucible", "com.djgiannuzz.thaumcraftneiplugin.nei.recipehandler.CrucibleRecipeHandler" },
+            { "arcane", "com.djgiannuzz.thaumcraftneiplugin.nei.recipehandler.ArcaneShapedRecipeHandler" },
+            { "arcane", "com.djgiannuzz.thaumcraftneiplugin.nei.recipehandler.ArcaneShapelessRecipeHandler" }
+        };
+
+        int exported = 0;
+        List<String> warnings = new ArrayList<String>();
+        for (String[] handlerInfo : handlers) {
+            String type = handlerInfo[0];
+            String className = handlerInfo[1];
+            if (!isClassPresent(className)) {
+                continue;
+            }
+            try {
+                Object handler = Class.forName(className).getConstructor().newInstance();
+                Object overlay = invokeBest(handler, "getOverlayIdentifier", new Object[0]);
+                if (overlay == null) {
+                    continue;
+                }
+                String recipeName = safeString(invokeBest(handler, "getRecipeName", new Object[0]));
+                invokeBest(handler, "loadCraftingRecipes", new Object[] { safeString(overlay), new Object[0] });
+                List<?> cachedRecipes = listField(handler, "arecipes");
+                int index = 0;
+                for (Object cachedRecipe : cachedRecipes) {
+                    Map<String, Object> layout = thaumcraftNeiLayout(
+                        handler,
+                        type,
+                        className,
+                        safeString(overlay),
+                        recipeName,
+                        index,
+                        cachedRecipe
+                    );
+                    index++;
+                    if (layout == null) {
+                        continue;
+                    }
+                    String signature = safeString(layout.get("signature"));
+                    if (signature.length() == 0 || layoutsBySignature.containsKey(signature)) {
+                        continue;
+                    }
+                    layoutsBySignature.put(signature, layout);
+                    String simpleSignature = safeString(layout.get("simpleSignature"));
+                    if (simpleSignature.length() > 0 && !layoutsBySignature.containsKey(simpleSignature)) {
+                        layoutsBySignature.put(simpleSignature, layout);
+                    }
+                    exported++;
+                }
+            } catch (Throwable t) {
+                warnings.add(className + ": " + t.toString());
+            }
+        }
+
+        adapters.add(
+            adapter(
+                "thaumcraft-nei-layouts",
+                warnings.isEmpty() ? "computed" : "partial",
+                true,
+                handlers.length,
+                exported,
+                started,
+                warnings.isEmpty() ? null : join(warnings, "; ")
+            )
+        );
+        return layoutsBySignature;
+    }
+
+    private Map<String, Object> thaumcraftNeiLayout(
+        Object handler,
+        String type,
+        String handlerClass,
+        String overlayIdentifier,
+        String recipeName,
+        int recipeIndex,
+        Object cachedRecipe
+    ) {
+        Object result = invokeBest(cachedRecipe, "getResult", new Object[0]);
+        List<Map<String, Object>> slots = new ArrayList<Map<String, Object>>();
+        Map<String, Object> output = positionedStackSlot("output", 0, result);
+        if (output != null) {
+            slots.add(output);
+        }
+
+        int inputIndex = 0;
+        for (Object ingredient : listFrom(invokeBest(cachedRecipe, "getIngredients", new Object[0]))) {
+            Map<String, Object> slot = positionedStackSlot("input", inputIndex, ingredient);
+            if (slot != null) {
+                slots.add(slot);
+                inputIndex++;
+            }
+        }
+        for (Object other : listFrom(invokeBest(cachedRecipe, "getOtherStacks", new Object[0]))) {
+            Map<String, Object> slot = positionedStackSlot("input", inputIndex, other);
+            if (slot != null) {
+                slots.add(slot);
+                inputIndex++;
+            }
+        }
+
+        if (output == null || slots.size() <= 1) {
+            return null;
+        }
+
+        Map<String, Object> layout = map();
+        layout.put("source", "gtnh-nei-handler");
+        layout.put("type", type);
+        layout.put("handlerClass", handlerClass);
+        layout.put("overlayIdentifier", overlayIdentifier);
+        putIfPresent(layout, "recipeName", recipeName);
+        putIfPresent(layout, "category", thaumcraftNeiCategory(type, handlerClass, overlayIdentifier, recipeName));
+        layout.put("recipeIndex", Integer.valueOf(recipeIndex));
+        layout.put("signature", thaumcraftNeiLayoutSignature(type, output, slots));
+        layout.put("simpleSignature", type + ":" + resourceKey((Map<?, ?>) output.get("resource")));
+        layout.put("slots", slots);
+        layout.put("canvas", thaumcraftNeiCanvas(type, slots));
+        putIfPresent(layout, "backgroundImage", captureNeiBackground(handler, recipeIndex, layout));
+        return layout;
+    }
+
+    private Map<String, Object> thaumcraftNeiCategory(
+        String type,
+        String handlerClass,
+        String overlayIdentifier,
+        String recipeName
+    ) {
+        Map<String, Object> category = map();
+        category.put("source", "gtnh-nei-handler");
+        category.put("type", type);
+        category.put("handlerClass", handlerClass);
+        category.put("overlayIdentifier", overlayIdentifier);
+        putIfPresent(category, "recipeName", recipeName);
+        putIfPresent(category, "icon", thaumcraftNeiCategoryIcon(type));
+        return category;
+    }
+
+    private Map<String, Object> thaumcraftNeiCategoryIcon(String type) {
+        if ("infusion".equals(type)) {
+            return itemStack(registryStack("Thaumcraft:blockStoneDevice", 2));
+        }
+        if ("crucible".equals(type)) {
+            return itemStack(registryStack("Thaumcraft:blockMetalDevice", 0));
+        }
+        if ("arcane".equals(type)) {
+            return itemStack(registryStack("Thaumcraft:blockTable", 0));
+        }
+        return null;
+    }
+
+    private ItemStack registryStack(String registryId, int meta) {
+        Object item = Item.itemRegistry.getObject(registryId);
+        return item instanceof Item ? new ItemStack((Item) item, 1, meta) : null;
+    }
+
+    private Map<String, Object> positionedStackSlot(String side, int slotIndex, Object positionedStack) {
+        if (positionedStack == null) {
+            return null;
+        }
+        Object rawItem = readField(positionedStack, "item");
+        ItemStack stack = rawItem instanceof ItemStack ? (ItemStack) rawItem : null;
+        if (stack == null) {
+            Object rawItems = readField(positionedStack, "items");
+            if (rawItems != null && rawItems.getClass().isArray() && Array.getLength(rawItems) > 0) {
+                Object first = Array.get(rawItems, 0);
+                stack = first instanceof ItemStack ? (ItemStack) first : null;
+            }
+        }
+
+        Map<String, Object> resource = resourceFromNeiStack(stack);
+        if (resource == null) {
+            return null;
+        }
+
+        Number x = asNumber(readField(positionedStack, "relx"));
+        Number y = asNumber(readField(positionedStack, "rely"));
+        if (x == null || y == null) {
+            return null;
+        }
+
+        Map<String, Object> slot = map();
+        slot.put("side", side);
+        slot.put("kind", resource.get("kind"));
+        slot.put("slotIndex", Integer.valueOf(slotIndex));
+        slot.put("x", Integer.valueOf(x.intValue()));
+        slot.put("y", Integer.valueOf(y.intValue()));
+        slot.put("resource", resource);
+        return slot;
+    }
+
+    private Map<String, Object> resourceFromNeiStack(ItemStack stack) {
+        Map<String, Object> aspect = aspectResourceFromItemAspectStack(stack);
+        if (aspect != null) {
+            return aspect;
+        }
+        return itemStack(stack);
+    }
+
+    private Map<String, Object> aspectResourceFromItemAspectStack(ItemStack stack) {
+        if (stack == null || stack.getItem() == null) {
+            return null;
+        }
+        String itemClass = stack.getItem().getClass().getName();
+        if (!itemClass.endsWith(".ItemAspect") && !itemClass.contains("thaumcraftneiplugin.items.ItemAspect")) {
+            return null;
+        }
+        try {
+            Class<?> itemAspect = Class.forName("com.djgiannuzz.thaumcraftneiplugin.items.ItemAspect");
+            Object aspectList = itemAspect.getMethod("getAspects", ItemStack.class).invoke(null, stack);
+            List<Map<String, Object>> aspects = aspectResources(aspectList);
+            if (aspects.isEmpty()) {
+                return null;
+            }
+            Map<String, Object> aspect = aspects.get(0);
+            aspect.put("amount", Integer.valueOf(Math.max(1, stack.stackSize)));
+            return aspect;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private Map<String, Object> thaumcraftNeiCanvas(String type, List<Map<String, Object>> slots) {
+        int width = "infusion".equals(type) ? 214 : 170;
+        int height = "arcane".equals(type) ? 174 : ("infusion".equals(type) ? 160 : 132);
+        for (Map<String, Object> slot : slots) {
+            Number x = asNumber(slot.get("x"));
+            Number y = asNumber(slot.get("y"));
+            if (x != null) {
+                width = Math.max(width, x.intValue() + 20);
+            }
+            if (y != null) {
+                height = Math.max(height, y.intValue() + 20);
+            }
+        }
+        Map<String, Object> canvas = map();
+        canvas.put("width", Integer.valueOf(width));
+        canvas.put("height", Integer.valueOf(height));
+        return canvas;
+    }
+
+    private String captureNeiBackground(Object handler, int recipeIndex, Map<String, Object> layout) {
+        if ("arcane".equals(safeString(layout.get("type")))) {
+            return null;
+        }
+        Object rawCanvas = layout.get("canvas");
+        if (!(rawCanvas instanceof Map)) {
+            return null;
+        }
+        Map<?, ?> canvas = (Map<?, ?>) rawCanvas;
+        Number widthValue = asNumber(canvas.get("width"));
+        Number heightValue = asNumber(canvas.get("height"));
+        int width = widthValue == null ? 170 : Math.max(1, widthValue.intValue());
+        int height = heightValue == null ? 82 : Math.max(1, heightValue.intValue());
+        try {
+            Class<?> renderer = Class.forName("dev.gtnhplanner.calcoracle.nei.ClientNeiLayoutBackgroundRenderer");
+            Method method = renderer.getMethod(
+                "capture",
+                Object.class,
+                Integer.TYPE,
+                String.class,
+                String.class,
+                Integer.TYPE,
+                Integer.TYPE
+            );
+            Object result = method.invoke(
+                null,
+                handler,
+                Integer.valueOf(recipeIndex),
+                safeString(layout.get("type")),
+                safeString(layout.get("signature")),
+                Integer.valueOf(width),
+                Integer.valueOf(height)
+            );
+            return result == null ? null : String.valueOf(result);
+        } catch (Throwable t) {
+            GtnhCalcOracleMod.LOG.warn("Could not capture NEI background for {}.", safeString(layout.get("signature")), t);
+            return null;
+        }
+    }
+
+    private String thaumcraftRecipeSignature(Map<String, Object> recipe) {
+        Object output = recipe.get("output");
+        List<Object> inputs = new ArrayList<Object>();
+        Object centralInput = recipe.get("centralInput");
+        Object catalyst = recipe.get("catalyst");
+        if (centralInput instanceof Map) {
+            inputs.add(centralInput);
+        }
+        if (catalyst instanceof Map) {
+            inputs.add(catalyst);
+        }
+        for (Object component : iterable(recipe.get("components"))) {
+            if (component instanceof Map) {
+                inputs.add(component);
+            }
+        }
+        for (Object aspect : iterable(recipe.get("aspects"))) {
+            if (aspect instanceof Map) {
+                inputs.add(aspect);
+            }
+        }
+        return safeString(recipe.get("type"))
+            + ":"
+            + resourceKey(output instanceof Map ? (Map<?, ?>) output : null)
+            + ":"
+            + sortedResourceFingerprint(inputs);
+    }
+
+    private String thaumcraftSimpleRecipeSignature(Map<String, Object> recipe) {
+        Object output = recipe.get("output");
+        return safeString(recipe.get("type")) + ":" + resourceKey(output instanceof Map ? (Map<?, ?>) output : null);
+    }
+
+    private String thaumcraftNeiLayoutSignature(String type, Map<String, Object> output, List<Map<String, Object>> slots) {
+        List<Object> inputs = new ArrayList<Object>();
+        for (Map<String, Object> slot : slots) {
+            if (!"input".equals(safeString(slot.get("side")))) {
+                continue;
+            }
+            Object resource = slot.get("resource");
+            if (resource instanceof Map) {
+                inputs.add(resource);
+            }
+        }
+        return type + ":" + resourceKey((Map<?, ?>) output.get("resource")) + ":" + sortedResourceFingerprint(inputs);
+    }
+
+    private String sortedResourceFingerprint(List<Object> rawResources) {
+        List<String> keys = new ArrayList<String>();
+        for (Object raw : rawResources) {
+            if (raw instanceof Map) {
+                keys.add(resourceKeyWithAmount((Map<?, ?>) raw));
+            }
+        }
+        Collections.sort(keys);
+        return join(keys, ",");
+    }
+
+    private String resourceKey(Map<?, ?> resource) {
+        if (resource == null) {
+            return "";
+        }
+        return safeString(resource.get("kind")) + ":" + safeString(resource.get("id"));
+    }
+
+    private String resourceKeyWithAmount(Map<?, ?> resource) {
+        return resourceKey(resource) + "x" + safeString(resource.get("amount"));
     }
 
     private Map<String, Object> exportForestryBees(List<Map<String, Object>> adapters) {
@@ -1780,6 +2149,19 @@ public final class GtnhCalcOracleExporter {
         return Collections.singletonList(value);
     }
 
+    private List<?> listFrom(Object value) {
+        List<Object> out = new ArrayList<Object>();
+        for (Object entry : iterable(value)) {
+            out.add(entry);
+        }
+        return out;
+    }
+
+    private List<?> listField(Object target, String fieldName) {
+        Object value = readField(target, fieldName);
+        return listFrom(value);
+    }
+
     private int readIntField(Object target, String fieldName) {
         Object value = readField(target, fieldName);
         return value instanceof Number ? ((Number) value).intValue() : 0;
@@ -1928,6 +2310,17 @@ public final class GtnhCalcOracleExporter {
         return value == null ? "" : String.valueOf(value);
     }
 
+    private String join(List<String> values, String separator) {
+        StringBuilder builder = new StringBuilder();
+        for (String value : values) {
+            if (builder.length() > 0) {
+                builder.append(separator);
+            }
+            builder.append(value);
+        }
+        return builder.toString();
+    }
+
     private Map<String, Object> map() {
         return new LinkedHashMap<String, Object>();
     }
@@ -2007,3 +2400,4 @@ public final class GtnhCalcOracleExporter {
         }
     }
 }
+import java.nio.ByteBuffer;

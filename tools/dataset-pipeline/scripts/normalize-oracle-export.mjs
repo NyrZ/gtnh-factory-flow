@@ -318,7 +318,7 @@ function normalizeThaumcraft(domain) {
     const inputs = normalizedRecipe.inputs;
 
     recipeMaps.add(machineType);
-    setRecipeMapIcon(machineType, thaumcraftRecipeMapIcon(rawRecipe.type));
+    setRecipeMapIcon(machineType, rawRecipe.neiLayout?.category?.icon ?? thaumcraftRecipeMapIcon(rawRecipe.type));
     const durationTicks = positiveInt(rawRecipe.durationTicks, thaumcraftDuration(rawRecipe.type));
     addRecipe({
       id: recipeId("thaumcraft", rawRecipe.type, rawRecipe.id),
@@ -369,6 +369,11 @@ function normalizeThaumcraft(domain) {
 }
 
 function normalizeThaumcraftRecipe(rawRecipe) {
+  const exportedLayout = normalizeExportedNeiLayout(rawRecipe.neiLayout);
+  if (exportedLayout) {
+    return exportedLayout;
+  }
+
   const type = text(rawRecipe.type, "thaumcraft");
   const inputs = [];
   const slots = [];
@@ -436,6 +441,58 @@ function normalizeThaumcraftRecipe(rawRecipe) {
             progressBars,
           }
         : undefined,
+  };
+}
+
+function normalizeExportedNeiLayout(rawLayout) {
+  if (!rawLayout || typeof rawLayout !== "object" || !Array.isArray(rawLayout.slots)) {
+    return undefined;
+  }
+
+  const inputs = [];
+  const outputs = [];
+  const slots = [];
+  for (const rawSlot of rawLayout.slots) {
+    const side = rawSlot?.side === "output" ? "output" : "input";
+    const slot = {
+      x: positiveInt(rawSlot?.x, 0),
+      y: positiveInt(rawSlot?.y, 0),
+    };
+    const resource = resourceAmount(rawSlot?.resource, { neiSlot: slot });
+    if (!resource) {
+      continue;
+    }
+    const slotIndex = positiveInt(rawSlot?.slotIndex, side === "output" ? outputs.length : inputs.length);
+    slots.push({ side, kind: resource.kind, slotIndex, x: slot.x, y: slot.y });
+    if (side === "output") {
+      outputs.push(resource);
+    } else {
+      inputs.push(resource);
+    }
+  }
+
+  if (outputs.length === 0) {
+    return undefined;
+  }
+
+  const canvas = rawLayout.canvas && typeof rawLayout.canvas === "object"
+    ? {
+        width: positiveInt(rawLayout.canvas.width, 170),
+        height: positiveInt(rawLayout.canvas.height, 82),
+      }
+    : undefined;
+
+  return {
+    output: outputs[0],
+    inputs,
+    nei: {
+      source: text(rawLayout.source, "gtnh-nei-handler"),
+      handlerClass: text(rawLayout.handlerClass, undefined),
+      canvas,
+      backgroundImage: text(rawLayout.backgroundImage, undefined),
+      slots,
+      progressBars: [],
+    },
   };
 }
 

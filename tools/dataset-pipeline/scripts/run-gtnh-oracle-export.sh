@@ -35,6 +35,7 @@ fi
 runner_log="$GTNH_RAW_EXPORT_DIR/export-runner.log"
 runtime_log="$GTNH_RAW_EXPORT_DIR/gtnh-runtime.log"
 rendered_icon_dir="$(realpath -m "$GTNH_RAW_EXPORT_DIR/rendered-icons")"
+nei_layout_dir="$(realpath -m "$GTNH_DATASET_OUT_DIR/textures/nei-layouts")"
 oracle_output_dir="$(realpath -m "$GTNH_RAW_EXPORT_DIR/oracle-records")"
 export GTNH_RENDERED_ICON_DIR="$rendered_icon_dir"
 
@@ -137,6 +138,7 @@ cat > "$instance_root/eula.txt" <<'EOF'
 eula=true
 EOF
 mkdir -p "$rendered_icon_dir"
+mkdir -p "$nei_layout_dir"
 mkdir -p "$oracle_output_dir"
 mkdir -p "$GTNH_ICON_CACHE_DIR"
 
@@ -157,9 +159,9 @@ if [[ "$GTNH_EXPORT_DISABLE_CLIENT_UI_MODS" == "true" ]]; then
   )
 fi
 
-export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dgtnh.oracle.autorun=true -Dgtnh.oracle.outputDir=$oracle_output_dir"
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dgtnh.oracle.autorun=true -Dgtnh.oracle.outputDir=$oracle_output_dir -Dgtnh.oracle.datasetVersionId=$GTNH_DATASET_VERSION_ID"
 if [[ "$GTNH_RENDER_STACK_ICONS" == "true" ]]; then
-  export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dgtnh.oracle.renderIcons=true -Dgtnh.oracle.iconDir=$rendered_icon_dir -Dgtnh.oracle.iconCacheDir=$GTNH_ICON_CACHE_DIR -Dgtnh.oracle.iconSize=$GTNH_ATLAS_ICON_SIZE -Dgtnh.oracle.iconExportBatchSize=$GTNH_ICON_EXPORT_BATCH_SIZE -Djava.awt.headless=false"
+  export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Dgtnh.oracle.renderIcons=true -Dgtnh.oracle.iconDir=$rendered_icon_dir -Dgtnh.oracle.iconCacheDir=$GTNH_ICON_CACHE_DIR -Dgtnh.oracle.iconSize=$GTNH_ATLAS_ICON_SIZE -Dgtnh.oracle.iconExportBatchSize=$GTNH_ICON_EXPORT_BATCH_SIZE -Dgtnh.oracle.neiLayoutDir=$nei_layout_dir -Djava.awt.headless=false"
 fi
 export _JAVA_OPTIONS="${_JAVA_OPTIONS:-} -Xms4G -Xmx${GTNH_EXPORT_MAX_MEMORY}"
 

@@ -442,7 +442,28 @@ export function getNeiRecipeLayout(recipe: Recipe): NeiRecipeLayout {
   ];
   const slots = frames.filter((frame): frame is NeiPositionedSlot => Boolean(frame.resource));
 
-  const canvas = growCanvas(definition.canvas ?? DEFAULT_CANVAS, frames, definition.decorations);
+  const exportedCanvas = recipe.nei?.canvas;
+  const baseCanvas = exportedCanvas ?? definition.canvas ?? DEFAULT_CANVAS;
+  const exportedBackground = recipe.nei?.backgroundImage
+    ? [
+        {
+          kind: "texture" as const,
+          x: 0,
+          y: 0,
+          width: baseCanvas.width,
+          height: baseCanvas.height,
+          imagePath: recipe.nei.backgroundImage,
+          textureWidth: baseCanvas.width,
+          textureHeight: baseCanvas.height,
+          sourceX: 0,
+          sourceY: 0,
+          sourceWidth: baseCanvas.width,
+          sourceHeight: baseCanvas.height,
+        },
+      ]
+    : undefined;
+  const decorations = exportedBackground ?? definition.decorations;
+  const canvas = growCanvas(baseCanvas, frames, decorations);
 
   return {
     id: definition.id,
@@ -467,7 +488,7 @@ export function getNeiRecipeLayout(recipe: Recipe): NeiRecipeLayout {
       recipeMap,
       explicitProgressBars ?? definition.progressBars,
     ),
-    decorations: definition.decorations ?? [],
+    decorations: decorations ?? [],
     unframedSlotKinds: definition.unframedSlotKinds ?? [],
     logo: definition.logo ?? { x: 152, y: 63 },
   };

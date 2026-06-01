@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const datasetRoot = path.join(process.cwd(), "public", "datasets", "gtnh");
-const textureRoots = new Set(["rendered", "icons", "atlas"]);
+const textureRoots = new Set(["rendered", "icons", "atlas", "nei-layouts"]);
 
 export async function GET(
   _request: Request,

@@ -189,6 +189,10 @@ export const recipeSchema = z.object({
   nei: z
     .object({
       iconPath: z.string().optional(),
+      source: z.string().optional(),
+      handlerClass: z.string().optional(),
+      canvas: z.object({ width: z.number(), height: z.number() }).optional(),
+      backgroundImage: z.string().optional(),
       itemInputGrid: z.object({ width: z.number(), height: z.number() }).optional(),
       itemOutputGrid: z.object({ width: z.number(), height: z.number() }).optional(),
       fluidInputGrid: z.object({ width: z.number(), height: z.number() }).optional(),

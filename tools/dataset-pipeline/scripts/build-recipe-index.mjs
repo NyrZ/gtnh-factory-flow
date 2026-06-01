@@ -295,6 +295,10 @@ function compactNei(nei) {
   }
 
   return removeUndefined({
+    source: nei.source,
+    handlerClass: nei.handlerClass,
+    canvas: nei.canvas,
+    backgroundImage: nei.backgroundImage,
     itemInputGrid: nei.itemInputGrid,
     itemOutputGrid: nei.itemOutputGrid,
     fluidInputGrid: nei.fluidInputGrid,
