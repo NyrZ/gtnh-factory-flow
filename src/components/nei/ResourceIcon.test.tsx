@@ -49,4 +49,23 @@ describe("ResourceIcon", () => {
     expect(screen.queryByText("gregtech.common.bees.GTAlleleBeeSpecies")).toBeNull();
     expect(screen.queryByText("Not consumed")).toBeNull();
   });
+
+  it("colorizes fallback Thaumcraft aspect icons", () => {
+    render(
+      <ResourceIcon
+        resource={{
+          kind: "aspect",
+          id: "thaumcraft:aspect:ignis",
+          amount: 8,
+          displayName: "Ignis",
+        }}
+        showAmount={false}
+      />,
+    );
+
+    const icon = screen.getByRole("img", { name: "Ignis" });
+    expect((icon.querySelector("span:last-child") as HTMLElement).style.backgroundColor).toBe(
+      "rgb(255, 90, 1)",
+    );
+  });
 });

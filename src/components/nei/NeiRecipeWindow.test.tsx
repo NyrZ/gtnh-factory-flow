@@ -42,8 +42,9 @@ describe("NeiRecipeWindow", () => {
     );
 
     expect(screen.queryByText(/Total:/)).toBeNull();
-    expect(screen.getByAltText("Ordo").getAttribute("src")).toBe(
-      "/nei/thaumcraft/aspects/ordo.png",
-    );
+    const aspectIcon = screen.getByRole("img", { name: "Ordo" });
+    const colorLayer = aspectIcon.querySelector("span:last-child") as HTMLElement;
+    expect(colorLayer.style.maskImage).toContain("/nei/thaumcraft/aspects/ordo.png");
+    expect(colorLayer.style.backgroundColor).toBe("rgb(213, 212, 236)");
   });
 });

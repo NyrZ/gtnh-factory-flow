@@ -12,7 +12,15 @@ import { MinecraftTooltip } from "./MinecraftTooltip";
 
 type DisplayResourceAmount = Pick<
   ResourceAmount,
-  "kind" | "id" | "amount" | "displayName" | "iconPath" | "iconAtlas" | "tooltip" | "alternatives"
+  | "kind"
+  | "id"
+  | "amount"
+  | "displayName"
+  | "iconPath"
+  | "iconAtlas"
+  | "dominantColor"
+  | "tooltip"
+  | "alternatives"
 > & {
   consumed?: boolean;
   chance?: number;
@@ -185,7 +193,10 @@ function IconImage({
   resource,
   iconPixelSize,
 }: {
-  resource?: Pick<ResourceAmount, "kind" | "id" | "displayName" | "iconPath" | "iconAtlas">;
+  resource?: Pick<
+    ResourceAmount,
+    "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor"
+  >;
   iconPixelSize?: number;
 }) {
   if (!resource) {
@@ -200,6 +211,12 @@ function IconImage({
   const iconPath = resource.iconPath ?? getFallbackIconPath(resource);
   if (!iconPath) {
     return null;
+  }
+
+  if (resource.kind === "aspect") {
+    return (
+      <AspectIconImage resource={resource} iconPath={iconPath} iconPixelSize={iconPixelSize} />
+    );
   }
 
   return (
@@ -218,6 +235,111 @@ function IconImage({
     />
   );
 }
+
+function AspectIconImage({
+  resource,
+  iconPath,
+  iconPixelSize,
+}: {
+  resource: Pick<ResourceAmount, "id" | "displayName" | "dominantColor">;
+  iconPath: string;
+  iconPixelSize?: number;
+}) {
+  const color = resource.dominantColor ?? getFallbackAspectColor(resource.id);
+  const sizeStyle = iconPixelSize ? { width: iconPixelSize, height: iconPixelSize } : undefined;
+
+  return (
+    <span
+      role="img"
+      aria-label={resourceLabel(resource)}
+      className={
+        iconPixelSize
+          ? "minecraft-pixel-art relative block max-w-none"
+          : "minecraft-pixel-art relative block h-[calc(200%-8px)] w-[calc(200%-8px)] max-w-none"
+      }
+      style={sizeStyle}
+    >
+      <span
+        className="absolute inset-0 bg-black opacity-45"
+        style={{
+          WebkitMaskImage: `url('${iconPath}')`,
+          maskImage: `url('${iconPath}')`,
+          WebkitMaskSize: "100% 100%",
+          maskSize: "100% 100%",
+          transform: "translate(1px, 1px)",
+        }}
+      />
+      <span
+        className="absolute inset-0"
+        style={{
+          backgroundColor: color,
+          WebkitMaskImage: `url('${iconPath}')`,
+          maskImage: `url('${iconPath}')`,
+          WebkitMaskSize: "100% 100%",
+          maskSize: "100% 100%",
+        }}
+      />
+    </span>
+  );
+}
+
+function getFallbackAspectColor(id: string): string {
+  const tag = id.startsWith("thaumcraft:aspect:")
+    ? id.slice("thaumcraft:aspect:".length).toLowerCase()
+    : id.toLowerCase();
+  return ASPECT_COLORS[tag] ?? "#ffffff";
+}
+
+const ASPECT_COLORS: Record<string, string> = {
+  aer: "#ffff7e",
+  alienis: "#805080",
+  aqua: "#3cd4fc",
+  arbor: "#00c800",
+  auram: "#ffc0ff",
+  bestia: "#9f6409",
+  cognitio: "#f9967f",
+  corpus: "#ffcc7f",
+  exanimis: "#3a4000",
+  fabrico: "#809d80",
+  fames: "#9f0000",
+  gelum: "#e1ffff",
+  herba: "#01ac00",
+  humanus: "#ffd7c0",
+  ignis: "#ff5a01",
+  instrumentum: "#4040ee",
+  iter: "#e0585b",
+  limus: "#01ac75",
+  lucrum: "#e5dd5a",
+  lux: "#fff981",
+  machina: "#8080a0",
+  messis: "#e1c16e",
+  metallum: "#b5b5cd",
+  meto: "#eead82",
+  mortuus: "#6a0005",
+  motus: "#cdccf4",
+  ordo: "#d5d4ec",
+  pannus: "#eaeac0",
+  perditio: "#404040",
+  perfodio: "#dcd2d2",
+  permutatio: "#578357",
+  potentia: "#c0ffff",
+  praecantatio: "#cf00ff",
+  sano: "#ff8080",
+  sensus: "#c0ffc0",
+  spiritus: "#ebebfb",
+  telum: "#c05050",
+  tempestas: "#ffffff",
+  tenebrae: "#222222",
+  terra: "#56c000",
+  tutamen: "#00c0c0",
+  vacuos: "#888888",
+  venenum: "#88c800",
+  victus: "#de0005",
+  vinculum: "#9a8080",
+  vitium: "#800080",
+  vitreus: "#80ffff",
+  volatus: "#e7e7d7",
+};
 
 function getFallbackIconPath(resource: Pick<ResourceAmount, "kind" | "id">): string | undefined {
   if (resource.kind !== "aspect") {

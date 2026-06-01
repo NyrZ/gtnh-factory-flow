@@ -463,6 +463,7 @@ function NeiSlotFrameView({
         <ResourceIcon
           resource={slot.resource}
           size="md"
+          showAmount={!(unframed && slot.resource.kind === "aspect")}
           showName={false}
           className="!h-full !w-full"
           iconPixelSize={iconPixelSize}
