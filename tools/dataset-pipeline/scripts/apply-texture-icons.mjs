@@ -50,6 +50,7 @@ const dataset = JSON.parse(await fs.readFile(datasetPath, "utf8"));
 const versionId = dataset.datasetVersionId;
 const textureOutDir = path.join(outDir, "textures");
 const publicTextureBase = `/datasets/gtnh/${versionId}/textures`;
+const bundledAspectIcons = await readBundledAspectIconNames();
 
 console.log("Indexing real GTNH texture assets from mod jars.");
 const textureIndex = await buildTextureIndex(instanceRoot);
@@ -87,6 +88,7 @@ let missing = 0;
 let preservedRendered = 0;
 
 for (const [key, resource] of resourcesByKey) {
+  clearMissingBundledAspectIcon(resource, bundledAspectIcons);
   if (resource.iconPath) {
     preservedRendered += 1;
     continue;
@@ -233,9 +235,11 @@ function textureCandidates(resource, parsed) {
   const fullPaths = [];
   if (namespace) {
     const textureFolders =
-      resource.kind === "fluid"
-        ? ["fluids", "fluid", "items", "blocks"]
-        : ["items", "item", "blocks", "block"];
+      resource.kind === "aspect"
+        ? ["aspects", "aspect", "items", "item"]
+        : resource.kind === "fluid"
+          ? ["fluids", "fluid", "items", "blocks"]
+          : ["items", "item", "blocks", "block"];
 
     for (const folder of textureFolders) {
       for (const stem of stems) {
@@ -249,10 +253,15 @@ function textureCandidates(resource, parsed) {
       ? stems.flatMap((stem) => [stem, `${stem}_still`, `still_${stem}`, `${stem}.still`])
       : [];
 
+  const looseStems =
+    resource.kind === "fluid" || resource.kind === "aspect"
+      ? unique([...stems, ...fluidStems])
+      : [];
+
   return {
     fullPaths,
     stems: unique([...stems, ...fluidStems]),
-    looseStems: resource.kind === "fluid" ? unique([...stems, ...fluidStems]) : [],
+    looseStems,
   };
 }
 
@@ -314,7 +323,9 @@ function isTextureEntry(entry) {
 }
 
 function parseAssetTexturePath(entry) {
-  const match = entry.match(/^assets\/([^/]+)\/textures\/(?:items?|blocks?|fluids?)\/(.+)\.png$/);
+  const match = entry.match(
+    /^assets\/([^/]+)\/textures\/(?:items?|blocks?|fluids?|aspects?)\/(.+)\.png$/,
+  );
   if (!match) {
     return undefined;
   }
@@ -338,6 +349,36 @@ function parseResourceId(id) {
 
 function resourceKey(resource) {
   return `${resource.kind}:${resource.id}`;
+}
+
+async function readBundledAspectIconNames() {
+  const aspectDir = path.resolve("public", "nei", "thaumcraft", "aspects");
+  if (!existsSync(aspectDir)) {
+    return new Set();
+  }
+
+  const entries = await fs.readdir(aspectDir);
+  return new Set(
+    entries
+      .filter((entry) => entry.toLowerCase().endsWith(".png"))
+      .map((entry) => entry.toLowerCase()),
+  );
+}
+
+function clearMissingBundledAspectIcon(resource, bundledAspectIcons) {
+  if (resource.kind !== "aspect" || typeof resource.iconPath !== "string") {
+    return;
+  }
+
+  const prefix = "/nei/thaumcraft/aspects/";
+  if (!resource.iconPath.toLowerCase().startsWith(prefix)) {
+    return;
+  }
+
+  const fileName = path.posix.basename(resource.iconPath).toLowerCase();
+  if (!bundledAspectIcons.has(fileName)) {
+    delete resource.iconPath;
+  }
 }
 
 function addFirst(map, key, value) {

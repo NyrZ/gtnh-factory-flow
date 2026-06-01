@@ -68,4 +68,24 @@ describe("ResourceIcon", () => {
       "rgb(255, 90, 1)",
     );
   });
+
+  it("uses the bundled unknown aspect mask for GTNH aspects without static icons", () => {
+    render(
+      <ResourceIcon
+        resource={{
+          kind: "aspect",
+          id: "thaumcraft:aspect:electrum",
+          amount: 8,
+          displayName: "Electrum",
+          dominantColor: "#d9c35c",
+        }}
+        showAmount={false}
+      />,
+    );
+
+    const icon = screen.getByRole("img", { name: "Electrum" });
+    expect((icon.querySelector("span:last-child") as HTMLElement).style.maskImage).toContain(
+      "/nei/thaumcraft/aspects/_unknown.png",
+    );
+  });
 });

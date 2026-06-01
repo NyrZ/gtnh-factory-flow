@@ -185,7 +185,7 @@ const THAUMCRAFT_INFUSION_LAYOUT: RecipeMapLayoutDefinition = {
   maxFluidInputs: 0,
   maxFluidOutputs: 0,
   progressBars: [],
-  unframedSlotKinds: ["aspect"],
+  unframedSlotKinds: ["item", "aspect"],
   decorations: [
     thaumcraftOverlayDecoration(34, -5, 0, 3, 56, 17, 1.75),
     thaumcraftOverlayDecoration(34, 28.25, 200, 77, 60, 44, 1.75),
@@ -201,7 +201,7 @@ const THAUMCRAFT_CRUCIBLE_LAYOUT: RecipeMapLayoutDefinition = {
   maxFluidInputs: 0,
   maxFluidOutputs: 0,
   progressBars: [],
-  unframedSlotKinds: ["aspect"],
+  unframedSlotKinds: ["item", "aspect"],
   decorations: [
     thaumcraftOverlayDecoration(36, 44, 0, 20, 56, 48, 1.75),
     thaumcraftOverlayDecoration(74, 32, 100, 84, 11, 13, 1.75),
@@ -234,7 +234,7 @@ const THAUMCRAFT_ESSENTIA_SMELTING_LAYOUT: RecipeMapLayoutDefinition = {
   maxFluidInputs: 0,
   maxFluidOutputs: 0,
   progressBars: [],
-  unframedSlotKinds: ["aspect"],
+  unframedSlotKinds: ["item", "aspect"],
   itemInputPositions: (count) => (count > 0 ? [{ x: 42, y: 34 }] : []),
   decorations: [thaumcraftOverlayDecoration(75, 29, 100, 84, 11, 13, 1.75)],
 };

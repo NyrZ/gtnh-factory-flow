@@ -9,6 +9,7 @@ import dev.gtnhplanner.calcoracle.icons.ItemStackIconExporter;
 import gregtech.api.recipe.RecipeMap;
 import gregtech.api.recipe.RecipeMapBackend;
 import gregtech.api.util.GTRecipe;
+import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.CraftingManager;
@@ -374,16 +375,17 @@ public final class GtnhCalcOracleExporter {
         Map<String, Boolean> seen = new LinkedHashMap<String, Boolean>();
         List<ItemStack> stacks = new ArrayList<ItemStack>();
         for (Object key : ((Map<?, ?>) rawObjectTags).keySet()) {
-            ItemStack stack = thaumcraftObjectTagStack(key);
-            if (stack == null) {
-                continue;
+            for (ItemStack stack : thaumcraftObjectTagStacks(key)) {
+                if (stack == null) {
+                    continue;
+                }
+                String stackKey = stackKey(stack);
+                if (seen.containsKey(stackKey)) {
+                    continue;
+                }
+                seen.put(stackKey, Boolean.TRUE);
+                stacks.add(stack);
             }
-            String stackKey = stackKey(stack);
-            if (seen.containsKey(stackKey)) {
-                continue;
-            }
-            seen.put(stackKey, Boolean.TRUE);
-            stacks.add(stack);
         }
         Collections.sort(stacks, new java.util.Comparator<ItemStack>() {
             @Override
@@ -431,20 +433,61 @@ public final class GtnhCalcOracleExporter {
         return exported;
     }
 
-    private ItemStack thaumcraftObjectTagStack(Object key) {
+    private List<ItemStack> thaumcraftObjectTagStacks(Object key) {
+        List<ItemStack> stacks = new ArrayList<ItemStack>();
         if (!(key instanceof List)) {
-            return null;
+            return stacks;
         }
         List<?> parts = (List<?>) key;
         if (parts.size() < 2 || !(parts.get(0) instanceof Item) || !(parts.get(1) instanceof Number)) {
-            return null;
+            return stacks;
         }
         Item item = (Item) parts.get(0);
         int meta = ((Number) parts.get(1)).intValue();
         if (meta == OreDictionary.WILDCARD_VALUE) {
-            meta = 0;
+            addWildcardItemStacks(stacks, item);
+            return stacks;
         }
-        return new ItemStack(item, 1, meta);
+        stacks.add(new ItemStack(item, 1, meta));
+        return stacks;
+    }
+
+    private void addWildcardItemStacks(List<ItemStack> stacks, Item item) {
+        Map<String, Boolean> seen = new LinkedHashMap<String, Boolean>();
+        addUniqueStack(stacks, seen, new ItemStack(item, 1, 0));
+
+        if (!item.getHasSubtypes()) {
+            return;
+        }
+
+        List<ItemStack> subItems = new ArrayList<ItemStack>();
+        collectSubItems(item, null, subItems);
+        if (subItems.isEmpty()) {
+            collectSubItems(item, item.getCreativeTab(), subItems);
+        }
+        for (ItemStack subItem : subItems) {
+            addUniqueStack(stacks, seen, subItem);
+        }
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private void collectSubItems(Item item, CreativeTabs tab, List<ItemStack> subItems) {
+        try {
+            item.getSubItems(item, tab, (List) subItems);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void addUniqueStack(List<ItemStack> stacks, Map<String, Boolean> seen, ItemStack stack) {
+        if (stack == null || stack.getItem() == null) {
+            return;
+        }
+        String key = stackKey(stack);
+        if (seen.containsKey(key)) {
+            return;
+        }
+        seen.put(key, Boolean.TRUE);
+        stacks.add(new ItemStack(stack.getItem(), 1, stack.getItemDamage()));
     }
 
     private int thaumcraftAlchemyFurnaceDurationTicks(List<Map<String, Object>> aspects, int bellows) {

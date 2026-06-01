@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { queryDatasetRecipes } from "@/lib/server/dataset-query";
-import type { MachineTier } from "@/lib/model/types";
+import type { MachineTier, ResourceKind } from "@/lib/model/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type TierFilter = "all" | Exclude<MachineTier, "DEMO">;
+const RECIPE_RESOURCE_KINDS = new Set<ResourceKind>(["item", "fluid", "aspect"]);
 
 export async function GET(
   request: Request,
@@ -19,7 +20,7 @@ export async function GET(
     const result = await queryDatasetRecipes(versionId, {
       query: url.searchParams.get("query") ?? "",
       resource:
-        resourceKind && resourceId && (resourceKind === "item" || resourceKind === "fluid")
+        resourceKind && resourceId && isRecipeResourceKind(resourceKind)
           ? { kind: resourceKind, id: resourceId }
           : undefined,
       mode: url.searchParams.get("mode") === "uses" ? "uses" : "recipes",
@@ -37,6 +38,10 @@ export async function GET(
       { status: 500 },
     );
   }
+}
+
+function isRecipeResourceKind(value: string): value is ResourceKind {
+  return RECIPE_RESOURCE_KINDS.has(value as ResourceKind);
 }
 
 function parseOffset(value: string | null): number {

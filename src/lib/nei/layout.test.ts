@@ -404,7 +404,7 @@ describe("NEI layout", () => {
     expect(layout.id).toBe("thaumcraft-infusion");
     expect(layout.chrome).toBe("native");
     expect(layout.title).toBe("Arcane Infusion");
-    expect(layout.unframedSlotKinds).toEqual(["aspect"]);
+    expect(layout.unframedSlotKinds).toEqual(["item", "aspect"]);
     expect(layout.canvas).toMatchObject({ width: 214, height: 140 });
     expect(layout.decorations[0]).toMatchObject({
       kind: "texture",
@@ -488,7 +488,7 @@ describe("NEI layout", () => {
       chrome: "native",
       title: "Essentia Smelting",
     });
-    expect(layout.unframedSlotKinds).toEqual(["aspect"]);
+    expect(layout.unframedSlotKinds).toEqual(["item", "aspect"]);
     expect(layout.slots.map((slot) => [slot.kind, slot.side, slot.x, slot.y])).toEqual([
       ["item", "input", 42, 34],
       ["aspect", "output", 112, 34],

@@ -351,7 +351,10 @@ function getFallbackIconPath(resource: Pick<ResourceAmount, "kind" | "id">): str
     return "/nei/thaumcraft/aspects/_unknown.png";
   }
 
-  return `/nei/thaumcraft/aspects/${resource.id.slice(prefix.length).toLowerCase()}.png`;
+  const tag = resource.id.slice(prefix.length).toLowerCase();
+  return ASPECT_COLORS[tag]
+    ? `/nei/thaumcraft/aspects/${tag}.png`
+    : "/nei/thaumcraft/aspects/_unknown.png";
 }
 
 function AtlasIconImage({
