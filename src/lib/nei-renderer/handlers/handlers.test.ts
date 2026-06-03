@@ -9,12 +9,73 @@ describe("NEI recipe handlers", () => {
     const result = render(recipe({ machineType: "Ore Washer" }));
 
     expect(result.handlerId).toBe("gregtech-machine");
+    expect(
+      result.commands.some(
+        (command) =>
+          command.type === "texture" &&
+          command.imagePath === "/nei/gregtech/gui/background/nei_single_recipe.png",
+      ),
+    ).toBe(true);
     expect(result.commands.some((command) => command.type === "slot")).toBe(true);
-    expect(result.commands.some((command) => command.type === "progress")).toBe(true);
+    expect(
+      result.commands.some(
+        (command) => command.type === "slot" && command.texturePath?.endsWith("/slot/item.png"),
+      ),
+    ).toBe(true);
+    expect(
+      result.commands.some(
+        (command) => command.type === "progress" && command.texture === "bath",
+      ),
+    ).toBe(true);
     expect(result.positionedStacks.map((stack) => [stack.side, stack.kind])).toEqual([
       ["input", "item"],
       ["output", "item"],
     ]);
+  });
+
+  it("uses layout-derived GregTech slot and progress positions", () => {
+    const result = render(
+      recipe({
+        inputs: [{ kind: "item", id: "input", amount: 1, neiSlot: { x: 34, y: 17 } }],
+        outputs: [
+          { kind: "item", id: "output", amount: 1, neiSlot: { x: 88, y: 17 } },
+          { kind: "fluid", id: "steam", amount: 1000, neiSlot: { x: 88, y: 53 } },
+        ],
+        nei: {
+          slots: [
+            { side: "input", kind: "item", slotIndex: 0, x: 34, y: 17 },
+            { side: "output", kind: "item", slotIndex: 0, x: 88, y: 17 },
+            { side: "output", kind: "fluid", slotIndex: 0, x: 88, y: 53 },
+          ],
+          progressBars: [
+            { x: 84, y: 44, width: 20, height: 18, direction: "right", texture: "macerate" },
+          ],
+        },
+      }),
+    );
+
+    expect(
+      result.commands.find(
+        (command) => command.type === "slot" && command.side === "input" && command.kind === "item",
+      ),
+    ).toMatchObject({ x: 34, y: 17 });
+    expect(
+      result.commands.find(
+        (command) =>
+          command.type === "slot" && command.side === "output" && command.kind === "fluid",
+      ),
+    ).toMatchObject({ x: 88, y: 53 });
+    expect(result.commands.find((command) => command.type === "progress")).toMatchObject({
+      x: 84,
+      y: 44,
+      texture: "macerate",
+    });
+    expect(result.positionedStacks.find((stack) => stack.kind === "fluid")).toMatchObject({
+      side: "output",
+      x: 88,
+      y: 53,
+      resourceIndex: 1,
+    });
   });
 
   it("generates bee produce commands without using a machine fallback", () => {
@@ -79,6 +140,21 @@ describe("NEI recipe handlers", () => {
     expect(result.commands.some((command) => command.semanticTags?.includes("empty-slot"))).toBe(
       false,
     );
+  });
+
+  it("renders unknown kinds through the fallback handler", () => {
+    const result = render(
+      recipe({
+        kind: "unknown",
+        machineType: "Unknown",
+        inputs: [{ kind: "item", id: "mystery_input", amount: 1 }],
+        outputs: [{ kind: "item", id: "mystery_output", amount: 1 }],
+      }),
+    );
+
+    expect(result.handlerId).toBe("fallback");
+    expect(result.commands.some((command) => command.type === "slot")).toBe(true);
+    expect(result.commands.some((command) => command.type === "text")).toBe(true);
   });
 });
 

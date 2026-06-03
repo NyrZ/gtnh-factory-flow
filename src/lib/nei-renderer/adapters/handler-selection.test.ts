@@ -10,8 +10,8 @@ describe("selectNeiRecipeHandler", () => {
     expect(selectNeiRecipeHandler(model("gregtech_machine")).id).toBe("gregtech-machine");
   });
 
-  it("fails loudly for unhandled kinds", () => {
-    expect(() => selectNeiRecipeHandler(model("unknown"))).toThrow(/No NEI recipe handler/);
+  it("uses the fallback handler for unhandled kinds", () => {
+    expect(selectNeiRecipeHandler(model("unknown")).id).toBe("fallback");
   });
 });
 

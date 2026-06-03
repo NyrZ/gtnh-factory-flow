@@ -8,8 +8,11 @@ import { NeiAspectView } from "./NeiAspectView";
 import { NeiDebugOverlay } from "./NeiDebugOverlay";
 import { NeiFluidView } from "./NeiFluidView";
 import { NeiItemView } from "./NeiItemView";
+import { NeiProgressView } from "./NeiProgressView";
+import { NeiRectView } from "./NeiRectView";
 import { NeiSlotView } from "./NeiSlotView";
 import { NeiTextView } from "./NeiTextView";
+import { NeiTextureView } from "./NeiTextureView";
 
 interface NeiCommandLayerProps {
   layer: string;
@@ -102,9 +105,15 @@ export function NeiCommandLayer({
           case "text":
             return <NeiTextView key={key} command={command} scale={scale} />;
           case "texture":
+            return <NeiTextureView key={key} command={command} scale={scale} />;
           case "progress":
+            return <NeiProgressView key={key} command={command} scale={scale} />;
           case "rect":
-            return <NeiDebugOverlay key={key} command={command} scale={scale} />;
+            return command.layer === "debug" || command.semanticTags?.includes("debug-bound") ? (
+              <NeiDebugOverlay key={key} command={command} scale={scale} />
+            ) : (
+              <NeiRectView key={key} command={command} scale={scale} />
+            );
           default:
             return null;
         }

@@ -55,7 +55,6 @@ export function NeiRecipeSurface({
       style={{
         width: result.width * scale,
         height: result.height * scale,
-        backgroundColor: "#c6c6c6",
       }}
     >
       {layers.map(([layer, commands]) => (
