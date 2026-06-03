@@ -169,6 +169,14 @@ export interface MachineConfigControl {
 export interface Recipe {
   id: string;
   name: string;
+  kind?:
+    | "gregtech_machine"
+    | "bee_produce"
+    | "crop_produce"
+    | "essentia_smelting"
+    | "custom"
+    | "unknown";
+  category?: string;
   machineType: string;
   minimumTier: MachineTier | string;
   durationTicks: number;
@@ -176,6 +184,7 @@ export interface Recipe {
   inputs: RecipeInput[];
   outputs: RecipeOutput[];
   programmedCircuit?: string;
+  specialValue?: number;
   notes?: string;
   machineProfile?: MachineProfile;
   machineHandlers?: MachineHandler[];
@@ -185,9 +194,12 @@ export interface Recipe {
   source?: {
     datasetVersionId?: string;
     recipeMap?: string;
+    sourceMod?: string;
     exporter?: "nesql" | "recex" | "nerd" | "gtnh-oracle" | "unknown";
     rawRecipeId?: string;
+    sourceIdentifier?: string;
   };
+  metadata?: Record<string, unknown>;
   nei?: {
     iconPath?: string;
     source?: string;

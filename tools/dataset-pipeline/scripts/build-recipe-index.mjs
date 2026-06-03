@@ -278,13 +278,17 @@ function toRecipeSummary(recipe, index) {
   return {
     id: recipe.id,
     name: recipe.name,
+    kind: recipe.kind,
+    category: recipe.category,
     recipeMap: recipe.source?.recipeMap ?? recipe.machineType,
     machineType: recipe.machineType,
     minimumTier: recipe.minimumTier,
     durationTicks: recipe.durationTicks,
     eut: recipe.eut,
     programmedCircuit: recipe.programmedCircuit,
+    specialValue: recipe.specialValue,
     source: recipe.source?.recipeMap ? { recipeMap: recipe.source.recipeMap } : undefined,
+    metadata: recipe.metadata,
     shardIndex: Math.floor(index / shardSize),
   };
 }

@@ -202,6 +202,8 @@ function normalizeGregtech(domain) {
       addRecipe({
         id: recipeId("gregtech", recipeMap.id, rawRecipe.id),
         name: `${machineType}: ${resourceLabel(outputs[0])}`,
+        kind: "gregtech_machine",
+        category: "gregtech",
         machineType,
         minimumTier: voltageTierForEu(rawRecipe.eut ?? 0),
         durationTicks: positiveInt(rawRecipe.durationTicks, 1),
@@ -215,6 +217,7 @@ function normalizeGregtech(domain) {
           outputs,
         ),
         programmedCircuit: detectProgrammedCircuit(inputs),
+        specialValue: Number(rawRecipe.specialValue) || 0,
         notes: "Exported by the GTNH calculation oracle from gregtech.api.recipe.RecipeMap.",
         source: {
           datasetVersionId,
@@ -224,6 +227,10 @@ function normalizeGregtech(domain) {
         },
         nei: {
           additionalInfo: [`Special value: ${rawRecipe.specialValue ?? 0}`],
+        },
+        metadata: {
+          recipeMapId: recipeMap.id,
+          specialValue: Number(rawRecipe.specialValue) || 0,
         },
       });
     }
@@ -255,6 +262,8 @@ function normalizeCrafting(domain) {
     addRecipe({
       id: recipeId("crafting", rawRecipe.type, rawRecipe.id),
       name: `${machineType}: ${resourceLabel(output)}`,
+      kind: "gregtech_machine",
+      category: "crafting",
       machineType,
       minimumTier: "NONE",
       durationTicks: 1,
@@ -290,6 +299,8 @@ function normalizeSmelting(domain) {
     addRecipe({
       id: recipeId("smelting", rawRecipe.id),
       name: `${machineType}: ${resourceLabel(output)}`,
+      kind: "gregtech_machine",
+      category: "furnace",
       machineType,
       minimumTier: "NONE",
       durationTicks: 200,
@@ -331,6 +342,8 @@ function normalizeThaumcraft(domain) {
     addRecipe({
       id: recipeId("thaumcraft", rawRecipe.type, rawRecipe.id),
       name: `${machineType}: ${resourceLabel(output)}`,
+      kind: rawRecipe.type === "essentiaSmelting" ? "essentia_smelting" : "gregtech_machine",
+      category: "thaumcraft",
       machineType,
       minimumTier: "NONE",
       durationTicks,
@@ -384,6 +397,11 @@ function normalizeThaumcraft(domain) {
         rawRecipeId: rawRecipe.id,
       },
       nei: normalizedRecipe.nei,
+      metadata: {
+        thaumcraftType: rawRecipe.type,
+        research: rawRecipe.research,
+        instability: rawRecipe.instability,
+      },
     });
   }
 }
@@ -643,6 +661,8 @@ function normalizeForestryBees(domain) {
     addRecipe({
       id: recipeId("forestry-bee", species.uid ?? species.name ?? hashRecipe(species)),
       name: `${text(species.name, species.uid ?? "Bee")} Produce`,
+      kind: "bee_produce",
+      category: "forestry-bee",
       machineType,
       minimumTier: "NONE",
       durationTicks,
@@ -683,6 +703,11 @@ function normalizeForestryBees(domain) {
         exporter: "gtnh-oracle",
         rawRecipeId: species.uid ?? species.name,
       },
+      metadata: {
+        speciesUid: species.uid,
+        speciesName: species.name,
+        condition: species.humidity || species.temperature ? "Preferred environment" : undefined,
+      },
     });
   }
 }
@@ -710,6 +735,8 @@ function normalizeIc2Crops(domain) {
     addRecipe({
       id: recipeId("ic2-crop", crop.owner, crop.id ?? crop.name ?? hashRecipe(crop)),
       name: `${machineType}: ${text(crop.name, crop.id ?? "Crop")}`,
+      kind: "crop_produce",
+      category: "ic2-crop",
       machineType,
       minimumTier: "NONE",
       durationTicks,
@@ -741,6 +768,11 @@ function normalizeIc2Crops(domain) {
         recipeMap: machineType,
         exporter: "gtnh-oracle",
         rawRecipeId: `${crop.owner ?? "unknown"}:${crop.id ?? crop.name ?? hashRecipe(crop)}`,
+      },
+      metadata: {
+        cropOwner: crop.owner,
+        cropId: crop.id,
+        cropTier: crop.tier,
       },
       nei: {
         slots: [

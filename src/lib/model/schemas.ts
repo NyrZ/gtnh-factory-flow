@@ -165,6 +165,17 @@ export const machineHandlerSchema = machineProfileSchema.extend({
 export const recipeSchema = z.object({
   id: z.string().min(1, "Recipe id is required"),
   name: z.string().min(1, "Recipe name is required"),
+  kind: z
+    .enum([
+      "gregtech_machine",
+      "bee_produce",
+      "crop_produce",
+      "essentia_smelting",
+      "custom",
+      "unknown",
+    ])
+    .optional(),
+  category: z.string().min(1).optional(),
   machineType: z.string().min(1, "Machine type is required"),
   minimumTier: z.string().min(1, "Minimum tier is required"),
   durationTicks: z.number().int().positive("Duration must be at least 1 tick"),
@@ -172,6 +183,7 @@ export const recipeSchema = z.object({
   inputs: z.array(recipeInputSchema),
   outputs: z.array(recipeOutputSchema).min(1, "At least one output is required"),
   programmedCircuit: z.string().optional(),
+  specialValue: z.number().optional(),
   notes: z.string().optional(),
   machineProfile: machineProfileSchema.optional(),
   machineHandlers: z.array(machineHandlerSchema).optional(),
@@ -182,10 +194,13 @@ export const recipeSchema = z.object({
     .object({
       datasetVersionId: z.string().optional(),
       recipeMap: z.string().optional(),
+      sourceMod: z.string().optional(),
       exporter: z.enum(["nesql", "recex", "nerd", "gtnh-oracle", "unknown"]).optional(),
       rawRecipeId: z.string().optional(),
+      sourceIdentifier: z.string().optional(),
     })
     .optional(),
+  metadata: z.record(z.string().min(1), z.unknown()).optional(),
   nei: z
     .object({
       iconPath: z.string().optional(),

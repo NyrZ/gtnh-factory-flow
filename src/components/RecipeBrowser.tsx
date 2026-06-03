@@ -1363,6 +1363,8 @@ function summaryToPreviewRecipe(summary: RecipeSummary): Recipe {
   return {
     id: summary.id,
     name: summary.name,
+    kind: summary.kind,
+    category: summary.category,
     machineType: summary.machineType,
     minimumTier: summary.minimumTier,
     durationTicks: summary.durationTicks,
@@ -1370,9 +1372,11 @@ function summaryToPreviewRecipe(summary: RecipeSummary): Recipe {
     inputs: summary.inputs,
     outputs: summary.outputs,
     programmedCircuit: summary.programmedCircuit,
+    specialValue: summary.specialValue,
     machineHandlers: summary.machineHandlers,
     machineConfigControls: summary.machineConfigControls,
     source: summary.source ?? (summary.recipeMap ? { recipeMap: summary.recipeMap } : undefined),
+    metadata: summary.metadata,
     nei: summary.nei,
   };
 }

@@ -87,17 +87,21 @@ export interface RecipeDataset {
 export interface RecipeSummary {
   id: string;
   name: string;
+  kind?: Recipe["kind"];
+  category?: string;
   recipeMap: string;
   machineType: string;
   minimumTier: string;
   durationTicks: number;
   eut: number;
   programmedCircuit?: string;
+  specialValue?: number;
   machineHandlers?: Recipe["machineHandlers"];
   machineConfigControls?: Recipe["machineConfigControls"];
   inputs: RecipeInput[];
   outputs: RecipeOutput[];
   source?: Recipe["source"];
+  metadata?: Recipe["metadata"];
   nei?: Recipe["nei"];
   slots: RecipeSummarySlot[];
 }
