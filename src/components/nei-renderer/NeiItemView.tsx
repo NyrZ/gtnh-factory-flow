@@ -71,6 +71,7 @@ export function StackIconButton({
         top: command.y * scale,
         width: command.width * scale,
         height: command.height * scale,
+        pointerEvents: "auto",
         zIndex: slot ? getSlotZIndex?.(slot) : undefined,
       }}
     >

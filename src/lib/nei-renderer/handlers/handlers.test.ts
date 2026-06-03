@@ -28,7 +28,7 @@ describe("NEI recipe handlers", () => {
     );
 
     expect(result.handlerId).toBe("bee-produce");
-    expect(result.commands.filter((command) => command.type === "slot")).toHaveLength(7);
+    expect(result.commands.filter((command) => command.type === "slot")).toHaveLength(8);
     expect(result.positionedStacks[1]?.chance).toBe(0.2);
   });
 

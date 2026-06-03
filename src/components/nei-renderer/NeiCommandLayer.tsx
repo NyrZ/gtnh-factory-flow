@@ -41,7 +41,10 @@ export function NeiCommandLayer({
   return (
     <div
       className="absolute inset-0"
-      style={{ zIndex: NEI_LAYER_Z_INDEX[layer as keyof typeof NEI_LAYER_Z_INDEX] ?? 1 }}
+      style={{
+        zIndex: NEI_LAYER_Z_INDEX[layer as keyof typeof NEI_LAYER_Z_INDEX] ?? 1,
+        pointerEvents: "none",
+      }}
     >
       {commands.map((command, index) => {
         const key = command.id ?? `${command.type}-${command.x}-${command.y}-${index}`;

@@ -11,7 +11,9 @@ import {
   slotCommand,
 } from "./command-helpers";
 
-const OUTPUT_POSITIONS = gridPositions(6, 106, 17, 3, 18);
+const BEE_POSITION = { x: 22, y: 28 };
+const CATALYST_POSITION = { x: 52, y: 48 };
+const OUTPUT_POSITIONS = gridPositions(6, 118, 12, 2, 8);
 
 export const BeeProduceHandler: NeiRecipeHandler = {
   id: "bee-produce",
@@ -34,20 +36,27 @@ export const BeeProduceHandler: NeiRecipeHandler = {
         layer: "decoration",
         x: 78,
         y: 37,
-        width: 24,
+        width: 30,
         height: 3,
         color: NEI_PALETTE.bee,
       },
       {
         type: "rect",
         layer: "decoration",
-        x: 96,
+        x: 102,
         y: 32,
         width: 6,
         height: 13,
         color: NEI_PALETTE.bee,
       },
-      slotCommand({ x: 48, y: 35, side: "input", kind: "item", slotIndex: 0 }),
+      slotCommand({ ...BEE_POSITION, side: "input", kind: "item", slotIndex: 0 }),
+      slotCommand({
+        ...CATALYST_POSITION,
+        side: "catalyst",
+        kind: "item",
+        slotIndex: 0,
+        empty: !recipe.catalysts?.length,
+      }),
       ...OUTPUT_POSITIONS.map((position, index) =>
         slotCommand({
           ...position,
@@ -67,8 +76,8 @@ export const BeeProduceHandler: NeiRecipeHandler = {
           resourceToPositionedStack({
             resource: bee,
             side: "input",
-            x: 48,
-            y: 35,
+            x: BEE_POSITION.x,
+            y: BEE_POSITION.y,
             slotIndex: 0,
             resourceIndex: 0,
           }),
@@ -89,6 +98,22 @@ export const BeeProduceHandler: NeiRecipeHandler = {
     );
   },
 
+  getCatalysts(recipe): NeiPositionedStack[] {
+    const catalyst = recipe.catalysts?.[0];
+    return catalyst
+      ? [
+          resourceToPositionedStack({
+            resource: catalyst,
+            side: "catalyst",
+            x: CATALYST_POSITION.x,
+            y: CATALYST_POSITION.y,
+            slotIndex: 0,
+            resourceIndex: 1,
+          }),
+        ]
+      : [];
+  },
+
   drawForeground(recipe): NeiDrawCommand[] {
     const condition = recipe.metadata?.condition;
     return typeof condition === "string"
@@ -97,7 +122,7 @@ export const BeeProduceHandler: NeiRecipeHandler = {
             type: "text",
             layer: "text",
             x: 8,
-            y: 70,
+            y: 72,
             text: condition,
             fontSize: 8,
             color: "#262018",

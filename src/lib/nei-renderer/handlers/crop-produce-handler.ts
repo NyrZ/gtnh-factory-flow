@@ -11,7 +11,8 @@ import {
   slotCommand,
 } from "./command-helpers";
 
-const OUTPUT_POSITIONS = gridPositions(3, 124, 35, 3);
+const CROP_POSITION = { x: 22, y: 28 };
+const OUTPUT_POSITIONS = gridPositions(4, 116, 20, 2, 8);
 
 export const CropProduceHandler: NeiRecipeHandler = {
   id: "crop-produce",
@@ -33,22 +34,22 @@ export const CropProduceHandler: NeiRecipeHandler = {
       {
         type: "rect",
         layer: "decoration",
-        x: 78,
+        x: 74,
         y: 39,
-        width: 24,
+        width: 32,
         height: 3,
         color: NEI_PALETTE.crop,
       },
       {
         type: "rect",
         layer: "decoration",
-        x: 96,
+        x: 100,
         y: 34,
         width: 6,
         height: 13,
         color: NEI_PALETTE.crop,
       },
-      slotCommand({ x: 34, y: 35, side: "input", kind: "item", slotIndex: 0 }),
+      slotCommand({ ...CROP_POSITION, side: "input", kind: "item", slotIndex: 0 }),
       ...OUTPUT_POSITIONS.map((position, index) =>
         slotCommand({
           ...position,
@@ -68,8 +69,8 @@ export const CropProduceHandler: NeiRecipeHandler = {
           resourceToPositionedStack({
             resource: crop,
             side: "input",
-            x: 34,
-            y: 35,
+            x: CROP_POSITION.x,
+            y: CROP_POSITION.y,
             slotIndex: 0,
             resourceIndex: 0,
           }),
@@ -93,7 +94,7 @@ export const CropProduceHandler: NeiRecipeHandler = {
   drawForeground(recipe): NeiDrawCommand[] {
     const soil = recipe.metadata?.soil;
     return typeof soil === "string"
-      ? [{ type: "text", layer: "text", x: 8, y: 70, text: soil, fontSize: 8, color: "#1f2c18" }]
+      ? [{ type: "text", layer: "text", x: 8, y: 72, text: soil, fontSize: 8, color: "#1f2c18" }]
       : [];
   },
 };

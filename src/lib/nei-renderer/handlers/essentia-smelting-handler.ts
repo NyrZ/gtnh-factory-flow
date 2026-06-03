@@ -12,7 +12,8 @@ import {
   slotCommand,
 } from "./command-helpers";
 
-const ASPECT_POSITIONS = gridPositions(6, 112, 26, 3, 2);
+const INPUT_POSITION = { x: 24, y: 32 };
+const ASPECT_POSITIONS = gridPositions(6, 118, 14, 2, 8);
 
 export const EssentiaSmeltingHandler: NeiRecipeHandler = {
   id: "essentia-smelting",
@@ -40,22 +41,22 @@ export const EssentiaSmeltingHandler: NeiRecipeHandler = {
       {
         type: "rect",
         layer: "decoration",
-        x: 72,
+        x: 70,
         y: 35,
-        width: 24,
+        width: 34,
         height: 3,
         color: NEI_PALETTE.thaumcraft,
       },
       {
         type: "rect",
         layer: "decoration",
-        x: 90,
+        x: 98,
         y: 30,
         width: 6,
         height: 13,
         color: NEI_PALETTE.thaumcraft,
       },
-      slotCommand({ x: 42, y: 34, side: "input", kind: "item", slotIndex: 0 }),
+      slotCommand({ ...INPUT_POSITION, side: "input", kind: "item", slotIndex: 0 }),
       ...(useTextAspects
         ? []
         : ASPECT_POSITIONS.map((position, index) =>
@@ -78,8 +79,8 @@ export const EssentiaSmeltingHandler: NeiRecipeHandler = {
           resourceToPositionedStack({
             resource: input,
             side: "input",
-            x: 42,
-            y: 34,
+            x: INPUT_POSITION.x,
+            y: INPUT_POSITION.y,
             slotIndex: 0,
             resourceIndex: 0,
           }),
@@ -114,7 +115,7 @@ export const EssentiaSmeltingHandler: NeiRecipeHandler = {
       (aspect, index): NeiDrawCommand => ({
         type: "text",
         layer: "text",
-        x: 134,
+        x: 136,
         y: 18 + index * 18,
         width: 78,
         text: `${aspect.name} x${aspect.amount}`,
