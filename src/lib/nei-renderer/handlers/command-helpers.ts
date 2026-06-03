@@ -59,7 +59,7 @@ export function slotCommand({
     slotIndex,
     empty,
     framed,
-    texturePath: framed ? NEI_TEXTURES.slot(kind) : undefined,
+    texturePath: framed ? slotTexturePath(kind) : undefined,
     semanticTags: [
       empty ? "empty-slot" : undefined,
       side === "input" ? "input-slot" : undefined,
@@ -135,19 +135,28 @@ export function resourceToPositionedStack({
 }
 
 export function aspectToResource(aspect: NeiRenderAspectAmount): ResourceAmount {
-  return (
-    aspect.sourceResource ?? {
-      kind: "aspect",
-      id: aspect.aspectId.startsWith("thaumcraft:aspect:")
-        ? aspect.aspectId
-        : `thaumcraft:aspect:${aspect.aspectId}`,
-      amount: aspect.amount,
-      displayName: aspect.name,
-      iconPath: aspect.iconPath,
-      dominantColor: aspect.color,
-      tooltip: aspect.tooltip,
-    }
-  );
+  const id = aspect.aspectId.startsWith("thaumcraft:aspect:")
+    ? aspect.aspectId
+    : `thaumcraft:aspect:${aspect.aspectId}`;
+  const iconPath = NEI_TEXTURES.resolveThaumcraftAspectIconPath(aspect.aspectId, aspect.iconPath);
+
+  return aspect.sourceResource
+    ? {
+        ...aspect.sourceResource,
+        displayName: aspect.sourceResource.displayName ?? aspect.name,
+        iconPath: aspect.sourceResource.iconPath ?? iconPath,
+        dominantColor: aspect.sourceResource.dominantColor ?? aspect.color,
+        tooltip: aspect.sourceResource.tooltip ?? aspect.tooltip,
+      }
+    : {
+        kind: "aspect",
+        id,
+        amount: aspect.amount,
+        displayName: aspect.name,
+        iconPath,
+        dominantColor: aspect.color,
+        tooltip: aspect.tooltip,
+      };
 }
 
 export function aspectToPositionedStack({
@@ -199,4 +208,8 @@ export function gridPositions(count: number, x: number, y: number, columns: numb
     x: x + (index % columns) * (NEI_ITEM_SLOT_SIZE + gap),
     y: y + Math.floor(index / columns) * (NEI_ITEM_SLOT_SIZE + gap),
   }));
+}
+
+function slotTexturePath(kind: ResourceKind | "special") {
+  return kind === "aspect" ? NEI_TEXTURES.aspectSlot : NEI_TEXTURES.slot(kind);
 }

@@ -8,6 +8,7 @@ import { selectNeiRecipeHandler } from "@/lib/nei-renderer/adapters/handler-sele
 import { renderNeiRecipe } from "@/lib/nei-renderer/core/render-pipeline";
 import type { NeiRenderOptions } from "@/lib/nei-renderer/core/render-options";
 import type { NeiDrawCommand } from "@/lib/nei-renderer/core/commands";
+import { NEI_TEXTURES } from "@/lib/nei-renderer/theme/textures";
 import { NeiCommandLayer } from "./NeiCommandLayer";
 
 export interface NeiRecipeSurfaceProps {
@@ -114,17 +115,24 @@ export function renderStackResourceToResourceAmount(
     return resource;
   }
 
-  return (
-    resource.sourceResource ?? {
-      kind: "aspect",
-      id: resource.aspectId.startsWith("thaumcraft:aspect:")
-        ? resource.aspectId
-        : `thaumcraft:aspect:${resource.aspectId}`,
-      amount: resource.amount,
-      displayName: resource.name,
-      iconPath: resource.iconPath,
-      dominantColor: resource.color,
-      tooltip: resource.tooltip,
-    }
-  );
+  const iconPath = NEI_TEXTURES.resolveThaumcraftAspectIconPath(resource.aspectId, resource.iconPath);
+  return resource.sourceResource
+    ? {
+        ...resource.sourceResource,
+        displayName: resource.sourceResource.displayName ?? resource.name,
+        iconPath: resource.sourceResource.iconPath ?? iconPath,
+        dominantColor: resource.sourceResource.dominantColor ?? resource.color,
+        tooltip: resource.sourceResource.tooltip ?? resource.tooltip,
+      }
+    : {
+        kind: "aspect",
+        id: resource.aspectId.startsWith("thaumcraft:aspect:")
+          ? resource.aspectId
+          : `thaumcraft:aspect:${resource.aspectId}`,
+        amount: resource.amount,
+        displayName: resource.name,
+        iconPath,
+        dominantColor: resource.color,
+        tooltip: resource.tooltip,
+      };
 }

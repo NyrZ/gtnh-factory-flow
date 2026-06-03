@@ -5,6 +5,10 @@ import type {
   NeiRenderAspectAmount,
   NeiRenderResourceAmount,
 } from "../core/render-model";
+import {
+  normalizeThaumcraftAspectId,
+  resolveThaumcraftAspectIconPath,
+} from "../theme/textures";
 
 export function recipeToRenderModel(recipe: Recipe): NeiRecipeRenderModel {
   const recipeMapName = recipe.source?.recipeMap ?? recipe.machineType;
@@ -81,23 +85,16 @@ function normalizeLabel(label: string): string {
 }
 
 function resourceToAspectAmount(resource: ResourceAmount): NeiRenderAspectAmount {
-  const aspectId = resource.id.startsWith("thaumcraft:aspect:")
-    ? resource.id.slice("thaumcraft:aspect:".length)
-    : resource.id;
+  const aspectId = normalizeThaumcraftAspectId(resource.id);
   return {
     aspectId,
     name: resource.displayName ?? titleCase(aspectId.split(":").at(-1) ?? aspectId),
     amount: resource.amount,
-    iconPath: resource.iconPath ?? fallbackAspectIcon(aspectId),
+    iconPath: resolveThaumcraftAspectIconPath(aspectId, resource.iconPath),
     color: resource.dominantColor,
     tooltip: resource.tooltip,
     sourceResource: resource,
   };
-}
-
-function fallbackAspectIcon(aspectId: string): string {
-  const tag = aspectId.split(":").at(-1)?.toLowerCase() ?? "unknown";
-  return `/nei/thaumcraft/aspects/${tag}.png`;
 }
 
 function titleCase(value: string): string {

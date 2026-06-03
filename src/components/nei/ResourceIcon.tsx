@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import type { ResourceAmount, ResourceIconAtlasRef, ResourceKind } from "@/lib/model/types";
+import { NEI_TEXTURES } from "@/lib/nei-renderer/theme/textures";
 import {
   formatNumberWithThousands,
   resourceLabel,
@@ -346,15 +347,7 @@ function getFallbackIconPath(resource: Pick<ResourceAmount, "kind" | "id">): str
     return undefined;
   }
 
-  const prefix = "thaumcraft:aspect:";
-  if (!resource.id.startsWith(prefix)) {
-    return "/nei/thaumcraft/aspects/_unknown.png";
-  }
-
-  const tag = resource.id.slice(prefix.length).toLowerCase();
-  return ASPECT_COLORS[tag]
-    ? `/nei/thaumcraft/aspects/${tag}.png`
-    : "/nei/thaumcraft/aspects/_unknown.png";
+  return NEI_TEXTURES.resolveThaumcraftAspectIconPath(resource.id);
 }
 
 function AtlasIconImage({

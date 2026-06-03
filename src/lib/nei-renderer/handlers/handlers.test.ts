@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Recipe } from "@/lib/model/types";
+import type { NeiSlotCommand } from "../core/commands";
 import { recipeToRenderModel } from "../adapters/recipe-to-render-model";
 import { selectNeiRecipeHandler } from "../adapters/handler-selection";
 import { renderNeiRecipe } from "../core/render-pipeline";
+import { NEI_TEXTURES } from "../theme/textures";
 
 describe("NEI recipe handlers", () => {
   it("generates GregTech slot, progress, and stack commands", () => {
@@ -127,6 +129,84 @@ describe("NEI recipe handlers", () => {
     ).toBe(true);
   });
 
+  it("renders native essentia output aspects with framed aspect slots and an arrow", () => {
+    const result = render(
+      recipe({
+        kind: "essentia_smelting",
+        machineType: "Thaumcraft Essentia Smelting",
+        inputs: [{ kind: "item", id: "minecraft:rotten_flesh", amount: 1 }],
+        outputs: aspectOutputs(["Aer", "Terra", "Ignis", "Aqua", "Ordo", "Perditio", "Venenum"]),
+      }),
+    );
+
+    const aspectSlots = result.commands.filter(
+      (command): command is NeiSlotCommand =>
+        command.type === "slot" && command.kind === "aspect",
+    );
+    expect(aspectSlots).toHaveLength(6);
+    expect(aspectSlots.every((command) => command.texturePath === NEI_TEXTURES.aspectSlot)).toBe(
+      true,
+    );
+    expect(aspectSlots.every((command) => command.framed !== false)).toBe(true);
+    expect(
+      result.commands.some(
+        (command) => command.type === "progress" && command.texture === "arrow",
+      ),
+    ).toBe(true);
+    expect(result.commands.some((command) => command.type === "rect")).toBe(false);
+    expect(result.commands.filter((command) => command.type === "aspect")).toHaveLength(6);
+    expect(result.commands.find((command) => command.type === "aspect")).toMatchObject({
+      stack: {
+        resource: {
+          aspectId: "aer",
+          name: "Aer",
+          amount: 1,
+          iconPath: "/nei/thaumcraft/aspects/aer.png",
+        },
+      },
+    });
+    expect(
+      result.commands.some((command) => command.type === "text" && command.text === "+1"),
+    ).toBe(true);
+  });
+
+  it("renders all aspect names and amounts in readable essentia mode", () => {
+    const result = render(
+      recipe({
+        kind: "essentia_smelting",
+        machineType: "Thaumcraft Essentia Smelting",
+        inputs: [{ kind: "item", id: "minecraft:rotten_flesh", amount: 1 }],
+        outputs: aspectOutputs(["Aer", "Terra", "Ignis", "Aqua", "Ordo", "Perditio", "Venenum"]),
+      }),
+      { preset: "readable" },
+    );
+
+    expect(result.commands.filter((command) => command.type === "aspect")).toHaveLength(7);
+    expect(
+      result.commands.some((command) => command.type === "text" && command.text === "Venenum x7"),
+    ).toBe(true);
+    expect(result.commands.some((command) => command.type === "text" && command.text === "+3")).toBe(
+      false,
+    );
+  });
+
+  it("limits compact essentia aspects and emits an overflow marker", () => {
+    const result = render(
+      recipe({
+        kind: "essentia_smelting",
+        machineType: "Thaumcraft Essentia Smelting",
+        inputs: [{ kind: "item", id: "minecraft:rotten_flesh", amount: 1 }],
+        outputs: aspectOutputs(["Aer", "Terra", "Ignis", "Aqua", "Ordo", "Perditio", "Venenum"]),
+      }),
+      { preset: "compact" },
+    );
+
+    expect(result.commands.filter((command) => command.type === "aspect")).toHaveLength(4);
+    expect(
+      result.commands.some((command) => command.type === "text" && command.text === "+3"),
+    ).toBe(true);
+  });
+
   it("filters empty slots when requested", () => {
     const result = render(
       recipe({
@@ -161,6 +241,15 @@ describe("NEI recipe handlers", () => {
 function render(recipeValue: Recipe, options = {}) {
   const model = recipeToRenderModel(recipeValue);
   return renderNeiRecipe(model, selectNeiRecipeHandler(model), options);
+}
+
+function aspectOutputs(names: string[]) {
+  return names.map((name, index) => ({
+    kind: "aspect" as const,
+    id: `thaumcraft:aspect:${name.toLowerCase()}`,
+    amount: index + 1,
+    displayName: name,
+  }));
 }
 
 function recipe(overrides: Partial<Recipe> = {}): Recipe {

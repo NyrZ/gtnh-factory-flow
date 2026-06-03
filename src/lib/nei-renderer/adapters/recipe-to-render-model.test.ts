@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Recipe } from "@/lib/model/types";
+import { NEI_TEXTURES } from "../theme/textures";
 import { recipeToRenderModel } from "./recipe-to-render-model";
 
 describe("recipeToRenderModel", () => {
@@ -13,7 +14,14 @@ describe("recipeToRenderModel", () => {
         { kind: "fluid", id: "water", amount: 250 },
       ],
       outputs: [
-        { kind: "aspect", id: "thaumcraft:aspect:corpus", amount: 4, displayName: "Corpus" },
+        {
+          kind: "aspect",
+          id: "thaumcraft:aspect:corpus",
+          amount: 4,
+          displayName: "Corpus",
+          dominantColor: "#ffcc7f",
+          tooltip: ["Body"],
+        },
         { kind: "fluid", id: "steam", amount: 1000 },
       ],
     });
@@ -30,6 +38,40 @@ describe("recipeToRenderModel", () => {
       aspectId: "corpus",
       name: "Corpus",
       amount: 4,
+      iconPath: "/nei/thaumcraft/aspects/corpus.png",
+      color: "#ffcc7f",
+      tooltip: ["Body"],
+      sourceResource: sourceRecipe.outputs[0],
+    });
+  });
+
+  it("preserves explicit aspect icon paths", () => {
+    const model = recipeToRenderModel(
+      recipe({
+        outputs: [
+          {
+            kind: "aspect",
+            id: "thaumcraft:aspect:ordo",
+            amount: 2,
+            iconPath: "/custom/ordo.png",
+          },
+        ],
+      }),
+    );
+
+    expect(model.aspectOutputs?.[0]?.iconPath).toBe("/custom/ordo.png");
+  });
+
+  it("uses the unknown fallback for unmapped aspect ids", () => {
+    const model = recipeToRenderModel(
+      recipe({
+        outputs: [{ kind: "aspect", id: "thaumcraft:aspect:electrum", amount: 1 }],
+      }),
+    );
+
+    expect(model.aspectOutputs?.[0]).toMatchObject({
+      aspectId: "electrum",
+      iconPath: NEI_TEXTURES.thaumcraftUnknownAspect,
     });
   });
 
