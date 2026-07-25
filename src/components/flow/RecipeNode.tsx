@@ -228,7 +228,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   return (
     <div
       className={[
-        "group relative min-w-[368px] w-max border-2 border-[#f4f4f4] bg-[#c6c6c6] font-mono text-[#202020] shadow-[inset_2px_2px_0_#ffffff,inset_-2px_-2px_0_#555]",
+        "group relative min-w-[368px] w-max border-2 border-[var(--mc-96)] bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]",
         nodeColorPaintMode !== undefined ? "cursor-crosshair" : "",
         selected ? "ring-2 ring-cyan-300" : "",
         isSearchHighlighted ? "ring-4 ring-sky-300" : "",
@@ -242,7 +242,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           ? {
               backgroundColor: nodeColor.panel,
               borderColor: nodeColor.border,
-              boxShadow: `inset 2px 2px 0 #ffffff, inset -2px -2px 0 #555, 0 0 0 2px ${nodeColor.shadow}`,
+              boxShadow: `inset 2px 2px 0 var(--mc-100), inset -2px -2px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
             }
           : undefined
       }
@@ -272,14 +272,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               event.stopPropagation();
               deleteNode(projectNode.id);
             }}
-            className="nodrag h-6 w-6 border-2 border-[#252525] bg-[#7d7d7d] text-base leading-[16px] text-white shadow-[inset_2px_2px_0_#d8d8d8,inset_-2px_-2px_0_#404040] hover:bg-red-700"
+            className="nodrag h-6 w-6 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-base leading-[16px] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-red-700"
             title="Delete node"
             aria-label="Delete node"
           >
             -
           </button>
           <div
-            className="minecraft-title h-6 truncate border-2 border-[#555] bg-[#9b9b9b] px-2 text-center text-[17px] leading-[20px] shadow-[inset_2px_2px_0_#d8d8d8,inset_-2px_-2px_0_#4a4a4a]"
+            className="minecraft-title h-6 truncate border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-center text-[17px] leading-[20px] shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)]"
             style={nodeColor ? { backgroundColor: nodeColor.header } : undefined}
           >
             {selectedMachineHandler.label}
@@ -317,7 +317,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   event.stopPropagation();
                   setIsMachineMenuOpen((current) => !current);
                 }}
-                className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#252525] bg-[#8d8d8d] text-white shadow-[inset_2px_2px_0_#d8d8d8,inset_-2px_-2px_0_#404040] hover:brightness-110"
+                className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-55)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
                 title={`Machine: ${selectedMachineHandler.label}`}
                 aria-label={`Select machine handler. Current: ${selectedMachineHandler.label}`}
               >
@@ -325,7 +325,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               </button>
               {isMachineMenuOpen ? (
                 <div
-                  className="nodrag absolute right-0 top-7 z-50 min-w-[180px] border-2 border-[#252525] bg-[#c6c6c6] p-1 text-[11px] shadow-[inset_2px_2px_0_#ffffff,inset_-2px_-2px_0_#555,4px_4px_0_rgba(0,0,0,0.35)]"
+                  className="nodrag absolute right-0 top-7 z-50 min-w-[180px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 text-[11px] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
                   onClick={(event) => event.stopPropagation()}
                 >
                   {machineHandlers.map((handler) => (
@@ -337,7 +337,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                         "block w-full truncate border-2 px-2 py-1 text-left font-bold",
                         handler.id === selectedMachineHandler.id
                           ? "border-[#6b4fd1] bg-[#8b70dd] text-white"
-                          : "border-[#777] bg-[#d8d8d8] text-black hover:bg-white",
+                          : "border-[var(--mc-47)] bg-[var(--mc-85)] text-[var(--mc-ink)] hover:bg-[var(--mc-100)]",
                       ].join(" ")}
                       title={handler.label}
                     >
@@ -514,7 +514,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         {!usesNativeNeiRecipe ? (
           <div
             className={[
-              "mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-1 text-[12px] leading-4 text-black",
+              "mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-1 text-[12px] leading-4 text-[var(--mc-ink)]",
               isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
               nodeColor ? "recipe-node-stat-grid" : "",
             ].join(" ")}
@@ -897,7 +897,7 @@ function TreeGrowthSimulatorToolSlotMenu({
       </span>
       {isOpen ? (
         <span
-          className="absolute left-0 top-[calc(100%+6px)] z-[120] grid w-[208px] grid-cols-[repeat(3,52px)] gap-3 border-2 border-[#252525] bg-[#c6c6c6] p-3 shadow-[inset_2px_2px_0_#ffffff,inset_-2px_-2px_0_#555,4px_4px_0_rgba(0,0,0,0.35)]"
+          className="absolute left-0 top-[calc(100%+6px)] z-[120] grid w-[208px] grid-cols-[repeat(3,52px)] gap-3 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-3 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.35)]"
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => {
             event.preventDefault();
@@ -916,7 +916,7 @@ function TreeGrowthSimulatorToolSlotMenu({
                   "grid h-[52px] w-[52px] place-items-center overflow-hidden border-2 text-[18px] font-bold leading-none",
                   !selectedEmpty && tier.key === control.current.key
                     ? "border-[#6b4fd1] bg-[#8b70dd] text-white"
-                    : "border-[#777] bg-[#d8d8d8] text-black hover:bg-white",
+                    : "border-[var(--mc-47)] bg-[var(--mc-85)] text-[var(--mc-ink)] hover:bg-[var(--mc-100)]",
                 ].join(" ")}
                 title={isEmpty ? "-" : (resource.displayName ?? tier.label)}
                 onClick={(event) => {
@@ -994,15 +994,15 @@ function MachineConfigControlPanel({
   }
 
   return (
-    <div className="nodrag mt-1 border-2 border-[#777] bg-[#b6b6b6] p-1 shadow-[inset_1px_1px_0_#eeeeee,inset_-1px_-1px_0_#777]">
+    <div className="nodrag mt-1 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
       <div className="grid grid-cols-[repeat(auto-fit,minmax(128px,1fr))] gap-1">
         {controls.map((control) => (
           <label key={control.id} className="min-w-0">
-            <span className="mb-0.5 block truncate text-[8px] font-bold uppercase leading-3 text-[#4a4a4a]">
+            <span className="mb-0.5 block truncate text-[8px] font-bold uppercase leading-3 text-[var(--mc-ink-muted)]">
               {control.label}
             </span>
             <span className="flex min-w-0 items-center gap-1">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-[#555] bg-[#8d8d8d] shadow-[inset_1px_1px_0_#d8d8d8,inset_-1px_-1px_0_#404040]">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
                 {control.resource.iconPath ? (
                   <ResourceIcon
                     resource={control.resource}
@@ -1025,7 +1025,7 @@ function MachineConfigControlPanel({
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
                 disabled={control.tiers.length <= 1}
-                className="h-6 min-w-0 flex-1 border border-[#555] bg-[#d8d8d8] px-1 text-[10px] font-bold leading-4 text-black shadow-[inset_1px_1px_0_#ffffff,inset_-1px_-1px_0_#8a8a8a] outline-none focus:border-cyan-700 focus:bg-white disabled:cursor-not-allowed disabled:text-[#555]"
+                className="h-6 min-w-0 flex-1 border border-[var(--mc-33)] bg-[var(--mc-85)] px-1 text-[10px] font-bold leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-white disabled:cursor-not-allowed disabled:text-[var(--mc-33)]"
                 title={`${control.label}: ${control.current.label}`}
                 aria-label={control.label}
               >
@@ -1059,14 +1059,14 @@ function PassiveProductionConfigPanel({
   return (
     <div
       className={[
-        "nodrag mt-1 border-2 border-[#777] bg-[#b6b6b6] p-1 shadow-[inset_1px_1px_0_#eeeeee,inset_-1px_-1px_0_#777]",
+        "nodrag mt-1 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
         className,
       ].join(" ")}
     >
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1">
         {controls.map((control) => (
           <label key={control.id} className="min-w-0">
-            <span className="mb-0.5 block truncate text-[8px] font-bold uppercase leading-3 text-[#4a4a4a]">
+            <span className="mb-0.5 block truncate text-[8px] font-bold uppercase leading-3 text-[var(--mc-ink-muted)]">
               {control.label}
             </span>
             <select
@@ -1075,7 +1075,7 @@ function PassiveProductionConfigPanel({
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
               disabled={control.tiers.length <= 1}
-              className="h-6 w-full min-w-0 border border-[#555] bg-[#d8d8d8] px-1 text-[10px] font-bold leading-4 text-black shadow-[inset_1px_1px_0_#ffffff,inset_-1px_-1px_0_#8a8a8a] outline-none focus:border-cyan-700 focus:bg-white disabled:cursor-not-allowed disabled:text-[#555]"
+              className="h-6 w-full min-w-0 border border-[var(--mc-33)] bg-[var(--mc-85)] px-1 text-[10px] font-bold leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-white disabled:cursor-not-allowed disabled:text-[var(--mc-33)]"
               title={`${control.label}: ${control.current.label}`}
               aria-label={control.label}
             >
@@ -1113,7 +1113,7 @@ function MachineParallelIndicator({ multiplier }: { multiplier: number }) {
 
   return (
     <div
-      className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-[#252525] bg-[#b6b6b6] text-[13px] font-black leading-none text-[#202020] shadow-[inset_2px_2px_0_#eeeeee,inset_-2px_-2px_0_#777]"
+      className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-71)] text-[13px] font-black leading-none text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-93),inset_-2px_-2px_0_var(--mc-47)]"
       title={`${formatMachineParallelMultiplier(multiplier)} parallels`}
       aria-label={`${formatMachineParallelMultiplier(multiplier)} parallels`}
     >
@@ -1176,8 +1176,8 @@ function getConnectionSlotState(
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 border border-[#777] bg-[#b6b6b6] px-1 shadow-[inset_1px_1px_0_#eeeeee,inset_-1px_-1px_0_#777]">
-      <div className="truncate text-[9px] uppercase text-[#424242]">{label}</div>
+    <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+      <div className="truncate text-[9px] uppercase text-[var(--mc-ink-muted)]">{label}</div>
       <div className="truncate font-medium">{value}</div>
     </div>
   );
@@ -1217,8 +1217,8 @@ function MachineCountStat({
   };
 
   return (
-    <div className="min-w-0 border border-[#777] bg-[#b6b6b6] px-1 shadow-[inset_1px_1px_0_#eeeeee,inset_-1px_-1px_0_#777]">
-      <div className="truncate text-[9px] uppercase text-[#424242]">{label}</div>
+    <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+      <div className="truncate text-[9px] uppercase text-[var(--mc-ink-muted)]">{label}</div>
       <div className="flex min-w-0 items-center gap-1">
         <input
           value={draft}
@@ -1237,7 +1237,7 @@ function MachineCountStat({
           inputMode="numeric"
           aria-label={`${label} count`}
           title={`Edit ${label.toLowerCase()} count`}
-          className="nodrag h-[18px] w-0 min-w-0 flex-1 border border-[#777] bg-[#d8d8d8] px-1 text-[12px] font-medium leading-4 text-black shadow-[inset_1px_1px_0_#ffffff,inset_-1px_-1px_0_#8a8a8a] outline-none focus:border-cyan-700 focus:bg-white focus:ring-1 focus:ring-cyan-400"
+          className="nodrag h-[18px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-[12px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-white focus:ring-1 focus:ring-cyan-400"
         />
         <button
           type="button"
@@ -1246,7 +1246,7 @@ function MachineCountStat({
             onOptimize();
           }}
           onPointerDown={(event) => event.stopPropagation()}
-          className="nodrag flex h-4 w-4 shrink-0 items-center justify-center border border-[#555] bg-[#d0d0d0] text-[#202020] shadow-[inset_1px_1px_0_#fff,inset_-1px_-1px_0_#777] hover:bg-white"
+          className="nodrag flex h-4 w-4 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)]"
           title={`Set ${label.toLowerCase()} to ${suggestedMachineCount}x`}
           aria-label={`Set ${label.toLowerCase()} to ${suggestedMachineCount}`}
         >

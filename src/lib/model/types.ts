@@ -340,6 +340,22 @@ export interface EdgeThroughput {
   demandPerSecond: number;
   transferredPerSecond: number;
   isLimited: boolean;
+  /**
+   * What the consumer would draw at 100% utilisation, before the solver scales
+   * it down to match available supply. `demandPerSecond` converges to
+   * `transferredPerSecond`, so this is the only value that still shows how much
+   * the machine actually wants.
+   */
+  nameplateDemandPerSecond: number;
+  /** What the producer could emit at 100% utilisation. */
+  sourceCapacityPerSecond: number;
+  /**
+   * Which end is holding the flow back:
+   * - `supply`  producer is maxed out and the consumer is starved
+   * - `demand`  both ends have slack; the plan just doesn't need more
+   * - `full`    consumer is getting everything it asked for
+   */
+  constraint: "supply" | "demand" | "full";
 }
 
 export interface NodeThroughputResult {

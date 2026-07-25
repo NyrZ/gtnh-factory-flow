@@ -41,6 +41,8 @@ import {
   embedProjectJsonInPng,
   embedProjectJsonInSvg,
 } from "@/lib/import-export/plan-image";
+import type { Theme } from "@/lib/theme";
+import { useThemeStore } from "@/store/theme-store";
 import {
   applyRecipeInputOverrides,
   restoreCrossKindInputOverrideVisuals,
@@ -54,6 +56,7 @@ import {
 import { applyMachineOutputMultipliers } from "@/lib/solver/machine-effects";
 import { getOverclockedRecipeStats } from "@/lib/solver/overclock";
 import type {
+  EdgeThroughput,
   FactoryEdge,
   FactoryNodeColorTag,
   FactoryProject,
@@ -66,6 +69,7 @@ import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { RecipeNode, type RecipeFlowNode } from "./RecipeNode";
 import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE } from "./node-colors";
 import { makeResourceHandleId, parseResourceHandleId } from "./resource-handles";
+import { formatEdgeRateLabel, formatEdgeValue, isEdgeStarved } from "./edge-labels";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 
 const nodeTypes = {
@@ -86,6 +90,18 @@ const connectionLineStyle = {
 
 const DEFAULT_ITEM_EDGE_COLOR = "#8b8f98";
 const DEFAULT_FLUID_EDGE_COLOR = "#2f89c5";
+
+// React Flow's Background and the html-to-image exporter both need a concrete
+// colour rather than a CSS variable, so these mirror --canvas / --canvas-dot.
+const CANVAS_COLOR: Record<Theme, string> = {
+  light: "#f5f5f5",
+  dark: "#1b1d21",
+};
+const CANVAS_DOT_COLOR: Record<Theme, string> = {
+  light: "#d4d4d4",
+  dark: "#34363c",
+};
+
 const RECIPE_SLOT_EDGE_OFFSET = 20;
 const STORAGE_SLOT_EDGE_OFFSET = 55;
 const EDGE_BUNDLE_CLEARANCE = 30;
@@ -110,8 +126,12 @@ type ResourceEdgeData = {
   color: string;
   demand: number;
   transferred?: number;
+  /** What the consumer wants at 100%, so a shortfall can be shown as a ratio. */
+  nameplateDemand?: number;
   unit: string;
   isLimited: boolean;
+  /** Producer is maxed out and the consumer is going hungry. */
+  isSupplyCapped: boolean;
   isStorageEdge: boolean;
   showLabel: boolean;
   labelOffset?: { x: number; y: number };
@@ -133,7 +153,9 @@ type ResourceEdgeData = {
     edgeIds: string[];
     demand?: number;
     transferred?: number;
+    nameplateDemand?: number;
     isLimited: boolean;
+    isSupplyCapped: boolean;
   };
   isFlowHighlighted?: boolean;
 };
@@ -186,6 +208,7 @@ interface ResolvedResourceHandle {
 }
 
 export function FactoryFlow() {
+  const theme = useThemeStore((state) => state.theme);
   const project = useFactoryStore((state) => state.project);
   const result = useFactoryStore((state) => state.lastResult);
   const selectNode = useFactoryStore((state) => state.selectNode);
@@ -324,6 +347,11 @@ export function FactoryFlow() {
       const unit = edge.resourceKind === "fluid" ? "L/s" : "/s";
       const demand = edgeResult?.demandPerSecond ?? edge.ratePerSecond ?? 0;
       const transferred = edgeResult?.transferredPerSecond ?? demand;
+      // isLimited almost never survives the solver's utilisation convergence,
+      // since demand gets scaled down to whatever supply exists. The nameplate
+      // comparison is what actually catches a starved machine.
+      const isSupplyCapped = edgeResult?.constraint === "supply";
+      const isStarvedEdge = isSupplyCapped || edgeResult?.isLimited === true;
       const sourceStorage = storagesById.get(edge.source);
       const targetStorage = storagesById.get(edge.target);
       const isStorageEdge = Boolean(sourceStorage || targetStorage);
@@ -357,9 +385,11 @@ export function FactoryFlow() {
           resource,
           color: edgeColor,
           demand,
-          transferred: edgeResult?.isLimited === true ? transferred : undefined,
+          transferred: isStarvedEdge ? transferred : undefined,
+          nameplateDemand: edgeResult?.nameplateDemandPerSecond,
           unit,
           isLimited: edgeResult?.isLimited === true,
+          isSupplyCapped,
           isStorageEdge,
           showLabel: true,
           labelOffset: edge.labelOffset,
@@ -377,10 +407,10 @@ export function FactoryFlow() {
         },
         style: {
           stroke: edgeColor,
-          strokeDasharray: edgeResult?.isLimited ? "4 6" : undefined,
+          strokeDasharray: isStarvedEdge ? "4 6" : undefined,
           strokeOpacity: isFlowHighlighted
             ? 1
-            : edgeResult?.isLimited
+            : isStarvedEdge
               ? 0.58
               : isStorageEdge
                 ? 0.86
@@ -391,7 +421,7 @@ export function FactoryFlow() {
               ? isStorageEdgeEmphasized
                 ? 3.5
                 : 2.6
-              : edgeResult?.isLimited
+              : isStarvedEdge
                 ? 2.2
                 : edge.resourceKind === "fluid"
                   ? 2.8
@@ -728,7 +758,8 @@ export function FactoryFlow() {
         EXPORT_IMAGE_PADDING / Math.max(imageWidth, imageHeight),
       );
       const options = {
-        backgroundColor: "#f5f5f5",
+        // Read lazily so switching theme does not rebuild this callback.
+        backgroundColor: CANVAS_COLOR[useThemeStore.getState().theme],
         width: imageWidth,
         height: imageHeight,
         style: {
@@ -962,7 +993,7 @@ export function FactoryFlow() {
     <div
       ref={boardRef}
       className={[
-        "factory-flow-board relative h-full min-h-[520px] overflow-hidden border-x border-neutral-200 bg-neutral-100",
+        "factory-flow-board relative h-full min-h-[520px] overflow-hidden border-x border-line bg-canvas",
         isNodeDragging ? "factory-flow-board--dragging" : "",
       ].join(" ")}
     >
@@ -996,8 +1027,9 @@ export function FactoryFlow() {
         onlyRenderVisibleElements
         minZoom={0.15}
         maxZoom={1.8}
+        colorMode={theme}
       >
-        <Background gap={24} color="#d4d4d4" />
+        <Background gap={24} color={CANVAS_DOT_COLOR[theme]} />
         <Controls position="bottom-left" />
       </ReactFlow>
       <PaintToolbar paintMode={nodeColorPaintMode} onPaintModeChange={setNodeColorPaintMode} />
@@ -1013,7 +1045,7 @@ function FlowLoadingOverlay() {
       aria-live="polite"
       className="pointer-events-auto absolute inset-0 z-50 grid place-items-center bg-neutral-950/18 backdrop-blur-[1px]"
     >
-      <div className="flex items-center gap-3 border-2 border-[#252525] bg-[#c6c6c6] px-4 py-3 text-sm font-semibold text-[#1f1f1f] shadow-[inset_2px_2px_0_#ffffff,inset_-2px_-2px_0_#555,4px_4px_0_rgba(0,0,0,0.18)]">
+      <div className="flex items-center gap-3 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] px-4 py-3 text-sm font-semibold text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),4px_4px_0_rgba(0,0,0,0.18)]">
         <LoaderCircle className="h-5 w-5 animate-spin" />
         <span>Loading flowchart...</span>
       </div>
@@ -1039,7 +1071,7 @@ function PaintToolbar({
     >
       <div
         className={[
-          "mr-0 grid w-[156px] grid-cols-5 gap-1 border-2 border-[#252525] bg-[#c6c6c6] p-1 shadow-[inset_2px_2px_0_#ffffff,inset_-2px_-2px_0_#555] transition-[opacity,transform] duration-100",
+          "mr-0 grid w-[156px] grid-cols-5 gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
           isPaletteOpen
             ? "pointer-events-auto translate-x-0 opacity-100"
             : "pointer-events-none translate-x-2 opacity-0",
@@ -1049,8 +1081,8 @@ function PaintToolbar({
           type="button"
           onClick={() => onPaintModeChange(paintMode === null ? undefined : null)}
           className={[
-            "flex h-7 w-7 items-center justify-center border-2 bg-[#7d7d7d] text-white shadow-[inset_1px_1px_0_#d8d8d8,inset_-1px_-1px_0_#404040]",
-            paintMode === null ? "border-white ring-2 ring-cyan-300" : "border-[#252525]",
+            "flex h-7 w-7 items-center justify-center border-2 bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]",
+            paintMode === null ? "border-white ring-2 ring-cyan-300" : "border-[var(--mc-15)]",
           ].join(" ")}
           title="Erase colors"
           aria-label="Erase colors"
@@ -1064,7 +1096,7 @@ function PaintToolbar({
             onClick={() => onPaintModeChange(paintMode === entry.tag ? undefined : entry.tag)}
             className={[
               "h-7 w-7 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
-              paintMode === entry.tag ? "border-white ring-2 ring-cyan-300" : "border-[#252525]",
+              paintMode === entry.tag ? "border-white ring-2 ring-cyan-300" : "border-[var(--mc-15)]",
             ].join(" ")}
             style={{ backgroundColor: entry.color.swatch }}
             title={entry.tag}
@@ -1080,7 +1112,7 @@ function PaintToolbar({
           }
         }}
         className={[
-          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[#252525] bg-[#7d7d7d] text-white shadow-[inset_2px_2px_0_#d8d8d8,inset_-2px_-2px_0_#404040]",
+          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
           paintMode !== undefined ? "ring-2 ring-cyan-300" : "",
         ].join(" ")}
         title={paintMode !== undefined ? "Stop painting" : "Paint nodes"}
@@ -1092,7 +1124,7 @@ function PaintToolbar({
           <X className="h-4 w-4" />
         ) : (
           <span
-            className="h-5 w-5 border-2 border-[#252525] shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]"
+            className="h-5 w-5 border-2 border-[var(--mc-15)] shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]"
             style={{ backgroundColor: activeColor?.swatch }}
           />
         )}
@@ -1168,9 +1200,7 @@ function ResourceEdge({
   });
   const visualSource = visualSourceCandidates[0];
   const visualTarget = visualTargetCandidates[0];
-  const rate = data?.bundle?.demand
-    ? `${formatEdgeValue(data.bundle.demand)} ${data.unit}`
-    : formatEdgeRateLabel(data);
+  const rate = formatEdgeRateLabel(data);
   const isHiddenBundleMember =
     data?.bundle?.role === "member" && data.bundle.mode === "single-target";
   const showLabel = Boolean(
@@ -1262,7 +1292,7 @@ function ResourceEdge({
             interactionWidth={0}
             style={{
               stroke: "#111827",
-              strokeDasharray: isGlobalView && data?.isLimited ? "2 8" : style?.strokeDasharray,
+              strokeDasharray: isGlobalView && isEdgeStarved(data) ? "2 8" : style?.strokeDasharray,
               strokeLinecap: "round",
               strokeLinejoin: "round",
               strokeOpacity: isHighlighted ? 0.95 : isGlobalView ? 0.36 : 0.72,
@@ -1281,13 +1311,13 @@ function ResourceEdge({
             style={{
               ...style,
               stroke: edgeColor,
-              strokeDasharray: isGlobalView && data?.isLimited ? "2 8" : style?.strokeDasharray,
+              strokeDasharray: isGlobalView && isEdgeStarved(data) ? "2 8" : style?.strokeDasharray,
               strokeLinecap: "round",
               strokeLinejoin: "round",
               strokeOpacity: isHighlighted
                 ? 1
                 : isGlobalView
-                  ? data?.isLimited
+                  ? isEdgeStarved(data)
                     ? 0.28
                     : 0.52
                   : style?.strokeOpacity,
@@ -1309,13 +1339,13 @@ function ResourceEdge({
             estimatedTargetY: visualTarget.y,
             estimatedTargetPosition: visualTarget.side,
           })}
-          stroke="#252525"
+          stroke="var(--mc-15)"
           strokeWidth={isHighlighted ? 4 : 3.2}
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
           style={{
-            opacity: data?.isLimited ? 0.72 : 0.95,
+            opacity: isEdgeStarved(data) ? 0.72 : 0.95,
             filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
             pointerEvents: "none",
           }}
@@ -1335,7 +1365,7 @@ function ResourceEdge({
           strokeLinejoin="round"
           fill="none"
           style={{
-            opacity: data?.isLimited ? 0.78 : 1,
+            opacity: isEdgeStarved(data) ? 0.78 : 1,
             filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
             pointerEvents: "none",
           }}
@@ -1344,11 +1374,11 @@ function ResourceEdge({
       {showLabel && data ? (
         <EdgeLabelRenderer>
           <div
-            className="nodrag nopan absolute flex cursor-grab items-center gap-1 border border-[#252525] bg-[#2b2d32] px-1 py-0.5 text-[10px] font-medium text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.55)] active:cursor-grabbing"
+            className="nodrag nopan absolute flex cursor-grab items-center gap-1 border border-[var(--mc-15)] bg-[#2b2d32] px-1 py-0.5 text-[10px] font-medium text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.55)] active:cursor-grabbing"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               pointerEvents: "all",
-              color: data.isLimited ? "#fecaca" : "#f8fafc",
+              color: isEdgeStarved(data) ? "#fecaca" : "#f8fafc",
               borderColor: edgeColor,
               opacity: isHighlighted ? 1 : isGlobalView ? 0.78 : 0.94,
               boxShadow: isHighlighted ? "0 0 0 2px rgba(34,211,238,0.9)" : undefined,
@@ -1470,7 +1500,13 @@ function getEdgeBundles(
   edges: FactoryEdge[],
   edgeResults: Record<
     string,
-    { demandPerSecond?: number; transferredPerSecond?: number; isLimited?: boolean }
+    {
+      demandPerSecond?: number;
+      transferredPerSecond?: number;
+      isLimited?: boolean;
+      nameplateDemandPerSecond?: number;
+      constraint?: EdgeThroughput["constraint"];
+    }
   >,
 ) {
   const groups = new Map<string, FactoryEdge[]>();
@@ -1526,6 +1562,11 @@ function getEdgeBundles(
       0,
     );
     const isLimited = group.some((edge) => edgeResults[edge.id]?.isLimited === true);
+    const isSupplyCapped = group.some((edge) => edgeResults[edge.id]?.constraint === "supply");
+    const nameplateDemand = group.reduce(
+      (sum, edge) => sum + (edgeResults[edge.id]?.nameplateDemandPerSecond ?? 0),
+      0,
+    );
     const primarySourceHandleId = primaryEdge.sourceHandle ?? sourceHandleIds[0];
     const edgeIds = group.map((edge) => edge.id);
     if (!primarySourceHandleId) {
@@ -1542,7 +1583,9 @@ function getEdgeBundles(
         edgeIds,
         demand: mode === "single-target" ? demand : undefined,
         transferred: mode === "single-target" && isLimited ? transferred : undefined,
+        nameplateDemand: mode === "single-target" ? nameplateDemand : undefined,
         isLimited,
+        isSupplyCapped,
       });
     }
   }
@@ -3679,24 +3722,8 @@ function cssEscape(value: string) {
   return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(value) : value.replace(/"/g, '\\"');
 }
 
-function formatEdgeRateLabel(data: ResourceEdgeData | undefined) {
-  if (!data) {
-    return "";
-  }
-
-  const visibleRate =
-    data.isLimited && data.transferred !== undefined ? data.transferred : data.demand;
-  return `${formatEdgeValue(visibleRate)} ${data.unit}`;
-}
-
-function formatEdgeValue(value: number) {
-  return trimEdgeNumber(value);
-}
-
 function trimEdgeNumber(value: number) {
-  const abs = Math.abs(value);
-  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
-  return formatNumberWithThousands(trimTrailingDecimalZeros(value.toFixed(digits)));
+  return formatEdgeValue(value);
 }
 
 function isPointerOverIncompatibleFlowHandle(

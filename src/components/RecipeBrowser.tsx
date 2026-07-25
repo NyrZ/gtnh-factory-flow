@@ -935,7 +935,7 @@ function RecipeMapTabBar({
   return (
     <div
       className={[
-        "grid h-[102px] shrink-0 items-start border-b-2 border-[#777] bg-[#c6c6c6] p-1 shadow-[inset_2px_2px_0_#ffffff,inset_-2px_0_0_#555]",
+        "grid h-[102px] shrink-0 items-start border-b-2 border-[var(--mc-47)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_0_0_var(--mc-33)]",
         hasOverflow ? "grid-cols-[42px_minmax(0,1fr)_42px]" : "grid-cols-[minmax(0,1fr)]",
       ].join(" ")}
     >
@@ -977,7 +977,7 @@ function NeiTabArrow({ direction, onClick }: { direction: "left" | "right"; onCl
       onClick={onClick}
       title={direction === "left" ? "Previous recipe maps" : "Next recipe maps"}
       aria-label={direction === "left" ? "Previous recipe maps" : "Next recipe maps"}
-      className="mt-1 h-20 w-10 border-2 border-[#252525] bg-[#7d7d7d] text-[24px] leading-5 text-white shadow-[inset_2px_2px_0_#d8d8d8,inset_-2px_-2px_0_#404040] [text-shadow:1px_1px_0_#000] hover:bg-[#9b9b9b]"
+      className="mt-1 h-20 w-10 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-[24px] leading-5 text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] [text-shadow:1px_1px_0_#000] hover:bg-[var(--mc-61)]"
     >
       {direction === "left" ? "<" : ">"}
     </button>
@@ -1092,7 +1092,7 @@ function RecipeBookOverlay({
           height: `min(${panelSize.height}px, calc(100vh - 32px))`,
         }}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-2 border-[#f4f4f4] bg-[#c6c6c6] text-[#202020] shadow-[inset_2px_2px_0_#ffffff,inset_-2px_-2px_0_#555]">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-2 border-[var(--mc-96)] bg-[var(--mc-78)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]">
           <RecipeMapTabBar
             activeRecipeMap={activeRecipeMap}
             tabs={recipeMapTabs}
@@ -1107,7 +1107,7 @@ function RecipeBookOverlay({
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
-              className="h-8 cursor-move select-none truncate border-2 border-[#555] bg-[#9b9b9b] px-2 text-center text-[18px] leading-[26px] text-white shadow-[inset_2px_2px_0_#d8d8d8,inset_-2px_-2px_0_#4a4a4a] [text-shadow:2px_2px_0_#3f3f3f]"
+              className="h-8 cursor-move select-none truncate border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-center text-[18px] leading-[26px] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)] [text-shadow:2px_2px_0_var(--mc-24)]"
             >
               {activeRecipeMap || filteredRecipes[0]?.machineType || resourceLabel(activeResource)}
             </div>
@@ -1115,7 +1115,7 @@ function RecipeBookOverlay({
           </div>
 
           <div className="px-3 pt-2">
-            <label className="flex h-9 items-center gap-2 border-2 border-[#555] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
+            <label className="flex h-9 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
               <Search className="h-4 w-4 text-neutral-500" />
               <input
                 value={query}
@@ -1139,15 +1139,15 @@ function RecipeBookOverlay({
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3" id="recipe-book-scroll">
             {queryError ? (
-              <div className="border-2 border-[#777] bg-[#b6b6b6] p-3 text-sm shadow-[inset_1px_1px_0_#eeeeee,inset_-1px_-1px_0_#777]">
+              <div className="border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                 {queryError}
               </div>
             ) : isLoading && filteredRecipes.length === 0 ? (
-              <div className="border-2 border-[#777] bg-[#b6b6b6] p-3 text-sm shadow-[inset_1px_1px_0_#eeeeee,inset_-1px_-1px_0_#777]">
+              <div className="border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                 Loading recipes...
               </div>
             ) : displayedRecipes.length === 0 ? (
-              <div className="grid min-h-[260px] place-items-center border-2 border-[#777] bg-[#b6b6b6] p-3 text-sm shadow-[inset_1px_1px_0_#eeeeee,inset_-1px_-1px_0_#777]">
+              <div className="grid min-h-[260px] place-items-center border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                 No matching recipes.
               </div>
             ) : (
@@ -1288,7 +1288,7 @@ function VirtualRecipeResultList({
         ))}
       </div>
       {isLoadingMore ? (
-        <div className="mt-3 border-2 border-[#777] bg-[#b6b6b6] p-3 text-center text-sm shadow-[inset_1px_1px_0_#eeeeee,inset_-1px_-1px_0_#777]">
+        <div className="mt-3 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-center text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
           Loading recipes...
         </div>
       ) : null}

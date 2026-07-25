@@ -12,6 +12,7 @@ import {
 } from "@/lib/datasets/browser-loader";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { LOCAL_STORAGE_KEY, loadResourceHistory, useFactoryStore } from "@/store/factory-store";
+import { useThemeStore } from "@/store/theme-store";
 import { FactoryFlow } from "./flow/FactoryFlow";
 import { InspectorPanel } from "./InspectorPanel";
 import { RecipeBrowser } from "./RecipeBrowser";
@@ -26,9 +27,14 @@ export function FactoryPlannerApp() {
   const refreshProjectRecipes = useFactoryStore((state) => state.refreshProjectRecipes);
   const setDatasetLoading = useFactoryStore((state) => state.setDatasetLoading);
   const setDatasetError = useFactoryStore((state) => state.setDatasetError);
+  const syncThemeFromDocument = useThemeStore((state) => state.syncThemeFromDocument);
   const hydratedRef = useRef(false);
   const skipInitialSaveRef = useRef(true);
   const saveTimeoutRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    syncThemeFromDocument();
+  }, [syncThemeFromDocument]);
 
   const loadDatasetVersion = useCallback(
     async (versionId: string) => {
@@ -158,7 +164,7 @@ export function FactoryPlannerApp() {
   }, [project]);
 
   return (
-    <div className="flex h-screen min-h-[720px] flex-col bg-neutral-100 text-neutral-950">
+    <div className="flex h-screen min-h-[720px] flex-col bg-canvas text-fg">
       <TopBar onLoadDatasetVersion={loadDatasetVersion} />
       <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[360px_minmax(0,1fr)_360px]">
         <RecipeBrowser />

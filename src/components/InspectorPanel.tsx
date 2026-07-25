@@ -12,7 +12,7 @@ import { ResourceIcon } from "./nei/ResourceIcon";
 
 export function InspectorPanel() {
   return (
-    <aside className="flex h-full min-h-[360px] flex-col bg-white">
+    <aside className="flex h-full min-h-[360px] flex-col bg-surface">
       <SummaryPanel />
     </aside>
   );
@@ -48,7 +48,7 @@ function SummaryPanel() {
         <Metric label="Nodes" value={String(project.nodes.length)} />
       </div>
 
-      <FlowIOPanel className="min-h-0 rounded border border-neutral-200 bg-white p-3" />
+      <FlowIOPanel className="min-h-0 rounded border border-line bg-surface p-3" />
     </div>
   );
 }
@@ -123,7 +123,7 @@ function FlowIOPanel({ className = "" }: { className?: string }) {
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
           placeholder="Filter resources..."
-          className="h-8 w-full rounded border border-neutral-300 bg-white px-2 text-xs text-neutral-900 outline-none focus:border-cyan-600 focus:ring-1 focus:ring-cyan-300"
+          className="h-8 w-full rounded border border-line-strong bg-surface px-2 text-xs text-fg outline-none placeholder:text-fg-muted focus:border-cyan-600 focus:ring-1 focus:ring-cyan-300"
         />
       </label>
 
@@ -183,15 +183,15 @@ function FlowTabButton({
   const toneClass =
     tone === "red"
       ? active
-        ? "border-red-400 bg-red-100 text-red-950"
-        : "border-red-200 bg-red-50 text-red-900"
+        ? "border-red-400 bg-red-100 text-red-950 dark:border-red-500/70 dark:bg-red-500/25 dark:text-red-100"
+        : "border-red-200 bg-red-50 text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200"
       : tone === "emerald"
         ? active
-          ? "border-emerald-400 bg-emerald-100 text-emerald-950"
-          : "border-emerald-200 bg-emerald-50 text-emerald-900"
+          ? "border-emerald-400 bg-emerald-100 text-emerald-950 dark:border-emerald-500/70 dark:bg-emerald-500/25 dark:text-emerald-100"
+          : "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200"
         : active
-          ? "border-neutral-400 bg-neutral-200 text-neutral-950"
-          : "border-neutral-200 bg-neutral-50 text-neutral-800";
+          ? "border-neutral-400 bg-neutral-200 text-neutral-950 dark:border-neutral-500 dark:bg-neutral-700 dark:text-neutral-50"
+          : "border-neutral-200 bg-neutral-50 text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200";
 
   return (
     <button
@@ -230,12 +230,12 @@ function FlowIOSection({
 }) {
   return (
     <div className="mt-3 flex min-h-0 flex-1 flex-col">
-      <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+      <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
         <span>{title}</span>
         <span>{items.length === totalCount ? items.length : `${items.length} / ${totalCount}`}</span>
       </div>
       {items.length === 0 ? (
-        <p className="rounded border border-neutral-200 bg-white px-2 py-2 text-xs text-neutral-500">
+        <p className="rounded border border-line bg-surface px-2 py-2 text-xs text-fg-muted">
           {empty}
         </p>
       ) : (
@@ -256,10 +256,10 @@ function FlowIOSection({
                 className={[
                   "grid w-full grid-cols-[26px_minmax(0,1fr)_auto] items-center gap-2 rounded border px-2 py-1 text-left text-xs",
                   isSelected
-                    ? "border-cyan-500 bg-cyan-100 ring-1 ring-cyan-300"
+                    ? "border-cyan-500 bg-cyan-100 ring-1 ring-cyan-300 dark:bg-cyan-500/25 dark:ring-cyan-500/50"
                     : isActive
-                      ? "border-cyan-300 bg-cyan-50"
-                      : "border-neutral-200 bg-white hover:border-cyan-300 hover:bg-cyan-50",
+                      ? "border-cyan-300 bg-cyan-50 dark:border-cyan-500/60 dark:bg-cyan-500/10"
+                      : "border-line bg-surface hover:border-cyan-300 hover:bg-cyan-50 dark:hover:border-cyan-500/60 dark:hover:bg-cyan-500/10",
                 ].join(" ")}
                 title="Highlight related nodes and cables"
               >
@@ -279,15 +279,15 @@ function FlowIOSection({
                   className="!h-6 !w-6"
                 />
                 <span className="min-w-0">
-                  <span className="block truncate font-medium text-neutral-900">
+                  <span className="block truncate font-medium text-fg">
                     {balance.displayName ?? balance.resourceId}
                   </span>
-                  <span className="block truncate text-[10px] text-neutral-500">
+                  <span className="block truncate text-[10px] text-fg-muted">
                     +{formatRate(balance.producedPerSecond, 3)}/s -
                     {formatRate(balance.consumedPerSecond, 3)}/s
                   </span>
                 </span>
-                <span className="font-semibold text-neutral-950">
+                <span className="font-semibold text-fg">
                   {formatRate(value(balance), 3)}
                   {balance.kind === "fluid" ? "L/s" : "/s"}
                 </span>
@@ -380,17 +380,19 @@ function Metric({
   const className = [
     "rounded border p-2 text-left",
     active
-      ? "border-cyan-500 bg-cyan-100 ring-1 ring-cyan-300"
-      : "border-neutral-200 bg-neutral-50",
-    interactive ? "cursor-pointer hover:border-cyan-300 hover:bg-cyan-50" : "",
+      ? "border-cyan-500 bg-cyan-100 ring-1 ring-cyan-300 dark:bg-cyan-500/25 dark:ring-cyan-500/50"
+      : "border-line bg-surface-raised",
+    interactive
+      ? "cursor-pointer hover:border-cyan-300 hover:bg-cyan-50 dark:hover:border-cyan-500/60 dark:hover:bg-cyan-500/10"
+      : "",
     wide ? "col-span-2" : "",
   ].join(" ");
   const content = (
     <>
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
         {label}
       </div>
-      <div className="mt-0.5 truncate text-sm font-semibold text-neutral-950">{value}</div>
+      <div className="mt-0.5 truncate text-sm font-semibold text-fg">{value}</div>
     </>
   );
 
