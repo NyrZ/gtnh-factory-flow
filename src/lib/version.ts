@@ -5,4 +5,4 @@
  * minor for features (1.1.0), patch for fixes (1.0.1). Started at 1.0.0 the
  * day the equilibrium solver shipped (2026-08-02).
  */
-export const APP_VERSION = "1.0.1";
+export const APP_VERSION = "1.0.2";

@@ -246,7 +246,10 @@ function StorageHeader({
   return (
     <div
       className={[
-        "storage-node-header flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.55)]",
+        // relative z-40: the invisible wire handles (z-30) blanket the card,
+        // and without a higher stacking position they swallow every click
+        // aimed at the delete/clone buttons underneath.
+        "storage-node-header relative z-40 flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.55)]",
         isTank ? "border-[#747c91] bg-[#b8c1d9]" : "border-[#4f3518] bg-[#8a6030]",
       ].join(" ")}
     >
