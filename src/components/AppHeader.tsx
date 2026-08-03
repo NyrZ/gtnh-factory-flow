@@ -17,17 +17,17 @@ export function AppHeader({ page }: { page: "editor" | "community" }) {
   return (
     <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-3 py-1.5">
       <h1 className="flex items-center gap-2 text-sm font-bold tracking-tight">
-        <span
-          title="GTNH Planner version"
-          className="rounded border border-line px-1 py-px text-[10px] font-semibold leading-none text-fg-muted tabular-nums"
-        >
-          v{APP_VERSION}
-        </span>
         <span>
           GTNH <span className="text-cyan-500">Planner</span>
           {page === "community" ? (
             <span className="ml-2 font-medium text-fg-muted">Community</span>
           ) : null}
+        </span>
+        <span
+          title="GTNH Planner version"
+          className="rounded border border-line px-1 py-px text-[10px] font-semibold leading-none text-fg-muted tabular-nums"
+        >
+          v{APP_VERSION}
         </span>
       </h1>
       <div className="flex items-center gap-2">
