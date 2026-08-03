@@ -15,6 +15,11 @@ import {
   withCustomRateSlot,
   type CustomRateMode,
 } from "@/lib/model/custom-rate";
+import {
+  createTrashPlaceholderRecipe,
+  isTrashRecipe,
+  TRASH_ANY_RESOURCE_ID,
+} from "@/lib/model/trash";
 import { optimizeMachineCountsForProject } from "@/lib/solver/machine-count-optimizer";
 import {
   getFilledCellFluidEquivalent,
@@ -167,6 +172,14 @@ interface FactoryStore {
       ResourceAmount,
       "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor" | "tooltip"
     >,
+  ) => void;
+  /** Drops a trash can node: anything wired in is voided, never an output. */
+  addTrashNode: () => void;
+  /** Wire landed on a trash can: void whatever the far end's output carries. */
+  connectTrash: (
+    trashNodeId: string,
+    source: { nodeId: string; handleId?: string },
+    resource: Pick<ResourceAmount, "kind" | "id" | "displayName">,
   ) => void;
   /** Swaps the node onto another recipe (crop pick), resetting per-recipe state. */
   setNodeRecipe: (nodeId: string, recipe: Recipe) => void;
@@ -789,6 +802,56 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, {
         project,
         selectedNodeId: customNodeId,
+        lastResult: calculateThroughput(project),
+      });
+    });
+  },
+  addTrashNode: () => {
+    // Each can owns its recipe like custom rate nodes do; the recipe stays
+    // slotless forever - the solver voids by edge role, not by recipe slots.
+    set((state) =>
+      addRecipeNodeToState(state, createTrashPlaceholderRecipe(createId("recipe")), undefined, {
+        colorTag: "gray",
+      }),
+    );
+  },
+  connectTrash: (trashNodeId, source, resource) => {
+    set((state) => {
+      const node = state.project.nodes.find((entry) => entry.id === trashNodeId);
+      const recipe = node
+        ? state.project.recipes.find((entry) => entry.id === node.recipeId)
+        : undefined;
+      if (!node || !recipe || !isTrashRecipe(recipe) || source.nodeId === trashNodeId) {
+        return state;
+      }
+      // One line per source and resource is enough - the can eats everything
+      // on it either way, and duplicates would just split the same leftovers.
+      const alreadyWired = state.project.edges.some(
+        (edge) =>
+          edge.source === source.nodeId &&
+          edge.target === trashNodeId &&
+          edge.resourceKind === resource.kind &&
+          edge.resourceId === resource.id,
+      );
+      if (alreadyWired) {
+        return state;
+      }
+      const edge: FactoryEdge = {
+        id: createId("edge"),
+        source: source.nodeId,
+        target: trashNodeId,
+        resourceKind: resource.kind,
+        resourceId: resource.id,
+        label: resource.displayName,
+        sourceHandle: source.handleId,
+        targetHandle: makeResourceHandleId("input", { kind: "item", id: TRASH_ANY_RESOURCE_ID }),
+      };
+      const project = touchProject({
+        ...state.project,
+        edges: [...state.project.edges, edge],
+      });
+      return withProjectHistory(state, {
+        project,
         lastResult: calculateThroughput(project),
       });
     });
@@ -1835,6 +1898,23 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
 
   if ((!sourceNode && !sourceStorage) || (!targetNode && !targetStorage)) {
     return false;
+  }
+
+  // Trash cans have no recipe slots to match: a line into one stays valid as
+  // long as the far end still produces the wired resource.
+  if (targetRecipe && isTrashRecipe(targetRecipe)) {
+    if (sourceStorage) {
+      return (
+        edge.resourceKind === sourceStorage.kind && edge.resourceId === sourceStorage.resourceId
+      );
+    }
+    if (!sourceNode || !sourceRecipe) {
+      return false;
+    }
+    const effectiveSourceRecipe = applyRecipeInputOverrides(sourceRecipe, sourceNode);
+    return effectiveSourceRecipe.outputs.some((output) =>
+      resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, output),
+    );
   }
 
   if (sourceStorage && targetRecipe) {

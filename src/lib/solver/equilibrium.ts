@@ -5,6 +5,7 @@ import {
   makeResourceKey,
   resourceMatchesInput,
 } from "../model/resources";
+import { collectTrashNodeIds } from "../model/trash";
 import type {
   FactoryProject,
   FactoryStorage,
@@ -54,7 +55,7 @@ const EPSILON = 0.000001;
  */
 
 export interface EdgeAllocationResult {
-  role: "machine" | "storage-source" | "storage-sink";
+  role: "machine" | "storage-source" | "storage-sink" | "trash";
   resourceKey: ResourceKey;
   targetDemandKey: ResourceKey;
   needKey: string;
@@ -83,10 +84,10 @@ interface PreparedEdge {
   id: string;
   sourceId: string;
   targetId: string;
-  role: "machine" | "storage-source" | "storage-sink";
+  role: "machine" | "storage-source" | "storage-sink" | "trash";
   resourceKey: ResourceKey;
   targetDemandKey: ResourceKey;
-  /** `${target}|${targetDemandKey}` for machine targets, "" for sinks. */
+  /** `${target}|${targetDemandKey}` for machine targets, "" for sinks/trash. */
   needKey: string;
   /** `${source}|${outputKey}` for machine sources, "" for storage sources. */
   budgetKey: string;
@@ -102,6 +103,12 @@ interface Budget {
   sinkEdges: PreparedEdge[];
   /** Every edge drawing on this budget (machine consumers and tank sinks). */
   edges: PreparedEdge[];
+  /**
+   * Trash cans on this output. They live outside `edges` because they never
+   * ask - they drink the leftovers - while their mere presence pins the
+   * budget fully demanded (a voided output can never pace its machine down).
+   */
+  trashEdges: PreparedEdge[];
 }
 
 interface Need {
@@ -116,6 +123,8 @@ interface Need {
 interface Pool {
   sinkEdges: PreparedEdge[];
   sourceEdges: PreparedEdge[];
+  /** Trash cans draining this tank: they take what real consumers leave. */
+  trashEdges: PreparedEdge[];
 }
 
 interface MachineNodeInfo {
@@ -144,6 +153,7 @@ export function solveEquilibrium(
   const budgets = new Map<string, Budget>();
   const needs = new Map<string, Need>();
   const pools = new Map<string, Pool>();
+  const trashNodeIds = collectTrashNodeIds(project);
 
   for (const edge of project.edges) {
     const sourceStorage = storagesById.get(edge.source);
@@ -156,11 +166,13 @@ export function solveEquilibrium(
     const targetDemandKey = getEdgeTargetDemandKey(project, edge) ?? key;
     const sourceResult = sourceStorage ? undefined : nodes[edge.source];
     const sourceOutputFlow = getCompatibleOutputFlow(sourceResult, edge);
-    const role: PreparedEdge["role"] = targetStorage
-      ? "storage-sink"
-      : sourceStorage
-        ? "storage-source"
-        : "machine";
+    const role: PreparedEdge["role"] = trashNodeIds.has(edge.target)
+      ? "trash"
+      : targetStorage
+        ? "storage-sink"
+        : sourceStorage
+          ? "storage-source"
+          : "machine";
     const poolKey = targetStorage
       ? makeResourceKey(targetStorage.kind, targetStorage.resourceId)
       : sourceStorage
@@ -173,7 +185,7 @@ export function solveEquilibrium(
       role,
       resourceKey: key,
       targetDemandKey,
-      needKey: targetStorage ? "" : `${edge.target}|${targetDemandKey}`,
+      needKey: targetStorage || role === "trash" ? "" : `${edge.target}|${targetDemandKey}`,
       budgetKey: sourceStorage ? "" : `${edge.source}|${sourceOutputFlow?.key ?? key}`,
       poolKey,
       sourceCapacityPerSecond:
@@ -191,13 +203,18 @@ export function solveEquilibrium(
         makePerSecond: sourceOutputFlow?.amountPerSecond ?? 0,
         sinkEdges: [],
         edges: [],
+        trashEdges: [],
       };
       if (!existing) {
         budgets.set(prepared.budgetKey, budget);
       }
-      budget.edges.push(prepared);
-      if (role === "storage-sink") {
-        budget.sinkEdges.push(prepared);
+      if (role === "trash") {
+        budget.trashEdges.push(prepared);
+      } else {
+        budget.edges.push(prepared);
+        if (role === "storage-sink") {
+          budget.sinkEdges.push(prepared);
+        }
       }
     }
 
@@ -225,12 +242,14 @@ export function solveEquilibrium(
 
     if (poolKey) {
       const existing = pools.get(poolKey);
-      const pool = existing ?? { sinkEdges: [], sourceEdges: [] };
+      const pool = existing ?? { sinkEdges: [], sourceEdges: [], trashEdges: [] };
       if (!existing) {
         pools.set(poolKey, pool);
       }
       if (role === "storage-sink") {
         pool.sinkEdges.push(prepared);
+      } else if (role === "trash") {
+        pool.trashEdges.push(prepared);
       } else {
         pool.sourceEdges.push(prepared);
       }
@@ -398,18 +417,40 @@ export function solveEquilibrium(
     }
 
     for (const edge of edges) {
-      if (edge.role === "storage-sink") {
+      // Tank sinks and trash cans on a machine output both drink whatever the
+      // desire fill left over, splitting it evenly; the difference is that a
+      // sink relays the tank's unmet pull as demand while trash never begs -
+      // its demand IS what it carries, so nothing upstream reads hunger off it.
+      if (edge.role === "storage-sink" || (edge.role === "trash" && edge.budgetKey)) {
         const budget = budgets.get(edge.budgetKey);
         const leftover = Math.max(0, desireFill.remainingBudget.get(edge.budgetKey) ?? 0);
-        const sinkCount = budget?.sinkEdges.length ?? 1;
-        const absorbed = leftover / Math.max(1, sinkCount);
+        const eaterCount = (budget?.sinkEdges.length ?? 0) + (budget?.trashEdges.length ?? 0);
+        const absorbed = leftover / Math.max(1, eaterCount);
+        availableByEdge.set(edge.id, absorbed);
+        eatenByEdge.set(edge.id, absorbed);
+        if (edge.role === "trash") {
+          demandByEdge.set(edge.id, absorbed);
+          continue;
+        }
         const pool = pools.get(edge.poolKey);
         const deficitShare =
           (poolDeficit.get(edge.poolKey) ?? 0) / Math.max(1, pool?.sinkEdges.length ?? 1);
-        availableByEdge.set(edge.id, absorbed);
-        eatenByEdge.set(edge.id, absorbed);
         demandByEdge.set(edge.id, absorbed + deficitShare);
         poolInflowNext.set(edge.poolKey, (poolInflowNext.get(edge.poolKey) ?? 0) + absorbed);
+        continue;
+      }
+
+      if (edge.role === "trash") {
+        // Tank -> trash: drain what the tank's real consumers left. An unfed
+        // (infinite) tank has no surplus to void, so the can sips nothing.
+        const pool = pools.get(edge.poolKey);
+        const remaining = desireFill.remainingPool.get(edge.poolKey) ?? 0;
+        const drained = Number.isFinite(remaining)
+          ? Math.max(0, remaining) / Math.max(1, pool?.trashEdges.length ?? 1)
+          : 0;
+        availableByEdge.set(edge.id, drained);
+        eatenByEdge.set(edge.id, drained);
+        demandByEdge.set(edge.id, drained);
         continue;
       }
 
@@ -457,6 +498,12 @@ export function solveEquilibrium(
 
       let pressure = 0;
       for (const budget of info.budgets) {
+        // A voided output is a fully demanded output: the can drinks whatever
+        // arrives, so this budget can never pace the machine below full blast
+        // (the in-game void-pipe semantic, the jump-start trick built in).
+        if (budget.trashEdges.length > 0) {
+          pressure = Math.max(pressure, 1);
+        }
         let required = 0;
         for (const edge of budget.edges) {
           required += demandByEdge.get(edge.id) ?? 0;
@@ -640,6 +687,8 @@ interface FillResult {
   grants: Map<string, number>;
   remainingNeed: Map<string, number>;
   remainingBudget: Map<string, number>;
+  /** What each tank still holds after the fill (trash cans drain this). */
+  remainingPool: Map<string, number>;
   /** First-shot storage requests per pool (the honest pull on each tank). */
   poolRequested: Map<string, number>;
 }
@@ -802,7 +851,7 @@ function runFill(
     }
   }
 
-  return { grants, remainingNeed, remainingBudget, poolRequested };
+  return { grants, remainingNeed, remainingBudget, remainingPool, poolRequested };
 }
 
 type PreparedEdgeRef = Pick<PreparedEdge, "id" | "budgetKey" | "needKey" | "poolKey">;

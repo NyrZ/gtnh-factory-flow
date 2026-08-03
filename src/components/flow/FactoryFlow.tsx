@@ -34,6 +34,7 @@ import {
   Paintbrush,
   Sprout,
   Square,
+  Trash,
   Trash2,
   Type,
   X,
@@ -106,6 +107,7 @@ import {
 } from "./edge-labels";
 import { buildEdgeStory } from "./flow-explainers";
 import { CUSTOM_RATE_ANY_RESOURCE_ID } from "@/lib/model/custom-rate";
+import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
 import { rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
 import { getSupplyCeiling } from "@/components/inspector/usage-limits";
 import {
@@ -118,6 +120,7 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
+import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import {
   ANNOTATION_DRAG_HANDLE_CLASS,
   AnnotationNode,
@@ -127,10 +130,11 @@ import {
 const nodeTypes = {
   recipeNode: RecipeNode,
   storageNode: StorageNode,
+  trashNode: TrashNode,
   annotationNode: AnnotationNode,
 } satisfies NodeTypes;
 
-type BoardFlowNode = RecipeFlowNode | StorageFlowNode | AnnotationFlowNode;
+type BoardFlowNode = RecipeFlowNode | StorageFlowNode | TrashFlowNode | AnnotationFlowNode;
 
 interface AnnotationDraft {
   start: { x: number; y: number };
@@ -330,6 +334,7 @@ function getMissingRecipePlaceholder(recipeId: string) {
 // scope rather than in a ref because reading a ref during render is not allowed.
 const recipeNodeDataCache = new Map<string, RecipeFlowNode["data"]>();
 const storageNodeDataCache = new Map<string, StorageFlowNode["data"]>();
+const trashNodeDataCache = new Map<string, TrashFlowNode["data"]>();
 const annotationNodeDataCache = new Map<string, AnnotationFlowNode["data"]>();
 // Same idea for edges, but with structural comparison: an edge object nests
 // fresh data/style objects on every rebuild, and handing React Flow an equal-
@@ -366,6 +371,12 @@ function pruneNodeDataCaches(
   for (const id of recipeNodeDataCache.keys()) {
     if (!recipeNodeIds.has(id)) {
       recipeNodeDataCache.delete(id);
+    }
+  }
+
+  for (const id of trashNodeDataCache.keys()) {
+    if (!recipeNodeIds.has(id)) {
+      trashNodeDataCache.delete(id);
     }
   }
 
@@ -473,6 +484,7 @@ export function FactoryFlow() {
   const setStoragePosition = useFactoryStore((state) => state.setStoragePosition);
   const connectNodes = useFactoryStore((state) => state.connectNodes);
   const connectCustomRate = useFactoryStore((state) => state.connectCustomRate);
+  const connectTrash = useFactoryStore((state) => state.connectTrash);
   const addStorageForConnection = useFactoryStore((state) => state.addStorageForConnection);
   const selectedNodeId = useFactoryStore((state) => state.selectedNodeId);
   const deleteNode = useFactoryStore((state) => state.deleteNode);
@@ -507,8 +519,21 @@ export function FactoryFlow() {
 
   const nodesFromProject = useMemo<BoardFlowNode[]>(
     () => [
-      ...project.nodes.map((node) => {
+      ...project.nodes.map((node): BoardFlowNode => {
         const recipe = recipesById.get(node.recipeId) ?? getMissingRecipePlaceholder(node.recipeId);
+        // Trash cans get their own compact card; a distinct node TYPE (not a
+        // branch inside RecipeNode) so the hook order of the big machine card
+        // never depends on what recipe a node holds.
+        if (isTrashRecipe(recipe)) {
+          return {
+            id: node.id,
+            type: "trashNode",
+            position: node.position,
+            data: reuseObjectIdentity(trashNodeDataCache, node.id, {
+              projectNode: node,
+            }),
+          } satisfies TrashFlowNode;
+        }
         return {
           id: node.id,
           type: "recipeNode",
@@ -802,6 +827,10 @@ export function FactoryFlow() {
       const edgeColor = getInitialResourceColor(resource);
       const sourceHandle = parseResourceHandleId(edge.sourceHandle);
       const targetHandle = parseResourceHandleId(edge.targetHandle);
+      // A trash can is a small any-side card like a tank, not a machine with
+      // a left input rail: routed as a "storage" endpoint so the wire docks
+      // on whichever side of the can faces the producer.
+      const targetIsTrashCan = targetHandle?.resourceId === TRASH_ANY_RESOURCE_ID;
       // Rails render one canonical (index-less) handle per resource; stored
       // edges may carry legacy per-slot ids. Collapse them here or React Flow
       // refuses to draw the edge and the anchor lookup misses the port.
@@ -851,9 +880,9 @@ export function FactoryFlow() {
           sourceHandleId: canonicalSourceHandle,
           targetHandleId: canonicalTargetHandle,
           sourceSlotEndpoint: Boolean(sourceHandle && !sourceStorage),
-          targetSlotEndpoint: Boolean(targetHandle && !targetStorage),
+          targetSlotEndpoint: Boolean(targetHandle && !targetStorage && !targetIsTrashCan),
           sourceStorageEndpoint: Boolean(sourceHandle && sourceStorage),
-          targetStorageEndpoint: Boolean(targetHandle && targetStorage),
+          targetStorageEndpoint: Boolean(targetHandle && (targetStorage || targetIsTrashCan)),
           sourceEndpointOffset: endpointOffsets.get(`${edge.id}:source`),
           targetEndpointOffset: endpointOffsets.get(`${edge.id}:target`),
           routeIndex: edgeIndex,
@@ -966,6 +995,40 @@ export function FactoryFlow() {
         const targetHandle = parseResourceHandleId(connection.targetHandle);
 
         if (sourceHandle && targetHandle && sourceHandle.side !== targetHandle.side) {
+          // A trash can's universal port only drinks: the far end must be an
+          // OUTPUT with a concrete resource, and the can takes it as-is.
+          const sourceIsTrash = sourceHandle.resourceId === TRASH_ANY_RESOURCE_ID;
+          const targetIsTrash = targetHandle.resourceId === TRASH_ANY_RESOURCE_ID;
+          if (sourceIsTrash || targetIsTrash) {
+            if (sourceIsTrash && targetIsTrash) {
+              return;
+            }
+            const trashNodeId = sourceIsTrash ? connection.source : connection.target;
+            const farEnd = sourceIsTrash
+              ? {
+                  nodeId: connection.target,
+                  handleId: connection.targetHandle ?? undefined,
+                  side: targetHandle.side,
+                }
+              : {
+                  nodeId: connection.source,
+                  handleId: connection.sourceHandle ?? undefined,
+                  side: sourceHandle.side,
+                };
+            if (farEnd.side !== "output" || !farEnd.handleId) {
+              return;
+            }
+            const farResource = getResourceForHandle(project, farEnd.nodeId, farEnd.handleId);
+            if (farResource) {
+              connectTrash(
+                trashNodeId,
+                { nodeId: farEnd.nodeId, handleId: farEnd.handleId },
+                farResource,
+              );
+            }
+            return;
+          }
+
           // A custom-rate node's universal port adopts whatever it's wired to.
           const sourceIsAny = sourceHandle.resourceId === CUSTOM_RATE_ANY_RESOURCE_ID;
           const targetIsAny = targetHandle.resourceId === CUSTOM_RATE_ANY_RESOURCE_ID;
@@ -1032,7 +1095,7 @@ export function FactoryFlow() {
         connectResourceEdges(connection.source, connection.target);
       }
     },
-    [connectCustomRate, connectResourceEdges, project],
+    [connectCustomRate, connectResourceEdges, connectTrash, project],
   );
 
   const isValidResourceConnection = useCallback(
@@ -1072,7 +1135,10 @@ export function FactoryFlow() {
         getResourceHandleAtPosition(clientPosition) ??
         getResourceHandleAtPointer(event) ??
         getStorageHandleAtPosition(clientPosition, draggedResource) ??
-        getStorageHandleAtPointer(event, draggedResource);
+        getStorageHandleAtPointer(event, draggedResource) ??
+        // Anywhere on a trash card counts as its well: dropping an output on
+        // the frame or header must void it, never spawn a tank on top.
+        getTrashHandleAtPosition(clientPosition, draggedResource, event);
 
       if (connectCompletedRef.current) {
         return;
@@ -1084,12 +1150,29 @@ export function FactoryFlow() {
         if (
           targetHandle.resourceId === CUSTOM_RATE_ANY_RESOURCE_ID &&
           draggedResource.id !== CUSTOM_RATE_ANY_RESOURCE_ID &&
+          draggedResource.id !== TRASH_ANY_RESOURCE_ID &&
           draggedResource.nodeId !== targetHandle.nodeId
         ) {
           connectCompletedRef.current = true;
           connectCustomRate(
             targetHandle.nodeId,
             draggedResource.side === "input" ? "output" : "input",
+            { nodeId: draggedResource.nodeId, handleId: draggedResource.handleId },
+            draggedResource,
+          );
+          return;
+        }
+        // Dropped onto a trash can: only an OUTPUT can be voided.
+        if (
+          targetHandle.resourceId === TRASH_ANY_RESOURCE_ID &&
+          draggedResource.side === "output" &&
+          draggedResource.id !== CUSTOM_RATE_ANY_RESOURCE_ID &&
+          draggedResource.id !== TRASH_ANY_RESOURCE_ID &&
+          draggedResource.nodeId !== targetHandle.nodeId
+        ) {
+          connectCompletedRef.current = true;
+          connectTrash(
+            targetHandle.nodeId,
             { nodeId: draggedResource.nodeId, handleId: draggedResource.handleId },
             draggedResource,
           );
@@ -1168,7 +1251,7 @@ export function FactoryFlow() {
         draggedResource.handleId,
       );
     },
-    [addStorageForConnection, connectCustomRate, connectResourceEdges, project],
+    [addStorageForConnection, connectCustomRate, connectResourceEdges, connectTrash, project],
   );
 
   useEffect(() => {
@@ -1471,7 +1554,7 @@ export function FactoryFlow() {
   const handleNodeClick = useCallback(
     (_: unknown, node: Node) => {
       if (isDeleteMode) {
-        if (node.type === "recipeNode") {
+        if (node.type === "recipeNode" || node.type === "trashNode") {
           deleteNode(node.id);
         } else if (node.type === "storageNode") {
           deleteStorage(node.id);
@@ -1482,7 +1565,7 @@ export function FactoryFlow() {
       }
 
       if (nodeColorPaintMode !== undefined) {
-        if (node.type === "recipeNode") {
+        if (node.type === "recipeNode" || node.type === "trashNode") {
           updateNode(node.id, { colorTag: nodeColorPaintMode ?? undefined });
           return;
         }
@@ -1822,6 +1905,7 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
 
 const SourceToolbar = memo(function SourceToolbar() {
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
+  const addTrashNode = useFactoryStore((state) => state.addTrashNode);
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
@@ -1839,6 +1923,15 @@ const SourceToolbar = memo(function SourceToolbar() {
         aria-label="Add crop farm"
       >
         <Sprout className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={addTrashNode}
+        className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+        title="Add trash can: wire any output into it — whatever flows in is voided and never shows as an output"
+        aria-label="Add trash can"
+      >
+        <Trash className="h-4 w-4" />
       </button>
       <button
         type="button"
@@ -6167,6 +6260,66 @@ function getStorageHandleAtPosition(
   return undefined;
 }
 
+/**
+ * Drops anywhere on a trash card resolve to its universal drink-here port.
+ * Only outputs qualify — a dragged INPUT looking for a supplier can't dock
+ * on a can — and the whole card counts, so a drop landing on the frame or
+ * header voids the line instead of spawning a tank on top of the can.
+ */
+function getTrashHandleAtPosition(
+  position: { x: number; y: number } | undefined,
+  draggedResource: DraggedResourceConnection | undefined,
+  estimatedEvent?: MouseEvent | TouchEvent,
+) {
+  if (
+    !position ||
+    !draggedResource ||
+    draggedResource.side !== "output" ||
+    draggedResource.id === TRASH_ANY_RESOURCE_ID ||
+    draggedResource.id === CUSTOM_RATE_ANY_RESOURCE_ID ||
+    typeof document === "undefined"
+  ) {
+    return undefined;
+  }
+
+  const trashElements = [
+    ...document.querySelectorAll<HTMLElement>("[data-trash-node-id]"),
+    ...(estimatedEvent
+      ? document
+          .elementsFromPoint(position.x, position.y)
+          .map((element) => element.closest<HTMLElement>("[data-trash-node-id]"))
+          .filter((element): element is HTMLElement => Boolean(element))
+      : []),
+  ];
+
+  for (const trashElement of trashElements) {
+    const rect = trashElement.getBoundingClientRect();
+    if (
+      position.x < rect.left ||
+      position.x > rect.right ||
+      position.y < rect.top ||
+      position.y > rect.bottom
+    ) {
+      continue;
+    }
+
+    const nodeId = trashElement.dataset.trashNodeId;
+    if (!nodeId || nodeId === draggedResource.nodeId) {
+      continue;
+    }
+
+    return {
+      nodeId,
+      handleId: `input:item:${encodeURIComponent(TRASH_ANY_RESOURCE_ID)}`,
+      side: "input",
+      kind: "item",
+      resourceId: TRASH_ANY_RESOURCE_ID,
+    } satisfies ResolvedResourceHandle;
+  }
+
+  return undefined;
+}
+
 function brightenHexColor(color: string, amount: number) {
   const match = /^#([0-9a-f]{6})$/i.exec(color);
   if (!match) {
@@ -6261,6 +6414,24 @@ function isCompatibleResourceConnection(
   const targetHandle = parseResourceHandleId(connection.targetHandle);
   if (!sourceHandle || !targetHandle) {
     return false;
+  }
+
+  // Trash cans drink any concrete resource, but only from an OUTPUT.
+  const sourceIsTrash = sourceHandle.resourceId === TRASH_ANY_RESOURCE_ID;
+  const targetIsTrash = targetHandle.resourceId === TRASH_ANY_RESOURCE_ID;
+  if (sourceIsTrash || targetIsTrash) {
+    if (sourceIsTrash && targetIsTrash) {
+      return false;
+    }
+    const farSide = sourceIsTrash ? targetHandle.side : sourceHandle.side;
+    if (farSide !== "output") {
+      return false;
+    }
+    const farNodeId = sourceIsTrash ? connection.target : connection.source;
+    const farHandleId = sourceIsTrash ? connection.targetHandle : connection.sourceHandle;
+    return Boolean(
+      farNodeId && farHandleId && getResourceForHandle(project, farNodeId, farHandleId),
+    );
   }
 
   // Custom-rate universal ports accept any concrete resource on the far end.
