@@ -26,6 +26,7 @@ import type {
 import { TICKS_PER_SECOND } from "../model/types";
 import { applyRecipeInputOverrides } from "../model/recipe-input-overrides";
 import { applyMachineHandlerToRecipe } from "../model/recipe-rules";
+import { collectTrashNodeIds } from "../model/trash";
 import {
   addRequiredRate,
   clampUtilization,
@@ -382,8 +383,47 @@ function calculateEffectiveBalances(
   }
 
   applyConvertedStorageOutputBalances(project, nodes, edgeResults, storagesById, balances);
+  applyTrashedOutputBalances(project, edgeResults, balances);
 
   return balances;
+}
+
+/**
+ * Whatever flows into a trash can never existed as far as the plan's books
+ * are concerned: it leaves the produced column (floored at zero, so a mid-
+ * convergence overshoot can never mint a phantom deficit) and therefore
+ * never appears in the unconsumed-outputs panel. Runs after the cell/fluid
+ * conversion pass so a tank-drained fluid subtracts from the converted row.
+ */
+function applyTrashedOutputBalances(
+  project: FactoryProject,
+  edgeResults: Record<string, EdgeThroughput>,
+  balances: Map<ResourceKey, ResourceBalance>,
+): void {
+  const trashNodeIds = collectTrashNodeIds(project);
+  if (trashNodeIds.size === 0) {
+    return;
+  }
+
+  for (const edge of project.edges) {
+    if (!trashNodeIds.has(edge.target)) {
+      continue;
+    }
+    const transferredPerSecond = edgeResults[edge.id]?.transferredPerSecond ?? 0;
+    if (transferredPerSecond <= EPSILON) {
+      continue;
+    }
+    subtractBalanceProduction(
+      balances,
+      {
+        kind: edge.resourceKind,
+        id: edge.resourceId,
+        displayName: edge.label,
+        amount: 0,
+      },
+      transferredPerSecond,
+    );
+  }
 }
 
 function applyConvertedStorageOutputBalances(
@@ -467,10 +507,13 @@ function writeEdgeResultsFromEquilibrium(
       continue;
     }
 
-    if (allocation.role === "storage-sink") {
+    if (allocation.role === "storage-sink" || allocation.role === "trash") {
       // A sink line carries whatever the producer had left over; its demand
       // additionally carries the tank's unmet pull-through so a dry buffer
       // reads as "wants more" instead of silently starving its drinkers.
+      // A trash line is the same shape minus the pull-through: its nameplate
+      // ask equals what it carries, so no verdict, plug, or ladder can ever
+      // read hunger (or shortfall) off a voided output.
       edgeResults[edge.id] = buildEdgeResult(
         edge,
         allocation.resourceKey,

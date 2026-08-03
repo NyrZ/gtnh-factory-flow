@@ -15,6 +15,10 @@ Working notes for future agents on GTNH Factory Flow.
 - App version lives in `src/lib/version.ts` (`APP_VERSION`) and renders as a
   chip in the header. Bump it with EVERY merge to main - minor for features
   (1.1.0), patch for fixes (1.0.1) - so the live site is self-identifying.
+- The chip opens the changelog, so every bump also needs an entry in
+  `src/lib/changelog.ts`. Write it for players, not developers: what changed
+  on THEIR board, a headline plus one to three short lines. No jargon
+  (no "solver", "refactor", "edge role"), newest first.
 - Default working branch for feature work is `develop`.
 - `main` is production. Push/merge there only when the user asks for main/prod deployment.
 - `https://dev-gtnh.samiracle.fr/` is the develop deployment.
