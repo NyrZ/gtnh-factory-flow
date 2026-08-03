@@ -30,6 +30,27 @@ export type StorageFlowNode = Node<StorageNodeData, "storageNode">;
  */
 type StorageMode = "supply" | "blackhole" | "buffer" | "idle";
 
+// Inline (not utility classes) so React Flow's own handle stylesheet can
+// never reposition or resize these: the well is the wire zone, exactly.
+const WELL_HANDLE_BASE: CSSProperties = {
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  width: "50%",
+  height: "100%",
+  minWidth: 0,
+  minHeight: 0,
+  margin: 0,
+  transform: "none",
+  borderRadius: 0,
+  border: "none",
+  background: "transparent",
+  opacity: 0,
+  zIndex: 30,
+};
+const WELL_HANDLE_LEFT: CSSProperties = { ...WELL_HANDLE_BASE, left: 0, right: "auto" };
+const WELL_HANDLE_RIGHT: CSSProperties = { ...WELL_HANDLE_BASE, left: "auto", right: 0 };
+
 const MODE_BADGE: Record<StorageMode, { word: string; className: string }> = {
   supply: { word: "INFINITE SUPPLY", className: "bg-[#2f7a3d] text-white" },
   blackhole: { word: "INFINITE STORAGE", className: "bg-[#3f4652] text-white" },
@@ -157,8 +178,13 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           {MODE_BADGE[mode].word}
         </div>
         <MinecraftTooltip content={renderStorageHoverContent(storage, mode)}>
-          <div className="relative mx-auto mt-1.5">
-            {/* Drag-to-wire from the body; header buttons stay clickable. */}
+          {/* The black well is the wire zone: drag from its left/right half
+              to pull a wire. Everything around it - header, frame, badge,
+              net line - is plain card, so grabbing the border moves the
+              node. The handles carry inline styles pinned to the well box;
+              stylesheet !important wars once let them blanket the whole
+              card and swallow the header buttons. */}
+          <div className="relative mx-auto mt-1.5 h-[84px] w-[112px]">
             <Handle
               id={inputHandleId}
               type="target"
@@ -167,7 +193,8 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               data-resource-node-id={storage.id}
               data-resource-handle-id={inputHandleId}
               onClick={selectOnHandleClick}
-              className="nodrag !absolute !bottom-0 !left-0 !top-0 !z-30 !h-full !w-1/2 !min-w-0 !translate-x-0 !translate-y-0 !rounded-none !border-0 !bg-transparent !opacity-0"
+              className="nodrag"
+              style={WELL_HANDLE_LEFT}
             />
             <Handle
               id={outputHandleId}
@@ -177,12 +204,13 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               data-resource-node-id={storage.id}
               data-resource-handle-id={outputHandleId}
               onClick={selectOnHandleClick}
-              className="nodrag !absolute !bottom-0 !left-auto !right-0 !top-0 !z-30 !h-full !w-1/2 !min-w-0 !translate-x-0 !translate-y-0 !rounded-none !border-0 !bg-transparent !opacity-0"
+              className="nodrag"
+              style={WELL_HANDLE_RIGHT}
             />
             {isTank ? (
               // The original tank look — steel frame, dark glass well — just
               // tighter, with the fluid icon much larger inside it.
-              <div className="mx-auto grid h-[84px] w-[112px] place-items-center border-2 border-[#1f1f1f] bg-black shadow-[inset_5px_5px_0_#1f2933,inset_-5px_-5px_0_#050505]">
+              <div className="grid h-full w-full place-items-center border-2 border-[#1f1f1f] bg-black shadow-[inset_5px_5px_0_#1f2933,inset_-5px_-5px_0_#050505]">
                 <ResourceIcon
                   resource={{ ...storage, id: storage.resourceId, amount: 1 }}
                   size="sm"
@@ -194,7 +222,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             ) : (
               // The original drawer look — wood well, parchment face — tighter,
               // with the item icon much larger.
-              <div className="mx-auto grid h-[84px] w-[112px] place-items-center border-2 border-[#3a260f] bg-[#7a5427] shadow-[inset_5px_5px_0_#5a3b1b,inset_-5px_-5px_0_#4a3117]">
+              <div className="grid h-full w-full place-items-center border-2 border-[#3a260f] bg-[#7a5427] shadow-[inset_5px_5px_0_#5a3b1b,inset_-5px_-5px_0_#4a3117]">
                 <div className="grid h-[72px] w-[72px] place-items-center border-2 border-[#1f1f1f] bg-[#d8c4b4] shadow-[inset_2px_2px_0_#fff,inset_-2px_-2px_0_#7d6d61]">
                   <ResourceIcon
                     resource={{ ...storage, id: storage.resourceId, amount: 1 }}
@@ -279,11 +307,15 @@ function StorageHeader({
       >
         <Copy aria-hidden className="h-2.5 w-2.5" />
       </button>
-      <div className="minecraft-title min-w-0 flex-1 truncate text-center text-[13px] leading-4">
+      {/* No centering spacer: in a 132px card it starved the name down to a
+          couple of characters. Left-aligned, smaller, full width, and the
+          native title shows the whole name on hover. */}
+      <div
+        title={title}
+        className="minecraft-title min-w-0 flex-1 truncate text-left text-[11px] leading-4"
+      >
         {title}
       </div>
-      {/* Balances the two buttons so the title stays optically centred. */}
-      <span aria-hidden className="h-4 w-[36px] shrink-0" />
     </div>
   );
 }
