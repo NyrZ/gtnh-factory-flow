@@ -485,13 +485,23 @@ img {
   --port-fed-edge: #4cae62;
 }
 
-/* Hovering the usage cell lights the input it blames, so the claim and the
-   row that proves it are visibly the same thing. Pure CSS: hover must never
-   rebuild a node. */
-.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind {
-  outline: 2px solid var(--port-bind-edge);
-  outline-offset: -1px;
-  filter: brightness(1.12);
+/* Hovering the usage cell lights everything the reason is about, so the
+   claim and the rows that prove it are visibly the same thing: the binding
+   input on a bottleneck, the hungry couplings on an over-asked node. Pure
+   CSS — hover must never rebuild a node. */
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
+  outline: 3px solid var(--usage-lit-edge, var(--port-bind-edge));
+  outline-offset: 1px;
+  filter: brightness(1.2) saturate(1.15);
+  z-index: 12;
+}
+
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry {
+  --usage-lit-edge: var(--port-hot-edge);
 }
 
 .flow-port {
@@ -616,8 +626,8 @@ img {
   z-index: 5;
   display: flex;
   flex: none;
-  width: 44px;
-  height: 34px;
+  width: 52px;
+  height: 44px;
   margin-left: 2px;
   flex-direction: column;
   justify-content: center;
@@ -648,7 +658,7 @@ img {
 .flow-plug-track {
   display: block;
   flex: 1;
-  height: 5px;
+  height: 7px;
   background: rgba(0, 0, 0, 0.35);
   box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.35);
 }
@@ -690,10 +700,11 @@ img {
 
 /* Nothing wired: an open invitation, not a warning. */
 .flow-socket-empty {
+  position: relative;
   display: flex;
   flex: none;
-  width: 44px;
-  height: 34px;
+  width: 52px;
+  height: 44px;
   margin-left: 2px;
   align-items: center;
   justify-content: center;

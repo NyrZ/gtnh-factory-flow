@@ -651,7 +651,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         {!isCropFarmPlaceholder && !isCustomRatePlaceholder ? (
           <div
             className={[
-              "mt-1 grid min-w-0 items-stretch gap-1 text-[12px] leading-4 text-[var(--mc-ink)]",
+              // A hairline over the dials: the machine is one thing, the knobs
+              // under it are another. No extra padding — tight everywhere.
+              "mt-1 grid min-w-0 items-stretch gap-1 border-t border-[var(--mc-56)] pt-1 text-[12px] leading-4 text-[var(--mc-ink)]",
               // Usage and reason hug their content — a state word floating in
               // reserved space was the odd gap. Power takes the slack instead.
               isCustomRateNode
@@ -1026,7 +1028,7 @@ function PortRail({
     <div
       className={[
         "flex shrink-0 flex-col justify-start gap-1 py-0.5",
-        isInput ? "w-[118px]" : "w-[168px]",
+        isInput ? "w-[144px]" : "w-[198px]",
       ].join(" ")}
     >
       {ports.map((port) =>
@@ -1075,10 +1077,36 @@ function OutputSocketRow({
               : "Empty socket — nothing plugged in."
           }
         >
-          <span className="flow-socket-empty nodrag">—</span>
+          <span className="flow-socket-empty nodrag">
+            <PlugDragHandle nodeId={nodeId} port={port} />—
+          </span>
         </MinecraftTooltip>
       )}
     </div>
+  );
+}
+
+/**
+ * A second source handle over the coupling chip, sharing the port's handle
+ * id — a connection dropped on either reads the same port. Geometry is
+ * unaffected: edges anchor off the row's `data-resource-edge-anchor`, not
+ * React Flow's handle bounds.
+ */
+function PlugDragHandle({ nodeId, port }: { nodeId: string; port: RailPort }) {
+  return (
+    <Handle
+      id={port.handleId}
+      type="source"
+      position={Position.Right}
+      data-resource-handle="true"
+      data-resource-node-id={nodeId}
+      data-resource-handle-id={port.handleId}
+      title={`Drag to wire ${port.displayName}`}
+      className={[
+        "resource-slot-handle nodrag !absolute !left-0 !right-auto !top-0 !z-10 !h-full !w-full !min-w-0 !translate-x-0 !translate-y-0",
+        "!rounded-none !border-0 !bg-transparent !opacity-0 cursor-crosshair",
+      ].join(" ")}
+    />
   );
 }
 
@@ -1108,6 +1136,10 @@ function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
         className={["flow-plug nodrag", `flow-plug--${plug.state}`].join(" ")}
         style={isFlowScopeLit ? PLUG_GLOW_STYLE : undefined}
       >
+        {/* The coupling looks like the end of the wire, so it has to BE one:
+            dragging from here pulls a new line. It sits inside the tooltip
+            wrapper, so hovering the handle still opens the asker's story. */}
+        <PlugDragHandle nodeId={nodeId} port={port} />
         {plug.state === "dump" ? (
           // No ask exists to be a percent of — flow just ends here.
           <span className="flow-plug-top">
@@ -1246,8 +1278,8 @@ function PortChip({
   return (
     <div
       className={[
-        "flow-port relative flex min-h-[34px] items-center gap-1 px-1 py-0.5",
-        plugRow ? "w-[118px] flex-none" : "flex-1",
+        "flow-port relative flex min-h-[44px] items-center gap-1 px-1 py-0.5",
+        plugRow ? "w-[144px] flex-none" : "flex-1",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
       ].join(" ")}
@@ -1308,11 +1340,14 @@ function PortChip({
             tooltip={false}
             showAmount={false}
             showConsumedState={false}
-            iconPixelSize={26}
-            className="!h-5 !w-5"
+            // A fluid cell draws at 56% of the size it's given, so asking for
+            // 72 lands it on the same 40px square as an item icon. Without
+            // this, fluids float undersized in a box built for items.
+            iconPixelSize={port.kind === "fluid" ? 72 : 40}
+            className="!h-10 !w-10"
           />
         ) : (
-          <span className="block h-5 w-5 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
+          <span className="block h-10 w-10 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
         )}
       </span>
       <span className="min-w-0 flex-1">
