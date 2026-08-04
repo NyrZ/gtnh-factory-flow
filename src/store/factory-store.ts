@@ -3,10 +3,13 @@
 import { create } from "zustand";
 import { createEmptyProject } from "@/examples";
 import type { DatasetManifest, RecipeDataset } from "@/lib/datasets";
-import { normalizeProjectFuelProfiles } from "@/lib/model/fuels";
+import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { setActiveRateUnit, type RateUnit } from "@/lib/model/rate-unit";
 import { calculateThroughput } from "@/lib/solver";
-import { applyRecipeInputOverrides } from "@/lib/model/recipe-input-overrides";
+import {
+  applyRecipeInputOverrides,
+  crossKindInputOverrideAmount,
+} from "@/lib/model/recipe-input-overrides";
 import { createCropFarmPlaceholderRecipe } from "@/lib/model/passive-production";
 import {
   createCustomRatePlaceholderRecipe,
@@ -326,7 +329,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     set({ rateUnit: unit, lastResult: calculateThroughput(project) });
   },
   setProject: (project) => {
-    const nextProject = touchProject(normalizeProjectFuelProfiles(project));
+    const nextProject = touchProject(normalizeLoadedProject(project));
     set({
       project: nextProject,
       selectedNodeId: nextProject.nodes[0]?.id,
@@ -337,7 +340,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     });
   },
   markHydratedProject: (project) => {
-    const nextProject = normalizeProjectFuelProfiles(project);
+    const nextProject = normalizeLoadedProject(project);
     set({
       project: nextProject,
       selectedNodeId: nextProject.nodes[0]?.id,
@@ -1837,13 +1840,15 @@ function applyEdgeInputOverride(
   const alternative = input.alternatives?.find(
     (entry) => entry.kind === edge.resourceKind && entry.id === edge.resourceId,
   );
-  const filledCellFluidInput = getFilledCellFluidEquivalent(input);
   const override: Recipe["inputs"][number] = {
     ...input,
     ...alternative,
     kind: edge.resourceKind,
     id: edge.resourceId,
-    amount: resource?.amount ?? filledCellFluidInput?.amount ?? input.amount,
+    // Only converts when the kind actually changes — see the helper. Taking
+    // the cell's fluid amount unconditionally inflated same-kind cell wiring
+    // by 1000×.
+    amount: resource?.amount ?? crossKindInputOverrideAmount(input, edge.resourceKind, alternative),
     displayName:
       resource?.displayName ?? edge.label ?? alternative?.displayName ?? input.displayName,
     iconPath: resource?.iconPath ?? alternative?.iconPath ?? input.iconPath,

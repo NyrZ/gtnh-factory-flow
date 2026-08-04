@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.4.1",
+    date: "2026-08-04",
+    headline: "Cell recipes asked for 1000× too much",
+    notes: [
+      "Wiring anything into a recipe that takes filled cells multiplied what it needed by a thousand: a reactor wanting 2 Sulfuric Gas Cells a second asked for 2,000, and every machine feeding it looked far too small.",
+      "Cells and their fluid are the same stuff counted two ways — one cell is 1000 L — and the planner was converting even when it did not need to. It now converts only when you actually wire a fluid into a cell slot, or the other way round.",
+      "Plans you already saved are repaired when you open them. Nothing to redo.",
+    ],
+  },
+  {
     version: "1.4.0",
     date: "2026-08-04",
     headline: "Watch your factory run",
