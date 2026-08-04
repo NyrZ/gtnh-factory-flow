@@ -764,48 +764,44 @@ function UsageStat({
   isCustomRate?: boolean;
 }) {
   const state = verdictWord(verdict, isCustomRate);
-  const deficit = verdict.deficit;
-  // Only over-asked names a count: a bottleneck is somebody else's machine
-  // count, so a number here would point at the wrong card.
-  const fixNote =
-    verdict.kind === "choke" && !isCustomRate && deficit?.machinesToAdd
-      ? `+${deficit.machinesToAdd} machine${deficit.machinesToAdd > 1 ? "s" : ""}`
-      : undefined;
   const showPct = verdict.kind !== "off" && verdict.kind !== "no-recipe";
 
   return (
     <MinecraftTooltip
       content={<VerdictHoverContent nodeId={nodeId} verdict={verdict} isCustomRate={isCustomRate} />}
     >
-      <div className="flow-usage-stat min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-        <div className="flex items-baseline gap-2">
-          <span className="shrink-0 text-[9px] uppercase text-[var(--mc-ink-muted)]">Usage</span>
-          {fixNote ? (
-            <span className="min-w-0 flex-1 truncate text-right text-[9px] font-bold uppercase text-[var(--verdict-over-ink)]">
-              {fixNote}
-            </span>
-          ) : null}
+      {/* Two cells, not one: a number and a word have nothing to say to each
+          other inside a shared box — sharing one left the word floating in
+          whatever width the number didn't use. */}
+      <div className="flow-usage-stat grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-1">
+        <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+          <div className="text-[9px] uppercase text-[var(--mc-ink-muted)]">Usage</div>
+          <div className="text-[19px] font-bold leading-[21px] tabular-nums">
+            {showPct ? (
+              <>
+                {/* Whole numbers — a decimal on a duty cycle is width, not
+                    information. The exception is a node that runs so slowly
+                    it would round to a flat 0% and read as dead. */}
+                {verdict.pct > 0 && verdict.pct < 0.5
+                  ? formatRate(verdict.pct, 1)
+                  : formatPct(verdict.pct)}
+                <span className="text-[13px]">%</span>
+              </>
+            ) : (
+              <span className="text-[13px] text-[var(--mc-ink-muted)]">—</span>
+            )}
+          </div>
         </div>
-        <div className="flex items-baseline gap-2">
-          {showPct ? (
-            <span className="shrink-0 text-[19px] font-bold leading-[21px] tabular-nums">
-              {/* Whole numbers — a decimal on a duty cycle is width, not
-                  information. The exception is a node that runs so slowly it
-                  would round to a flat 0% and read as dead. */}
-              {verdict.pct > 0 && verdict.pct < 0.5
-                ? formatRate(verdict.pct, 1)
-                : formatPct(verdict.pct)}
-              <span className="text-[13px]">%</span>
-            </span>
-          ) : null}
-          <span
+        <div className="flex min-w-0 flex-col justify-center border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+          <div className="text-[9px] uppercase text-[var(--mc-ink-muted)]">Reason</div>
+          <div
             className={[
-              "min-w-0 flex-1 truncate text-[11px] leading-4",
+              "truncate text-[11px] font-bold uppercase leading-4 tracking-[0.4px]",
               VERDICT_WORD_CLASS[state.tone],
             ].join(" ")}
           >
             {state.word}
-          </span>
+          </div>
         </div>
       </div>
     </MinecraftTooltip>
@@ -1614,7 +1610,7 @@ function renderPortHoverContent(port: RailPort, nodeId: string) {
                   left: `${fillPct}%`,
                   width: `${ghostPct}%`,
                   background:
-                    "repeating-linear-gradient(45deg, rgba(220,228,245,0.35) 0 3px, transparent 3px 6px)",
+                    "repeating-linear-gradient(45deg, rgba(220,228,245,0.35) 0 1.5px, transparent 1.5px 3px)",
                 }}
               />
             ) : null}

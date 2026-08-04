@@ -542,10 +542,12 @@ img {
   position: absolute;
   top: 0;
   bottom: 0;
+  /* Tight stripes: at 3px a narrow ghost segment only fits one band and
+     reads as a stray triangle instead of hatching. */
   background: repeating-linear-gradient(
     45deg,
-    rgba(226, 232, 244, 0.4) 0 3px,
-    transparent 3px 6px
+    rgba(226, 232, 244, 0.4) 0 1.5px,
+    transparent 1.5px 3px
   );
 }
 
