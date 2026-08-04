@@ -83,6 +83,58 @@ export function formatRate(value: number, digits = 2): string {
   return formatNumberWithThousands(value.toFixed(digits));
 }
 
+/**
+ * The SI ladder GregTech itself uses for EU. Past exa nothing in the game
+ * reaches, and a number that long has stopped being readable anyway.
+ */
+const COMPACT_SUFFIXES = ["", "k", "M", "G", "T", "P", "E"] as const;
+
+/**
+ * Late-game numbers, at a width a node cell can hold: 2,147,483,648 becomes
+ * "2.15G" and a mega multiblock's 1,440,000 L/s becomes "1.44M".
+ *
+ * Two rules that are about honesty rather than width:
+ * - exact zero prints "0", never "0.00" — decimals on nothing are noise;
+ * - a rate that is small but REAL never prints as zero. A chanced output at
+ *   0.004/s is a line that runs, and rounding it to 0.00 said it was dead.
+ *
+ * Three significant digits everywhere else, trailing zeros dropped, so a
+ * column of these still lines up without carrying dead characters.
+ */
+export function formatCompact(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "unbounded";
+  }
+  if (value === 0) {
+    return "0";
+  }
+
+  const sign = value < 0 ? "-" : "";
+  let abs = Math.abs(value);
+
+  if (abs < 1) {
+    // Two significant digits, however far down the value sits.
+    const leadingZeros = Math.max(0, Math.ceil(-Math.log10(abs)) - 1);
+    const digits = Math.min(12, leadingZeros + 2);
+    return `${sign}${trimTrailingDecimalZeros(abs.toFixed(digits))}`;
+  }
+
+  let tier = 0;
+  while (abs >= 1000 && tier < COMPACT_SUFFIXES.length - 1) {
+    abs /= 1000;
+    tier += 1;
+  }
+  let decimals = abs >= 100 ? 1 : 2;
+  // 999.96 rounds to "1000.0" — carry it to the next suffix instead.
+  if (Number(abs.toFixed(decimals)) >= 1000 && tier < COMPACT_SUFFIXES.length - 1) {
+    abs /= 1000;
+    tier += 1;
+    decimals = 2;
+  }
+  const text = trimTrailingDecimalZeros(abs.toFixed(decimals));
+  return `${sign}${text}${COMPACT_SUFFIXES[tier]}`;
+}
+
 export function formatNumberWithThousands(value: number | string): string {
   // American separators: comma thousands, dot decimal ("1,234.56").
   const text = String(value);

@@ -1,5 +1,5 @@
 import type { EdgeThroughput, FactoryProject, ThroughputResult } from "@/lib/model/types";
-import { formatNumberWithThousands, formatRate, makeResourceKey } from "@/lib/model";
+import { formatCompact, formatNumberWithThousands, formatRate, makeResourceKey } from "@/lib/model";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { parseResourceHandleId } from "./resource-handles";
 import { honestEdgeAskPerSecond, type NodeVerdict, type RailPort } from "./node-verdict";
@@ -34,18 +34,17 @@ const EPS = 1e-6;
 /** Ratios this close to 1 are float noise, not a real difference. */
 const TOL = 0.005;
 
+/**
+ * Port rates go through the compact ladder: a mega multiblock moving
+ * 1,440,000 L/s has to fit a 118px chip, and a chanced output at 0.004/s has
+ * to stay visible instead of rounding to a flat 0.00.
+ */
 export function formatSlotRate(value: number, kind: string): string {
-  const scaled = value * rateUnitMultiplier();
-  // Three decimals below 0.01 so slow drips (crop drops, chanced outputs)
-  // don't render as a flat 0.00/s.
-  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : scaled >= 0.01 ? 2 : 3;
-  return `${formatRate(scaled, digits)}${rateUnitSuffix(kind === "fluid")}`;
+  return `${formatSlotRateBare(value)}${rateUnitSuffix(kind === "fluid")}`;
 }
 
 export function formatSlotRateBare(value: number): string {
-  const scaled = value * rateUnitMultiplier();
-  const digits = scaled >= 100 ? 0 : scaled >= 10 ? 1 : scaled >= 0.01 ? 2 : 3;
-  return formatRate(scaled, digits);
+  return formatCompact(value * rateUnitMultiplier());
 }
 
 /**

@@ -466,10 +466,16 @@ img {
   --port-hot-edge: #9c6e00;
   --port-fed-bg: #b7dcb0;
   --port-fed-edge: #2f7a3d;
+  /* Strip ink: the ONLY color on the strip is the name of the thing to go
+     look at. Read on the neutral panel, so these are ink tones, not fills. */
+  --verdict-short-ink: #8e2018;
+  --verdict-over-ink: #7a5405;
 }
 
 [data-theme="dark"] {
   --verdict-off-bg: #4a4a4a;
+  --verdict-short-ink: #ef8b78;
+  --verdict-over-ink: #e0b551;
   --rail-bar-track: #3c3c3c;
   --port-bind-bg: #5d2323;
   --port-bind-edge: #c34c4c;
@@ -479,39 +485,13 @@ img {
   --port-fed-edge: #4cae62;
 }
 
-.flow-verdict-strip {
-  border: 2px solid var(--verdict-edge, #3d3d3d);
-  background: var(--verdict-bg, #6b6b6b);
-  box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.25),
-    inset -1px -1px 0 rgba(0, 0, 0, 0.3);
-  color: #fff;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
-}
-
-.flow-verdict-strip--starved {
-  --verdict-bg: var(--verdict-starved-bg);
-  --verdict-edge: var(--verdict-starved-edge);
-}
-
-.flow-verdict-strip--choke {
-  --verdict-bg: var(--verdict-choke-bg);
-  --verdict-edge: var(--verdict-choke-edge);
-}
-
-.flow-verdict-strip--demand {
-  --verdict-bg: var(--verdict-demand-bg);
-  --verdict-edge: var(--verdict-demand-edge);
-}
-
-.flow-verdict-strip--balanced {
-  --verdict-bg: var(--verdict-balanced-bg);
-  --verdict-edge: var(--verdict-balanced-edge);
-}
-
-.flow-verdict-strip--off {
-  --verdict-bg: var(--verdict-off-bg);
-  --verdict-edge: var(--verdict-off-edge);
+/* Hovering the usage cell lights the input it blames, so the claim and the
+   row that proves it are visibly the same thing. Pure CSS: hover must never
+   rebuild a node. */
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind {
+  outline: 2px solid var(--port-bind-edge);
+  outline-offset: -1px;
+  filter: brightness(1.12);
 }
 
 .flow-port {

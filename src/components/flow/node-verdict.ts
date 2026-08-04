@@ -47,6 +47,8 @@ export interface UpstreamCulprit {
   hasHeadroom: boolean;
   /** Machines to add at the culprit to close this gap, when computable. */
   machinesToAdd?: number;
+  /** The culprit's CURRENT machine count, so advice reads "×6 → ×15". */
+  machineCount?: number;
 }
 
 export interface NodeVerdict {
@@ -86,6 +88,12 @@ export interface NodeVerdict {
      * outputs together, so this is the max of the per-output requirements).
      */
     machinesToAdd?: number;
+    /**
+     * How far past full blast the asks reach, as a percent ("over-asked by
+     * 40%"). Measured on the worst output against its nameplate rate, so it
+     * stays coherent with `machinesToAdd` — the same ratio, rounded up.
+     */
+    overAskPct?: number;
     /** How many outputs are over-asked right now (they're independent). */
     hungryOutputs: number;
     /** How many outputs have anything plugged in at all. */
@@ -297,6 +305,7 @@ function findWorstOutputDeficit(
   const node = project.nodes.find((entry) => entry.id === nodeId);
   const machineCount = Math.max(1, node?.machineCount ?? 1);
   let machinesToAdd: number | undefined;
+  let overAskPct: number | undefined;
   for (const [key, wanted] of wantedByKey) {
     const keyFlow = nodeResult.outputs[key as keyof typeof nodeResult.outputs];
     const nameplate = keyFlow?.amountPerSecond ?? 0;
@@ -307,6 +316,10 @@ function findWorstOutputDeficit(
     const missingAtFull = Math.max(0, wanted - nameplate);
     if (missingAtFull <= RATE_EPSILON) {
       continue;
+    }
+    const pastFull = (missingAtFull / nameplate) * 100;
+    if (overAskPct === undefined || pastFull > overAskPct) {
+      overAskPct = pastFull;
     }
     const toAdd = Math.min(9999, Math.ceil(missingAtFull / perMachine - RATE_EPSILON));
     if (toAdd > 0 && (machinesToAdd === undefined || toAdd > machinesToAdd)) {
@@ -334,6 +347,7 @@ function findWorstOutputDeficit(
     displayName: flow?.displayName ?? flow?.resourceId ?? worst.key,
     missingPerSecond: worst.missing,
     machinesToAdd,
+    overAskPct,
     hungryOutputs: missingByKey.size,
     pluggedOutputs,
   };
@@ -532,7 +546,15 @@ function findUpstreamCulprit(
     }
   }
 
-  return { name, kind: "machine", pct, atFullSpeed, hasHeadroom, machinesToAdd };
+  return {
+    name,
+    kind: "machine",
+    pct,
+    atFullSpeed,
+    hasHeadroom,
+    machinesToAdd,
+    machineCount: Math.max(1, sourceNode?.machineCount ?? 1),
+  };
 }
 
 /**

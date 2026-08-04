@@ -16,6 +16,7 @@ import {
   getMachineParallelMultiplier,
 } from "@/lib/solver/machine-effects";
 import {
+  formatCompact,
   formatRate,
   applyMachineHandlerToRecipe,
   GT_OVERCLOCK_TIERS,
@@ -381,7 +382,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   return (
     <div
       className={[
-        "group relative min-w-[340px] w-max border-2 border-[var(--mc-96)] bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]",
+        // recipe-node-shell scopes the strip↔row hover link (globals.css):
+        // hovering the verdict lights the input it blames, in pure CSS, so a
+        // hover never re-renders a node.
+        "recipe-node-shell group relative min-w-[340px] w-max border-2 border-[var(--mc-96)] bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]",
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
         isCompareOpen ? "recipe-node-popup-open" : "",
@@ -640,45 +644,49 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           {passiveProductionPanel}
         </div>
 
+        {/* The footer IS the verdict now: usage leads on the left with the
+            state word beside it, the two facts that used to crowd it shrink
+            to the right. Never a third line — a taller footer on every node
+            costs more board than the sentence was worth. */}
         {!isCropFarmPlaceholder && !isCustomRatePlaceholder ? (
-          <div className="w-0 min-w-full">
-            <VerdictStrip
-              nodeId={projectNode.id}
-              verdict={verdict}
-              isCustomRate={isCustomRateNode}
-            />
-          </div>
-        ) : null}
-        {!isCropFarmPlaceholder && !isCustomRateNode ? (
           <div
             className={[
-              "mt-1 grid min-w-0 gap-1 text-[12px] leading-4 text-[var(--mc-ink)]",
-              machineParallelMultiplier > 1
-                ? "grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.7fr)]"
-                : "grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]",
+              "mt-1 grid min-w-0 items-stretch gap-1 text-[12px] leading-4 text-[var(--mc-ink)]",
+              isCustomRateNode
+                ? "grid-cols-[minmax(0,1fr)]"
+                : machineParallelMultiplier > 1
+                  ? "grid-cols-[minmax(0,1fr)_82px_72px_54px]"
+                  : "grid-cols-[minmax(0,1fr)_86px_76px]",
               isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
               nodeColor ? "recipe-node-stat-grid" : "",
             ].join(" ")}
             style={nodeColor ? { backgroundColor: nodeColor.panel } : undefined}
           >
-            <MachineCountStat
-              label={isCropProductionNode ? "Seeds" : "Machines"}
-              machineCount={projectNode.machineCount}
-              onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+            <UsageStat
+              nodeId={projectNode.id}
+              verdict={verdict}
+              isCustomRate={isCustomRateNode}
             />
-            <Stat
-              label={isCropProductionNode ? "Power" : "Power draw"}
-              value={
-                isCropProductionNode
-                  ? "Passive"
-                  : `${formatRate(result?.euT ?? 0, 0)} EU/t`
-              }
-            />
-            {machineParallelMultiplier > 1 ? (
-              <Stat
-                label="Parallel"
-                value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
-              />
+            {!isCustomRateNode ? (
+              <>
+                <Stat
+                  label={isCropProductionNode ? "Power" : "Power"}
+                  value={
+                    isCropProductionNode ? "Passive" : `${formatCompact(result?.euT ?? 0)} EU/t`
+                  }
+                />
+                <MachineCountStat
+                  label={isCropProductionNode ? "Seeds" : "Machines"}
+                  machineCount={projectNode.machineCount}
+                  onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+                />
+                {machineParallelMultiplier > 1 ? (
+                  <Stat
+                    label="Parallel"
+                    value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
+                  />
+                ) : null}
+              </>
             ) : null}
           </div>
         ) : null}
@@ -697,23 +705,56 @@ export const RecipeNode = memo(
   (previous, next) => previous.data === next.data && previous.selected === next.selected,
 );
 
-const VERDICT_STRIP_CLASS: Record<NodeVerdict["kind"], string> = {
-  starved: "flow-verdict-strip--starved",
-  choke: "flow-verdict-strip--choke",
-  "demand-set": "flow-verdict-strip--demand",
-  balanced: "flow-verdict-strip--balanced",
-  unwired: "flow-verdict-strip--off",
-  off: "flow-verdict-strip--off",
-  "no-recipe": "flow-verdict-strip--off",
+/** One word for the node's state, and where the fix lives. */
+interface VerdictWord {
+  word: string;
+  /** red = something upstream holds this down. amber = fix is on this card. */
+  tone: "short" | "over" | "calm";
+}
+
+function verdictWord(verdict: NodeVerdict, isCustomRate: boolean): VerdictWord {
+  switch (verdict.kind) {
+    case "starved":
+      return { word: "bottleneck", tone: "short" };
+    case "choke":
+      return { word: "over-asked", tone: "over" };
+    case "demand-set":
+      return verdict.pct <= 0.05
+        ? { word: "unused", tone: "calm" }
+        : { word: isCustomRate ? "under the dial" : "on demand", tone: "calm" };
+    case "balanced":
+      return { word: isCustomRate ? "at the dial" : "full", tone: "calm" };
+    case "unwired":
+      return { word: isCustomRate ? "no wires" : "hand-fed", tone: "calm" };
+    case "off":
+      return { word: "off", tone: "calm" };
+    case "no-recipe":
+      return { word: "no recipe", tone: "calm" };
+  }
+}
+
+const VERDICT_WORD_CLASS: Record<VerdictWord["tone"], string> = {
+  short: "font-bold text-[var(--verdict-short-ink)]",
+  over: "font-bold text-[var(--verdict-over-ink)]",
+  calm: "text-[var(--mc-ink-muted)]",
 };
 
 /**
- * The verdict strip replaces "Usage %": what state the node is in, why, what
- * to do next — and the limit ladder underneath: today's wall plus the next
- * ones in order, so a fix session never re-discovers the board after each
- * change. All copy follows the explainer voice: plain words, no riddles.
+ * USAGE: the widest cell in the footer, carrying the number and one word for
+ * why it reads that way. It replaced a four-line colored strip, and the two
+ * rules that came out of that are worth keeping:
+ *
+ * - never a third line. The footer repeats on every node, so a line spent
+ *   here is a line spent on the whole board; the fix note rides beside the
+ *   USAGE label instead of below the number.
+ * - the number is never colored. A node at 100% that still can't cover its
+ *   asks proves the speed and the problem are different facts — color lives
+ *   on the state word, which is the thing that says where to act.
+ *
+ * Everything longer (the honest rates, the culprit's own machine count, the
+ * ladder of what caps this next) lives in the hover.
  */
-function VerdictStrip({
+function UsageStat({
   nodeId,
   verdict,
   isCustomRate = false,
@@ -722,150 +763,239 @@ function VerdictStrip({
   verdict: NodeVerdict;
   isCustomRate?: boolean;
 }) {
+  const state = verdictWord(verdict, isCustomRate);
+  const deficit = verdict.deficit;
+  // Only over-asked names a count: a bottleneck is somebody else's machine
+  // count, so a number here would point at the wrong card.
+  const fixNote =
+    verdict.kind === "choke" && !isCustomRate && deficit?.machinesToAdd
+      ? `+${deficit.machinesToAdd} machine${deficit.machinesToAdd > 1 ? "s" : ""}`
+      : undefined;
+  const showPct = verdict.kind !== "off" && verdict.kind !== "no-recipe";
+
+  return (
+    <MinecraftTooltip
+      content={<VerdictHoverContent nodeId={nodeId} verdict={verdict} isCustomRate={isCustomRate} />}
+    >
+      <div className="flow-usage-stat min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+        <div className="flex items-baseline gap-2">
+          <span className="shrink-0 text-[9px] uppercase text-[var(--mc-ink-muted)]">Usage</span>
+          {fixNote ? (
+            <span className="min-w-0 flex-1 truncate text-right text-[9px] font-bold uppercase text-[var(--verdict-over-ink)]">
+              {fixNote}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-baseline gap-2">
+          {showPct ? (
+            <span className="shrink-0 text-[19px] font-bold leading-[21px] tabular-nums">
+              {/* Whole numbers — a decimal on a duty cycle is width, not
+                  information. The exception is a node that runs so slowly it
+                  would round to a flat 0% and read as dead. */}
+              {verdict.pct > 0 && verdict.pct < 0.5
+                ? formatRate(verdict.pct, 1)
+                : formatPct(verdict.pct)}
+              <span className="text-[13px]">%</span>
+            </span>
+          ) : null}
+          <span
+            className={[
+              "min-w-0 flex-1 truncate text-[11px] leading-4",
+              VERDICT_WORD_CLASS[state.tone],
+            ].join(" ")}
+          >
+            {state.word}
+          </span>
+        </div>
+      </div>
+    </MinecraftTooltip>
+  );
+}
+
+/**
+ * The strip's hover: the sentence you'd say out loud, then where to act with
+ * the culprit's OWN machine count, then the ladder — what caps this next and
+ * where it lands once today's wall is gone.
+ */
+function VerdictHoverContent({
+  nodeId,
+  verdict,
+  isCustomRate,
+}: {
+  nodeId: string;
+  verdict: NodeVerdict;
+  isCustomRate: boolean;
+}) {
   const project = useFactoryStore((state) => state.project);
   const lastResult = useFactoryStore((state) => state.lastResult);
+  const machineCount = Math.max(
+    1,
+    project.nodes.find((entry) => entry.id === nodeId)?.machineCount ?? 1,
+  );
   const ladder = useMemo(
     () => buildLimitLadder(project, lastResult, nodeId),
     [lastResult, nodeId, project],
   );
 
-  let word: string;
-  let cause: string | undefined;
-  let action: string | undefined;
-  // Minimum viable strip: one GENERAL line of why (the specific numbers
-  // already live on the chips), one line of fix.
-  switch (verdict.kind) {
-    case "starved": {
-      word = "▼ STARVING";
-      const binding = verdict.binding;
-      cause = isCustomRate
-        ? `A supply shortage leaves this drain only ${formatPct(verdict.pct)}% filled.`
-        : `An input shortage forces this machine to run only ${formatPct(verdict.pct)}% of the time.`;
-      const upstream = binding?.upstream;
-      if (binding?.tiedWithNames?.length) {
-        // Crowning one of a tie is float-dust theater; say what's true.
-        action = `→ ${binding.displayName} + ${binding.tiedWithNames.join(" + ")} are tied at the limit — raise either.`;
-      } else if (!upstream) {
-        action = "→ Fix the supply lines.";
-      } else if (upstream.kind === "loop") {
-        action = "→ Fed by its own loop — prime it from a buffer.";
-      } else if (upstream.kind === "buffer") {
-        action = `→ ${upstream.name} running dry — feed it faster.`;
-      } else if (upstream.atFullSpeed) {
-        action = `→ ${upstream.name} is maxed — add ${
-          upstream.machinesToAdd ? `+${upstream.machinesToAdd}` : "machines"
-        } there.`;
-      } else if (upstream.hasHeadroom) {
-        // Not starving — it could run faster; "fix above it" would mislead.
-        action = `→ ${upstream.name} can make more — add ${
-          upstream.machinesToAdd ? `+${upstream.machinesToAdd}` : "machines"
-        } there.`;
-      } else {
-        action = `→ ${upstream.name} at ${formatPct(upstream.pct)}% — fix above it.`;
-      }
-      break;
-    }
-    case "choke": {
-      word = "▲ CAN'T KEEP UP";
-      const deficit = verdict.deficit;
-      if (isCustomRate) {
-        cause = "Requests want more than the dialed rate.";
-        action = deficit
-          ? `→ Raise the rate by +${formatSlotRate(deficit.missingPerSecond, deficit.kind)}.`
-          : "→ Raise the rate.";
-        break;
-      }
-      cause =
-        verdict.pct >= 99.5
-          ? "This machine runs full-time, but that still can't satisfy all requests."
-          : "Requests exceed what this machine is making — the plan under-asks it.";
-      action = deficit?.machinesToAdd
-        ? `→ +${deficit.machinesToAdd} machine${deficit.machinesToAdd > 1 ? "s" : ""} covers ${
-            deficit.hungryOutputs > 1 ? `all ${deficit.hungryOutputs}` : "it"
-          } (or higher tier).`
-        : "→ Add machines, or a higher tier.";
-      break;
-    }
-    case "demand-set":
-      word = "● SET BY DEMAND";
-      cause =
-        verdict.pct <= 0.05
-          ? "Nothing draws from this yet."
-          : isCustomRate
-            ? "Requests draw less than the dialed rate."
-            : "Won't run full-time — demand is lower than what it can make.";
-      action =
-        verdict.headroomPct !== undefined && verdict.headroomPct > 0
-          ? `→ Fine — +${formatPct(verdict.headroomPct)}% free if demand grows.`
-          : "→ Fine.";
-      break;
-    case "balanced":
-      word = "✔ BALANCED";
-      cause = isCustomRate ? "Dialed rate met exactly." : "Full speed, every ask met.";
-      break;
-    case "unwired":
-      word = isCustomRate ? "● IDLE" : "● HAND-FED";
-      cause = isCustomRate
-        ? "No wires — this dial does nothing yet."
-        : "No lines yet — planner assumes hand-feeding.";
-      break;
-    case "off":
-      word = "■ OFF";
-      cause = "Node is disabled.";
-      break;
-    case "no-recipe":
-      word = "■ NO RECIPE";
-      break;
-  }
+  const title = verdictHoverTitle(verdict, isCustomRate);
+  const detail = verdictHoverDetail(verdict, isCustomRate);
+  const fix = verdictHoverFix(verdict, machineCount, isCustomRate);
+  const next = ladder.length > 1 ? ladder[1] : undefined;
 
-  const showPct = verdict.kind !== "off" && verdict.kind !== "no-recipe";
-  const showLadder =
-    ladder.length > 1 &&
-    (verdict.kind === "starved" || verdict.kind === "choke" || verdict.kind === "demand-set");
   return (
-    <div
-      className={["flow-verdict-strip mt-1 px-2 py-1", VERDICT_STRIP_CLASS[verdict.kind]].join(
-        " ",
-      )}
-    >
-      <div className="flex items-baseline gap-2">
-        <span className="whitespace-nowrap text-[11px] font-black leading-4 tracking-[1px]">
-          {word}
-        </span>
-        <span className="min-w-0 flex-1" />
-        {showPct ? (
-          <span className="shrink-0 text-[14px] font-bold leading-4 tabular-nums">
-            {formatRate(verdict.pct, verdict.pct >= 100 ? 0 : 1)}%
-          </span>
-        ) : null}
-      </div>
-      {/* Full sentences that wrap - an ellipsis here would hide exactly
-          what the user came to read. */}
-      {cause ? <div className="mt-0.5 text-[9px] leading-[13px] opacity-95">{cause}</div> : null}
-      {action ? <div className="text-[9px] leading-[13px] opacity-95">{action}</div> : null}
-      {showLadder ? (
-        <div className="mt-1 border-t border-white/25 pt-0.5">
-          <div className="text-[7px] font-black tracking-[0.5px] opacity-75">
-            WHAT LIMITS THIS, IN ORDER
+    <div className="w-64">
+      <div className="text-[13px] font-semibold text-white">{title}</div>
+      {detail ? <div className="mt-0.5 text-[11px] text-slate-300">{detail}</div> : null}
+      {fix ? (
+        <div className="mt-2 border-t border-white/15 pt-1.5">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+            {fix.heading}
+          </div>
+          <div className="text-[11px] leading-4 text-slate-200">{fix.body}</div>
+        </div>
+      ) : null}
+      {ladder.length > 1 ? (
+        <div className="mt-2 border-t border-white/15 pt-1.5">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+            What caps it next
           </div>
           {ladder.map((rung) => (
             <div
               key={`${rung.label}|${rung.pct}`}
-              className="flex items-baseline gap-1 text-[8.5px] leading-[12px]"
+              className={[
+                "flex items-baseline gap-2 text-[11px] leading-4",
+                rung.now ? "font-semibold text-white" : "text-slate-300",
+              ].join(" ")}
             >
-              <span className="w-9 shrink-0 text-right font-bold tabular-nums">
-                {formatPct(rung.pct)}%
-              </span>
-              <span className="min-w-0 flex-1 opacity-95">
-                {rung.label}
-                {rung.now ? " ← here" : ""}
-              </span>
+              <span className="w-10 shrink-0 text-right tabular-nums">{formatPct(rung.pct)}%</span>
+              <span className="min-w-0 flex-1">{rung.label}</span>
             </div>
           ))}
+          {/* Only a bottleneck can be "cleared" — on an over-asked node the
+              wall it stands on is its own machine count, and "clear that" would
+              be advice to delete the machines. */}
+          {next && ladder[0]?.now && verdict.kind === "starved" ? (
+            <div className="mt-0.5 text-[10px] leading-[14px] text-slate-400">
+              Clear that and this lands at {formatPct(next.pct)}%, held by {next.label}.
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
   );
+}
+
+function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string {
+  switch (verdict.kind) {
+    case "starved":
+      return `${verdict.binding?.displayName ?? "An input"} is the bottleneck`;
+    case "choke":
+      return isCustomRate ? "Asked for more than the dialed rate" : "Asked for more than it makes";
+    case "demand-set":
+      return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Downstream sets the speed";
+    case "balanced":
+      return isCustomRate ? "Dialed rate met exactly" : "Full speed, all asks met";
+    case "unwired":
+      return isCustomRate ? "No wires on this dial" : "Hand-fed";
+    case "off":
+      return "Disabled";
+    case "no-recipe":
+      return "No recipe";
+  }
+}
+
+function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string | undefined {
+  switch (verdict.kind) {
+    case "starved": {
+      const binding = verdict.binding;
+      if (!binding) {
+        return undefined;
+      }
+      const supplied = formatSlotRate(binding.suppliedPerSecond, binding.kind);
+      const needed = formatSlotRate(binding.neededPerSecond, binding.kind);
+      const tied = binding.tiedWithNames?.length
+        ? ` Tied with ${binding.tiedWithNames.join(", ")} — raise either.`
+        : "";
+      return `Gets ${supplied}, wants ${needed} at full speed.${tied}`;
+    }
+    case "choke": {
+      const deficit = verdict.deficit;
+      if (!deficit) {
+        return undefined;
+      }
+      const missing = formatSlotRate(deficit.missingPerSecond, deficit.kind);
+      return deficit.pluggedOutputs > 1
+        ? `${deficit.hungryOutputs} of ${deficit.pluggedOutputs} wired outputs go unfilled, ${missing} short on ${deficit.displayName}.`
+        : `${missing} short on ${deficit.displayName}.`;
+    }
+    case "demand-set":
+      return verdict.headroomPct && verdict.headroomPct > 0
+        ? `Nothing downstream wants the other ${formatPct(verdict.headroomPct)}%.`
+        : undefined;
+    case "balanced":
+      return isCustomRate ? undefined : "Fed, full, and everything it makes gets taken.";
+    case "unwired":
+      return isCustomRate
+        ? "This dial does nothing until something is wired to it."
+        : "The plan assumes you keep it stocked by hand.";
+    default:
+      return undefined;
+  }
+}
+
+function verdictHoverFix(
+  verdict: NodeVerdict,
+  machineCount: number,
+  isCustomRate: boolean,
+): { heading: string; body: string } | undefined {
+  if (verdict.kind === "starved") {
+    const upstream = verdict.binding?.upstream;
+    if (!upstream) {
+      return { heading: "Where to act", body: "Upstream, on the short line." };
+    }
+    if (upstream.kind === "loop") {
+      return { heading: "Where to act", body: "Fed by its own loop. Prime it from a buffer." };
+    }
+    if (upstream.kind === "buffer") {
+      return { heading: "Where to act", body: `${upstream.name} is running dry. Feed it faster.` };
+    }
+    const state = upstream.atFullSpeed
+      ? `${upstream.name} is already flat out.`
+      : upstream.hasHeadroom
+        ? `${upstream.name} runs at ${formatPct(upstream.pct)}% and could make more.`
+        : `${upstream.name} runs at ${formatPct(upstream.pct)}% and is held back itself.`;
+    const count = upstream.machinesToAdd
+      ? ` Add +${upstream.machinesToAdd} machine${upstream.machinesToAdd > 1 ? "s" : ""} there${
+          upstream.machineCount ? ` (${upstream.machineCount} today)` : ""
+        }.`
+      : upstream.hasHeadroom || upstream.atFullSpeed
+        ? " Add machines there, or a higher tier."
+        : " Follow the chain up.";
+    return { heading: "Where to act", body: `${state}${count}` };
+  }
+  if (verdict.kind === "choke") {
+    const deficit = verdict.deficit;
+    if (isCustomRate) {
+      return {
+        heading: "Fix here",
+        body: deficit
+          ? `Raise the rate by ${formatSlotRate(deficit.missingPerSecond, deficit.kind)}.`
+          : "Raise the rate.",
+      };
+    }
+    if (!deficit?.machinesToAdd) {
+      return { heading: "Fix here", body: "Add machines, or a higher tier." };
+    }
+    const covers =
+      deficit.hungryOutputs > 1 ? ` covers all ${deficit.hungryOutputs}` : " covers it";
+    return {
+      heading: "Fix here",
+      body: `+${deficit.machinesToAdd} machine${
+        deficit.machinesToAdd > 1 ? "s" : ""
+      }${covers} (${machineCount} today), or a higher tier.`,
+    };
+  }
+  return undefined;
 }
 
 /**
