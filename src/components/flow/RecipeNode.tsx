@@ -5,6 +5,7 @@ import { memo, useMemo, useState, type CSSProperties, type ReactNode } from "rea
 import { AlertTriangle, ChevronDown, Copy, Minus, Plus, Sprout } from "lucide-react";
 import type {
   FactoryNode,
+  MachineConfigTierOption,
   MachineTier,
   NodeThroughputResult,
   Recipe,
@@ -103,6 +104,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const { projectNode, recipe, result } = data;
   const [isCompareOpen, setCompareOpen] = useState(false);
   const [previewHandlerId, setPreviewHandlerId] = useState<string>();
+  // Hovering a config option shows the node as if it were picked. Same shape
+  // as the machine-tab preview: display-only, never written to the project.
+  const [previewConfigTier, setPreviewConfigTier] = useState<{
+    controlId: string;
+    key: string;
+  }>();
   const [isCropMenuOpen, setCropMenuOpen] = useState(false);
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
   const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
@@ -139,7 +146,25 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // render, including renders caused by unrelated store writes such as hover or
   // search. It also rebuilt `overclockedRecipe` each time, whose fresh identity
   // defeated NeiRecipeWindow's memo and re-ran the whole NEI pipeline downstream.
+  const previewedNode = useMemo(() => {
+    if (!previewConfigTier) {
+      return projectNode;
+    }
+    return {
+      ...projectNode,
+      machineConfigTiers: {
+        ...(projectNode.machineConfigTiers ?? {}),
+        [previewConfigTier.controlId]: previewConfigTier.key,
+      },
+      // The coil knob still has its own legacy field; a preview that only
+      // wrote the generic map would show nothing on a heating coil.
+      ...(previewConfigTier.controlId === "heatingCoil"
+        ? { coilTier: previewConfigTier.key }
+        : undefined),
+    };
+  }, [previewConfigTier, projectNode]);
   const derived = useMemo(() => {
+    const projectNode = previewedNode;
     const machineHandlers = getRecipeMachineHandlers(recipe);
     const selectedMachineHandler = getSelectedMachineHandler(recipe, projectNode);
     const nodeRecipe = applyRecipeInputOverrides(recipe, projectNode);
@@ -246,7 +271,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       overclockedRecipe,
       tierColor: tierControl ? GT_TIER_COLORS[tierControl.current] : undefined,
     };
-  }, [dataset, projectNode, recipe]);
+  }, [dataset, previewedNode, recipe]);
 
   const {
     machineHandlers,
@@ -331,7 +356,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     visibleMachineConfigControls.length > 0 ? (
       <MachineConfigControlPanel
         controls={visibleMachineConfigControls}
+        onPreview={(controlId, key) =>
+          setPreviewConfigTier(key === undefined ? undefined : { controlId, key })
+        }
         onSelect={(controlId, nextTier) => {
+          setPreviewConfigTier(undefined);
           if (controlId === "heatingCoil") {
             updateCoilTier(nextTier);
             return;
@@ -2064,12 +2093,84 @@ function getTreeGrowthSimulatorSlotTiers(control: MachineConfigTierControl) {
   );
 }
 
+/**
+ * The block a config option means. `sizeClass` must be a literal Tailwind
+ * pair — the class list is scanned at build time, so a computed size string
+ * would silently produce no CSS at all.
+ */
+function ConfigTierIcon({
+  resource,
+  sizeClass,
+}: {
+  resource: ResourceAmount;
+  sizeClass: string;
+}) {
+  if (!resource.iconPath && !resource.iconAtlas) {
+    return (
+      <span className="flex items-center justify-center whitespace-nowrap px-1 text-center text-[11px] font-black leading-none text-white [text-shadow:1px_1px_0_#000]">
+        {shortConfigLabel(resource)}
+      </span>
+    );
+  }
+  return (
+    <ResourceIcon
+      resource={{ ...resource, amount: 1, chance: undefined }}
+      bare
+      tooltip={false}
+      showAmount={false}
+      showConsumedState={false}
+      // No pixel size: ResourceIcon's zoom-and-clip crops the sprite's own
+      // transparent padding, so the block fills its square instead of
+      // floating in the middle of one.
+      className={`shrink-0 ${sizeClass}`}
+    />
+  );
+}
+
+/**
+ * What picking this option would change, against the one selected now. The
+ * card's rates come from the solver, so they cannot move on hover without a
+ * solve per mouse move; this says the same thing honestly and instantly.
+ */
+function configTierHint(
+  option: MachineConfigTierOption,
+  current: MachineConfigTierOption,
+): string | undefined {
+  const parts: string[] = [];
+  const ratio = (next: number | undefined, now: number | undefined) => {
+    const a = next ?? 1;
+    const b = now ?? 1;
+    return b === 0 ? undefined : a / b;
+  };
+  // A smaller duration multiplier is a faster machine, so speed inverts.
+  const speed = ratio(current.durationMultiplier, option.durationMultiplier);
+  if (speed !== undefined && Math.abs(speed - 1) > 0.005) {
+    parts.push(`${formatTimes(speed)} speed`);
+  }
+  const parallel = ratio(option.parallelMultiplier, current.parallelMultiplier);
+  if (parallel !== undefined && Math.abs(parallel - 1) > 0.005) {
+    parts.push(`${formatTimes(parallel)} parallel`);
+  }
+  const output = ratio(option.outputMultiplier, current.outputMultiplier);
+  if (output !== undefined && Math.abs(output - 1) > 0.005) {
+    parts.push(`${formatTimes(output)} output`);
+  }
+  const eut = ratio(option.eutMultiplier, current.eutMultiplier);
+  if (eut !== undefined && Math.abs(eut - 1) > 0.005) {
+    parts.push(`${formatTimes(eut)} EU/t`);
+  }
+  return parts.slice(0, 2).join(" · ") || undefined;
+}
+
 function MachineConfigControlPanel({
   controls,
   onSelect,
+  onPreview,
 }: {
   controls: MachineConfigTierControl[];
   onSelect: (controlId: string, nextTier: string) => void;
+  /** Hovering an option shows the node as if it were picked. */
+  onPreview?: (controlId: string, tierKey: string | undefined) => void;
 }) {
   if (controls.length === 0) {
     return null;
@@ -2084,27 +2185,33 @@ function MachineConfigControlPanel({
               {control.label}
             </span>
             <span className="flex min-w-0 items-center gap-1">
-              <span className="flex h-7 min-w-7 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] px-1 shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
-                {control.resource.iconPath ? (
-                  <ResourceIcon
-                    resource={control.resource}
-                    bare
-                    tooltip={false}
-                    showAmount={false}
-                    showConsumedState={false}
-                    iconPixelSize={30}
-                    className="h-6 w-6 !overflow-visible"
-                  />
-                ) : (
-                  <span className="whitespace-nowrap text-center text-[12px] font-black leading-4 text-white [text-shadow:1px_1px_0_#000]">
-                    {shortConfigLabel(control.resource)}
-                  </span>
-                )}
+              {/* A square the block fills, not a wide box with a small block
+                  adrift in it. */}
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+                <ConfigTierIcon
+                  resource={control.current.resource ?? control.resource}
+                  sizeClass="!h-[26px] !w-[26px]"
+                />
               </span>
               <MinecraftSelect
                 value={control.current.key}
-                options={control.tiers}
+                // Every option carries its own block, so the list is a row of
+                // casings rather than a list of names to translate.
+                options={control.tiers.map((tier) => ({
+                  key: tier.key,
+                  label: tier.label,
+                  hint: configTierHint(tier, control.current),
+                  icon: (
+                    <ConfigTierIcon
+                      resource={tier.resource ?? control.resource}
+                      sizeClass="!h-[18px] !w-[18px]"
+                    />
+                  ),
+                }))}
                 onSelect={(key) => onSelect(control.id, key)}
+                onPreview={
+                  onPreview ? (key) => onPreview(control.id, key) : undefined
+                }
                 disabled={control.tiers.length <= 1}
                 title={`${control.label}: ${control.current.label}`}
                 ariaLabel={control.label}
@@ -2117,6 +2224,7 @@ function MachineConfigControlPanel({
     </div>
   );
 }
+
 
 function PassiveProductionConfigPanel({
   className = "",
