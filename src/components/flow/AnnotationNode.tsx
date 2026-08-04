@@ -22,6 +22,19 @@ const DEFAULT_ANNOTATION_COLOR = "yellow" as const;
  */
 export const ANNOTATION_DRAG_HANDLE_CLASS = "annotation-drag-handle";
 
+/** Text notes: 14px matches the old fixed `text-sm`, so existing notes look identical. */
+const DEFAULT_ANNOTATION_FONT_SIZE = 14;
+const MIN_ANNOTATION_FONT_SIZE = 8;
+const MAX_ANNOTATION_FONT_SIZE = 96;
+const ANNOTATION_FONT_STEP = 2;
+
+function clampFontSize(value: number): number {
+  return Math.min(Math.max(Math.round(value), MIN_ANNOTATION_FONT_SIZE), MAX_ANNOTATION_FONT_SIZE);
+}
+
+const ANNOTATION_STEP_BUTTON_CLASS =
+  "flex h-5 w-5 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)] disabled:cursor-not-allowed disabled:opacity-40";
+
 function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<AnnotationFlowNode>) {
   const { annotation } = data;
   const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
@@ -209,13 +222,26 @@ function TextShape({
     }
   };
 
+  const fontSize = clampFontSize(annotation.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE);
+  const stepFontSize = (delta: number) => {
+    const next = clampFontSize(fontSize + delta);
+    if (next !== fontSize) {
+      updateAnnotation(annotation.id, { fontSize: next });
+    }
+  };
+
   return (
     <div
-      className="h-full w-full border-2 font-mono text-sm shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),3px_3px_0_rgba(0,0,0,0.25)]"
+      className="group/text relative h-full w-full border-2 font-mono shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),3px_3px_0_rgba(0,0,0,0.25)]"
       style={{
         backgroundColor: "var(--mc-78)",
         borderColor: color.swatch,
         color: "var(--mc-ink)",
+        fontSize,
+        // Notes are set at any size from a caption to a section heading, so a
+        // fixed line-height would either crush the big ones or air out the
+        // small ones.
+        lineHeight: 1.25,
       }}
       onDoubleClick={(event) => {
         event.stopPropagation();
@@ -224,10 +250,48 @@ function TextShape({
       }}
       title={isEditing ? undefined : "Double-click to edit"}
     >
+      {/* Size controls, top right, on hover only: a note is something you read,
+          and two buttons parked on every note permanently would be furniture in
+          the way of the text. They sit above the text layer so they stay
+          clickable over long content. */}
+      <div className="nodrag absolute -top-3 right-0 z-10 hidden gap-0.5 group-hover/text:flex">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            stepFontSize(-ANNOTATION_FONT_STEP);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          disabled={fontSize <= MIN_ANNOTATION_FONT_SIZE}
+          className={ANNOTATION_STEP_BUTTON_CLASS}
+          title="Smaller text"
+          aria-label="Smaller text"
+        >
+          <span aria-hidden className="block h-[2px] w-[8px] bg-current" />
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            stepFontSize(ANNOTATION_FONT_STEP);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          disabled={fontSize >= MAX_ANNOTATION_FONT_SIZE}
+          className={ANNOTATION_STEP_BUTTON_CLASS}
+          title="Bigger text"
+          aria-label="Bigger text"
+        >
+          <span aria-hidden className="relative block h-[8px] w-[8px]">
+            <span className="absolute left-0 top-[3px] block h-[2px] w-[8px] bg-current" />
+            <span className="absolute left-[3px] top-0 block h-[8px] w-[2px] bg-current" />
+          </span>
+        </button>
+      </div>
       {isEditing ? (
         <textarea
           ref={textareaRef}
-          className="nodrag nopan h-full w-full resize-none bg-transparent p-2 font-mono text-sm outline-none"
+          className="nodrag nopan h-full w-full resize-none bg-transparent p-2 font-mono outline-none"
+          style={{ fontSize, lineHeight: 1.25 }}
           value={draftText}
           onChange={(event) => setDraftText(event.target.value)}
           onBlur={commit}

@@ -84,7 +84,8 @@ import {
   type PortStory,
 } from "./flow-explainers";
 import { useFactoryStore } from "@/store/factory-store";
-import { GT_NODE_COLORS } from "./node-colors";
+import { GT_NODE_COLORS, heatmapColorFor, heatmapInkFor } from "./node-colors";
+import { useBoardView } from "./board-view";
 import { getPaintBrushCursor } from "./paint-cursor";
 import { GT_TIER_COLORS } from "./tier-colors";
 
@@ -135,7 +136,20 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   );
   const isInspectorHighlighted =
     isFlowResourceHighlighted || isNodeBottleneckHighlighted || isUsageHighlighted;
-  const nodeColor = projectNode.colorTag ? GT_NODE_COLORS[projectNode.colorTag] : undefined;
+  // Heatmap wins over the paint tag while it is on, and gives it straight back
+  // when it goes off — the tag is never written to or lost.
+  const { heatmapMode } = useBoardView();
+  const paintColor = projectNode.colorTag ? GT_NODE_COLORS[projectNode.colorTag] : undefined;
+  const heatColor = heatmapMode
+    ? heatmapColorFor(result?.utilization, projectNode.enabled !== false)
+    : undefined;
+  const nodeColor = heatColor ?? paintColor;
+  // Only the heatmap flips the ink. A hand-painted node keeps every element
+  // in its theme colours and just tints the panels behind them: half the card
+  // is textures and inset chips that don't recolour, and switching the text
+  // under them to match the paint made those pieces harder to read, not
+  // easier.
+  const nodeInk = heatColor ? heatmapInkFor(heatColor.panel) : undefined;
   const paintCursor =
     nodeColorPaintMode !== undefined
       ? getPaintBrushCursor(
@@ -428,20 +442,24 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           ? "outline outline-4 outline-offset-4 outline-yellow-300 ring-8 ring-cyan-300 [filter:drop-shadow(0_0_16px_rgba(34,211,238,0.95))]"
           : "",
         exceedsMaxTier ? "ring-4 ring-red-500" : "",
-        // A custom-rate node is a control panel, not a machine: it carries the
-        // Supply/Request pair, a typed rate, and a "Custom Rate: <resource>"
-        // title. At the machine card's floor those all collapse — the title
-        // truncates and the rate field shrinks to a few pixels — so it gets a
-        // wider floor of its own.
-        isCustomRateNode ? "min-w-[320px]" : "min-w-[240px]",
+        // No special floor for custom-rate nodes any more: the title is a
+        // fixed two words and the rate field sizes to the number typed into
+        // it, so the card is exactly as wide as its contents need.
+        "min-w-[240px]",
       ].join(" ")}
       style={{
         ...(nodeColor
-          ? {
+          ? ({
               backgroundColor: nodeColor.panel,
               borderColor: nodeColor.border,
               boxShadow: `inset 2px 2px 0 var(--mc-100), inset -2px -2px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
-            }
+              // The paint decides the ink. Everything inside the card reads
+              // its text colour from these two variables, so one assignment
+              // here keeps names, rates and stats legible on black and on
+              // white alike — no component needs to know its own colour.
+              "--mc-ink": nodeInk?.ink,
+              "--mc-ink-muted": nodeInk?.inkMuted,
+            } as CSSProperties)
           : undefined),
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
@@ -556,9 +574,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                   {isCropFarmPlaceholder
                     ? "Pick a crop..."
                     : isCustomRateNode
-                      ? (customRateSlot
-                          ? `Custom Rate: ${resourceLabel(customRateSlot.resource)}`
-                          : "Custom Rate")
+                      ? // The resource is already on the port right below,
+                        // with its icon. Repeating its name in the title only
+                        // ever made the card wider.
+                        "Custom Rate"
                       : (cropTitle ?? previewHandler.label)}
                   {isPreviewing ? " ?" : ""}
                 </span>
@@ -1622,11 +1641,13 @@ function CustomRatePanel({
         inputMode="decimal"
         aria-label="Rate"
         title="Rate in the board's active unit"
-        // min-w, not w-0: this is the one field on the board somebody types
-        // into. Collapsing it to whatever slack the row has left made it a
-        // few pixels wide on a narrow node; now it claims a floor and takes
-        // the slack on top of it, so the node grows to fit the typing space.
-        className="nodrag h-6 min-w-[76px] flex-1 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
+        // Sized to the number, not to the row: `flex-1` made the field claim
+        // every spare pixel and the card was permanently as wide as its
+        // widest possible contents. In `ch` on a mono font this is exactly
+        // the typed digits, so a "5" node is small and a "1000000000" node
+        // grows only when it has to.
+        style={{ width: `${Math.min(Math.max(draft.length + 2, 5), 16)}ch` }}
+        className="nodrag h-6 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
       />
       <span className="shrink-0 pr-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
         {rateUnitSuffix(kind === "fluid").trim() || "/s"}

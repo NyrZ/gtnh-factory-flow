@@ -316,6 +316,8 @@ export const factoryAnnotationSchema = z.object({
     height: z.number(),
   }),
   arrowDirection: z.enum(["down-right", "down-left", "up-right", "up-left"]).optional(),
+  // Bounded so an imported plan cannot carry a note that swallows the board.
+  fontSize: z.number().min(8).max(96).optional(),
 });
 
 export const factoryEdgeSchema = z.object({

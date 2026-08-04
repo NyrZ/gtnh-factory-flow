@@ -76,6 +76,10 @@ interface FactoryStore {
   recipeResourceHistory: RecipeBrowserResource[];
   pendingResourceConnection?: PendingResourceConnection;
   nodeColorPaintMode?: FactoryNodeColorTag | null;
+  // The read-only display modes (heatmap, the three line modes) are NOT here:
+  // they are per-person view settings that must survive a reload, so they live
+  // in `board-view.ts` behind localStorage. Keeping them in this store would
+  // have meant either losing them on refresh or persisting them with the plan.
   hoveredStorageResourceKey?: string;
   hoveredFlowResourceKey?: string;
   selectedFlowResourceKey?: string;

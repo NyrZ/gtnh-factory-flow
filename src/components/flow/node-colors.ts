@@ -1,5 +1,30 @@
 import type { FactoryNodeColorTag } from "@/lib/model/types";
 
+/**
+ * Perceived brightness of a hex colour, 0 (black) to 1 (white) — the sRGB
+ * relative luminance from WCAG, not a naive channel average, because green
+ * reads far brighter than blue at the same numeric value.
+ */
+function relativeLuminance(hex: string): number {
+  const channel = (offset: number) => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+/**
+ * The ink a tinted node has to switch to. Black text on the black tag and
+ * white text on the white tag were both unreadable — the paint decides the
+ * ink, so every swatch stays legible. The threshold sits where white and
+ * black text reach equal contrast against the panel.
+ */
+function inkFor(panel: string): { ink: string; inkMuted: string } {
+  return relativeLuminance(panel) < 0.34
+    ? { ink: "#f2f3f7", inkMuted: "rgba(242,243,247,0.74)" }
+    : { ink: "#16161a", inkMuted: "rgba(22,22,26,0.66)" };
+}
+
 export const GT_NODE_COLORS: Record<
   FactoryNodeColorTag,
   { swatch: string; panel: string; header: string; border: string; shadow: string }
@@ -117,6 +142,103 @@ export const GT_NODE_COLORS: Record<
     shadow: "#1d1d21",
   },
 };
+
+/**
+ * The ink each tag needs, keyed the same way as the colours. Node components
+ * push these into `--mc-ink` / `--mc-ink-muted` on the card root, so every
+ * label, rate and stat inside inherits readable text without any component
+ * knowing which colour it was painted.
+ */
+export const GT_NODE_INK: Record<FactoryNodeColorTag, { ink: string; inkMuted: string }> =
+  Object.fromEntries(
+    Object.entries(GT_NODE_COLORS).map(([tag, color]) => [tag, inkFor(color.panel)]),
+  ) as Record<FactoryNodeColorTag, { ink: string; inkMuted: string }>;
+
+export interface NodeSurfaceColor {
+  swatch: string;
+  panel: string;
+  header: string;
+  border: string;
+  shadow: string;
+}
+
+function mixHex(from: string, to: string, amount: number): string {
+  const channel = (hex: string, offset: number) =>
+    Number.parseInt(hex.slice(offset, offset + 2), 16);
+  const blend = (offset: number) =>
+    Math.round(channel(from, offset) + (channel(to, offset) - channel(from, offset)) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${blend(1)}${blend(3)}${blend(5)}`;
+}
+
+/**
+ * The heatmap ramp: red at idle, amber at half, green at full blast.
+ *
+ * Deliberately NOT the cold-to-hot ramp a heatmap usually implies. Everywhere
+ * else on this board red means "act here" and green means "done", and a mode
+ * where red suddenly meant "running beautifully" would poison that reading.
+ * So the question this answers is "where is my capacity going to waste?" — the
+ * loudest nodes are the ones with the most slack.
+ */
+const HEAT_STOPS: Array<{ at: number; color: string }> = [
+  { at: 0, color: "#b02e26" },
+  { at: 0.5, color: "#c8a929" },
+  { at: 1, color: "#5e7c16" },
+];
+
+/** A machine that is switched off has no heat to report — it reads neutral. */
+const HEAT_OFF: NodeSurfaceColor = {
+  swatch: "#6b6f70",
+  panel: "#6b6f70",
+  header: "#565e61",
+  border: "#33383a",
+  shadow: "#474f52",
+};
+
+export function heatmapColorFor(
+  utilization: number | undefined,
+  enabled = true,
+): NodeSurfaceColor {
+  if (!enabled || utilization === undefined || !Number.isFinite(utilization)) {
+    return HEAT_OFF;
+  }
+  const value = Math.min(Math.max(utilization, 0), 1);
+  let base = HEAT_STOPS[HEAT_STOPS.length - 1]!.color;
+  for (let index = 0; index < HEAT_STOPS.length - 1; index += 1) {
+    const low = HEAT_STOPS[index]!;
+    const high = HEAT_STOPS[index + 1]!;
+    if (value <= high.at) {
+      const span = high.at - low.at;
+      base = mixHex(low.color, high.color, span > 0 ? (value - low.at) / span : 0);
+      break;
+    }
+  }
+  return {
+    swatch: base,
+    // The card body is the ramp muted toward the panel grey, so the heat reads
+    // as a wash rather than as a solid block of paint behind the text.
+    panel: mixHex(base, "#8a8a8a", 0.42),
+    header: mixHex(base, "#8a8a8a", 0.18),
+    border: mixHex(base, "#101010", 0.42),
+    shadow: base,
+  };
+}
+
+/** Ink for a heat colour, same luminance rule as the paint tags. */
+export function heatmapInkFor(panel: string): { ink: string; inkMuted: string } {
+  return inkFor(panel);
+}
+
+/**
+ * The same ramp the heatmap uses, as a bare colour — for lines in flow mode,
+ * where the reading is "how much moves here" rather than "how busy is this
+ * machine". One ramp across both so a red line and a red node mean the same
+ * kind of thing: the quiet end of the scale.
+ */
+export function flowRampColor(normalized: number): string {
+  return heatmapColorFor(normalized).swatch;
+}
 
 export const GT_NODE_COLOR_TAGS = [
   "white",

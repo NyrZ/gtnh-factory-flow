@@ -135,6 +135,8 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           : "",
       ].join(" ")}
       style={{
+        // Paint tints the card, nothing else: the tank glass, the drawer face
+        // and the net line keep their own colours so the textures stay legible.
         ...(storageColor
           ? ({
               "--storage-node-tint": storageColor.panel,

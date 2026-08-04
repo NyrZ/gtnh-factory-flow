@@ -201,6 +201,21 @@ textarea {
   z-index: 20 !important;
 }
 
+/* Thickness mode: the whole edge LAYER drops beneath the node layer.
+
+   Note on why it is the layer and not the edge: both rules above set a z-index
+   on a positioned element, which makes each layer a stacking context, so an
+   edge's own z-index is sealed inside .react-flow__edges and is never compared
+   against anything inside a node. It is edges-over-all or edges-under-all —
+   "above the card, below the ports" cannot be expressed, and a per-edge value
+   is silently ignored. Flipping the layer is the only lever there is.
+
+   Thin lines keep the old order, on top, where a 3px wire crossing a card is a
+   detail rather than an obstruction. */
+.factory-flow-board--edges-under .react-flow__edges {
+  z-index: 10 !important;
+}
+
 .factory-flow-board--moving .react-flow__viewport {
   will-change: transform;
 }
@@ -617,6 +632,24 @@ img {
    red fill says "slowed", the neutral chip says "the problem isn't here". */
 .flow-port--slowed .flow-port-bar > i {
   background: var(--rail-bar-bad);
+}
+
+/* Dashes marching source -> target inside the stroke. The offset counts DOWN
+   so they travel along the path's own direction, which routes are always built
+   in (source endpoint first). The travel distance is one dash+gap period,
+   published per edge as --flow-march-period, so the loop is seamless at every
+   line width.
+
+   No prefers-reduced-motion guard here on purpose: this is not decoration that
+   appears unasked, it is a mode the user switches on to watch things move, and
+   silently disabling it reads as a broken button. */
+@keyframes flow-rate-march {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: calc(-1 * var(--flow-march-period, 22px));
+  }
 }
 
 /* ---------- output couplings: the slim plug chip at the node's edge ---------- */

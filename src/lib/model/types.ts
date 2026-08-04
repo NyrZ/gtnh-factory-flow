@@ -304,6 +304,12 @@ export interface FactoryAnnotation {
   };
   /** Arrow only: which corners of the bounding box the arrow connects (tail → head). */
   arrowDirection?: FactoryAnnotationArrowDirection;
+  /**
+   * Text only: font size in px. A note headlining a whole section and a note
+   * labelling one machine want very different sizes, and resizing the box only
+   * ever changed how much room the same small text had to wrap in.
+   */
+  fontSize?: number;
 }
 
 export interface FactoryEdge {

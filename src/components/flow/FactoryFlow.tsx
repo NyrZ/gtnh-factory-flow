@@ -2,6 +2,7 @@
 
 import {
   Background,
+  BackgroundVariant,
   BaseEdge,
   Controls,
   ConnectionMode,
@@ -28,15 +29,26 @@ import {
 } from "@xyflow/react";
 import { toBlob, toSvg } from "html-to-image";
 import {
+  Ban,
+  Cable,
+  Ellipsis,
+  Flame,
   Gauge,
+  Grid3x3,
+  Grip,
   LoaderCircle,
+  Magnet,
   MoveUpRight,
   Paintbrush,
+  Palette,
+  Plus,
+  Redo2,
   Sprout,
   Square,
   Trash,
   Trash2,
   Type,
+  Undo2,
   X,
 } from "lucide-react";
 import {
@@ -85,7 +97,14 @@ import type {
 import { useFactoryStore } from "@/store/factory-store";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { RecipeNode, type RecipeFlowNode } from "./RecipeNode";
-import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE } from "./node-colors";
+import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE, flowRampColor } from "./node-colors";
+import {
+  CANVAS_PATTERNS,
+  useBoardView,
+  writeBoardView,
+  type BoardView,
+  type CanvasPattern,
+} from "./board-view";
 import { getDeleteCursor, getPaintBrushCursor } from "./paint-cursor";
 import {
   canonicalizeResourceHandleId,
@@ -172,6 +191,131 @@ const CANVAS_DOT_COLOR: Record<Theme, string> = {
   dark: "#4a4d55",
 };
 
+/** Snap step, and the background gap — same number so nodes land on marks. */
+const BOARD_GRID_SIZE = 24;
+/** Stable identity: a fresh array each render would re-init React Flow's snap. */
+const BOARD_GRID_SNAP: [number, number] = [BOARD_GRID_SIZE, BOARD_GRID_SIZE];
+const CANVAS_PATTERN_LABEL: Record<CanvasPattern, string> = {
+  dots: "Background: dots",
+  lines: "Background: grid lines",
+  cross: "Background: crosses",
+  none: "Background: blank",
+};
+const CANVAS_PATTERN_VARIANT: Record<
+  Exclude<CanvasPattern, "none">,
+  (typeof BackgroundVariant)[keyof typeof BackgroundVariant]
+> = {
+  dots: BackgroundVariant.Dots,
+  lines: BackgroundVariant.Lines,
+  cross: BackgroundVariant.Cross,
+};
+
+/**
+ * Thickness-mode line widths. Deliberately heavy: this mode is a pipe diagram,
+ * and a 3px "thin" line was too close to a normal one to read as a volume at
+ * all. The ceiling is a constant because the value driving it is NORMALISED —
+ * a recipe moving billions per second still lands at 1.0 and gets exactly this
+ * width, so no rate can blow the board up.
+ */
+const FLOW_MODE_MIN_WIDTH = 9;
+const FLOW_MODE_MAX_WIDTH = 34;
+/**
+ * Dash travel in flow pixels per second: the quietest line on the board, and
+ * the busiest. Expressed as a velocity rather than a duration so the speed
+ * reads as flow and nothing else — see the note where it is applied.
+ */
+const PULSE_MIN_VELOCITY = 130;
+const PULSE_MAX_VELOCITY = 434;
+
+/**
+ * How far apart parallel runs sit, as a multiple of EDGE_LANE_SPACING.
+ *
+ * Lane spacing was chosen for ~3px wires: at 14px apart they read as separate
+ * lines with room to spare. A 34px pipe in a 14px lane overlaps its neighbour
+ * by more than half, so thickness mode widens every lane to clear the widest
+ * line it can draw. Published as a module value (not a prop) because the
+ * routing functions that consume it are pure and module-level; the board bumps
+ * it and drops the route caches, which is the same discipline every other
+ * geometry input here follows.
+ */
+let publishedEdgeLaneScale = 1;
+const THICK_LINE_LANE_SCALE = 2.8;
+/** Below this a rate is display noise, not a flow — it must not set the floor. */
+const RATE_DISPLAY_EPSILON = 1e-6;
+
+/**
+ * How much of a line's weight comes from its RANK among the other lines rather
+ * than from its value. This is the knob that buys resolution.
+ *
+ * A pure value scale is honest and useless: one fluid line at 10,000/s squashes
+ * every other line on the board into the bottom pixel of the range. A pure log
+ * scale fixes the squashing across orders of magnitude but still cannot
+ * separate 10,000 from 10,005 — they are the same width to any eye.
+ *
+ * Rank separates them perfectly (adjacent values are adjacent ranks, always one
+ * step apart) but throws away magnitude: it cannot tell you that one line moves
+ * a thousand times more than another, only that it moves more. Neither alone is
+ * what you want, so the two are blended — rank leading, because the reading
+ * being asked for is "which of these is bigger", not "how big exactly".
+ */
+const FLOW_RANK_WEIGHT = 0.62;
+
+/** value -> its 0..1 position among the distinct values present, ascending. */
+function distinctRankIndex(sortedValues: number[]): Map<number, number> {
+  const ranks = new Map<number, number>();
+  for (const value of sortedValues) {
+    if (!ranks.has(value)) {
+      ranks.set(value, ranks.size);
+    }
+  }
+  const last = ranks.size - 1;
+  if (last <= 0) {
+    for (const value of ranks.keys()) {
+      ranks.set(value, 1);
+    }
+    return ranks;
+  }
+  for (const [value, index] of ranks) {
+    ranks.set(value, index / last);
+  }
+  return ranks;
+}
+
+/**
+ * A line's weight, 0 (quietest on the board) to 1 (busiest), blending its
+ * logarithmic share of the range with its rank among the other lines.
+ */
+function flowHeatFor(
+  value: number,
+  min: number,
+  max: number,
+  ranks: Map<number, number>,
+): number {
+  if (value <= RATE_DISPLAY_EPSILON || !Number.isFinite(min)) {
+    return 0;
+  }
+  // One line, or every line equal: it is the biggest there is.
+  if (max - min <= RATE_DISPLAY_EPSILON) {
+    return 1;
+  }
+  // log1p keeps this well behaved for the sub-1/s rates chanced outputs
+  // produce, where a plain log would dive toward negative infinity.
+  const logSpan = Math.log1p(max) - Math.log1p(min);
+  const logShare = logSpan > 1e-9 ? (Math.log1p(value) - Math.log1p(min)) / logSpan : 1;
+  const rankShare = ranks.get(value) ?? logShare;
+  return Math.min(
+    Math.max(rankShare * FLOW_RANK_WEIGHT + logShare * (1 - FLOW_RANK_WEIGHT), 0),
+    1,
+  );
+}
+/**
+ * Which scale a line is measured on. Fluids move in litres and everything else
+ * in whole units, so they are ranged apart; aspects are counted like items.
+ */
+function flowBucketFor(kind: ResourceKind): "item" | "fluid" {
+  return kind === "fluid" ? "fluid" : "item";
+}
+
 const RECIPE_SLOT_EDGE_OFFSET = 20;
 const STORAGE_SLOT_EDGE_OFFSET = 55;
 const EDGE_BUNDLE_CLEARANCE = 30;
@@ -233,6 +377,19 @@ type ResourceEdgeData = {
     isSupplyCapped: boolean;
   };
   isFlowHighlighted?: boolean;
+  /**
+   * Set when any of the three line modes is on. `heat` is this line's share of
+   * its own kind's range, 0 for the quietest line on the board and 1 for the
+   * busiest; the flags say which of colour, thickness and marching dashes to
+   * apply, so the three mix freely.
+   */
+  flowRate?: {
+    heat: number;
+    kind: "item" | "fluid";
+    color: boolean;
+    thickness: boolean;
+    pulse: boolean;
+  };
   /**
    * Bust token for the edge-identity cache. Node size changes bump it, which
    * makes every rebuilt edge structurally new so all of them re-render and
@@ -497,6 +654,9 @@ export function FactoryFlow() {
   const cancelResourceConnection = useFactoryStore((state) => state.cancelResourceConnection);
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const setNodeColorPaintMode = useFactoryStore((state) => state.setNodeColorPaintMode);
+  const boardView = useBoardView();
+  const { lineHeatMode, lineThicknessMode, linePulseMode } = boardView;
+  const anyLineMode = lineHeatMode || lineThicknessMode || linePulseMode;
   const setFlowViewportCenter = useFactoryStore((state) => state.setFlowViewportCenter);
   const hoveredStorageResourceKey = useFactoryStore((state) => state.hoveredStorageResourceKey);
   const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
@@ -684,6 +844,19 @@ export function FactoryFlow() {
   // route. Reads through the ref so identity-only `flowNodes` churn (hover
   // zIndex, solver results) doesn't feed it.
   const publishBoardGeometry = useCallback(() => {
+    // Lane width is a routing input just like node bounds, so it is published
+    // from here — and because thickness mode is in this callback's deps, the
+    // layout effect below re-runs on toggle and bumps the layout epoch, which
+    // is what makes every edge reroute against the new lanes. Widening the
+    // lanes invalidates every cached route, so they go too.
+    const nextLaneScale = lineThicknessMode ? THICK_LINE_LANE_SCALE : 1;
+    if (publishedEdgeLaneScale !== nextLaneScale) {
+      publishedEdgeLaneScale = nextLaneScale;
+      // Hop size follows the stroke widths now (see hopRadiusFor), and those
+      // are republished on every pass — the routes just have to be rebuilt so
+      // the new bumps are drawn.
+      directRouteCache.clear();
+    }
     const geometryById = new Map<string, { x: number; y: number; width: number; height: number }>();
     for (const node of flowNodesRef.current) {
       geometryById.set(node.id, {
@@ -694,7 +867,18 @@ export function FactoryFlow() {
       });
     }
     publishedBoardGeometryById = geometryById;
+    // Annotations are ink on the board, not furniture. A box drawn AROUND a
+    // cluster used to be a solid obstacle spanning all of it, so every wire
+    // inside was forced to detour around its own group — the drawing changed
+    // the routing without changing the factory. Wires now pass straight
+    // through boxes, arrows and notes as if they were not there.
+    const annotationIds = new Set(
+      flowNodesRef.current
+        .filter((node) => node.type === "annotationNode")
+        .map((node) => node.id),
+    );
     publishedBoardBounds = [...geometryById.entries()]
+      .filter(([id]) => !annotationIds.has(id))
       .map(([id, geometry]) => ({
         id,
         bounds: {
@@ -707,7 +891,7 @@ export function FactoryFlow() {
       .filter((entry) => entry.bounds.right > entry.bounds.left)
       .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
     invalidateMeasuredLayout();
-  }, []);
+  }, [lineThicknessMode]);
   useLayoutEffect(() => {
     // Drag frames rewrite positions constantly. Measurements stay frozen for
     // the whole drag: untouched edges keep their cached routes and edges on
@@ -779,6 +963,84 @@ export function FactoryFlow() {
       outletCounts.set(key, (outletCounts.get(key) ?? 0) + 1);
     }
 
+    // What actually moves on each line, storage adjustment included, resolved
+    // up front because flow mode has to see every edge's figure before it can
+    // style any one of them.
+    //
+    // Written as a bare loop with no local helper functions on purpose: a
+    // function declared and called inside this memo makes the React Compiler
+    // drop its memoization of the whole thing, and this is the hottest memo
+    // on the board. Verified with eslint, not assumed.
+    //
+    // Items and fluids get their own scale. A busy item line moves tens per
+    // second and a busy fluid line moves tens of thousands, so one shared
+    // range would paint every item line at the cold end for ever.
+    const transferredById = new Map<string, number>();
+    const itemValues: number[] = [];
+    const fluidValues: number[] = [];
+    let itemMin = Number.POSITIVE_INFINITY;
+    let itemMax = 0;
+    let fluidMin = Number.POSITIVE_INFINITY;
+    let fluidMax = 0;
+    for (const edge of project.edges) {
+      const edgeResult = result.edges[edge.id];
+      const targetStorage = storagesById.get(edge.target);
+      const sourceStorage = storagesById.get(edge.source);
+      const sourceResult = result.nodes[edge.source];
+      const resourceKey = makeResourceKey(edge.resourceKind, edge.resourceId);
+      let value = edgeResult?.transferredPerSecond ?? edgeResult?.demandPerSecond ?? edge.ratePerSecond ?? 0;
+      if (targetStorage && !sourceStorage && sourceResult) {
+        const speed = Number.isFinite(sourceResult.utilization)
+          ? Math.min(Math.max(sourceResult.utilization, 0), 1)
+          : 0;
+        const effectiveOutput = (sourceResult.outputs[resourceKey]?.amountPerSecond ?? 0) * speed;
+        const taken = directTakenBySourceResource.get(`${edge.source}|${resourceKey}`) ?? 0;
+        const sinks = storageSinkCounts.get(`${edge.source}|${resourceKey}`) ?? 1;
+        value = Math.min(value, Math.max(0, effectiveOutput - taken) / sinks);
+      }
+      transferredById.set(edge.id, value);
+      if (value > RATE_DISPLAY_EPSILON) {
+        if (edge.resourceKind === "fluid") {
+          fluidMin = Math.min(fluidMin, value);
+          fluidMax = Math.max(fluidMax, value);
+          fluidValues.push(value);
+        } else {
+          itemMin = Math.min(itemMin, value);
+          itemMax = Math.max(itemMax, value);
+          itemValues.push(value);
+        }
+      }
+    }
+    // Sorted distinct values per kind, for the rank half of the scale below.
+    itemValues.sort((left, right) => left - right);
+    fluidValues.sort((left, right) => left - right);
+    const itemRanks = distinctRankIndex(itemValues);
+    const fluidRanks = distinctRankIndex(fluidValues);
+
+    // Each line's weight and the width that follows from it, resolved before
+    // anything renders. The widths go to module scope because hops are built
+    // at ROUTE time and need to know how thick the line they cross will be.
+    const flowHeatById = new Map<string, number>();
+    publishedEdgeStrokeWidths.clear();
+    for (const edge of project.edges) {
+      const isFluidEdge = edge.resourceKind === "fluid";
+      const heat = anyLineMode
+        ? flowHeatFor(
+            transferredById.get(edge.id) ?? 0,
+            isFluidEdge ? fluidMin : itemMin,
+            isFluidEdge ? fluidMax : itemMax,
+            isFluidEdge ? fluidRanks : itemRanks,
+          )
+        : 0;
+      flowHeatById.set(edge.id, heat);
+      publishedEdgeStrokeWidths.set(
+        edge.id,
+        lineThicknessMode
+          ? FLOW_MODE_MIN_WIDTH + heat * (FLOW_MODE_MAX_WIDTH - FLOW_MODE_MIN_WIDTH)
+          : DEFAULT_EDGE_STROKE_WIDTH,
+      );
+    }
+
     // Prune ghost routes synchronously (the pruneNodeDataCaches effect runs
     // after render): edges rendered this pass must not hop over or steer
     // around routes of edges that were just deleted.
@@ -795,21 +1057,12 @@ export function FactoryFlow() {
       const demand = edgeResult?.demandPerSecond ?? edge.ratePerSecond ?? 0;
       const sourceStorage = storagesById.get(edge.source);
       const targetStorage = storagesById.get(edge.target);
-      const sourceResult = result.nodes[edge.source];
-      // For machine-to-storage lines, derive the real inflow from the maker's
-      // actual output; the solver's transferred is the full-speed surplus.
-      const resourceKey = makeResourceKey(edge.resourceKind, edge.resourceId);
-      let transferred = edgeResult?.transferredPerSecond ?? demand;
-      if (targetStorage && !sourceStorage && sourceResult) {
-        const speed = Number.isFinite(sourceResult.utilization)
-          ? Math.min(Math.max(sourceResult.utilization, 0), 1)
-          : 0;
-        const effectiveOutput =
-          (sourceResult.outputs[resourceKey]?.amountPerSecond ?? 0) * speed;
-        const taken = directTakenBySourceResource.get(`${edge.source}|${resourceKey}`) ?? 0;
-        const sinks = storageSinkCounts.get(`${edge.source}|${resourceKey}`) ?? 1;
-        transferred = Math.min(transferred, Math.max(0, effectiveOutput - taken) / sinks);
-      }
+      // Pre-computed above, storage adjustment and all.
+      const transferred = transferredById.get(edge.id) ?? 0;
+      // This line's place in its own kind's range: 0 is the quietest line on
+      // the board, 1 the busiest. A single line, or a board where every line
+      // is equal, reads as the biggest there is.
+      const flowHeat = flowHeatById.get(edge.id) ?? 0;
       // isLimited almost never survives the solver's utilisation convergence,
       // since demand gets scaled down to whatever supply exists. The nameplate
       // comparison is what actually catches a starved machine. Storage soaks
@@ -850,7 +1103,18 @@ export function FactoryFlow() {
       // (and re-routing) them entirely.
       return reuseDeepObjectIdentity(edgeObjectCache, edge.id, {
         id: edge.id,
-        zIndex: isNodeDragging ? 2000 : isFlowHighlighted ? 1200 : 20,
+        // Thick lines dive UNDER the cards. At 3px a wire crossing a node
+        // edge-on was a detail; at 34px it buries the very ports it docks
+        // into, so in thickness mode the pipe passes behind the card and only
+        // its approach is visible. -1 keeps it above annotation boxes (-5),
+        // which must stay the backmost thing on the board.
+        zIndex: isNodeDragging
+          ? 2000
+          : lineThicknessMode
+            ? -1
+            : isFlowHighlighted
+              ? 1200
+              : 20,
         source: edge.source,
         target: edge.target,
         sourceHandle: canonicalSourceHandle,
@@ -888,40 +1152,62 @@ export function FactoryFlow() {
           routeIndex: edgeIndex,
           bundle: edgeBundles.get(edge.id),
           isFlowHighlighted,
+          // Flow mode: how big this line is on its own kind's scale, 0 (the
+          // quietest line on the board) to 1 (the busiest). The edge draws
+          // marching dashes over itself when this is set.
+          flowRate: anyLineMode
+            ? {
+                heat: flowHeat,
+                kind: flowBucketFor(edge.resourceKind),
+                color: lineHeatMode,
+                thickness: lineThicknessMode,
+                pulse: linePulseMode,
+              }
+            : undefined,
           layoutEpoch: layoutVersion,
         },
         style: {
-          stroke: edgeColor,
-          strokeDasharray: isStarvedEdge ? "4 6" : undefined,
-          strokeOpacity: isFlowHighlighted
-            ? 1
-            : isStarvedEdge
-              ? 0.58
-              : isStorageEdge
-                ? 0.86
-                : 0.92,
-          strokeWidth: isFlowHighlighted
-            ? 5.5
-            : isStorageEdge
-              ? isStorageEdgeEmphasized
-                ? 4
-                : 3.1
+          stroke: lineHeatMode ? flowRampColor(flowHeat) : edgeColor,
+          // Volume is the whole message in thickness mode, so the starved
+          // dashes stand down rather than chopping up a fat pipe.
+          strokeDasharray: isStarvedEdge && !lineThicknessMode ? "4 6" : undefined,
+          strokeOpacity: lineThicknessMode
+            ? 0.95
+            : isFlowHighlighted
+              ? 1
               : isStarvedEdge
-                ? 2.7
-                : edge.resourceKind === "fluid"
-                  ? 3.4
-                  : 2.9,
+                ? 0.58
+                : isStorageEdge
+                  ? 0.86
+                  : 0.92,
+          strokeWidth: lineThicknessMode
+            ? FLOW_MODE_MIN_WIDTH + flowHeat * (FLOW_MODE_MAX_WIDTH - FLOW_MODE_MIN_WIDTH)
+            : isFlowHighlighted
+              ? 5.5
+              : isStorageEdge
+                ? isStorageEdgeEmphasized
+                  ? 4
+                  : 3.1
+                : isStarvedEdge
+                  ? 2.7
+                  : edge.resourceKind === "fluid"
+                    ? 3.4
+                    : 2.9,
         },
       });
     });
   }, [
     activeFlowResourceKey,
+    anyLineMode,
     hoveredStorageResourceKey,
+    lineHeatMode,
+    linePulseMode,
+    lineThicknessMode,
     isNodeDragging,
     layoutVersion,
     project,
     recipeSearch,
-    result.edges,
+    result,
     storagesById,
   ]);
 
@@ -1621,6 +1907,11 @@ export function FactoryFlow() {
     (tag: FactoryNodeColorTag | null | undefined) => {
       setAnnotationTool(undefined);
       setDeleteMode(false);
+      // Picking up the brush drops the heatmap: painting under it would look
+      // like nothing happened, because the heat is covering every colour.
+      if (tag !== undefined) {
+        writeBoardView({ heatmapMode: false });
+      }
       setNodeColorPaintMode(tag);
     },
     [setNodeColorPaintMode],
@@ -1809,6 +2100,18 @@ export function FactoryFlow() {
 
   const fitViewOptions = useMemo(() => ({ padding: 0.18 }), []);
 
+  // Turning the heat on drops the brush: painting while every node is showing
+  // heat would have you picking colours you cannot see land.
+  const handleHeatmapChange = useCallback(
+    (enabled: boolean) => {
+      if (enabled) {
+        setNodeColorPaintMode(undefined);
+      }
+      writeBoardView({ heatmapMode: enabled });
+    },
+    [setNodeColorPaintMode],
+  );
+
   const paintCursor =
     nodeColorPaintMode !== undefined
       ? getPaintBrushCursor(
@@ -1825,6 +2128,7 @@ export function FactoryFlow() {
         paintCursor ? "factory-flow-board--painting" : "",
         annotationTool ? "factory-flow-board--annotating" : "",
         isDeleteMode ? "factory-flow-board--deleting" : "",
+        lineThicknessMode ? "factory-flow-board--edges-under" : "",
       ].join(" ")}
       style={
         {
@@ -1866,8 +2170,26 @@ export function FactoryFlow() {
         minZoom={0.15}
         maxZoom={1.8}
         colorMode={theme}
+        // React Flow's default ("basic") raises every edge to at least the
+        // z-index of its two endpoint nodes, so an edge can never be told to
+        // pass BEHIND a node it connects to — which is why asking for -1 did
+        // nothing. Manual mode takes the zIndex we publish literally. This
+        // board already sets an explicit zIndex on every edge, so nothing else
+        // depended on the automatic elevation.
+        zIndexMode="manual"
+        snapToGrid={boardView.snapToGrid}
+        snapGrid={BOARD_GRID_SNAP}
       >
-        <Background gap={24} size={2} color={CANVAS_DOT_COLOR[theme]} />
+        {boardView.canvasPattern === "none" ? null : (
+          <Background
+            variant={CANVAS_PATTERN_VARIANT[boardView.canvasPattern]}
+            gap={BOARD_GRID_SIZE}
+            // Lines tile edge to edge, so they need to be thinner than a dot
+            // to read as a background instead of as graph paper.
+            size={boardView.canvasPattern === "lines" ? 1 : 2}
+            color={CANVAS_DOT_COLOR[theme]}
+          />
+        )}
         <Controls position="bottom-left" />
         {annotationDraft && annotationTool ? (
           <AnnotationDraftPreview
@@ -1886,6 +2208,11 @@ export function FactoryFlow() {
         onAnnotationToolChange={handleAnnotationToolChange}
         isDeleteMode={isDeleteMode}
         onDeleteModeChange={handleDeleteModeChange}
+      />
+      <BoardViewToolbar
+        view={boardView}
+        onChange={writeBoardView}
+        onHeatmapChange={handleHeatmapChange}
       />
       <SourceToolbar />
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
@@ -1909,12 +2236,47 @@ const SourceToolbar = memo(function SourceToolbar() {
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
+  // Subscribe to the DEPTHS, not the history arrays: a selector returning the
+  // array itself would re-render this toolbar on every project edit.
+  const undo = useFactoryStore((state) => state.undo);
+  const redo = useFactoryStore((state) => state.redo);
+  const canUndo = useFactoryStore((state) => state.undoHistory.length > 0);
+  const canRedo = useFactoryStore((state) => state.redoHistory.length > 0);
+  const historyButtonClass = (enabled: boolean) =>
+    [
+      "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+      enabled ? "hover:brightness-110" : "cursor-not-allowed opacity-40",
+    ].join(" ");
 
   return (
     <div
       data-board-toolbar
       className="nodrag pointer-events-none absolute left-3 top-3 z-20 flex items-start gap-2"
     >
+      {/* History first, and set apart: it undoes everything the rest of the
+          board does, so it does not belong inside the add-a-node group. */}
+      <div className="pointer-events-auto mr-1 flex gap-1">
+        <button
+          type="button"
+          onClick={undo}
+          disabled={!canUndo}
+          className={historyButtonClass(canUndo)}
+          title={canUndo ? "Undo (Ctrl+Z)" : "Nothing to undo"}
+          aria-label="Undo"
+        >
+          <Undo2 className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={redo}
+          disabled={!canRedo}
+          className={historyButtonClass(canRedo)}
+          title={canRedo ? "Redo (Ctrl+Shift+Z)" : "Nothing to redo"}
+          aria-label="Redo"
+        >
+          <Redo2 className="h-4 w-4" />
+        </button>
+      </div>
       <button
         type="button"
         onClick={addCropFarmNode}
@@ -2045,6 +2407,137 @@ const ANNOTATION_TOOLS: Array<{
 
 // Memoized because FactoryFlow re-renders every frame of a node drag; with
 // stable callbacks this toolbar renders only when a tool or colour changes.
+/**
+ * Board VIEW controls, deliberately set apart from the paint and annotation
+ * tools above them. Those change the plan; these only change how you look at
+ * it, and mixing the two in one strip made "does this edit my factory?" a
+ * question you had to answer per button.
+ */
+const BoardViewToolbar = memo(function BoardViewToolbar({
+  view,
+  onChange,
+  onHeatmapChange,
+}: {
+  view: BoardView;
+  onChange: (patch: Partial<BoardView>) => void;
+  /** Heatmap also drops the paint brush, which lives in the Zustand store. */
+  onHeatmapChange: (enabled: boolean) => void;
+}) {
+  const { snapToGrid, canvasPattern, heatmapMode, lineHeatMode, lineThicknessMode, linePulseMode } =
+    view;
+  const PatternIcon =
+    canvasPattern === "lines"
+      ? Grid3x3
+      : canvasPattern === "cross"
+        ? Plus
+        : canvasPattern === "none"
+          ? Ban
+          : Grip;
+  const buttonClass = (active: boolean) =>
+    [
+      "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+      active ? "ring-2 ring-cyan-300" : "",
+    ].join(" ");
+
+  return (
+    <div
+      data-board-toolbar
+      // top-16, not top-3: a clear gap below the editing tools is the whole
+      // point of the grouping.
+      className="nodrag pointer-events-none absolute right-3 top-16 z-20 flex items-start gap-1"
+    >
+      <button
+        type="button"
+        onClick={() =>
+          onChange({
+            canvasPattern:
+              CANVAS_PATTERNS[
+                (CANVAS_PATTERNS.indexOf(canvasPattern) + 1) % CANVAS_PATTERNS.length
+              ],
+          })
+        }
+        className={buttonClass(false)}
+        title={`${CANVAS_PATTERN_LABEL[canvasPattern]} — click to change`}
+        aria-label={CANVAS_PATTERN_LABEL[canvasPattern]}
+      >
+        <PatternIcon className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange({ snapToGrid: !snapToGrid })}
+        className={buttonClass(snapToGrid)}
+        title={
+          snapToGrid
+            ? `Grid lock on — nodes snap to ${BOARD_GRID_SIZE}px`
+            : "Grid lock off — nodes move freely"
+        }
+        aria-label={snapToGrid ? "Turn grid lock off" : "Turn grid lock on"}
+        aria-pressed={snapToGrid}
+      >
+        <Magnet className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onHeatmapChange(!heatmapMode)}
+        className={buttonClass(heatmapMode)}
+        title={
+          heatmapMode
+            ? "Heatmap on — colours show how hard each machine runs. Click to restore your colours."
+            : "Heatmap: colour every machine by how hard it runs (red = idle, green = full)"
+        }
+        aria-label={heatmapMode ? "Turn heatmap off" : "Turn heatmap on"}
+        aria-pressed={heatmapMode}
+      >
+        <Flame className="h-4 w-4" />
+      </button>
+      {/* The three line modes, independent and mixable. Volume is always
+          ranked within a kind, items against items and fluids against fluids. */}
+      <button
+        type="button"
+        onClick={() => onChange({ lineHeatMode: !lineHeatMode })}
+        className={buttonClass(lineHeatMode)}
+        title={
+          lineHeatMode
+            ? "Line colour: by volume. Click to restore resource colours."
+            : "Colour every line by how much moves through it (red = least, green = most)"
+        }
+        aria-label={lineHeatMode ? "Turn line colour off" : "Colour lines by volume"}
+        aria-pressed={lineHeatMode}
+      >
+        <Palette className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange({ lineThicknessMode: !lineThicknessMode })}
+        className={buttonClass(lineThicknessMode)}
+        title={
+          lineThicknessMode
+            ? "Line thickness: by volume. Click to restore normal widths."
+            : "Thicken every line by how much moves through it"
+        }
+        aria-label={lineThicknessMode ? "Turn line thickness off" : "Thicken lines by volume"}
+        aria-pressed={lineThicknessMode}
+      >
+        <Cable className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange({ linePulseMode: !linePulseMode })}
+        className={buttonClass(linePulseMode)}
+        title={
+          linePulseMode
+            ? "Moving dashes: on. Click to stop them."
+            : "Show which way each line flows, with dashes that march faster on busier lines"
+        }
+        aria-label={linePulseMode ? "Stop the moving dashes" : "Show moving dashes"}
+        aria-pressed={linePulseMode}
+      >
+        <Ellipsis className="h-4 w-4" />
+      </button>
+    </div>
+  );
+});
+
 const PaintToolbar = memo(function PaintToolbar({
   paintMode,
   onPaintModeChange,
@@ -2318,8 +2811,32 @@ function ResourceEdgeComponent({
   // muddy; boost saturation everywhere and lift toward white — a touch more
   // on the dark canvas.
   const vividColor = saturateHexColor(resourceColor, 0.6);
-  const edgeColor =
+  const resolvedResourceColor =
     theme === "dark" ? brightenHexColor(vividColor, 0.2) : brightenHexColor(vividColor, 0.08);
+  // Flow mode repaints the line by volume. The stroke colour is derived HERE
+  // from the resource, not read from `style`, so setting style.stroke upstream
+  // did nothing at all — the ramp has to be applied at the point of use.
+  const flowRate = data?.flowRate;
+  const edgeColor =
+    flowRate?.color === true ? flowRampColor(flowRate.heat) : resolvedResourceColor;
+  // Likewise the width: the branches below override style.strokeWidth for
+  // highlighted and bundle-primary lines, which is exactly why only some lines
+  // were thickening. In thickness mode the published width wins for every line.
+  const flowWidth =
+    flowRate?.thickness === true ? Number(style?.strokeWidth ?? FLOW_MODE_MIN_WIDTH) : undefined;
+  // Dash geometry scales with the stroke so the marks read the same on a hair
+  // line and on a fat pipe.
+  const pulseStroke = flowWidth ?? Number(style?.strokeWidth ?? 3);
+  const pulseDash = Math.round(Math.max(5, pulseStroke * 0.9));
+  const pulseGap = Math.round(Math.max(10, pulseStroke * 1.9));
+  // Speed is a real PIXELS-PER-SECOND velocity derived from volume, then
+  // converted to a duration for this line's dash period. Setting the duration
+  // directly made a fat line look faster than a thin one carrying the same
+  // amount, because one period is further on a fat line — the width was
+  // leaking into a reading that is supposed to be about flow alone.
+  const pulseVelocity = PULSE_MIN_VELOCITY +
+    (flowRate?.heat ?? 0) * (PULSE_MAX_VELOCITY - PULSE_MIN_VELOCITY);
+  const pulseDuration = ((pulseDash + pulseGap) / pulseVelocity).toFixed(3);
   const isGlobalView = hasEdgeDetail(detailLevel, EDGE_DETAIL_GLOBAL);
   // Lit when a hovered port or label pulls this line into its flow scope.
   // Boolean selector: only involved edges re-render on hover changes.
@@ -2478,6 +2995,7 @@ function ResourceEdgeComponent({
     : trimPolylineEnds(routedEdge.points, 26);
   const hoverPathD = hoverTrimmedPoints ? pointsToSvgPath(hoverTrimmedPoints) : undefined;
 
+
   const stopLabelDrag = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!labelDragRef.current) {
@@ -2516,13 +3034,15 @@ function ResourceEdgeComponent({
               strokeDasharray: isGlobalView && isEdgeStarved(data) ? "2 8" : style?.strokeDasharray,
               strokeLinecap: "round",
               strokeLinejoin: "round",
-              strokeOpacity: isHighlighted ? 0.95 : isGlobalView ? 0.36 : 0.72,
+              strokeOpacity: isHighlighted ? 0.95 : 0.72,
               strokeWidth:
-                (isHighlighted
-                  ? 6.5
-                  : data?.bundle?.role === "primary"
-                    ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
-                    : Number(style?.strokeWidth ?? 3.1)) + 2,
+                (flowWidth !== undefined
+                  ? flowWidth + (isHighlighted ? 2 : 0)
+                  : isHighlighted
+                    ? 6.5
+                    : data?.bundle?.role === "primary"
+                      ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
+                      : Number(style?.strokeWidth ?? 3.1)) + 2,
               pointerEvents: "none",
             }}
           />
@@ -2535,18 +3055,19 @@ function ResourceEdgeComponent({
               strokeDasharray: isGlobalView && isEdgeStarved(data) ? "2 8" : style?.strokeDasharray,
               strokeLinecap: "round",
               strokeLinejoin: "round",
-              strokeOpacity: isHighlighted
-                ? 1
-                : isGlobalView
-                  ? isEdgeStarved(data)
-                    ? 0.28
-                    : 0.52
-                  : style?.strokeOpacity,
-              strokeWidth: isHighlighted
-                ? 6.5
-                : data?.bundle?.role === "primary"
-                  ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
-                  : style?.strokeWidth,
+              // Zoom changes how much of the board you can see, never how the
+              // board looks. Below 0.45 zoom every line used to drop to 0.52
+              // opacity (0.28 when starved), which read as the whole plan
+              // washing out for no reason the user did anything to cause.
+              strokeOpacity: isHighlighted ? 1 : style?.strokeOpacity,
+              strokeWidth:
+                flowWidth !== undefined
+                  ? flowWidth + (isHighlighted ? 2 : 0)
+                  : isHighlighted
+                    ? 6.5
+                    : data?.bundle?.role === "primary"
+                      ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
+                      : style?.strokeWidth,
               filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
               // Edges select/hover through their label, never the stroke:
               // edges render above nodes (zIndex 20) so their slot-anchored
@@ -2555,6 +3076,32 @@ function ResourceEdgeComponent({
               pointerEvents: "none",
             }}
           />
+          {flowRate?.pulse ? (
+            // Which way it moves. Dashes march from source to target along the
+            // route's own direction, faster on the busier lines. The dash and
+            // gap scale with the line so they stay readable whether the stroke
+            // is 3px or 34px, and the offset animates by exactly one dash+gap
+            // period so the loop is seamless.
+            //
+            // The whole animation is declared inline as the `animation`
+            // shorthand rather than as class longhands plus an inline
+            // duration: one property, nothing to compose, nothing to be
+            // overridden by a stale stylesheet chunk.
+            <path
+              d={routedEdge.path}
+              fill="none"
+              stroke="rgba(255,255,255,0.92)"
+              strokeWidth={Math.max(2, pulseStroke * 0.38)}
+              strokeDasharray={`${pulseDash} ${pulseGap}`}
+              strokeLinecap="butt"
+              pointerEvents="none"
+              style={{
+                animation: `flow-rate-march ${pulseDuration}s linear infinite`,
+                // The keyframe travels one period; this is that period.
+                ["--flow-march-period" as string]: `${pulseDash + pulseGap}px`,
+              }}
+            />
+          ) : null}
         </>
       ) : null}
       {!isHiddenBundleMember && showArrowHead ? (
@@ -2630,7 +3177,7 @@ function ResourceEdgeComponent({
               pointerEvents: "all",
               color: labelTextColor,
               borderColor: isLabelHovered ? labelAccentColor : edgeColor,
-              opacity: isHighlighted || isLabelHovered ? 1 : isGlobalView ? 0.78 : 0.94,
+              opacity: isHighlighted || isLabelHovered ? 1 : 0.94,
               boxShadow: isLabelHovered
                 ? `0 0 0 2px ${labelAccentColor}, 0 0 12px ${labelAccentColor}66`
                 : isHighlighted
@@ -3217,7 +3764,11 @@ function getDirectEdgePath({
   });
 
   return {
-    path: pointsToHoppedSvgPath(points, collectEarlierRouteSegments(edgeId, routeIndex)),
+    path: pointsToHoppedSvgPath(
+      points,
+      collectEarlierRouteSegments(edgeId, routeIndex),
+      ownStrokeWidth(edgeId),
+    ),
     labelX: labelPoint.x,
     labelY: labelPoint.y + labelLift,
     labelHidden,
@@ -4600,7 +5151,7 @@ function isVerticalSide(side: string) {
 }
 
 function getEdgeLaneOffset(edgeId: string) {
-  return getEdgeHash(edgeId, EDGE_LANE_BUCKETS) * EDGE_LANE_SPACING;
+  return getEdgeHash(edgeId, EDGE_LANE_BUCKETS) * EDGE_LANE_SPACING * publishedEdgeLaneScale;
 }
 
 function getEdgeHash(edgeId: string, buckets: number) {
@@ -4725,7 +5276,11 @@ function getBundledEdgePath({
   const path = [
     ...sourcePoints.map((point) => `M ${point.x},${point.y} L ${busX},${point.y}`),
     `M ${busX},${minY} L ${busX},${maxY}`,
-    pointsToHoppedSvgPath(trunkPoints, collectEarlierRouteSegments(edgeId, routeIndex)),
+    pointsToHoppedSvgPath(
+      trunkPoints,
+      collectEarlierRouteSegments(edgeId, routeIndex),
+      ownStrokeWidth(edgeId),
+    ),
   ].join(" ");
   const labelPoint = getPointAtPolylineRatio(trunkPoints, 0.55) ?? {
     x: (busX + targetX) / 2,
@@ -4851,7 +5406,11 @@ function getBundledMemberEdgePath({
     x: (busX + targetX) / 2,
     y: (ownSourcePoint.y + targetY) / 2,
   };
-  const path = pointsToHoppedSvgPath(points, collectEarlierRouteSegments(edgeId, routeIndex));
+  const path = pointsToHoppedSvgPath(
+      points,
+      collectEarlierRouteSegments(edgeId, routeIndex),
+      ownStrokeWidth(edgeId),
+    );
   const [estimatedPath, estimatedLabelX, estimatedLabelY] = getSmoothStepPath({
     sourceX: busX,
     sourceY: ownSourcePoint.y,
@@ -5005,7 +5564,43 @@ function trimPolylineEnds(
   return trimmed;
 }
 
-const EDGE_HOP_RADIUS = 5;
+/**
+ * Hop size for normal wires. A 5px bump clears a 3px line with room to spare,
+ * and vanishes completely under a 34px pipe — the crossing reads as a flat X
+ * again, which is the exact thing hops exist to prevent. Thickness mode scales
+ * the bump so it still clears whatever it is hopping over.
+ */
+/** Air between the two strokes at the top of a hop. Snug, not floating. */
+const EDGE_HOP_GAP = 3;
+/** Nothing sensible needs a bump taller than this, whatever the widths say. */
+const EDGE_HOP_MAX_RADIUS = 44;
+
+/**
+ * Every line's current stroke width, by edge id, published by the board.
+ *
+ * Hops are built at ROUTE time, where the only thing known about the line
+ * being crossed is its id — so the widths have to be reachable from module
+ * scope, the same way node bounds are. A hop that ignores them is either a
+ * pimple under a fat pipe or a hoop over a hair.
+ */
+const publishedEdgeStrokeWidths = new Map<string, number>();
+const DEFAULT_EDGE_STROKE_WIDTH = 3;
+
+/**
+ * How far a line must lift to clear the one it crosses: half of each stroke,
+ * plus a little air. Two 3px wires give ~6px, near the old fixed 5; two 34px
+ * pipes give ~37px, which is what "snug over each other" actually costs at
+ * that size.
+ */
+function hopRadiusFor(ownWidth: number, otherWidth: number): number {
+  return Math.min(ownWidth / 2 + otherWidth / 2 + EDGE_HOP_GAP, EDGE_HOP_MAX_RADIUS);
+}
+
+function ownStrokeWidth(edgeId: string | undefined): number {
+  return (
+    (edgeId ? publishedEdgeStrokeWidths.get(edgeId) : undefined) ?? DEFAULT_EDGE_STROKE_WIDTH
+  );
+}
 
 /**
  * Earlier-routed edges' segments, for hop rendering: the later routeIndex
@@ -5018,13 +5613,20 @@ function collectEarlierRouteSegments(edgeId: string | undefined, routeIndex: num
     return [];
   }
 
-  const segments: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }> = [];
+  const segments: Array<{
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    width: number;
+  }> = [];
   for (const [otherId, entry] of directRouteCache) {
     if (otherId === edgeId || entry.routeIndex >= routeIndex) {
       continue;
     }
+    // Carry the crossed line's thickness along with its geometry: the hop is
+    // sized from it, not from a constant.
+    const width = publishedEdgeStrokeWidths.get(otherId) ?? DEFAULT_EDGE_STROKE_WIDTH;
     for (const segment of entry.segments) {
-      segments.push(segment);
+      segments.push({ ...segment, width });
     }
     if (segments.length > 600) {
       break;
@@ -5042,7 +5644,12 @@ function collectEarlierRouteSegments(edgeId: string | undefined, routeIndex: num
  */
 function pointsToHoppedSvgPath(
   points: Array<{ x: number; y: number }>,
-  otherSegments: Array<{ start: { x: number; y: number }; end: { x: number; y: number } }>,
+  otherSegments: Array<{
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    width: number;
+  }>,
+  ownWidth = DEFAULT_EDGE_STROKE_WIDTH,
 ) {
   if (points.length < 2 || otherSegments.length === 0) {
     return pointsToSvgPath(points);
@@ -5066,8 +5673,10 @@ function pointsToHoppedSvgPath(
     const crossings: Array<{ at: number; radius: number }> = [];
     const low = horizontal ? Math.min(from.x, to.x) : Math.min(from.y, to.y);
     const high = horizontal ? Math.max(from.x, to.x) : Math.max(from.y, to.y);
-    const radiusFor = (crossAt: number) =>
-      Math.min(EDGE_HOP_RADIUS, crossAt - low - 1, high - crossAt - 1);
+    // Room available on this run caps the bump, but the target height comes
+    // from the two stroke widths.
+    const radiusFor = (crossAt: number, otherWidth: number) =>
+      Math.min(hopRadiusFor(ownWidth, otherWidth), crossAt - low - 1, high - crossAt - 1);
     // The other line must properly OVERSHOOT this one on both sides: a
     // segment that merely ends a pixel or two past the line (T-junctions at
     // docks, lane-adjacent turns) reads as a touch, not a crossing, and a
@@ -5080,7 +5689,7 @@ function pointsToHoppedSvgPath(
         const crossAt = segment.start.x;
         const otherLow = Math.min(segment.start.y, segment.end.y);
         const otherHigh = Math.max(segment.start.y, segment.end.y);
-        const radius = radiusFor(crossAt);
+        const radius = radiusFor(crossAt, segment.width);
         if (radius >= 2.5 && from.y > otherLow + OVERSHOOT && from.y < otherHigh - OVERSHOOT) {
           crossings.push({ at: crossAt, radius });
         }
@@ -5088,7 +5697,7 @@ function pointsToHoppedSvgPath(
         const crossAt = segment.start.y;
         const otherLow = Math.min(segment.start.x, segment.end.x);
         const otherHigh = Math.max(segment.start.x, segment.end.x);
-        const radius = radiusFor(crossAt);
+        const radius = radiusFor(crossAt, segment.width);
         if (radius >= 2.5 && from.x > otherLow + OVERSHOOT && from.x < otherHigh - OVERSHOOT) {
           crossings.push({ at: crossAt, radius });
         }
@@ -5236,7 +5845,8 @@ function getMeasuredAvoidanceSweep() {
   } else if (typeof document !== "undefined") {
     for (const element of document.querySelectorAll<HTMLElement>(".react-flow__node")) {
       const id = element.dataset.id;
-      if (!id) {
+      // Same rule as the published set above: annotations never block a wire.
+      if (!id || element.classList.contains("react-flow__node-annotationNode")) {
         continue;
       }
 
