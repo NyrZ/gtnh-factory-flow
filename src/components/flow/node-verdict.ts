@@ -9,6 +9,7 @@ import type {
 } from "@/lib/model/types";
 import { isRecipeInputConsumed, makeResourceKey } from "@/lib/model";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
+import { collectTrashNodeIds } from "@/lib/model/trash";
 import { makeResourceHandleId } from "./resource-handles";
 
 type ProjectEdge = FactoryProject["edges"][number];
@@ -170,13 +171,136 @@ export function honestEdgeAskPerSecond(
  * The allocation-only version of this is what mis-crowned bottlenecks: the
  * ask coupling drags innocent lines' allocations down to the binder's level.
  */
+/**
+ * What a buffer can honestly hand ONE of its consumers.
+ *
+ * A tank with no reserve cannot deliver more than it receives, so once the
+ * asks on it exceed its inflow, that inflow is a REAL ceiling: the shortage
+ * just moved one hop upstream and the consumer is still starved by it. While
+ * the tank covers everyone it stays Infinity, which is what keeps a buffer
+ * from becoming a false ceiling (the rule that killed "could deliver 0%").
+ * A tank with no inbound lines is hand-stocked: assumed never dry.
+ */
+export function bufferRelaySupplyPerSecond(
+  project: FactoryProject,
+  result: ThroughputResult | undefined,
+  storageId: string,
+  edgeId: string,
+): number {
+  const index = getBufferRelayIndex(project, result);
+  // No inbound lines: hand-stocked, assumed never dry.
+  if ((index.inflowEdges.get(storageId) ?? 0) === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const inflow = index.inflow.get(storageId) ?? 0;
+  const asks = index.asks.get(storageId) ?? 0;
+  // Still covering everyone: not a ceiling, and must never become a false one.
+  if (asks <= inflow + RATE_EPSILON) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const ownAsk = index.edgeAsk.get(edgeId) ?? 0;
+  return inflow * (asks > RATE_EPSILON ? ownAsk / asks : 1);
+}
+
+/**
+ * Per-buffer inflow and asks, resolved in one pass over the edges.
+ *
+ * The scan used to live inside bufferRelaySupplyPerSecond, which made it
+ * O(edges) per buffer-fed input — and it is called from per-node code, so the
+ * board would have paid O(nodes × edges) on every solver tick. The index is
+ * built once per (project, result) pair and every lookup after that is O(1).
+ */
+interface BufferRelayIndex {
+  inflow: Map<string, number>;
+  inflowEdges: Map<string, number>;
+  asks: Map<string, number>;
+  edgeAsk: Map<string, number>;
+}
+
+// Keyed on object identity: the solver hands out a fresh result per tick, so a
+// stale index can never outlive the numbers it was built from.
+const bufferRelayIndexCache = new WeakMap<
+  FactoryProject,
+  { result: ThroughputResult | undefined; index: BufferRelayIndex }
+>();
+
+function getBufferRelayIndex(
+  project: FactoryProject,
+  result: ThroughputResult | undefined,
+): BufferRelayIndex {
+  const cached = bufferRelayIndexCache.get(project);
+  if (cached && cached.result === result) {
+    return cached.index;
+  }
+  const index: BufferRelayIndex = {
+    inflow: new Map(),
+    inflowEdges: new Map(),
+    asks: new Map(),
+    edgeAsk: new Map(),
+  };
+  const storageIds = new Set((project.storages ?? []).map((storage) => storage.id));
+  if (storageIds.size > 0) {
+    for (const edge of project.edges) {
+      if (storageIds.has(edge.target)) {
+        index.inflowEdges.set(edge.target, (index.inflowEdges.get(edge.target) ?? 0) + 1);
+        index.inflow.set(
+          edge.target,
+          (index.inflow.get(edge.target) ?? 0) +
+            (result?.edges[edge.id]?.transferredPerSecond ?? 0),
+        );
+      }
+      if (storageIds.has(edge.source)) {
+        const ask = honestEdgeAskPerSecond(
+          result?.edges[edge.id],
+          result?.nodes[edge.target],
+          edge,
+        );
+        index.edgeAsk.set(edge.id, ask);
+        index.asks.set(edge.source, (index.asks.get(edge.source) ?? 0) + ask);
+      }
+    }
+  }
+  bufferRelayIndexCache.set(project, { result, index });
+  return index;
+}
+
+/**
+ * What ONE inbound line can honestly deliver, buffers included.
+ *
+ * This is the call every consumer of honestEdgeAvailablePerSecond should make.
+ * The bare function defaults a buffer source to Infinity ("a tank grants
+ * whatever is asked"), which is only true while the tank is covering everyone;
+ * a dry one is a real ceiling and the shortage has simply moved one hop up.
+ * Forgetting the fourth argument makes every buffer-fed input look infinitely
+ * supplied, which silently disqualifies it from ever being named the
+ * bottleneck.
+ */
+function honestInboundAvailablePerSecond(
+  project: FactoryProject,
+  result: ThroughputResult | undefined,
+  edge: ProjectEdge,
+  sourceIsStorage: boolean,
+  sourceHasSoleOutlet: boolean,
+): number {
+  return honestEdgeAvailablePerSecond(
+    result?.edges[edge.id],
+    sourceIsStorage,
+    sourceHasSoleOutlet,
+    sourceIsStorage
+      ? bufferRelaySupplyPerSecond(project, result, edge.source, edge.id)
+      : Number.POSITIVE_INFINITY,
+  );
+}
+
 export function honestEdgeAvailablePerSecond(
   edgeResult: EdgeThroughput | undefined,
   sourceIsStorage: boolean,
   sourceHasSoleOutlet = false,
+  /** From bufferRelaySupplyPerSecond: a tank that runs dry IS a ceiling. */
+  bufferSupplyPerSecond = Number.POSITIVE_INFINITY,
 ): number {
   if (sourceIsStorage && edgeResult?.constraint !== "supply") {
-    return Number.POSITIVE_INFINITY;
+    return bufferSupplyPerSecond;
   }
   const allocated = edgeResult?.availablePerSecond ?? edgeResult?.transferredPerSecond ?? 0;
   if (sourceHasSoleOutlet && edgeResult?.sourceCapacityPerSecond !== undefined) {
@@ -396,13 +520,18 @@ function findBindingInput(
     }
     let supplied = 0;
     for (const edge of edges) {
-      supplied += honestEdgeAvailablePerSecond(
-        result.edges[edge.id],
+      supplied += honestInboundAvailablePerSecond(
+        project,
+        result,
+        edge,
         storageIds.has(edge.source),
         edgeSourceHasSoleOutlet(outletCounts, edge),
       );
     }
     // A non-dry buffer line covers whatever is needed — this input can't bind.
+    // A DRY one is finite and lands here like any other line, which is the
+    // whole point: a shortage that arrives through a buffer is still this
+    // input's shortage, and it has to be able to win the crown.
     if (!Number.isFinite(supplied)) {
       continue;
     }
@@ -567,14 +696,21 @@ export interface PortPlug {
    * hungry  = askers want more and THIS machine is the one to grow (amber)
    * blocked = askers want more but this machine is starving itself (red)
    * fed     = every asker gets what it asks for (green)
-   * dump    = only dead-end buffers attached — nothing ever draws from
-   *           them, so there is no ask to satisfy, just a place flow goes
+   * dump    = only dead ends attached — a trash can, or buffers nothing ever
+   *           draws from — so there is no ask to satisfy, just a place flow
+   *           goes. `dumpKind` says which place, because a tank that fills up
+   *           and a can that destroys the flow are not the same news.
    *
    * A buffer that HAS consumers is not a dump: it relays their asks one hop
    * upstream ("a recipe that crafts itself — the input is the output"), so
    * it participates in hungry/fed like any machine asker.
    */
   state: "hungry" | "blocked" | "fed" | "dump";
+  /**
+   * Where a `dump` actually ends: a trash can (destroyed), a tank (fluid
+   * buffer), or a store (item buffer). Absent on every other state.
+   */
+  dumpKind?: "trash" | "tank" | "store";
   /** One machine's name, "N machines", "via <buffer>", or the dump's name. */
   askerName: string;
   /** Distinct machine consumers on this port (0 when buffers only). */
@@ -680,6 +816,9 @@ export function buildRailPorts(
   const incoming = project.edges.filter((edge) => edge.target === nodeId);
   const outgoing = project.edges.filter((edge) => edge.source === nodeId);
   const storagesById = new Map((project.storages ?? []).map((storage) => [storage.id, storage]));
+  // A trash can asks for nothing — it eats whatever arrives. Counting it as a
+  // machine asker made every trashed output read as a happily fed coupling.
+  const trashNodeIds = collectTrashNodeIds(project);
   const nodesById = new Map(project.nodes.map((entry) => [entry.id, entry]));
   const recipesById = new Map(project.recipes.map((entry) => [entry.id, entry]));
   const outletCounts = countSourceOutlets(project);
@@ -732,16 +871,24 @@ export function buildRailPorts(
       const machineTargets = new Set<string>();
       const relayTargets = new Set<string>();
       const dumpTargets = new Set<string>();
+      const trashTargets = new Set<string>();
       for (const edge of edges) {
         const edgeResult = result?.edges[edge.id];
         const rate = edgeResult?.transferredPerSecond ?? 0;
         transferred += rate;
         if (isInput) {
-          available += honestEdgeAvailablePerSecond(
-            edgeResult,
+          available += honestInboundAvailablePerSecond(
+            project,
+            result,
+            edge,
             storagesById.has(edge.source),
             edgeSourceHasSoleOutlet(outletCounts, edge),
           );
+        } else if (trashNodeIds.has(edge.target)) {
+          // The can drinks the leftovers at whatever rate they arrive; there
+          // is no ask behind it to be a percentage of.
+          storageGet += rate;
+          trashTargets.add(edge.target);
         } else if (storagesById.has(edge.target)) {
           const relayed = relayedBufferAskPerSecond(project, result, edge.target, rate);
           if (relayed < 0) {
@@ -826,6 +973,16 @@ export function buildRailPorts(
                   ? "blocked"
                   : "hungry"
                 : "fed",
+          // A can beside a buffer is still a can: destruction is the louder
+          // fact, so it names the coupling.
+          dumpKind:
+            demanders > 0
+              ? undefined
+              : trashTargets.size > 0
+                ? "trash"
+                : kind === "fluid"
+                  ? "tank"
+                  : "store",
           askerName:
             machineTargets.size === 1 && relayTargets.size === 0
               ? machineNameOf([...machineTargets][0]!)
@@ -833,9 +990,13 @@ export function buildRailPorts(
                 ? `via ${storageNameOf([...relayTargets][0]!)}`
                 : demanders > 0
                   ? `${demanders} takers`
-                  : dumpTargets.size === 1
-                    ? storageNameOf([...dumpTargets][0]!)
-                    : `${dumpTargets.size} buffers`,
+                  : trashTargets.size > 0 && dumpTargets.size === 0
+                    ? trashTargets.size === 1
+                      ? "Trash Can"
+                      : `${trashTargets.size} trash cans`
+                    : dumpTargets.size === 1 && trashTargets.size === 0
+                      ? storageNameOf([...dumpTargets][0]!)
+                      : `${dumpTargets.size + trashTargets.size} dead ends`,
           askerMachines: machineTargets.size,
           askPerSecond: ask,
           getPerSecond: get,
@@ -948,8 +1109,10 @@ export function buildLimitLadder(
     }
     let available = 0;
     for (const edge of edges) {
-      available += honestEdgeAvailablePerSecond(
-        result?.edges[edge.id],
+      available += honestInboundAvailablePerSecond(
+        project,
+        result,
+        edge,
         storageIds.has(edge.source),
         edgeSourceHasSoleOutlet(outletCounts, edge),
       );

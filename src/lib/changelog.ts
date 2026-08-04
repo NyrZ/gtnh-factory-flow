@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.3.0",
+    date: "2026-08-03",
+    headline: "Smaller nodes, straighter answers",
+    notes: [
+      "Nodes take up far less room. Icons, ports and couplings are all tighter, so more of your factory fits on screen at once — the name and rate still read on every input and output.",
+      "Bottlenecks fed through a tank or drawer were never marked. The machine said it was starved but no ingredient turned red, and every one of them claimed something else was to blame. The real one is now highlighted.",
+      "Hovering the usage box lights only what is actually holding the machine back, instead of everything on the card that looks unhappy.",
+      "An output going nowhere now says where it ends — TRASH, TANK or STORE — instead of calling every one of them a dump.",
+    ],
+  },
+  {
     version: "1.2.0",
     date: "2026-08-03",
     headline: "Nodes read at a glance",

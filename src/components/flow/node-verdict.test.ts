@@ -162,6 +162,96 @@ describe("deriveNodeVerdict", () => {
     );
   });
 
+  // The bug: a shortage arriving through a buffer left the starved machine
+  // with NO binding input at all. honestEdgeAvailablePerSecond defaults a
+  // storage source to Infinity ("a tank grants whatever is asked"), and every
+  // caller took the default — so the one wired input was disqualified as a
+  // candidate, no chip went red, and its tooltip claimed another ingredient
+  // was the limit when the only other one was hand-fed.
+  it("crowns the input starved THROUGH a buffer, not a phantom ingredient", () => {
+    const proj = project({
+      recipes: [
+        { id: "r", name: "M", machineType: "M", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+        { id: "src", name: "P", machineType: "Producer", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+      ] as unknown as FactoryProject["recipes"],
+      storages: [
+        { id: "B", kind: "item", resourceId: "res", displayName: "Res Buffer" },
+      ] as unknown as FactoryProject["storages"],
+      nodes: [machineNode("N"), machineNode("P", "src")],
+      // P --800--> B --(asked 16000)--> N
+      edges: [edge("eIn", "P", "B"), edge("eOut", "B", "N")],
+    });
+    const result = throughput(
+      {
+        N: nodeResult({
+          utilization: 0.05,
+          capableUtilization: 0.05,
+          demandUtilization: 1,
+          inputs: {
+            "item:res": flow("item", "res", 16000),
+            // Hand-fed: no line, so it can never bind and must not be blamed.
+            "item:hand": flow("item", "hand", 5),
+          },
+        }),
+      },
+      {
+        eIn: edgeResult({ transferredPerSecond: 800, availablePerSecond: 800 }),
+        eOut: edgeResult({
+          transferredPerSecond: 800,
+          demandPerSecond: 800,
+          nameplateDemandPerSecond: 16000,
+        }),
+      },
+    );
+
+    const verdict = deriveNodeVerdict(proj, result, "N");
+    expect(verdict.kind).toBe("starved");
+    // The buffer is dry — asks (16000) far exceed its inflow (800) — so its
+    // line is a real ceiling of 800, and that is what sets the 5%.
+    expect(verdict.binding?.resourceKey).toBe("item:res");
+    expect(verdict.binding?.suppliedPerSecond).toBeCloseTo(800, 6);
+    expect(verdict.binding?.neededPerSecond).toBeCloseTo(16000, 6);
+    expect(verdict.binding?.shortfallPerSecond).toBeCloseTo(15200, 6);
+    expect(verdict.binding?.tiedKeys).toBeUndefined();
+  });
+
+  it("still refuses to blame a buffer that is covering everyone", () => {
+    const proj = project({
+      recipes: [
+        { id: "r", name: "M", machineType: "M", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+        { id: "src", name: "P", machineType: "Producer", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+      ] as unknown as FactoryProject["recipes"],
+      storages: [
+        { id: "B", kind: "item", resourceId: "res", displayName: "Res Buffer" },
+      ] as unknown as FactoryProject["storages"],
+      nodes: [machineNode("N"), machineNode("P", "src")],
+      edges: [edge("eIn", "P", "B"), edge("eOut", "B", "N"), edge("eLim", "P", "N", "lim")],
+    });
+    const result = throughput(
+      {
+        N: nodeResult({
+          utilization: 0.4,
+          capableUtilization: 0.4,
+          demandUtilization: 1,
+          inputs: { "item:res": flow("item", "res", 10), "item:lim": flow("item", "lim", 10) },
+        }),
+      },
+      {
+        // Inflow comfortably covers the ask: the buffer is not the ceiling.
+        eIn: edgeResult({ transferredPerSecond: 100, availablePerSecond: 100 }),
+        eOut: edgeResult({
+          transferredPerSecond: 10,
+          demandPerSecond: 10,
+          nameplateDemandPerSecond: 10,
+        }),
+        eLim: edgeResult({ transferredPerSecond: 4, availablePerSecond: 4, constraint: "supply" }),
+      },
+    );
+
+    const verdict = deriveNodeVerdict(proj, result, "N");
+    expect(verdict.binding?.resourceKey).toBe("item:lim");
+  });
+
   it("reads choke with the unmet ask and machines to add", () => {
     const proj = project({
       recipes: [

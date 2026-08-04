@@ -11,6 +11,17 @@ const PLUG_STATE_WORD = {
   dump: "DUMP",
 } as const;
 
+/**
+ * A dead end is named by the end it reaches, not by the word "dump" — only
+ * the trash can actually destroys anything, and a player reading DUMP over a
+ * tank they deliberately wired has been told their plan is wrong.
+ */
+const PLUG_DUMP_WORD = {
+  trash: "TRASH",
+  tank: "TANK",
+  store: "STORE",
+} as const;
+
 const PLUG_STATE_TONE = {
   hungry: "amber",
   blocked: "red",
@@ -319,12 +330,18 @@ export function explainPlug(
       lines = [`100% = every ask met (${fmt(plug.askPerSecond)}).`];
       break;
     case "dump":
-      lines = [`Dead end: ${fmt(plug.getPerSecond)} goes in, nothing draws from it.`];
+      lines =
+        plug.dumpKind === "trash"
+          ? [`Trashed: ${fmt(plug.getPerSecond)} goes in and is destroyed.`]
+          : [`Dead end: ${fmt(plug.getPerSecond)} goes in, nothing draws from it.`];
       break;
   }
 
   return {
-    stateWord: PLUG_STATE_WORD[plug.state],
+    stateWord:
+      plug.state === "dump"
+        ? PLUG_DUMP_WORD[plug.dumpKind ?? "store"]
+        : PLUG_STATE_WORD[plug.state],
     tone: PLUG_STATE_TONE[plug.state],
     rows: [],
     lineRows,

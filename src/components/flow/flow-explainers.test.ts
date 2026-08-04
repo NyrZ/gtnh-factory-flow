@@ -414,8 +414,68 @@ describe("explainPlug — the asker's side", () => {
 
     expect(rails.outputs[0]!.plug?.state).toBe("dump");
     expect(rails.outputs[0]!.plug?.askerName).toBe("PE Drawer (buffer)");
-    expect(story.stateWord).toBe("DUMP");
+    // An item buffer STORES what arrives — only the trash can destroys it.
+    expect(rails.outputs[0]!.plug?.dumpKind).toBe("store");
+    expect(story.stateWord).toBe("STORE");
     expect(story.lines[0]).toContain("Dead end");
+  });
+
+  it("names a fluid dead end after the tank it fills", () => {
+    const proj = project({
+      recipes: towerRecipes,
+      storages: [
+        { id: "T", kind: "fluid", resourceId: "water", displayName: "Water Tank" },
+      ] as unknown as FactoryProject["storages"],
+      nodes: [machineNode("N")],
+      edges: [edge("eTank", "N", "T", "water", "fluid")],
+    });
+    const result = throughput(
+      { N: nodeResult({ utilization: 1, outputs: { "fluid:water": flow("fluid", "water", 10) } }) },
+      { eTank: edgeResult({ transferredPerSecond: 10, demandPerSecond: 10 }) },
+    );
+    const verdict = deriveNodeVerdict(proj, result, "N");
+    const rails = buildRailPorts(
+      proj,
+      result,
+      "N",
+      { inputs: [], outputs: [{ kind: "fluid", id: "water", amount: 1 }] } as unknown as RecipeResources,
+      verdict,
+    );
+
+    expect(rails.outputs[0]!.plug?.dumpKind).toBe("tank");
+    expect(explainPlug(proj, result, "N", rails.outputs[0]!)!.stateWord).toBe("TANK");
+  });
+
+  it("calls a trash can what it is, and never a fed asker", () => {
+    const proj = project({
+      recipes: [
+        ...towerRecipes,
+        { id: "trash", name: "Trash Can", machineType: "Trash Can", inputs: [], outputs: [] },
+      ] as unknown as FactoryProject["recipes"],
+      nodes: [machineNode("N"), machineNode("CAN", "trash")],
+      edges: [edge("eTrash", "N", "CAN", "pe")],
+    });
+    const result = throughput(
+      { N: nodeResult({ utilization: 1, outputs: { "item:pe": flow("item", "pe", 10) } }) },
+      { eTrash: edgeResult({ transferredPerSecond: 10, demandPerSecond: 10 }) },
+    );
+    const verdict = deriveNodeVerdict(proj, result, "N");
+    const rails = buildRailPorts(
+      proj,
+      result,
+      "N",
+      { inputs: [], outputs: [{ kind: "item", id: "pe", amount: 1 }] } as unknown as RecipeResources,
+      verdict,
+    );
+    const story = explainPlug(proj, result, "N", rails.outputs[0]!)!;
+
+    // The can asks for nothing, so the coupling is a dead end, not a 100%
+    // satisfied contract with a machine called "Trash Can".
+    expect(rails.outputs[0]!.plug?.state).toBe("dump");
+    expect(rails.outputs[0]!.plug?.dumpKind).toBe("trash");
+    expect(rails.outputs[0]!.plug?.askerName).toBe("Trash Can");
+    expect(story.stateWord).toBe("TRASH");
+    expect(story.lines[0]).toContain("destroyed");
   });
 });
 

@@ -410,11 +410,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // wires reach the chips the same way they reach input chips.
   return (
     <div
+      // The verdict gates WHICH rows the usage hover lights (globals.css):
+      // a starved node blames its binding input, an over-asked one blames its
+      // couplings, and lighting both at once answers the wrong question.
+      data-verdict={verdict.kind}
       className={[
         // recipe-node-shell scopes the strip↔row hover link (globals.css):
         // hovering the verdict lights the input it blames, in pure CSS, so a
         // hover never re-renders a node.
-        "recipe-node-shell group relative min-w-[340px] w-max border-2 border-[var(--mc-96)] bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]",
+        "recipe-node-shell group relative w-max border-2 border-[var(--mc-96)] bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]",
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
         isCompareOpen ? "recipe-node-popup-open" : "",
@@ -424,6 +428,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           ? "outline outline-4 outline-offset-4 outline-yellow-300 ring-8 ring-cyan-300 [filter:drop-shadow(0_0_16px_rgba(34,211,238,0.95))]"
           : "",
         exceedsMaxTier ? "ring-4 ring-red-500" : "",
+        // A custom-rate node is a control panel, not a machine: it carries the
+        // Supply/Request pair, a typed rate, and a "Custom Rate: <resource>"
+        // title. At the machine card's floor those all collapse — the title
+        // truncates and the rate field shrinks to a few pixels — so it gets a
+        // wider floor of its own.
+        isCustomRateNode ? "min-w-[320px]" : "min-w-[240px]",
       ].join(" ")}
       style={{
         ...(nodeColor
@@ -649,7 +659,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               pending={pendingResourceConnection}
             />
             {rails.inputs.length > 0 && rails.outputs.length > 0 ? (
-              <div className="flex w-7 shrink-0 items-center justify-center self-stretch text-[24px] font-black text-[var(--mc-ink-muted)]">
+              <div className="flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
                 →
               </div>
             ) : null}
@@ -1033,6 +1043,9 @@ function verdictHoverFix(
   return undefined;
 }
 
+/** Input chip width, shared by the input rail and the output rail's chip. */
+const PORT_CHIP_WIDTH_CLASS = "w-[132px]";
+
 /**
  * One side of the port rails. Every port always renders - a hidden port is a
  * port somebody can't wire, so tall nodes are the accepted trade for big
@@ -1059,7 +1072,12 @@ function PortRail({
     <div
       className={[
         "flex shrink-0 flex-col justify-start gap-0.5 py-0",
-        isInput ? "w-[210px]" : "w-[264px]",
+        // Half the old rails. The rate text under each name was the thing that
+        // demanded 210px of chip; with it gone the name is the only wide thing
+        // left, and a truncated name plus a hover beats a board you can't fit.
+        // The output rail is chip (132) + 2px gap + the coupling (34, in
+        // globals.css) — anything wider and the couplings hang off the card.
+        isInput ? PORT_CHIP_WIDTH_CLASS : "w-[168px]",
       ].join(" ")}
     >
       {ports.map((port) =>
@@ -1141,6 +1159,13 @@ function PlugDragHandle({ nodeId, port }: { nodeId: string; port: RailPort }) {
   );
 }
 
+/** Where a dead-end output actually ends. Trash destroys; the rest keeps. */
+const PLUG_DUMP_WORD: Record<"trash" | "tank" | "store", string> = {
+  trash: "TRASH",
+  tank: "TANK",
+  store: "STORE",
+};
+
 const PLUG_GLOW_STYLE: CSSProperties = {
   boxShadow: "0 0 0 2px #fde047, 0 0 0 5px #22d3ee, 0 0 14px 3px rgba(34,211,238,0.95)",
   filter: "brightness(1.22)",
@@ -1172,9 +1197,11 @@ function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
             wrapper, so hovering the handle still opens the asker's story. */}
         <PlugDragHandle nodeId={nodeId} port={port} />
         {plug.state === "dump" ? (
-          // No ask exists to be a percent of — flow just ends here.
+          // No ask exists to be a percent of — flow just ends here. Name the
+          // end it reaches: "DUMP" read as destruction even when the flow was
+          // going somewhere perfectly safe.
           <span className="flow-plug-top">
-            <b>DUMP</b>
+            <b>{PLUG_DUMP_WORD[plug.dumpKind ?? "store"]}</b>
           </span>
         ) : (
           <>
@@ -1283,16 +1310,16 @@ function PortChip({
             : port.tone === "idle"
               ? "flow-port--idle"
               : "";
+  // The rate reads under the name in a lighter grey — the number is worth a
+  // line, it just isn't worth competing with the name for attention. The
+  // binding input still shows both halves (what it gets over what it asks);
+  // every other port shows the one number that matters.
   const rateText = port.showNameplate
     ? `${formatSlotRateBare(port.currentPerSecond)} / ${formatSlotRate(
         port.nameplatePerSecond,
         port.kind,
       )}`
     : formatSlotRate(port.currentPerSecond, port.kind);
-  // Noise floor: a badge that would read "0.000" says nothing — drop it.
-  // Only inputs badge now ("missing X"); the output ask story is the plug's.
-  const badgeRate = port.badge ? formatSlotRateOrNull(port.badge.perSecond, port.kind) : null;
-  const badgeText = port.badge && badgeRate ? `missing ${badgeRate}` : undefined;
 
   // One bar, one ruler: 100% = full blast. Solid = now, hatch = would unlock
   // if fed. The caret/burst (the want) is an INPUT-side signal — on outputs
@@ -1309,8 +1336,10 @@ function PortChip({
   return (
     <div
       className={[
-        "flow-port relative flex min-h-[52px] items-center gap-1.5 px-1 py-0.5",
-        plugRow ? "w-[210px] flex-none" : "flex-1",
+        // 38px: name + rate + bar, and nothing more. Still well under the old
+        // 52px row — the height came back for the rate line, not for padding.
+        "flow-port relative flex min-h-[38px] items-center gap-1 px-0.5 py-0",
+        plugRow ? `${PORT_CHIP_WIDTH_CLASS} flex-none` : "flex-1",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
       ].join(" ")}
@@ -1351,7 +1380,7 @@ function PortChip({
       <span
         role="button"
         tabIndex={-1}
-        className="nodrag relative z-40 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden cursor-pointer hover:brightness-125"
+        className="nodrag relative z-40 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden cursor-pointer hover:brightness-125"
         title={`${port.displayName} — click: recipes, right-click: uses`}
         onClick={(event) => {
           event.stopPropagation();
@@ -1378,24 +1407,23 @@ function PortChip({
             // another 1.5x on top and get clipped by the box above, which is
             // what finally puts the art edge to edge. Fluids are a solid
             // square with nothing to crop, so they keep their exact size.
-            iconPixelSize={port.kind === "fluid" ? 86 : undefined}
-            className={
-              port.kind === "fluid" ? "" : "!h-12 !w-12 origin-center scale-150"
-            }
+            iconPixelSize={port.kind === "fluid" ? 50 : undefined}
+            className={port.kind === "fluid" ? "" : "!h-7 !w-7 origin-center scale-150"}
           />
         ) : (
-          <span className="block h-12 w-12 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
+          <span className="block h-7 w-7 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
         )}
       </span>
-      <span className="flex min-w-0 flex-1 flex-col justify-center pr-1">
-        {/* Name first: on a rail of five ports the rate is what you compare,
-            but the name is what you look for. */}
-        <span className="block truncate text-[13px] font-bold leading-4 text-[var(--mc-ink)]">
+      <span className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
+        {/* The name is what you look for on a rail of five ports; the rate is
+            what you compare once you have found it. Name in full ink, rate a
+            step down and a step lighter, so the pair reads in that order. */}
+        <span className="block truncate text-[11px] font-bold leading-[13px] text-[var(--mc-ink)]">
           {port.displayName}
         </span>
         {/* Neutral, quieter ink: the chip's BAR carries the machine story's
             color. Green text over a red bar told two stories at once. */}
-        <span className="block truncate text-[12px] leading-4 tabular-nums text-[var(--mc-ink-muted)]">
+        <span className="block truncate text-[10px] leading-[12px] tabular-nums text-[var(--mc-ink-muted)] opacity-80">
           {rateText}
         </span>
         {port.handFed ? (
@@ -1403,7 +1431,7 @@ function PortChip({
             HAND-FED
           </span>
         ) : (
-          <span className="mt-1 flex items-center gap-0.5">
+          <span className="mt-0.5 flex items-center gap-0.5">
             <span
               className={["flow-port-bar block flex-1", hasBurst ? "flow-port-bar--burst" : ""]
                 .join(" ")
@@ -1426,7 +1454,6 @@ function PortChip({
           </span>
         )}
       </span>
-      {badgeText ? <em className="flow-port-badge not-italic">{badgeText}</em> : null}
       <MinecraftTooltip
         label={port.resource?.tooltip ?? port.displayName}
         content={renderPortHoverContent(port, nodeId)}
@@ -1595,7 +1622,11 @@ function CustomRatePanel({
         inputMode="decimal"
         aria-label="Rate"
         title="Rate in the board's active unit"
-        className="nodrag h-6 w-0 min-w-0 flex-1 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[12px] text-[var(--mc-ink)]"
+        // min-w, not w-0: this is the one field on the board somebody types
+        // into. Collapsing it to whatever slack the row has left made it a
+        // few pixels wide on a narrow node; now it claims a floor and takes
+        // the slack on top of it, so the node grows to fit the typing space.
+        className="nodrag h-6 min-w-[76px] flex-1 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
       />
       <span className="shrink-0 pr-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
         {rateUnitSuffix(kind === "fluid").trim() || "/s"}
