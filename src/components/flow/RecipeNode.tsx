@@ -2204,7 +2204,7 @@ function MachineConfigControlPanel({
                   icon: (
                     <ConfigTierIcon
                       resource={tier.resource ?? control.resource}
-                      sizeClass="!h-[18px] !w-[18px]"
+                      sizeClass="!h-[28px] !w-[28px]"
                     />
                   ),
                 }))}
