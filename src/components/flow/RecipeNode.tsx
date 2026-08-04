@@ -792,7 +792,9 @@ function UsageStat({
             )}
           </div>
         </div>
-        <div className="flex min-w-0 flex-col justify-center border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+        {/* No vertical centering: every cell in this row hangs its label off
+            the top edge, and centering this one broke that line. */}
+        <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
           <div className="text-[9px] uppercase text-[var(--mc-ink-muted)]">Reason</div>
           <div
             className={[
