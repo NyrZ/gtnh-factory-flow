@@ -653,14 +653,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             className={[
               // A hairline over the dials: the machine is one thing, the knobs
               // under it are another. No extra padding — tight everywhere.
-              "mt-1 grid min-w-0 items-stretch gap-1 border-t border-[var(--mc-56)] pt-1 text-[12px] leading-4 text-[var(--mc-ink)]",
-              // Usage and reason hug their content — a state word floating in
-              // reserved space was the odd gap. Power takes the slack instead.
+              "mt-1 grid min-w-0 items-stretch gap-1 border-t border-[var(--mc-56)] pt-1 text-[14px] leading-5 text-[var(--mc-ink)]",
+              // Every cell sizes to its content except MACHINES, which takes
+              // the slack: a four-digit machine count is the one number here
+              // that legitimately gets wide. Power and Parallel stretched to
+              // fill and then truncated their own labels ("Parall…").
               isCustomRateNode
                 ? "grid-cols-[auto]"
                 : machineParallelMultiplier > 1
-                  ? "grid-cols-[auto_minmax(82px,1fr)_72px_54px]"
-                  : "grid-cols-[auto_minmax(86px,1fr)_76px]",
+                  ? "grid-cols-[auto_auto_auto_minmax(84px,1fr)]"
+                  : "grid-cols-[auto_auto_minmax(84px,1fr)]",
               isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
               nodeColor ? "recipe-node-stat-grid" : "",
             ].join(" ")}
@@ -674,15 +676,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             {!isCustomRateNode ? (
               <>
                 <Stat
-                  label={isCropProductionNode ? "Power" : "Power"}
+                  label="Power"
                   value={
                     isCropProductionNode ? "Passive" : `${formatCompact(result?.euT ?? 0)} EU/t`
                   }
-                />
-                <MachineCountStat
-                  label={isCropProductionNode ? "Seeds" : "Machines"}
-                  machineCount={projectNode.machineCount}
-                  onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
                 />
                 {machineParallelMultiplier > 1 ? (
                   <Stat
@@ -690,6 +687,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                     value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
                   />
                 ) : null}
+                <MachineCountStat
+                  label={isCropProductionNode ? "Seeds" : "Machines"}
+                  machineCount={projectNode.machineCount}
+                  onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+                />
               </>
             ) : null}
           </div>
@@ -774,37 +776,37 @@ function UsageStat({
     <MinecraftTooltip
       content={<VerdictHoverContent nodeId={nodeId} verdict={verdict} isCustomRate={isCustomRate} />}
     >
-      {/* Two cells, not one: a number and a word have nothing to say to each
-          other inside a shared box — sharing one left the word floating in
-          whatever width the number didn't use. */}
-      <div className="flow-usage-stat grid min-w-0 grid-cols-[auto_auto] justify-start gap-1">
-        <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-          <div className="text-[9px] uppercase text-[var(--mc-ink-muted)]">Usage</div>
-          {/* 14px inside the row's 16px line box: reads as the headline of
-              the footer without making every node on the board taller. */}
-          <div className="text-[14px] font-bold leading-4 tabular-nums">
+      {/* One card, one divider: the number and the word are the same
+          sentence — how hard it runs, and why. Two boxes read as two facts. */}
+      <div className="flow-usage-stat flex min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+        <div className="min-w-0 px-1.5">
+          <div className="text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
+            Usage
+          </div>
+          <div className="text-[17px] font-bold leading-5 tabular-nums">
             {showPct ? (
               <>
                 {/* Whole numbers — a decimal on a duty cycle is width, not
-                    information. The exception is a node that runs so slowly
-                    it would round to a flat 0% and read as dead. */}
+                    information. The exception is a node that runs so slowly it
+                    would round to a flat 0% and read as dead. */}
                 {verdict.pct > 0 && verdict.pct < 0.5
                   ? formatRate(verdict.pct, 1)
                   : formatPct(verdict.pct)}
-                <span className="text-[11px]">%</span>
+                <span className="text-[13px]">%</span>
               </>
             ) : (
-              <span className="text-[11px] text-[var(--mc-ink-muted)]">—</span>
+              <span className="text-[13px] text-[var(--mc-ink-muted)]">—</span>
             )}
           </div>
         </div>
-        {/* No vertical centering: every cell in this row hangs its label off
-            the top edge, and centering this one broke that line. */}
-        <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-          <div className="text-[9px] uppercase text-[var(--mc-ink-muted)]">Reason</div>
+        <div className="my-0.5 w-px shrink-0 bg-[var(--mc-47)]" />
+        <div className="min-w-0 px-1.5">
+          <div className="text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
+            Reason
+          </div>
           <div
             className={[
-              "truncate text-[11px] font-bold uppercase leading-4 tracking-[0.4px]",
+              "truncate text-[13px] font-bold uppercase leading-5 tracking-[0.4px]",
               VERDICT_WORD_CLASS[state.tone],
             ].join(" ")}
           >
@@ -1028,7 +1030,7 @@ function PortRail({
     <div
       className={[
         "flex shrink-0 flex-col justify-start gap-0.5 py-0",
-        isInput ? "w-[168px]" : "w-[222px]",
+        isInput ? "w-[210px]" : "w-[264px]",
       ].join(" ")}
     >
       {ports.map((port) =>
@@ -1059,7 +1061,7 @@ function OutputSocketRow({
   const setHoveredFlowScope = useFactoryStore((state) => state.setHoveredFlowScope);
   return (
     <div
-      className="relative flex items-center"
+      className="relative flex items-stretch"
       data-resource-edge-anchor="true"
       data-resource-node-id={nodeId}
       data-resource-handle-id={port.handleId}
@@ -1278,8 +1280,8 @@ function PortChip({
   return (
     <div
       className={[
-        "flow-port relative flex min-h-[64px] items-center gap-1 p-0",
-        plugRow ? "w-[168px] flex-none" : "flex-1",
+        "flow-port relative flex min-h-[52px] items-center gap-1.5 px-1 py-0.5",
+        plugRow ? "w-[210px] flex-none" : "flex-1",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
       ].join(" ")}
@@ -1320,7 +1322,7 @@ function PortChip({
       <span
         role="button"
         tabIndex={-1}
-        className="nodrag relative z-40 flex h-16 w-16 shrink-0 items-center justify-center cursor-pointer hover:brightness-125"
+        className="nodrag relative z-40 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden cursor-pointer hover:brightness-125"
         title={`${port.displayName} — click: recipes, right-click: uses`}
         onClick={(event) => {
           event.stopPropagation();
@@ -1341,29 +1343,30 @@ function PortChip({
             showAmount={false}
             showConsumedState={false}
             // Item art ships with transparent padding baked into the sprite,
-            // which is why ResourceIcon's default draws it at 200%-8px inside
-            // an overflow-hidden box: the zoom crops the padding away. Handing
-            // it an explicit pixel size skips that and renders the padding,
-            // so the item looked small inside a box it was supposedly filling.
-            // Fluids have no padding to crop — they draw a solid square at 56%
-            // of what they're given, so 64 lands them on 36px, matching the
-            // apparent size of a cropped item.
-            iconPixelSize={port.kind === "fluid" ? 114 : undefined}
-            className={port.kind === "fluid" ? "" : "!h-16 !w-16"}
+            // and that padding is a FRACTION of the cell — growing the box
+            // grows the empty border with it. ResourceIcon's default already
+            // zooms to 200%-8px inside an overflow-hidden box; items take
+            // another 1.5x on top and get clipped by the box above, which is
+            // what finally puts the art edge to edge. Fluids are a solid
+            // square with nothing to crop, so they keep their exact size.
+            iconPixelSize={port.kind === "fluid" ? 86 : undefined}
+            className={
+              port.kind === "fluid" ? "" : "!h-12 !w-12 origin-center scale-150"
+            }
           />
         ) : (
-          <span className="block h-16 w-16 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
+          <span className="block h-12 w-12 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
         )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-center pr-1">
         {/* Name first: on a rail of five ports the rate is what you compare,
             but the name is what you look for. */}
-        <span className="block truncate text-[11px] font-bold leading-[14px] text-[var(--mc-ink)]">
+        <span className="block truncate text-[13px] font-bold leading-4 text-[var(--mc-ink)]">
           {port.displayName}
         </span>
         {/* Neutral, quieter ink: the chip's BAR carries the machine story's
             color. Green text over a red bar told two stories at once. */}
-        <span className="block truncate text-[10px] leading-[13px] tabular-nums text-[var(--mc-ink-muted)]">
+        <span className="block truncate text-[12px] leading-4 tabular-nums text-[var(--mc-ink-muted)]">
           {rateText}
         </span>
         {port.handFed ? (
@@ -2412,7 +2415,7 @@ function Stat({
 }) {
   return (
     <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-      <div className="truncate text-[9px] uppercase text-[var(--mc-ink-muted)]">{label}</div>
+      <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className={["truncate font-medium", valueClassName ?? ""].join(" ")}>{value}</div>
     </div>
   );
@@ -2458,11 +2461,11 @@ function MachineCountStat({
   };
 
   const stepButtonClassName =
-    "nodrag flex h-4 w-4 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
+    "nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
 
   return (
     <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-      <div className="truncate text-[9px] uppercase text-[var(--mc-ink-muted)]">{label}</div>
+      <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className="flex min-w-0 items-center gap-0.5">
         <button
           type="button"
@@ -2494,7 +2497,7 @@ function MachineCountStat({
           inputMode="numeric"
           aria-label={`${label} count`}
           title={`Edit ${label.toLowerCase()} count`}
-          className="nodrag h-[18px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[12px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
+          className="nodrag h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
         />
         <button
           type="button"
