@@ -1320,7 +1320,7 @@ function PortChip({
       <span
         role="button"
         tabIndex={-1}
-        className="nodrag relative z-40 shrink-0 cursor-pointer hover:brightness-125"
+        className="nodrag relative z-40 flex h-11 w-11 shrink-0 items-center justify-center cursor-pointer hover:brightness-125"
         title={`${port.displayName} — click: recipes, right-click: uses`}
         onClick={(event) => {
           event.stopPropagation();
@@ -1340,20 +1340,30 @@ function PortChip({
             tooltip={false}
             showAmount={false}
             showConsumedState={false}
-            // A fluid cell draws at 56% of the size it's given, so asking for
-            // 72 lands it on the same 40px square as an item icon. Without
-            // this, fluids float undersized in a box built for items.
-            iconPixelSize={port.kind === "fluid" ? 72 : 40}
-            className="!h-10 !w-10"
+            // Item art ships with transparent padding baked into the sprite,
+            // which is why ResourceIcon's default draws it at 200%-8px inside
+            // an overflow-hidden box: the zoom crops the padding away. Handing
+            // it an explicit pixel size skips that and renders the padding,
+            // so the item looked small inside a box it was supposedly filling.
+            // Fluids have no padding to crop — they draw a solid square at 56%
+            // of what they're given, so 64 lands them on 36px, matching the
+            // apparent size of a cropped item.
+            iconPixelSize={port.kind === "fluid" ? 64 : undefined}
+            className={port.kind === "fluid" ? "" : "!h-11 !w-11"}
           />
         ) : (
-          <span className="block h-10 w-10 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
+          <span className="block h-11 w-11 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
         )}
       </span>
-      <span className="min-w-0 flex-1">
-        {/* Neutral ink always: the chip's BAR carries the machine story's
+      <span className="flex min-w-0 flex-1 flex-col justify-center">
+        {/* Name first: on a rail of five ports the rate is what you compare,
+            but the name is what you look for. */}
+        <span className="block truncate text-[10px] font-bold leading-[13px] text-[var(--mc-ink)]">
+          {port.displayName}
+        </span>
+        {/* Neutral, quieter ink: the chip's BAR carries the machine story's
             color. Green text over a red bar told two stories at once. */}
-        <span className="block truncate text-[10px] font-bold leading-3.5 tabular-nums text-[var(--mc-ink)]">
+        <span className="block truncate text-[9px] leading-[12px] tabular-nums text-[var(--mc-ink-muted)]">
           {rateText}
         </span>
         {port.handFed ? (
@@ -1361,7 +1371,7 @@ function PortChip({
             HAND-FED
           </span>
         ) : (
-          <span className="mt-0.5 flex items-center gap-0.5">
+          <span className="mt-1 flex items-center gap-0.5">
             <span
               className={["flow-port-bar block flex-1", hasBurst ? "flow-port-bar--burst" : ""]
                 .join(" ")

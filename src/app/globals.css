@@ -466,16 +466,17 @@ img {
   --port-hot-edge: #9c6e00;
   --port-fed-bg: #b7dcb0;
   --port-fed-edge: #2f7a3d;
-  /* Strip ink: the ONLY color on the strip is the name of the thing to go
-     look at. Read on the neutral panel, so these are ink tones, not fills. */
-  --verdict-short-ink: #8e2018;
-  --verdict-over-ink: #7a5405;
+  /* The REASON word is the same red as the bar of the input it blames — two
+     marks about one problem should not be two different reds. */
+  --verdict-short-ink: #cf3333;
+  --verdict-over-ink: #a67208;
 }
 
 [data-theme="dark"] {
   --verdict-off-bg: #4a4a4a;
-  --verdict-short-ink: #ef8b78;
-  --verdict-over-ink: #e0b551;
+  /* Same pairing on the dark panel: the word and the bar it points at. */
+  --verdict-short-ink: #e05252;
+  --verdict-over-ink: #e0a63a;
   --rail-bar-track: #3c3c3c;
   --port-bind-bg: #5d2323;
   --port-bind-edge: #c34c4c;
@@ -714,10 +715,12 @@ img {
   font-weight: 800;
 }
 
+/* Inside the chip, bottom right: hanging off the top edge put it straight
+   through the name of the port above. */
 .flow-port-badge {
   position: absolute;
-  top: -9px;
-  right: -4px;
+  bottom: 1px;
+  right: 1px;
   z-index: 2;
   border: 1px solid rgba(0, 0, 0, 0.5);
   padding: 0 4px;
