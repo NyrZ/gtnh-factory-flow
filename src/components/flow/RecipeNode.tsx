@@ -652,11 +652,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           <div
             className={[
               "mt-1 grid min-w-0 items-stretch gap-1 text-[12px] leading-4 text-[var(--mc-ink)]",
+              // Usage and reason hug their content — a state word floating in
+              // reserved space was the odd gap. Power takes the slack instead.
               isCustomRateNode
-                ? "grid-cols-[minmax(0,1fr)]"
+                ? "grid-cols-[auto]"
                 : machineParallelMultiplier > 1
-                  ? "grid-cols-[minmax(0,1fr)_82px_72px_54px]"
-                  : "grid-cols-[minmax(0,1fr)_86px_76px]",
+                  ? "grid-cols-[auto_minmax(82px,1fr)_72px_54px]"
+                  : "grid-cols-[auto_minmax(86px,1fr)_76px]",
               isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
               nodeColor ? "recipe-node-stat-grid" : "",
             ].join(" ")}
@@ -773,10 +775,12 @@ function UsageStat({
       {/* Two cells, not one: a number and a word have nothing to say to each
           other inside a shared box — sharing one left the word floating in
           whatever width the number didn't use. */}
-      <div className="flow-usage-stat grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-1">
+      <div className="flow-usage-stat grid min-w-0 grid-cols-[auto_auto] justify-start gap-1">
         <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
           <div className="text-[9px] uppercase text-[var(--mc-ink-muted)]">Usage</div>
-          <div className="text-[19px] font-bold leading-[21px] tabular-nums">
+          {/* 14px inside the row's 16px line box: reads as the headline of
+              the footer without making every node on the board taller. */}
+          <div className="text-[14px] font-bold leading-4 tabular-nums">
             {showPct ? (
               <>
                 {/* Whole numbers — a decimal on a duty cycle is width, not
@@ -785,10 +789,10 @@ function UsageStat({
                 {verdict.pct > 0 && verdict.pct < 0.5
                   ? formatRate(verdict.pct, 1)
                   : formatPct(verdict.pct)}
-                <span className="text-[13px]">%</span>
+                <span className="text-[11px]">%</span>
               </>
             ) : (
-              <span className="text-[13px] text-[var(--mc-ink-muted)]">—</span>
+              <span className="text-[11px] text-[var(--mc-ink-muted)]">—</span>
             )}
           </div>
         </div>
