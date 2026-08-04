@@ -1,4 +1,4 @@
-import { formatNumberWithThousands, trimTrailingDecimalZeros } from "@/lib/model";
+import { formatCompact } from "@/lib/model";
 import { rateUnitMultiplier } from "@/lib/model/rate-unit";
 
 /**
@@ -182,10 +182,9 @@ export function formatSupplyPercent(ratio: number): string {
   return percent > 9999 ? "9999%+" : `${percent}%`;
 }
 
+/** Same ladder as the ports, so one flow never reads two ways on one screen. */
 export function formatEdgeValue(value: number): string {
-  const abs = Math.abs(value);
-  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
-  return formatNumberWithThousands(trimTrailingDecimalZeros(value.toFixed(digits)));
+  return formatCompact(value);
 }
 
 /** "10/s" reads as one token; "12 L/s" needs the space to stay a unit. */

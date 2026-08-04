@@ -466,10 +466,17 @@ img {
   --port-hot-edge: #9c6e00;
   --port-fed-bg: #b7dcb0;
   --port-fed-edge: #2f7a3d;
+  /* The REASON word is the same red as the bar of the input it blames — two
+     marks about one problem should not be two different reds. */
+  --verdict-short-ink: #cf3333;
+  --verdict-over-ink: #a67208;
 }
 
 [data-theme="dark"] {
   --verdict-off-bg: #4a4a4a;
+  /* Same pairing on the dark panel: the word and the bar it points at. */
+  --verdict-short-ink: #e05252;
+  --verdict-over-ink: #e0a63a;
   --rail-bar-track: #3c3c3c;
   --port-bind-bg: #5d2323;
   --port-bind-edge: #c34c4c;
@@ -479,39 +486,23 @@ img {
   --port-fed-edge: #4cae62;
 }
 
-.flow-verdict-strip {
-  border: 2px solid var(--verdict-edge, #3d3d3d);
-  background: var(--verdict-bg, #6b6b6b);
-  box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.25),
-    inset -1px -1px 0 rgba(0, 0, 0, 0.3);
-  color: #fff;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+/* Hovering the usage cell lights everything the reason is about, so the
+   claim and the rows that prove it are visibly the same thing: the binding
+   input on a bottleneck, the hungry couplings on an over-asked node. Pure
+   CSS — hover must never rebuild a node. */
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
+  outline: 3px solid var(--usage-lit-edge, var(--port-bind-edge));
+  outline-offset: 1px;
+  filter: brightness(1.2) saturate(1.15);
+  z-index: 12;
 }
 
-.flow-verdict-strip--starved {
-  --verdict-bg: var(--verdict-starved-bg);
-  --verdict-edge: var(--verdict-starved-edge);
-}
-
-.flow-verdict-strip--choke {
-  --verdict-bg: var(--verdict-choke-bg);
-  --verdict-edge: var(--verdict-choke-edge);
-}
-
-.flow-verdict-strip--demand {
-  --verdict-bg: var(--verdict-demand-bg);
-  --verdict-edge: var(--verdict-demand-edge);
-}
-
-.flow-verdict-strip--balanced {
-  --verdict-bg: var(--verdict-balanced-bg);
-  --verdict-edge: var(--verdict-balanced-edge);
-}
-
-.flow-verdict-strip--off {
-  --verdict-bg: var(--verdict-off-bg);
-  --verdict-edge: var(--verdict-off-edge);
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry {
+  --usage-lit-edge: var(--port-hot-edge);
 }
 
 .flow-port {
@@ -562,10 +553,12 @@ img {
   position: absolute;
   top: 0;
   bottom: 0;
+  /* Tight stripes: at 3px a narrow ghost segment only fits one band and
+     reads as a stray triangle instead of hatching. */
   background: repeating-linear-gradient(
     45deg,
-    rgba(226, 232, 244, 0.4) 0 3px,
-    transparent 3px 6px
+    rgba(226, 232, 244, 0.4) 0 1.5px,
+    transparent 1.5px 3px
   );
 }
 
@@ -634,8 +627,8 @@ img {
   z-index: 5;
   display: flex;
   flex: none;
-  width: 44px;
-  height: 34px;
+  width: 52px;
+  align-self: stretch;
   margin-left: 2px;
   flex-direction: column;
   justify-content: center;
@@ -652,7 +645,7 @@ img {
 .flow-plug-top {
   display: flex;
   justify-content: center;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 12px;
   font-variant-numeric: tabular-nums;
@@ -666,7 +659,7 @@ img {
 .flow-plug-track {
   display: block;
   flex: 1;
-  height: 5px;
+  height: 7px;
   background: rgba(0, 0, 0, 0.35);
   box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.35);
 }
@@ -708,27 +701,30 @@ img {
 
 /* Nothing wired: an open invitation, not a warning. */
 .flow-socket-empty {
+  position: relative;
   display: flex;
   flex: none;
-  width: 44px;
-  height: 34px;
+  width: 52px;
+  align-self: stretch;
   margin-left: 2px;
   align-items: center;
   justify-content: center;
   border: 2px dashed var(--mc-47);
   color: var(--mc-ink-muted);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
 }
 
+/* Inside the chip, bottom right: hanging off the top edge put it straight
+   through the name of the port above. */
 .flow-port-badge {
   position: absolute;
-  top: -9px;
-  right: -4px;
+  bottom: 1px;
+  right: 1px;
   z-index: 2;
   border: 1px solid rgba(0, 0, 0, 0.5);
   padding: 0 4px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 13px;
   color: #fff;

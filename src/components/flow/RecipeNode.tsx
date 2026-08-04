@@ -16,6 +16,7 @@ import {
   getMachineParallelMultiplier,
 } from "@/lib/solver/machine-effects";
 import {
+  formatCompact,
   formatRate,
   applyMachineHandlerToRecipe,
   GT_OVERCLOCK_TIERS,
@@ -381,7 +382,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   return (
     <div
       className={[
-        "group relative min-w-[340px] w-max border-2 border-[var(--mc-96)] bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]",
+        // recipe-node-shell scopes the strip↔row hover link (globals.css):
+        // hovering the verdict lights the input it blames, in pure CSS, so a
+        // hover never re-renders a node.
+        "recipe-node-shell group relative min-w-[340px] w-max border-2 border-[var(--mc-96)] bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]",
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
         isCompareOpen ? "recipe-node-popup-open" : "",
@@ -640,45 +644,55 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           {passiveProductionPanel}
         </div>
 
+        {/* The footer IS the verdict now: usage leads on the left with the
+            state word beside it, the two facts that used to crowd it shrink
+            to the right. Never a third line — a taller footer on every node
+            costs more board than the sentence was worth. */}
         {!isCropFarmPlaceholder && !isCustomRatePlaceholder ? (
-          <div className="w-0 min-w-full">
-            <VerdictStrip
-              nodeId={projectNode.id}
-              verdict={verdict}
-              isCustomRate={isCustomRateNode}
-            />
-          </div>
-        ) : null}
-        {!isCropFarmPlaceholder && !isCustomRateNode ? (
           <div
             className={[
-              "mt-1 grid min-w-0 gap-1 text-[12px] leading-4 text-[var(--mc-ink)]",
-              machineParallelMultiplier > 1
-                ? "grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.7fr)]"
-                : "grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]",
+              // A hairline over the dials: the machine is one thing, the knobs
+              // under it are another. No extra padding — tight everywhere.
+              "mt-1 grid min-w-0 items-stretch gap-1 border-t border-[var(--mc-56)] pt-1 text-[14px] leading-5 text-[var(--mc-ink)]",
+              // Every cell sizes to its content except MACHINES, which takes
+              // the slack: a four-digit machine count is the one number here
+              // that legitimately gets wide. Power and Parallel stretched to
+              // fill and then truncated their own labels ("Parall…").
+              isCustomRateNode
+                ? "grid-cols-[auto]"
+                : machineParallelMultiplier > 1
+                  ? "grid-cols-[auto_auto_auto_minmax(84px,1fr)]"
+                  : "grid-cols-[auto_auto_minmax(84px,1fr)]",
               isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
               nodeColor ? "recipe-node-stat-grid" : "",
             ].join(" ")}
             style={nodeColor ? { backgroundColor: nodeColor.panel } : undefined}
           >
-            <MachineCountStat
-              label={isCropProductionNode ? "Seeds" : "Machines"}
-              machineCount={projectNode.machineCount}
-              onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+            <UsageStat
+              nodeId={projectNode.id}
+              verdict={verdict}
+              isCustomRate={isCustomRateNode}
             />
-            <Stat
-              label={isCropProductionNode ? "Power" : "Power draw"}
-              value={
-                isCropProductionNode
-                  ? "Passive"
-                  : `${formatRate(result?.euT ?? 0, 0)} EU/t`
-              }
-            />
-            {machineParallelMultiplier > 1 ? (
-              <Stat
-                label="Parallel"
-                value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
-              />
+            {!isCustomRateNode ? (
+              <>
+                <Stat
+                  label="Power"
+                  value={
+                    isCropProductionNode ? "Passive" : `${formatCompact(result?.euT ?? 0)} EU/t`
+                  }
+                />
+                {machineParallelMultiplier > 1 ? (
+                  <Stat
+                    label="Parallel"
+                    value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
+                  />
+                ) : null}
+                <MachineCountStat
+                  label={isCropProductionNode ? "Seeds" : "Machines"}
+                  machineCount={projectNode.machineCount}
+                  onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+                />
+              </>
             ) : null}
           </div>
         ) : null}
@@ -697,23 +711,56 @@ export const RecipeNode = memo(
   (previous, next) => previous.data === next.data && previous.selected === next.selected,
 );
 
-const VERDICT_STRIP_CLASS: Record<NodeVerdict["kind"], string> = {
-  starved: "flow-verdict-strip--starved",
-  choke: "flow-verdict-strip--choke",
-  "demand-set": "flow-verdict-strip--demand",
-  balanced: "flow-verdict-strip--balanced",
-  unwired: "flow-verdict-strip--off",
-  off: "flow-verdict-strip--off",
-  "no-recipe": "flow-verdict-strip--off",
+/** One word for the node's state, and where the fix lives. */
+interface VerdictWord {
+  word: string;
+  /** red = something upstream holds this down. amber = fix is on this card. */
+  tone: "short" | "over" | "calm";
+}
+
+function verdictWord(verdict: NodeVerdict, isCustomRate: boolean): VerdictWord {
+  switch (verdict.kind) {
+    case "starved":
+      return { word: "bottleneck", tone: "short" };
+    case "choke":
+      return { word: "over-asked", tone: "over" };
+    case "demand-set":
+      return verdict.pct <= 0.05
+        ? { word: "unused", tone: "calm" }
+        : { word: isCustomRate ? "under the dial" : "on demand", tone: "calm" };
+    case "balanced":
+      return { word: isCustomRate ? "at the dial" : "full", tone: "calm" };
+    case "unwired":
+      return { word: isCustomRate ? "no wires" : "hand-fed", tone: "calm" };
+    case "off":
+      return { word: "off", tone: "calm" };
+    case "no-recipe":
+      return { word: "no recipe", tone: "calm" };
+  }
+}
+
+const VERDICT_WORD_CLASS: Record<VerdictWord["tone"], string> = {
+  short: "font-bold text-[var(--verdict-short-ink)]",
+  over: "font-bold text-[var(--verdict-over-ink)]",
+  calm: "text-[var(--mc-ink-muted)]",
 };
 
 /**
- * The verdict strip replaces "Usage %": what state the node is in, why, what
- * to do next — and the limit ladder underneath: today's wall plus the next
- * ones in order, so a fix session never re-discovers the board after each
- * change. All copy follows the explainer voice: plain words, no riddles.
+ * USAGE: the widest cell in the footer, carrying the number and one word for
+ * why it reads that way. It replaced a four-line colored strip, and the two
+ * rules that came out of that are worth keeping:
+ *
+ * - never a third line. The footer repeats on every node, so a line spent
+ *   here is a line spent on the whole board; the fix note rides beside the
+ *   USAGE label instead of below the number.
+ * - the number is never colored. A node at 100% that still can't cover its
+ *   asks proves the speed and the problem are different facts — color lives
+ *   on the state word, which is the thing that says where to act.
+ *
+ * Everything longer (the honest rates, the culprit's own machine count, the
+ * ladder of what caps this next) lives in the hover.
  */
-function VerdictStrip({
+function UsageStat({
   nodeId,
   verdict,
   isCustomRate = false,
@@ -722,150 +769,239 @@ function VerdictStrip({
   verdict: NodeVerdict;
   isCustomRate?: boolean;
 }) {
+  const state = verdictWord(verdict, isCustomRate);
+  const showPct = verdict.kind !== "off" && verdict.kind !== "no-recipe";
+
+  return (
+    <MinecraftTooltip
+      content={<VerdictHoverContent nodeId={nodeId} verdict={verdict} isCustomRate={isCustomRate} />}
+    >
+      {/* One card, one divider: the number and the word are the same
+          sentence — how hard it runs, and why. Two boxes read as two facts. */}
+      <div className="flow-usage-stat flex min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+        <div className="min-w-0 px-1.5">
+          <div className="text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
+            Usage
+          </div>
+          <div className="text-[17px] font-bold leading-5 tabular-nums">
+            {showPct ? (
+              <>
+                {/* Whole numbers — a decimal on a duty cycle is width, not
+                    information. The exception is a node that runs so slowly it
+                    would round to a flat 0% and read as dead. */}
+                {verdict.pct > 0 && verdict.pct < 0.5
+                  ? formatRate(verdict.pct, 1)
+                  : formatPct(verdict.pct)}
+                <span className="text-[13px]">%</span>
+              </>
+            ) : (
+              <span className="text-[13px] text-[var(--mc-ink-muted)]">—</span>
+            )}
+          </div>
+        </div>
+        <div className="my-0.5 w-px shrink-0 bg-[var(--mc-47)]" />
+        <div className="min-w-0 px-1.5">
+          <div className="text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
+            Reason
+          </div>
+          <div
+            className={[
+              "truncate text-[13px] font-bold uppercase leading-5 tracking-[0.4px]",
+              VERDICT_WORD_CLASS[state.tone],
+            ].join(" ")}
+          >
+            {state.word}
+          </div>
+        </div>
+      </div>
+    </MinecraftTooltip>
+  );
+}
+
+/**
+ * The strip's hover: the sentence you'd say out loud, then where to act with
+ * the culprit's OWN machine count, then the ladder — what caps this next and
+ * where it lands once today's wall is gone.
+ */
+function VerdictHoverContent({
+  nodeId,
+  verdict,
+  isCustomRate,
+}: {
+  nodeId: string;
+  verdict: NodeVerdict;
+  isCustomRate: boolean;
+}) {
   const project = useFactoryStore((state) => state.project);
   const lastResult = useFactoryStore((state) => state.lastResult);
+  const machineCount = Math.max(
+    1,
+    project.nodes.find((entry) => entry.id === nodeId)?.machineCount ?? 1,
+  );
   const ladder = useMemo(
     () => buildLimitLadder(project, lastResult, nodeId),
     [lastResult, nodeId, project],
   );
 
-  let word: string;
-  let cause: string | undefined;
-  let action: string | undefined;
-  // Minimum viable strip: one GENERAL line of why (the specific numbers
-  // already live on the chips), one line of fix.
-  switch (verdict.kind) {
-    case "starved": {
-      word = "▼ STARVING";
-      const binding = verdict.binding;
-      cause = isCustomRate
-        ? `A supply shortage leaves this drain only ${formatPct(verdict.pct)}% filled.`
-        : `An input shortage forces this machine to run only ${formatPct(verdict.pct)}% of the time.`;
-      const upstream = binding?.upstream;
-      if (binding?.tiedWithNames?.length) {
-        // Crowning one of a tie is float-dust theater; say what's true.
-        action = `→ ${binding.displayName} + ${binding.tiedWithNames.join(" + ")} are tied at the limit — raise either.`;
-      } else if (!upstream) {
-        action = "→ Fix the supply lines.";
-      } else if (upstream.kind === "loop") {
-        action = "→ Fed by its own loop — prime it from a buffer.";
-      } else if (upstream.kind === "buffer") {
-        action = `→ ${upstream.name} running dry — feed it faster.`;
-      } else if (upstream.atFullSpeed) {
-        action = `→ ${upstream.name} is maxed — add ${
-          upstream.machinesToAdd ? `+${upstream.machinesToAdd}` : "machines"
-        } there.`;
-      } else if (upstream.hasHeadroom) {
-        // Not starving — it could run faster; "fix above it" would mislead.
-        action = `→ ${upstream.name} can make more — add ${
-          upstream.machinesToAdd ? `+${upstream.machinesToAdd}` : "machines"
-        } there.`;
-      } else {
-        action = `→ ${upstream.name} at ${formatPct(upstream.pct)}% — fix above it.`;
-      }
-      break;
-    }
-    case "choke": {
-      word = "▲ CAN'T KEEP UP";
-      const deficit = verdict.deficit;
-      if (isCustomRate) {
-        cause = "Requests want more than the dialed rate.";
-        action = deficit
-          ? `→ Raise the rate by +${formatSlotRate(deficit.missingPerSecond, deficit.kind)}.`
-          : "→ Raise the rate.";
-        break;
-      }
-      cause =
-        verdict.pct >= 99.5
-          ? "This machine runs full-time, but that still can't satisfy all requests."
-          : "Requests exceed what this machine is making — the plan under-asks it.";
-      action = deficit?.machinesToAdd
-        ? `→ +${deficit.machinesToAdd} machine${deficit.machinesToAdd > 1 ? "s" : ""} covers ${
-            deficit.hungryOutputs > 1 ? `all ${deficit.hungryOutputs}` : "it"
-          } (or higher tier).`
-        : "→ Add machines, or a higher tier.";
-      break;
-    }
-    case "demand-set":
-      word = "● SET BY DEMAND";
-      cause =
-        verdict.pct <= 0.05
-          ? "Nothing draws from this yet."
-          : isCustomRate
-            ? "Requests draw less than the dialed rate."
-            : "Won't run full-time — demand is lower than what it can make.";
-      action =
-        verdict.headroomPct !== undefined && verdict.headroomPct > 0
-          ? `→ Fine — +${formatPct(verdict.headroomPct)}% free if demand grows.`
-          : "→ Fine.";
-      break;
-    case "balanced":
-      word = "✔ BALANCED";
-      cause = isCustomRate ? "Dialed rate met exactly." : "Full speed, every ask met.";
-      break;
-    case "unwired":
-      word = isCustomRate ? "● IDLE" : "● HAND-FED";
-      cause = isCustomRate
-        ? "No wires — this dial does nothing yet."
-        : "No lines yet — planner assumes hand-feeding.";
-      break;
-    case "off":
-      word = "■ OFF";
-      cause = "Node is disabled.";
-      break;
-    case "no-recipe":
-      word = "■ NO RECIPE";
-      break;
-  }
+  const title = verdictHoverTitle(verdict, isCustomRate);
+  const detail = verdictHoverDetail(verdict, isCustomRate);
+  const fix = verdictHoverFix(verdict, machineCount, isCustomRate);
+  const next = ladder.length > 1 ? ladder[1] : undefined;
 
-  const showPct = verdict.kind !== "off" && verdict.kind !== "no-recipe";
-  const showLadder =
-    ladder.length > 1 &&
-    (verdict.kind === "starved" || verdict.kind === "choke" || verdict.kind === "demand-set");
   return (
-    <div
-      className={["flow-verdict-strip mt-1 px-2 py-1", VERDICT_STRIP_CLASS[verdict.kind]].join(
-        " ",
-      )}
-    >
-      <div className="flex items-baseline gap-2">
-        <span className="whitespace-nowrap text-[11px] font-black leading-4 tracking-[1px]">
-          {word}
-        </span>
-        <span className="min-w-0 flex-1" />
-        {showPct ? (
-          <span className="shrink-0 text-[14px] font-bold leading-4 tabular-nums">
-            {formatRate(verdict.pct, verdict.pct >= 100 ? 0 : 1)}%
-          </span>
-        ) : null}
-      </div>
-      {/* Full sentences that wrap - an ellipsis here would hide exactly
-          what the user came to read. */}
-      {cause ? <div className="mt-0.5 text-[9px] leading-[13px] opacity-95">{cause}</div> : null}
-      {action ? <div className="text-[9px] leading-[13px] opacity-95">{action}</div> : null}
-      {showLadder ? (
-        <div className="mt-1 border-t border-white/25 pt-0.5">
-          <div className="text-[7px] font-black tracking-[0.5px] opacity-75">
-            WHAT LIMITS THIS, IN ORDER
+    <div className="w-64">
+      <div className="text-[13px] font-semibold text-white">{title}</div>
+      {detail ? <div className="mt-0.5 text-[11px] text-slate-300">{detail}</div> : null}
+      {fix ? (
+        <div className="mt-2 border-t border-white/15 pt-1.5">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+            {fix.heading}
+          </div>
+          <div className="text-[11px] leading-4 text-slate-200">{fix.body}</div>
+        </div>
+      ) : null}
+      {ladder.length > 1 ? (
+        <div className="mt-2 border-t border-white/15 pt-1.5">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+            What caps it next
           </div>
           {ladder.map((rung) => (
             <div
               key={`${rung.label}|${rung.pct}`}
-              className="flex items-baseline gap-1 text-[8.5px] leading-[12px]"
+              className={[
+                "flex items-baseline gap-2 text-[11px] leading-4",
+                rung.now ? "font-semibold text-white" : "text-slate-300",
+              ].join(" ")}
             >
-              <span className="w-9 shrink-0 text-right font-bold tabular-nums">
-                {formatPct(rung.pct)}%
-              </span>
-              <span className="min-w-0 flex-1 opacity-95">
-                {rung.label}
-                {rung.now ? " ← here" : ""}
-              </span>
+              <span className="w-10 shrink-0 text-right tabular-nums">{formatPct(rung.pct)}%</span>
+              <span className="min-w-0 flex-1">{rung.label}</span>
             </div>
           ))}
+          {/* Only a bottleneck can be "cleared" — on an over-asked node the
+              wall it stands on is its own machine count, and "clear that" would
+              be advice to delete the machines. */}
+          {next && ladder[0]?.now && verdict.kind === "starved" ? (
+            <div className="mt-0.5 text-[10px] leading-[14px] text-slate-400">
+              Clear that and this lands at {formatPct(next.pct)}%, held by {next.label}.
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
   );
+}
+
+function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string {
+  switch (verdict.kind) {
+    case "starved":
+      return `${verdict.binding?.displayName ?? "An input"} is the bottleneck`;
+    case "choke":
+      return isCustomRate ? "Asked for more than the dialed rate" : "Asked for more than it makes";
+    case "demand-set":
+      return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Downstream sets the speed";
+    case "balanced":
+      return isCustomRate ? "Dialed rate met exactly" : "Full speed, all asks met";
+    case "unwired":
+      return isCustomRate ? "No wires on this dial" : "Hand-fed";
+    case "off":
+      return "Disabled";
+    case "no-recipe":
+      return "No recipe";
+  }
+}
+
+function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string | undefined {
+  switch (verdict.kind) {
+    case "starved": {
+      const binding = verdict.binding;
+      if (!binding) {
+        return undefined;
+      }
+      const supplied = formatSlotRate(binding.suppliedPerSecond, binding.kind);
+      const needed = formatSlotRate(binding.neededPerSecond, binding.kind);
+      const tied = binding.tiedWithNames?.length
+        ? ` Tied with ${binding.tiedWithNames.join(", ")} — raise either.`
+        : "";
+      return `Gets ${supplied}, wants ${needed} at full speed.${tied}`;
+    }
+    case "choke": {
+      const deficit = verdict.deficit;
+      if (!deficit) {
+        return undefined;
+      }
+      const missing = formatSlotRate(deficit.missingPerSecond, deficit.kind);
+      return deficit.pluggedOutputs > 1
+        ? `${deficit.hungryOutputs} of ${deficit.pluggedOutputs} wired outputs go unfilled, ${missing} short on ${deficit.displayName}.`
+        : `${missing} short on ${deficit.displayName}.`;
+    }
+    case "demand-set":
+      return verdict.headroomPct && verdict.headroomPct > 0
+        ? `Nothing downstream wants the other ${formatPct(verdict.headroomPct)}%.`
+        : undefined;
+    case "balanced":
+      return isCustomRate ? undefined : "Fed, full, and everything it makes gets taken.";
+    case "unwired":
+      return isCustomRate
+        ? "This dial does nothing until something is wired to it."
+        : "The plan assumes you keep it stocked by hand.";
+    default:
+      return undefined;
+  }
+}
+
+function verdictHoverFix(
+  verdict: NodeVerdict,
+  machineCount: number,
+  isCustomRate: boolean,
+): { heading: string; body: string } | undefined {
+  if (verdict.kind === "starved") {
+    const upstream = verdict.binding?.upstream;
+    if (!upstream) {
+      return { heading: "Where to act", body: "Upstream, on the short line." };
+    }
+    if (upstream.kind === "loop") {
+      return { heading: "Where to act", body: "Fed by its own loop. Prime it from a buffer." };
+    }
+    if (upstream.kind === "buffer") {
+      return { heading: "Where to act", body: `${upstream.name} is running dry. Feed it faster.` };
+    }
+    const state = upstream.atFullSpeed
+      ? `${upstream.name} is already flat out.`
+      : upstream.hasHeadroom
+        ? `${upstream.name} runs at ${formatPct(upstream.pct)}% and could make more.`
+        : `${upstream.name} runs at ${formatPct(upstream.pct)}% and is held back itself.`;
+    const count = upstream.machinesToAdd
+      ? ` Add +${upstream.machinesToAdd} machine${upstream.machinesToAdd > 1 ? "s" : ""} there${
+          upstream.machineCount ? ` (${upstream.machineCount} today)` : ""
+        }.`
+      : upstream.hasHeadroom || upstream.atFullSpeed
+        ? " Add machines there, or a higher tier."
+        : " Follow the chain up.";
+    return { heading: "Where to act", body: `${state}${count}` };
+  }
+  if (verdict.kind === "choke") {
+    const deficit = verdict.deficit;
+    if (isCustomRate) {
+      return {
+        heading: "Fix here",
+        body: deficit
+          ? `Raise the rate by ${formatSlotRate(deficit.missingPerSecond, deficit.kind)}.`
+          : "Raise the rate.",
+      };
+    }
+    if (!deficit?.machinesToAdd) {
+      return { heading: "Fix here", body: "Add machines, or a higher tier." };
+    }
+    const covers =
+      deficit.hungryOutputs > 1 ? ` covers all ${deficit.hungryOutputs}` : " covers it";
+    return {
+      heading: "Fix here",
+      body: `+${deficit.machinesToAdd} machine${
+        deficit.machinesToAdd > 1 ? "s" : ""
+      }${covers} (${machineCount} today), or a higher tier.`,
+    };
+  }
+  return undefined;
 }
 
 /**
@@ -893,8 +1029,8 @@ function PortRail({
   return (
     <div
       className={[
-        "flex shrink-0 flex-col justify-start gap-1 py-0.5",
-        isInput ? "w-[118px]" : "w-[168px]",
+        "flex shrink-0 flex-col justify-start gap-0.5 py-0",
+        isInput ? "w-[210px]" : "w-[264px]",
       ].join(" ")}
     >
       {ports.map((port) =>
@@ -925,7 +1061,7 @@ function OutputSocketRow({
   const setHoveredFlowScope = useFactoryStore((state) => state.setHoveredFlowScope);
   return (
     <div
-      className="relative flex items-center"
+      className="relative flex items-stretch"
       data-resource-edge-anchor="true"
       data-resource-node-id={nodeId}
       data-resource-handle-id={port.handleId}
@@ -943,10 +1079,36 @@ function OutputSocketRow({
               : "Empty socket — nothing plugged in."
           }
         >
-          <span className="flow-socket-empty nodrag">—</span>
+          <span className="flow-socket-empty nodrag">
+            <PlugDragHandle nodeId={nodeId} port={port} />—
+          </span>
         </MinecraftTooltip>
       )}
     </div>
+  );
+}
+
+/**
+ * A second source handle over the coupling chip, sharing the port's handle
+ * id — a connection dropped on either reads the same port. Geometry is
+ * unaffected: edges anchor off the row's `data-resource-edge-anchor`, not
+ * React Flow's handle bounds.
+ */
+function PlugDragHandle({ nodeId, port }: { nodeId: string; port: RailPort }) {
+  return (
+    <Handle
+      id={port.handleId}
+      type="source"
+      position={Position.Right}
+      data-resource-handle="true"
+      data-resource-node-id={nodeId}
+      data-resource-handle-id={port.handleId}
+      title={`Drag to wire ${port.displayName}`}
+      className={[
+        "resource-slot-handle nodrag !absolute !left-0 !right-auto !top-0 !z-10 !h-full !w-full !min-w-0 !translate-x-0 !translate-y-0",
+        "!rounded-none !border-0 !bg-transparent !opacity-0 cursor-crosshair",
+      ].join(" ")}
+    />
   );
 }
 
@@ -976,6 +1138,10 @@ function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
         className={["flow-plug nodrag", `flow-plug--${plug.state}`].join(" ")}
         style={isFlowScopeLit ? PLUG_GLOW_STYLE : undefined}
       >
+        {/* The coupling looks like the end of the wire, so it has to BE one:
+            dragging from here pulls a new line. It sits inside the tooltip
+            wrapper, so hovering the handle still opens the asker's story. */}
+        <PlugDragHandle nodeId={nodeId} port={port} />
         {plug.state === "dump" ? (
           // No ask exists to be a percent of — flow just ends here.
           <span className="flow-plug-top">
@@ -1114,8 +1280,8 @@ function PortChip({
   return (
     <div
       className={[
-        "flow-port relative flex min-h-[34px] items-center gap-1 px-1 py-0.5",
-        plugRow ? "w-[118px] flex-none" : "flex-1",
+        "flow-port relative flex min-h-[52px] items-center gap-1.5 px-1 py-0.5",
+        plugRow ? "w-[210px] flex-none" : "flex-1",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
       ].join(" ")}
@@ -1156,7 +1322,7 @@ function PortChip({
       <span
         role="button"
         tabIndex={-1}
-        className="nodrag relative z-40 shrink-0 cursor-pointer hover:brightness-125"
+        className="nodrag relative z-40 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden cursor-pointer hover:brightness-125"
         title={`${port.displayName} — click: recipes, right-click: uses`}
         onClick={(event) => {
           event.stopPropagation();
@@ -1176,17 +1342,31 @@ function PortChip({
             tooltip={false}
             showAmount={false}
             showConsumedState={false}
-            iconPixelSize={26}
-            className="!h-5 !w-5"
+            // Item art ships with transparent padding baked into the sprite,
+            // and that padding is a FRACTION of the cell — growing the box
+            // grows the empty border with it. ResourceIcon's default already
+            // zooms to 200%-8px inside an overflow-hidden box; items take
+            // another 1.5x on top and get clipped by the box above, which is
+            // what finally puts the art edge to edge. Fluids are a solid
+            // square with nothing to crop, so they keep their exact size.
+            iconPixelSize={port.kind === "fluid" ? 86 : undefined}
+            className={
+              port.kind === "fluid" ? "" : "!h-12 !w-12 origin-center scale-150"
+            }
           />
         ) : (
-          <span className="block h-5 w-5 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
+          <span className="block h-12 w-12 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
         )}
       </span>
-      <span className="min-w-0 flex-1">
-        {/* Neutral ink always: the chip's BAR carries the machine story's
+      <span className="flex min-w-0 flex-1 flex-col justify-center pr-1">
+        {/* Name first: on a rail of five ports the rate is what you compare,
+            but the name is what you look for. */}
+        <span className="block truncate text-[13px] font-bold leading-4 text-[var(--mc-ink)]">
+          {port.displayName}
+        </span>
+        {/* Neutral, quieter ink: the chip's BAR carries the machine story's
             color. Green text over a red bar told two stories at once. */}
-        <span className="block truncate text-[10px] font-bold leading-3.5 tabular-nums text-[var(--mc-ink)]">
+        <span className="block truncate text-[12px] leading-4 tabular-nums text-[var(--mc-ink-muted)]">
           {rateText}
         </span>
         {port.handFed ? (
@@ -1194,7 +1374,7 @@ function PortChip({
             HAND-FED
           </span>
         ) : (
-          <span className="mt-0.5 flex items-center gap-0.5">
+          <span className="mt-1 flex items-center gap-0.5">
             <span
               className={["flow-port-bar block flex-1", hasBurst ? "flow-port-bar--burst" : ""]
                 .join(" ")
@@ -1484,7 +1664,7 @@ function renderPortHoverContent(port: RailPort, nodeId: string) {
                   left: `${fillPct}%`,
                   width: `${ghostPct}%`,
                   background:
-                    "repeating-linear-gradient(45deg, rgba(220,228,245,0.35) 0 3px, transparent 3px 6px)",
+                    "repeating-linear-gradient(45deg, rgba(220,228,245,0.35) 0 1.5px, transparent 1.5px 3px)",
                 }}
               />
             ) : null}
@@ -1897,14 +2077,14 @@ function MachineConfigControlPanel({
 
   return (
     <div className="nodrag mt-1 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(128px,1fr))] gap-1">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(172px,1fr))] gap-1">
         {controls.map((control) => (
           <label key={control.id} className="min-w-0">
-            <span className="mb-0.5 block truncate text-[10px] font-bold uppercase leading-4 text-[var(--mc-ink-muted)]">
+            <span className="mb-0.5 block text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
               {control.label}
             </span>
             <span className="flex min-w-0 items-center gap-1">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+              <span className="flex h-7 min-w-7 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] px-1 shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
                 {control.resource.iconPath ? (
                   <ResourceIcon
                     resource={control.resource}
@@ -1916,7 +2096,7 @@ function MachineConfigControlPanel({
                     className="h-6 w-6 !overflow-visible"
                   />
                 ) : (
-                  <span className="max-w-full truncate px-0.5 text-center text-[8px] font-black leading-3 text-white [text-shadow:1px_1px_0_#000]">
+                  <span className="whitespace-nowrap text-center text-[12px] font-black leading-4 text-white [text-shadow:1px_1px_0_#000]">
                     {shortConfigLabel(control.resource)}
                   </span>
                 )}
@@ -2164,8 +2344,13 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
 
 function shortConfigLabel(resource: ResourceAmount) {
   const label = resource.displayName ?? resource.id;
-  if (/^\d+\/\d+\/\d+$/.test(label)) {
+  if (/^\d+(\/\d+)*$/.test(label)) {
+    // A number is already short, and initialling it ate digits: a slice count
+    // of "55" came out as "5".
     return label;
+  }
+  if (label.length <= 4) {
+    return label.toUpperCase();
   }
   return label
     .split(/\s+/)
@@ -2235,7 +2420,7 @@ function Stat({
 }) {
   return (
     <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-      <div className="truncate text-[9px] uppercase text-[var(--mc-ink-muted)]">{label}</div>
+      <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className={["truncate font-medium", valueClassName ?? ""].join(" ")}>{value}</div>
     </div>
   );
@@ -2281,11 +2466,11 @@ function MachineCountStat({
   };
 
   const stepButtonClassName =
-    "nodrag flex h-4 w-4 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
+    "nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
 
   return (
     <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-      <div className="truncate text-[9px] uppercase text-[var(--mc-ink-muted)]">{label}</div>
+      <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className="flex min-w-0 items-center gap-0.5">
         <button
           type="button"
@@ -2317,7 +2502,7 @@ function MachineCountStat({
           inputMode="numeric"
           aria-label={`${label} count`}
           title={`Edit ${label.toLowerCase()} count`}
-          className="nodrag h-[18px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[12px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
+          className="nodrag h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
         />
         <button
           type="button"

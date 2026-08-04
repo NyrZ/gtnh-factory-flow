@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatRate } from "@/lib/model";
+import { formatCompact } from "@/lib/model";
 import type { FactoryProject, ResourceAmount, ResourceBalance } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -55,8 +55,8 @@ function SummaryPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2">
       <div className="grid shrink-0 grid-cols-4 gap-1">
-        <Metric label="EU/t" value={formatRate(result.totalEuT, 0)} />
-        <Metric label="EU/s" value={formatRate(result.totalEuPerSecond, 0)} />
+        <Metric label="EU/t" value={formatCompact(result.totalEuT)} />
+        <Metric label="EU/s" value={formatCompact(result.totalEuPerSecond)} />
         <Metric label="Nodes" value={String(project.nodes.length)} />
         <Metric
           label="Capped"
@@ -425,10 +425,9 @@ const FlowResourceRow = memo(function FlowResourceRow({
         onBlur={() => onHover(undefined)}
         onClick={() => onSelect(balance.key)}
         // The produced/consumed detail lives here now that the row is one line.
-        title={`${balance.displayName ?? balance.resourceId} — produced ${formatRate(
+        title={`${balance.displayName ?? balance.resourceId} — produced ${formatCompact(
           balance.producedPerSecond,
-          3,
-        )}${unit}, consumed ${formatRate(balance.consumedPerSecond, 3)}${unit}`}
+        )}${unit}, consumed ${formatCompact(balance.consumedPerSecond)}${unit}`}
         style={{ gridTemplateColumns: `${ICON_COLUMN} minmax(0,1fr) auto` }}
         className={[
           // The highlight is a ring rather than a border: a border would take a
@@ -477,7 +476,7 @@ const FlowResourceRow = memo(function FlowResourceRow({
 
         <span className={["text-base font-bold tabular-nums", toneStyle.value].join(" ")}>
           {prefix}
-          {formatRate(Math.abs(value), 3)}
+          {formatCompact(Math.abs(value))}
           <span className="ml-0.5 text-[11px] font-semibold opacity-70">{unit}</span>
         </span>
       </button>

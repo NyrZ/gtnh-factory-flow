@@ -261,7 +261,10 @@ export function MachineTabStrip({
       // only the tabs themselves are interactive (they stop pointerdown).
       // A container-level nodrag made the whole top band of picker nodes
       // dead for dragging.
-      className="mb-1 flex flex-wrap items-center gap-[3px] px-1"
+      // Browser tabs, not a toolbar: each machine carries its own tab and
+      // nothing else does. The strip used to be one band across the node, so
+      // two machines left a wide grey nothing on the right.
+      className="flex flex-wrap items-end gap-[3px] border-b-2 border-[var(--mc-15)] px-1"
       onMouseLeave={() => onHover(undefined)}
     >
       {handlers.map((handler) => {
@@ -285,16 +288,18 @@ export function MachineTabStrip({
             title={handler.label}
             aria-label={`Use ${handler.label}`}
             aria-pressed={active}
-            // Just the machine art: no box behind unselected icons, only the
-            // selected machine sits on a raised tab. The live glance-bar and
-            // card-stat preview is all the hover feedback needed.
             className={[
-              "nodrag flex h-[38px] w-[38px] items-center justify-center hover:brightness-110",
+              // A browser tab: top/left/right edges only. The selected one
+              // is card-colored, taller, and hangs 2px over the strip's
+              // baseline so the line breaks where it sits — that break is
+              // what makes it read as a tab rather than a pressed button.
+              "nodrag flex items-center justify-center border-2 border-b-0 hover:brightness-110",
               active
-                ? "border-2 border-[var(--mc-15)] bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]"
-                : peeked
-                  ? "opacity-100"
-                  : "opacity-75",
+                ? "relative z-10 -mb-0.5 h-[42px] w-[46px] border-[var(--mc-15)] bg-[var(--mc-78)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+                : [
+                    "h-[32px] w-[40px] border-[var(--mc-33)] bg-[var(--mc-56)] shadow-[inset_1px_1px_0_var(--mc-71),inset_-1px_-1px_0_var(--mc-25)]",
+                    peeked ? "brightness-125" : "opacity-90",
+                  ].join(" "),
             ].join(" ")}
           >
             {icon ? (
@@ -304,8 +309,8 @@ export function MachineTabStrip({
                 bare
                 showAmount={false}
                 tooltip={false}
-                className="!h-[34px] !w-[34px]"
-                iconPixelSize={machineArtPixels(34)}
+                className={active ? "!h-[34px] !w-[34px]" : "!h-[26px] !w-[26px]"}
+                iconPixelSize={machineArtPixels(active ? 34 : 26)}
               />
             ) : (
               <span className="text-[16px] font-bold text-[var(--mc-ink)]">
@@ -326,7 +331,7 @@ export function MachineTabStrip({
         title="Compare all machines"
         aria-label="Compare all machines"
         className={[
-          "nodrag flex h-[38px] w-[38px] items-center justify-center self-center border-2 text-[16px] font-bold leading-none hover:brightness-110",
+          "nodrag flex h-[36px] w-[36px] items-center justify-center self-end border-2 border-b-0 text-[18px] font-bold leading-none hover:brightness-110",
           isCompareOpen
             ? "border-[var(--mc-15)] bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
             : "border-[var(--mc-33)] bg-[var(--mc-61)] text-white shadow-[inset_2px_2px_0_var(--mc-85)] [text-shadow:1px_1px_0_var(--mc-24)]",
