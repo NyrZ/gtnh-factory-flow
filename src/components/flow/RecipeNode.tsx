@@ -2077,14 +2077,14 @@ function MachineConfigControlPanel({
 
   return (
     <div className="nodrag mt-1 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(128px,1fr))] gap-1">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(172px,1fr))] gap-1">
         {controls.map((control) => (
           <label key={control.id} className="min-w-0">
-            <span className="mb-0.5 block truncate text-[10px] font-bold uppercase leading-4 text-[var(--mc-ink-muted)]">
+            <span className="mb-0.5 block text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
               {control.label}
             </span>
             <span className="flex min-w-0 items-center gap-1">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
+              <span className="flex h-7 min-w-7 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-55)] px-1 shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)]">
                 {control.resource.iconPath ? (
                   <ResourceIcon
                     resource={control.resource}
@@ -2096,7 +2096,7 @@ function MachineConfigControlPanel({
                     className="h-6 w-6 !overflow-visible"
                   />
                 ) : (
-                  <span className="max-w-full truncate px-0.5 text-center text-[8px] font-black leading-3 text-white [text-shadow:1px_1px_0_#000]">
+                  <span className="whitespace-nowrap text-center text-[12px] font-black leading-4 text-white [text-shadow:1px_1px_0_#000]">
                     {shortConfigLabel(control.resource)}
                   </span>
                 )}
@@ -2344,8 +2344,13 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
 
 function shortConfigLabel(resource: ResourceAmount) {
   const label = resource.displayName ?? resource.id;
-  if (/^\d+\/\d+\/\d+$/.test(label)) {
+  if (/^\d+(\/\d+)*$/.test(label)) {
+    // A number is already short, and initialling it ate digits: a slice count
+    // of "55" came out as "5".
     return label;
+  }
+  if (label.length <= 4) {
+    return label.toUpperCase();
   }
   return label
     .split(/\s+/)

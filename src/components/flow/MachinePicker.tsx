@@ -261,7 +261,10 @@ export function MachineTabStrip({
       // only the tabs themselves are interactive (they stop pointerdown).
       // A container-level nodrag made the whole top band of picker nodes
       // dead for dragging.
-      className="mb-1 flex flex-wrap items-center gap-[3px] px-1"
+      // Browser tabs, not a toolbar: each machine carries its own tab and
+      // nothing else does. The strip used to be one band across the node, so
+      // two machines left a wide grey nothing on the right.
+      className="flex flex-wrap items-end gap-[2px] px-1"
       onMouseLeave={() => onHover(undefined)}
     >
       {handlers.map((handler) => {
@@ -326,7 +329,7 @@ export function MachineTabStrip({
         title="Compare all machines"
         aria-label="Compare all machines"
         className={[
-          "nodrag flex h-[38px] w-[38px] items-center justify-center self-center border-2 text-[16px] font-bold leading-none hover:brightness-110",
+          "nodrag flex h-[36px] w-[36px] items-center justify-center self-end border-2 border-b-0 text-[18px] font-bold leading-none hover:brightness-110",
           isCompareOpen
             ? "border-[var(--mc-15)] bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
             : "border-[var(--mc-33)] bg-[var(--mc-61)] text-white shadow-[inset_2px_2px_0_var(--mc-85)] [text-shadow:1px_1px_0_var(--mc-24)]",
