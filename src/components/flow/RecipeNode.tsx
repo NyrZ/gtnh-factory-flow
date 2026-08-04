@@ -1028,7 +1028,7 @@ function PortRail({
     <div
       className={[
         "flex shrink-0 flex-col justify-start gap-1 py-0.5",
-        isInput ? "w-[144px]" : "w-[198px]",
+        isInput ? "w-[180px]" : "w-[234px]",
       ].join(" ")}
     >
       {ports.map((port) =>
@@ -1278,8 +1278,8 @@ function PortChip({
   return (
     <div
       className={[
-        "flow-port relative flex min-h-[44px] items-center gap-1 px-1 py-0.5",
-        plugRow ? "w-[144px] flex-none" : "flex-1",
+        "flow-port relative flex min-h-[72px] items-center gap-1.5 px-1 py-0.5",
+        plugRow ? "w-[180px] flex-none" : "flex-1",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
       ].join(" ")}
@@ -1320,7 +1320,7 @@ function PortChip({
       <span
         role="button"
         tabIndex={-1}
-        className="nodrag relative z-40 flex h-11 w-11 shrink-0 items-center justify-center cursor-pointer hover:brightness-125"
+        className="nodrag relative z-40 flex h-16 w-16 shrink-0 items-center justify-center cursor-pointer hover:brightness-125"
         title={`${port.displayName} — click: recipes, right-click: uses`}
         onClick={(event) => {
           event.stopPropagation();
@@ -1348,22 +1348,22 @@ function PortChip({
             // Fluids have no padding to crop — they draw a solid square at 56%
             // of what they're given, so 64 lands them on 36px, matching the
             // apparent size of a cropped item.
-            iconPixelSize={port.kind === "fluid" ? 64 : undefined}
-            className={port.kind === "fluid" ? "" : "!h-11 !w-11"}
+            iconPixelSize={port.kind === "fluid" ? 114 : undefined}
+            className={port.kind === "fluid" ? "" : "!h-16 !w-16"}
           />
         ) : (
-          <span className="block h-11 w-11 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
+          <span className="block h-16 w-16 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
         )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-center">
         {/* Name first: on a rail of five ports the rate is what you compare,
             but the name is what you look for. */}
-        <span className="block truncate text-[10px] font-bold leading-[13px] text-[var(--mc-ink)]">
+        <span className="block truncate text-[11px] font-bold leading-[14px] text-[var(--mc-ink)]">
           {port.displayName}
         </span>
         {/* Neutral, quieter ink: the chip's BAR carries the machine story's
             color. Green text over a red bar told two stories at once. */}
-        <span className="block truncate text-[9px] leading-[12px] tabular-nums text-[var(--mc-ink-muted)]">
+        <span className="block truncate text-[10px] leading-[13px] tabular-nums text-[var(--mc-ink-muted)]">
           {rateText}
         </span>
         {port.handFed ? (

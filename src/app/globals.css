@@ -628,7 +628,7 @@ img {
   display: flex;
   flex: none;
   width: 52px;
-  height: 44px;
+  height: 72px;
   margin-left: 2px;
   flex-direction: column;
   justify-content: center;
@@ -705,7 +705,7 @@ img {
   display: flex;
   flex: none;
   width: 52px;
-  height: 44px;
+  height: 72px;
   margin-left: 2px;
   align-items: center;
   justify-content: center;
