@@ -1027,8 +1027,8 @@ function PortRail({
   return (
     <div
       className={[
-        "flex shrink-0 flex-col justify-start gap-1 py-0.5",
-        isInput ? "w-[172px]" : "w-[226px]",
+        "flex shrink-0 flex-col justify-start gap-0.5 py-0",
+        isInput ? "w-[168px]" : "w-[222px]",
       ].join(" ")}
     >
       {ports.map((port) =>
@@ -1278,8 +1278,8 @@ function PortChip({
   return (
     <div
       className={[
-        "flow-port relative flex min-h-[68px] items-center gap-1 px-0.5 py-0.5",
-        plugRow ? "w-[172px] flex-none" : "flex-1",
+        "flow-port relative flex min-h-[64px] items-center gap-1 p-0",
+        plugRow ? "w-[168px] flex-none" : "flex-1",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
       ].join(" ")}
@@ -1355,7 +1355,7 @@ function PortChip({
           <span className="block h-16 w-16 border border-[var(--mc-47)] bg-[var(--mc-55)]" />
         )}
       </span>
-      <span className="flex min-w-0 flex-1 flex-col justify-center">
+      <span className="flex min-w-0 flex-1 flex-col justify-center pr-1">
         {/* Name first: on a rail of five ports the rate is what you compare,
             but the name is what you look for. */}
         <span className="block truncate text-[11px] font-bold leading-[14px] text-[var(--mc-ink)]">
