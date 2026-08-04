@@ -1028,7 +1028,7 @@ function PortRail({
     <div
       className={[
         "flex shrink-0 flex-col justify-start gap-1 py-0.5",
-        isInput ? "w-[180px]" : "w-[234px]",
+        isInput ? "w-[172px]" : "w-[226px]",
       ].join(" ")}
     >
       {ports.map((port) =>
@@ -1278,8 +1278,8 @@ function PortChip({
   return (
     <div
       className={[
-        "flow-port relative flex min-h-[72px] items-center gap-1.5 px-1 py-0.5",
-        plugRow ? "w-[180px] flex-none" : "flex-1",
+        "flow-port relative flex min-h-[68px] items-center gap-1 px-0.5 py-0.5",
+        plugRow ? "w-[172px] flex-none" : "flex-1",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
       ].join(" ")}
