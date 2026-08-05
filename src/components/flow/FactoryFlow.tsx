@@ -3598,29 +3598,51 @@ function ResourceEdgeComponent({
   // Where this edge's rate chip sits, so the pulse canvas can keep its dashes
   // out from under it (the canvas paints above everything — see
   // EdgePulseCanvas for why it has to). The chip is inside the transformed
-  // viewport, so its LAYOUT size is already in flow units and only needs
-  // measuring when the content changes, not per frame.
-  // State rather than a ref because the value is read during render; it only
-  // ever changes when the chip's text does, so this is not a per-frame update.
+  // viewport, so its LAYOUT size is already in flow units.
+  //
+  // Measured through a ResizeObserver, and ONLY when the dashes are actually
+  // being drawn. The first version read `offsetWidth` inside the ref callback,
+  // which React runs during commit — so every commit that attached a chip
+  // forced a synchronous style-and-layout flush, once per edge. On a board
+  // where something re-renders during a pan that is a reflow storm on the
+  // pointer-move path, and it showed up in a real profile as exactly that:
+  // commitAttachRef -> offsetWidth -> PresShell::DoFlushPendingNotifications.
+  //
+  // A ResizeObserver reports the same box without ever forcing layout, and the
+  // whole thing is skipped when pulse mode is off, where the measurement was
+  // pure waste — nothing consumes it.
+  const wantsLabelBox = flowRate?.pulse === true;
   const [labelSize, setLabelSize] = useState<{ width: number; height: number } | undefined>(
     undefined,
   );
+  const [labelElement, setLabelElement] = useState<HTMLDivElement | null>(null);
   const publishLabelBox = useCallback((element: HTMLDivElement | null) => {
-    if (!element) {
+    setLabelElement(element);
+  }, []);
+  useEffect(() => {
+    if (!labelElement || !wantsLabelBox || typeof ResizeObserver === "undefined") {
       return;
     }
-    const width = element.offsetWidth;
-    const height = element.offsetHeight;
-    setLabelSize((current) =>
-      current && current.width === width && current.height === height
-        ? current
-        : { width, height },
-    );
-  }, []);
+    const observer = new ResizeObserver((entries) => {
+      const size = entries[0]?.borderBoxSize?.[0];
+      if (!size) {
+        return;
+      }
+      const width = size.inlineSize;
+      const height = size.blockSize;
+      setLabelSize((current) =>
+        current && current.width === width && current.height === height
+          ? current
+          : { width, height },
+      );
+    });
+    observer.observe(labelElement);
+    return () => observer.disconnect();
+  }, [labelElement, wantsLabelBox]);
   const labelBoxWidth = labelSize?.width;
   const labelBoxHeight = labelSize?.height;
   useEffect(() => {
-    if (!showLabel || !labelBoxWidth || !labelBoxHeight) {
+    if (!wantsLabelBox || !showLabel || !labelBoxWidth || !labelBoxHeight) {
       retractEdgeLabelBox(id);
       return;
     }
