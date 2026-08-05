@@ -435,10 +435,10 @@ const FlowResourceRow = memo(function FlowResourceRow({
           // short of the row edges and reopening the band between rows.
           "grid h-full w-full items-center gap-2 rounded pr-2 text-left",
           isSelected
-            ? "bg-cyan-100 ring-2 ring-cyan-500 dark:bg-cyan-500/25 dark:ring-cyan-500/50"
+            ? "bg-cyan-500/25 ring-2 ring-cyan-500/50"
             : isActive
-              ? "bg-cyan-50 ring-1 ring-cyan-300 dark:bg-cyan-500/10 dark:ring-cyan-500/60"
-              : "hover:bg-cyan-50 hover:ring-1 hover:ring-cyan-300 dark:hover:bg-cyan-500/10 dark:hover:ring-cyan-500/60",
+              ? "bg-cyan-500/10 ring-1 ring-cyan-500/60"
+              : "hover:bg-cyan-500/10 hover:ring-1 hover:ring-cyan-500/60",
         ].join(" ")}
       >
         {/*
@@ -487,19 +487,19 @@ const FlowResourceRow = memo(function FlowResourceRow({
 const TONE_STYLES: Record<FlowSectionTone, { header: string; badge: string; value: string }> = {
   need: {
     header:
-      "border-red-300/70 bg-red-50/95 text-red-900 hover:bg-red-100 dark:border-red-500/40 dark:bg-red-950/85 dark:text-red-100 dark:hover:bg-red-900/60",
-    badge: "bg-red-500/20 text-red-900 dark:bg-red-500/30 dark:text-red-50",
-    value: "text-red-700 dark:text-red-300",
+      "border-red-500/40 bg-red-950/85 text-red-100 hover:bg-red-900/60",
+    badge: "bg-red-500/30 text-red-50",
+    value: "text-red-300",
   },
   output: {
     header:
-      "border-emerald-300/70 bg-emerald-50/95 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-950/85 dark:text-emerald-100 dark:hover:bg-emerald-900/60",
-    badge: "bg-emerald-500/20 text-emerald-900 dark:bg-emerald-500/30 dark:text-emerald-50",
-    value: "text-emerald-700 dark:text-emerald-300",
+      "border-emerald-500/40 bg-emerald-950/85 text-emerald-100 hover:bg-emerald-900/60",
+    badge: "bg-emerald-500/30 text-emerald-50",
+    value: "text-emerald-300",
   },
   internal: {
     header:
-      "border-line bg-surface-sunken/95 text-fg-subtle hover:bg-surface dark:border-line dark:bg-surface-sunken/90",
+      "border-line bg-surface-sunken/90 text-fg-subtle hover:bg-surface",
     badge: "bg-fg-muted/20 text-fg-subtle",
     value: "text-fg-subtle",
   },
@@ -566,12 +566,12 @@ function Metric({
   const className = [
     "rounded border px-2 py-1 text-left",
     active
-      ? "border-cyan-500 bg-cyan-100 ring-1 ring-cyan-300 dark:bg-cyan-500/25 dark:ring-cyan-500/50"
+      ? "border-cyan-500 bg-cyan-500/25 ring-1 ring-cyan-500/50"
       : tone === "alert"
-        ? "border-red-300 bg-red-50 dark:border-red-500/50 dark:bg-red-500/15"
+        ? "border-red-500/50 bg-red-500/15"
         : "border-line bg-surface-raised",
     interactive
-      ? "cursor-pointer hover:border-cyan-300 hover:bg-cyan-50 dark:hover:border-cyan-500/60 dark:hover:bg-cyan-500/10"
+      ? "cursor-pointer hover:border-cyan-500/60 hover:bg-cyan-500/10"
       : "",
   ].join(" ");
   const content = (
@@ -582,7 +582,7 @@ function Metric({
       <div
         className={[
           "truncate text-base font-bold leading-tight tabular-nums",
-          tone === "alert" && !active ? "text-red-700 dark:text-red-300" : "text-fg",
+          tone === "alert" && !active ? "text-red-300" : "text-fg",
         ].join(" ")}
       >
         {value}

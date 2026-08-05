@@ -1,100 +1,20 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /*
- * Theme tokens.
+ * Theme tokens. The app renders dark, and only dark.
  *
- * Light values are the original hard-coded hexes, so light mode renders exactly
- * as it did before the theme system existed.
- *
- * The `--mc-*` scale is the Minecraft GUI bevel ramp, named by light-mode
- * lightness. Panels build their raised/inset look by pairing a face colour with
- * a lighter token (top-left highlight) and a darker token (bottom-right shadow),
- * so the dark ramp only has to preserve the ordering to keep every bevel
- * reading correctly. It is compressed into a narrower, blue-tinted range that
- * matches the recipe browser's existing dark chrome.
- *
- * Text colours are deliberately not part of the ramp: inverting a surface and
- * inverting ink are opposite operations.
+ * The `--mc-*` scale is the Minecraft GUI bevel ramp, still named by the
+ * LIGHTNESS OF THE ORIGINAL LIGHT RAMP — --mc-100 is the lightest token and
+ * --mc-12 the darkest, which on this palette means --mc-100 is a mid grey and
+ * --mc-12 is near black. Panels build their raised/inset look by pairing a
+ * face colour with a lighter token (top-left highlight) and a darker one
+ * (bottom-right shadow), so it is the ORDERING of the ramp that keeps every
+ * bevel reading correctly; the names must keep matching that order. The range
+ * is deliberately narrow and blue-tinted to match the recipe browser chrome.
  */
 :root {
-  color-scheme: light;
-
-  --background: #ffffff;
-  --foreground: #171717;
-
-  --surface: #ffffff;
-  --surface-raised: #fafafa;
-  --surface-sunken: #f5f5f5;
-  --canvas: #f5f5f5;
-  --canvas-dot: #b8b8b8;
-  --fg: #0a0a0a;
-  --fg-subtle: #262626;
-  --fg-muted: #737373;
-  --line: #e5e5e5;
-  --line-strong: #d4d4d4;
-
-  /*
-   * Chart tokens.
-   *
-   * Voltage tier is an ordinal scale — ULV below LV below MV — so it takes one
-   * hue stepped by lightness rather than a set of unrelated colours: the reader
-   * sees the order in the ramp itself. Steps are validated against this panel's
-   * own surface (light #fafafa, dark #303238) for monotone lightness, a visible
-   * gap between neighbours, and a light end that still clears the surface. The
-   * dark column is the same hue re-stepped for the dark surface, not a flip.
-   */
-  --viz-ordinal-1: #86b6ef;
-  --viz-ordinal-2: #5598e7;
-  --viz-ordinal-3: #2a78d6;
-  --viz-ordinal-4: #1c5cab;
-  --viz-ordinal-5: #0d366b;
-  /* Nominal series: machine names carry no order, so every bar shares one hue. */
-  --viz-series-1: #2a78d6;
-
-  --mc-100: #ffffff;
-  --mc-98: #f7f7f7;
-  --mc-96: #f4f4f4;
-  --mc-93: #eeeeee;
-  --mc-85: #d8d8d8;
-  --mc-82: #d0d0d0;
-  --mc-81: #cfcfcf;
-  --mc-78: #c6c6c6;
-  --mc-71: #b6b6b6;
-  --mc-66: #a9a9a9;
-  --mc-65: #a7a7a7;
-  --mc-62: #9f9f9f;
-  --mc-61: #9b9b9b;
-  --mc-56: #8f8f8f;
-  --mc-55: #8d8d8d;
-  --mc-54: #8b8b8b;
-  --mc-49: #7d7d7d;
-  --mc-47: #777777;
-  --mc-44: #6f6f6f;
-  --mc-36: #5d5d5d;
-  --mc-33: #555555;
-  --mc-29: #4a4a4a;
-  --mc-26: #424242;
-  --mc-25: #404040;
-  --mc-24: #3f3f3f;
-  --mc-20: #343434;
-  --mc-15: #252525;
-  --mc-12: #1f1f1f;
-
-  --mc-ink: #202020;
-  --mc-ink-muted: #8a8a8a;
-
-  /* Semantic status colors for text sitting on mc-* panel surfaces. The
-     panels flip dark with the theme, so raw Tailwind 700-shades go
-     dark-on-dark; use these instead of hardcoded emerald/red/cyan. */
-  --mc-good: #047857;
-  --mc-bad: #b91c1c;
-  --mc-info: #0e7490;
-}
-
-[data-theme="dark"] {
   color-scheme: dark;
 
   --background: #1b1d21;
@@ -111,11 +31,21 @@
   --line: #3a3b40;
   --line-strong: #4a4b52;
 
+  /*
+   * Chart tokens.
+   *
+   * Voltage tier is an ordinal scale — ULV below LV below MV — so it takes one
+   * hue stepped by lightness rather than a set of unrelated colours: the reader
+   * sees the order in the ramp itself. Steps are validated against this panel's
+   * own surface (#303238) for monotone lightness, a visible gap between
+   * neighbours, and a light end that still clears the surface.
+   */
   --viz-ordinal-1: #256abf;
   --viz-ordinal-2: #3987e5;
   --viz-ordinal-3: #6da7ec;
   --viz-ordinal-4: #9ec5f4;
   --viz-ordinal-5: #cde2fb;
+  /* Nominal series: machine names carry no order, so every bar shares one hue. */
   --viz-series-1: #3987e5;
 
   --mc-100: #5a5c65;
@@ -150,6 +80,9 @@
   --mc-ink: #e8e9ee;
   --mc-ink-muted: #9a9ca4;
 
+  /* Semantic status colors for text sitting on mc-* panel surfaces. Raw
+     Tailwind 700-shades go dark-on-dark there; use these instead of hardcoded
+     emerald/red/cyan. */
   --mc-good: #4ade80;
   --mc-bad: #f87171;
   --mc-info: #22d3ee;
@@ -258,6 +191,75 @@ textarea {
 
 .factory-flow-board[data-detail-level="glance"] [data-node-detail="glance"] {
   display: flex;
+}
+
+/* The hop map: hovering a card zoomed out colours every other card by how many
+   wires away it is. See hop-map.ts for the whole design, and in particular for
+   why the colours arrive as two custom properties written onto the node
+   elements instead of as React props — the short version is that this is a
+   hover feature on a board that must not re-render on hover, and doing it the
+   obvious way cost 5× the frame rate.
+
+   Only the glance layer is painted, so the map exists only at the zoom step
+   where the cards had stopped saying anything anyway. */
+.factory-flow-board[data-hop-map] .react-flow__node [data-node-detail="glance"] {
+  background-color: var(--hop-fill);
+  /* Makes the layer a query container so the figure below can be sized from the
+     card it is sitting in. The layer is `absolute inset-0`, so its size comes
+     from the card and containment cannot feed back into the card's own size —
+     which the router measures. */
+  container-type: size;
+}
+
+/* Under a map the card answers a different question, so it stops giving the old
+   answer: the utilisation figure and the drawer's item both go, and the card
+   shows its distance from the hub instead. One number, nothing else. */
+.factory-flow-board[data-hop-map] .react-flow__node [data-node-detail="glance"] > * {
+  display: none;
+}
+
+/* The figure itself. `content: var(--hop-label)` is what lets the card change
+   what it SAYS from outside React — hop-map.ts writes the quoted string. Out of
+   reach means an empty label, and the grey card just sits there.
+
+   Sized from the card, to land on the same glyph height as the utilisation
+   figure it replaces. That one is an SVG with a `viewBox`, so the browser fits
+   it to the card for free; a pseudo-element gets no such help, and a fixed size
+   left the number looking timid next to the percentage on every card bigger
+   than a drawer. The two numbers are the same thing said differently and they
+   should be the same size.
+
+   The maths, exactly: the percentage fits a 100×30 viewBox into the layer's
+   content box, then draws 30 units of text into it — so its font size is
+   min(0.3 × content width, content height). Container query units resolve
+   against that same content box, which makes the two expressions the same
+   number rather than a tuned approximation of it. */
+.factory-flow-board[data-hop-map] .react-flow__node [data-node-detail="glance"]::after {
+  content: var(--hop-label, "");
+  color: var(--hop-ink);
+  font-size: min(30cqw, 100cqh);
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The hub gets a hard dark edge rather than a brighter fill — at this zoom the
+   difference between it and its nearest neighbours is a few pixels of hue, but
+   an outline is unmistakable. Inside AND outside the card, so it survives
+   whatever colour lands next to it. */
+.factory-flow-board[data-hop-map] .react-flow__node[data-hop-hub] [data-node-detail="glance"] {
+  box-shadow:
+    inset 0 0 0 3px #101014,
+    0 0 0 4px #101014;
+}
+
+/* While a map is up, the wires step back. The map IS the wiring, counted and
+   coloured, and the lines themselves are what makes a zoomed-out board
+   unreadable in the first place. They stay drawn — the route is still the
+   answer to "how does it get there" — just quiet enough that the colours in
+   front of them win. */
+.factory-flow-board[data-hop-map] .react-flow__edges {
+  opacity: 0.28;
 }
 
 .minecraft-pixel-art,
@@ -401,6 +403,55 @@ img {
   opacity: 0 !important;
 }
 
+/* While a wire is being dragged, every card wears the answer to "would this
+   drop work?": green takes it, red does not, and the whole card is the target
+   either way. The verdict is written straight onto the React Flow node wrapper
+   by the connect handlers — a board-wide drag effect must never go through
+   React (see ARCHITECTURE.md), so all of the paint happens here.
+
+   Cards the drag came from and annotation backdrops get data-drop-fit="none"
+   and stay untouched. */
+.factory-flow-board .react-flow__node[data-drop-fit="yes"]::after,
+.factory-flow-board .react-flow__node[data-drop-fit="no"]::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.factory-flow-board .react-flow__node[data-drop-fit="yes"]::after {
+  background: rgb(74 222 128 / 0.14);
+  box-shadow: inset 0 0 0 1px rgb(74 222 128 / 0.5);
+}
+
+.factory-flow-board .react-flow__node[data-drop-fit="no"]::after {
+  background: rgb(248 113 113 / 0.1);
+  box-shadow: inset 0 0 0 1px rgb(248 113 113 / 0.35);
+}
+
+/* Wiring is a MODE. With a wire out, the only live question is where it lands,
+   and the wash plus the snapping pipe answer it. Lines, labels and their
+   tooltips stop taking the pointer entirely, so none of their hover handlers
+   ever fire — cheaper and more certain than gating each one in JS. The hover
+   effects that live purely in CSS are switched off below for the same reason.
+   (Item tooltips need no help: MinecraftTooltip already refuses to open while
+   a button is held.) */
+.factory-flow-board--wiring .react-flow__edge,
+.factory-flow-board--wiring .react-flow__edgelabel-renderer,
+.factory-flow-board--wiring .react-flow__edgelabel-renderer * {
+  pointer-events: none !important;
+}
+
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
+  outline: none;
+  filter: none;
+  z-index: auto;
+}
+
 .nei-tab-scroll {
   scrollbar-color: var(--mc-54) var(--mc-82);
   scrollbar-width: thin;
@@ -504,37 +555,25 @@ img {
   --verdict-demand-edge: #28323d;
   --verdict-balanced-bg: #22733a;
   --verdict-balanced-edge: #123f1f;
-  --verdict-off-bg: #6b6b6b;
+  --verdict-off-bg: #4a4a4a;
   --verdict-off-edge: #3d3d3d;
-  --rail-bar-track: #6e6e6e;
+  --rail-bar-track: #3c3c3c;
   --rail-bar-ok: #3fae5c;
   --rail-bar-bad: #cf3333;
   --rail-bar-hot: #e09b17;
   --rail-bar-calm: #7b8b9c;
-  --port-bind-bg: #d9a6a6;
-  --port-bind-edge: #8c1c1c;
-  --port-hot-bg: #e3c98f;
-  --port-hot-edge: #9c6e00;
-  --port-fed-bg: #b7dcb0;
-  --port-fed-edge: #2f7a3d;
-  /* The REASON word is the same red as the bar of the input it blames — two
-     marks about one problem should not be two different reds. */
-  --verdict-short-ink: #cf3333;
-  --verdict-over-ink: #a67208;
-}
-
-[data-theme="dark"] {
-  --verdict-off-bg: #4a4a4a;
-  /* Same pairing on the dark panel: the word and the bar it points at. */
-  --verdict-short-ink: #e05252;
-  --verdict-over-ink: #e0a63a;
-  --rail-bar-track: #3c3c3c;
+  /* Port states are washes behind a slot, so they sit just off the panel face
+     rather than being pale tints of the hue. */
   --port-bind-bg: #5d2323;
   --port-bind-edge: #c34c4c;
   --port-hot-bg: #57451b;
   --port-hot-edge: #c99b2e;
   --port-fed-bg: #1f4a28;
   --port-fed-edge: #4cae62;
+  /* The REASON word is the same red as the bar of the input it blames — two
+     marks about one problem should not be two different reds. */
+  --verdict-short-ink: #e05252;
+  --verdict-over-ink: #e0a63a;
 }
 
 /* Hovering the usage cell lights the reason for THAT number — and only that

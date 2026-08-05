@@ -70,8 +70,6 @@ import {
   embedProjectJsonInPng,
   embedProjectJsonInSvg,
 } from "@/lib/import-export/plan-image";
-import type { Theme } from "@/lib/theme";
-import { useThemeStore } from "@/store/theme-store";
 import {
   applyRecipeInputOverrides,
   restoreCrossKindInputOverrideVisuals,
@@ -110,6 +108,7 @@ import {
   canonicalizeResourceHandleId,
   makeResourceHandleId,
   parseResourceHandleId,
+  type ResourceHandleSide,
 } from "./resource-handles";
 import {
   findOrthogonalRoute,
@@ -125,7 +124,11 @@ import {
   isEdgeSurplus,
 } from "./edge-labels";
 import { buildEdgeStory } from "./flow-explainers";
-import { CUSTOM_RATE_ANY_RESOURCE_ID } from "@/lib/model/custom-rate";
+import {
+  CUSTOM_RATE_ANY_RESOURCE_ID,
+  getCustomRateSlot,
+  isCustomRateRecipe,
+} from "@/lib/model/custom-rate";
 import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
 import { rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
 import { getSupplyCeiling } from "@/components/inspector/usage-limits";
@@ -140,6 +143,16 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
+import { isWiringConnection, setWiringConnection, WIRING_BOARD_CLASS } from "./connection-drag";
+import {
+  clearHopMap,
+  getHopMapHubId,
+  hopFill,
+  hopInk,
+  registerHopMapBoard,
+  setHopMapHub,
+  useHopMapSummary,
+} from "./hop-map";
 import {
   NODE_DETAIL_ATTRIBUTE,
   NODE_DETAIL_FULL,
@@ -202,14 +215,8 @@ const DEFAULT_FLUID_EDGE_COLOR = "#2f89c5";
 
 // React Flow's Background and the html-to-image exporter both need a concrete
 // colour rather than a CSS variable, so these mirror --canvas / --canvas-dot.
-const CANVAS_COLOR: Record<Theme, string> = {
-  light: "#f5f5f5",
-  dark: "#1b1d21",
-};
-const CANVAS_DOT_COLOR: Record<Theme, string> = {
-  light: "#b8b8b8",
-  dark: "#4a4d55",
-};
+const CANVAS_COLOR = "#1b1d21";
+const CANVAS_DOT_COLOR = "#4a4d55";
 
 /** Snap step, and the background gap — same number so nodes land on marks. */
 const BOARD_GRID_SIZE = 24;
@@ -812,6 +819,17 @@ let publishedBoardGeometryById = new Map<
   { x: number; y: number; width: number; height: number }
 >();
 
+/**
+ * While a wire is being dragged: for every card on the board, the port a drop
+ * would land on, or null when that card refuses the resource. Empty at rest.
+ *
+ * Module state rather than a ref because two unrelated consumers read it — the
+ * green/red wash painter and the connection line, which React Flow renders
+ * itself with no path to pass props down. Both answering from one map is what
+ * keeps the pipe, the wash and the drop from ever disagreeing.
+ */
+const activeDropTargets = new Map<string, ResolvedResourceHandle | null>();
+
 // Slot endpoints cached relative to their node's origin, keyed by node size.
 // Measuring through the DOM made an edge's endpoints depend on whether its
 // node happened to be mounted (`onlyRenderVisibleElements` culls off-screen
@@ -889,7 +907,6 @@ interface ResolvedResourceHandle {
 }
 
 export function FactoryFlow() {
-  const theme = useThemeStore((state) => state.theme);
   const project = useFactoryStore((state) => state.project);
   const result = useFactoryStore((state) => state.lastResult);
   const selectNode = useFactoryStore((state) => state.selectNode);
@@ -1040,6 +1057,7 @@ export function FactoryFlow() {
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const connectCompletedRef = useRef(false);
+  const dropFitFrameRef = useRef<number | undefined>(undefined);
   const exportInProgressRef = useRef(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const flowInstanceRef = useRef<ReactFlowInstance<BoardFlowNode, ResourceFlowEdge> | null>(null);
@@ -1750,6 +1768,69 @@ export function FactoryFlow() {
     [project],
   );
 
+  const stopDropFitPainting = useCallback(() => {
+    if (dropFitFrameRef.current !== undefined) {
+      cancelAnimationFrame(dropFitFrameRef.current);
+      dropFitFrameRef.current = undefined;
+    }
+    setWiringConnection(false);
+    boardRef.current?.classList.remove(WIRING_BOARD_CLASS);
+    clearNodeDropFit();
+  }, []);
+
+  const startDropFitPainting = useCallback(() => {
+    clearNodeDropFit();
+
+    if (!draggedResourceRef.current) {
+      return;
+    }
+
+    // Entering wiring mode. Whatever the pointer was lighting up on the way to
+    // the handle — a highlighted line, a lit slot, a hop map — is answering a
+    // question nobody is asking any more.
+    setWiringConnection(true);
+    boardRef.current?.classList.add(WIRING_BOARD_CLASS);
+    const store = useFactoryStore.getState();
+    store.setHoveredFlowScope(undefined);
+    store.setHoveredStorageResourceKey(undefined);
+    clearHopMap();
+
+    paintNodeDropFit(project, draggedResourceRef.current, false);
+
+    // One cheap selector per frame — it matches nothing until auto-pan mounts
+    // a card that has not been given a verdict yet.
+    const paintNewlyMounted = () => {
+      if (!draggedResourceRef.current) {
+        dropFitFrameRef.current = undefined;
+        return;
+      }
+      paintNodeDropFit(project, draggedResourceRef.current, true);
+      dropFitFrameRef.current = requestAnimationFrame(paintNewlyMounted);
+    };
+
+    if (dropFitFrameRef.current === undefined && draggedResourceRef.current) {
+      dropFitFrameRef.current = requestAnimationFrame(paintNewlyMounted);
+    }
+  }, [project]);
+
+  // A pointer that comes up without React Flow reporting a connect end (an
+  // aborted gesture, a drag off the window) must not leave the board washed.
+  useEffect(() => {
+    const clearIfIdle = () => {
+      if (!draggedResourceRef.current) {
+        stopDropFitPainting();
+      }
+    };
+
+    window.addEventListener("pointerup", clearIfIdle);
+    window.addEventListener("pointercancel", clearIfIdle);
+    return () => {
+      window.removeEventListener("pointerup", clearIfIdle);
+      window.removeEventListener("pointercancel", clearIfIdle);
+      stopDropFitPainting();
+    };
+  }, [stopDropFitPainting]);
+
   const handleConnectStart = useCallback(
     (
       event: MouseEvent | TouchEvent,
@@ -1768,14 +1849,16 @@ export function FactoryFlow() {
       lastConnectionPointerRef.current = getClientPosition(event);
       draggedResourceRef.current =
         nodeId && handleId ? getDraggedResourceForHandle(project, nodeId, handleId) : undefined;
+      startDropFitPainting();
     },
-    [project],
+    [project, startDropFitPainting],
   );
 
   const handleConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent) => {
       const draggedResource = draggedResourceRef.current;
       draggedResourceRef.current = undefined;
+      stopDropFitPainting();
       const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
       lastConnectionPointerRef.current = undefined;
       const targetHandle =
@@ -1785,7 +1868,11 @@ export function FactoryFlow() {
         getStorageHandleAtPointer(event, draggedResource) ??
         // Anywhere on a trash card counts as its well: dropping an output on
         // the frame or header must void it, never spawn a tank on top.
-        getTrashHandleAtPosition(clientPosition, draggedResource, event);
+        getTrashHandleAtPosition(clientPosition, draggedResource, event) ??
+        // Last resort: any card that takes the resource anywhere on it. The
+        // exact slot hit-tests above already had their say, so aiming still
+        // beats guessing.
+        getNodeCardHandleAtPosition(project, clientPosition, draggedResource);
 
       if (connectCompletedRef.current) {
         return;
@@ -1889,6 +1976,12 @@ export function FactoryFlow() {
         return;
       }
 
+      // Landing on a card that just washed red means "no" — dropping a fresh
+      // drawer on top of it would be a strange answer to a refused wire.
+      if (getBoardNodeIdAtPosition(clientPosition)) {
+        return;
+      }
+
       const position = flowInstance.screenToFlowPosition(clientPosition);
       addStorageForConnection(
         draggedResource,
@@ -1920,6 +2013,7 @@ export function FactoryFlow() {
     };
   }, []);
 
+
   const updateFlowViewportCenter = useCallback(() => {
     const instance = flowInstanceRef.current;
     const board = boardRef.current;
@@ -1937,6 +2031,11 @@ export function FactoryFlow() {
   }, [setFlowViewportCenter]);
 
   const handleMoveStart = useCallback(() => {
+    // Panning or zooming drops the map. React Flow culls off-screen nodes, so
+    // a map held across a move would arrive at freshly mounted cards that were
+    // never painted — and moving the board is a deliberate act anyway, not
+    // something you do while reading one node's neighbourhood.
+    clearHopMap();
     boardRef.current?.classList.add("factory-flow-board--moving");
   }, []);
 
@@ -1989,8 +2088,7 @@ export function FactoryFlow() {
         EXPORT_IMAGE_PADDING / Math.max(imageWidth, imageHeight),
       );
       const options = {
-        // Read lazily so switching theme does not rebuild this callback.
-        backgroundColor: CANVAS_COLOR[useThemeStore.getState().theme],
+        backgroundColor: CANVAS_COLOR,
         width: imageWidth,
         height: imageHeight,
         style: {
@@ -2305,6 +2403,9 @@ export function FactoryFlow() {
   );
 
   const handleNodeDragStart = useCallback((_: unknown, node: Node, draggedNodes: Node[]) => {
+    // A drag is about to move geometry; the map under it would be a distraction
+    // and the pointer never leaves the node, so nothing else would clear it.
+    clearHopMap();
     activelyDraggedNodeIds.clear();
     activelyDraggedNodeIds.add(node.id);
     for (const dragged of draggedNodes) {
@@ -2510,6 +2611,9 @@ export function FactoryFlow() {
         onInit={handleInit}
         onMoveStart={handleMoveStart}
         onMoveEnd={handleMoveEnd}
+        // React Flow styles its own controls and minimap off this; the app has
+        // no light palette to switch to.
+        colorMode="dark"
         isValidConnection={isValidResourceConnection}
         connectionLineComponent={ResourceConnectionLine}
         connectionLineStyle={connectionLineStyle}
@@ -2530,7 +2634,6 @@ export function FactoryFlow() {
         onlyRenderVisibleElements
         minZoom={0.15}
         maxZoom={1.8}
-        colorMode={theme}
         // React Flow's default ("basic") raises every edge to at least the
         // z-index of its two endpoint nodes, so an edge can never be told to
         // pass BEHIND a node it connects to — which is why asking for -1 did
@@ -2542,6 +2645,7 @@ export function FactoryFlow() {
         snapGrid={BOARD_GRID_SNAP}
       >
         <NodeDetailController boardRef={boardRef} />
+        <HopMapController boardRef={boardRef} />
         {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
         {boardView.canvasPattern === "none" ? null : (
           <Background
@@ -2550,7 +2654,7 @@ export function FactoryFlow() {
             // Lines tile edge to edge, so they need to be thinner than a dot
             // to read as a background instead of as graph paper.
             size={boardView.canvasPattern === "lines" ? 1 : 2}
-            color={CANVAS_DOT_COLOR[theme]}
+            color={CANVAS_DOT_COLOR}
           />
         )}
         <Controls position="bottom-left" />
@@ -2578,6 +2682,7 @@ export function FactoryFlow() {
         onHeatmapChange={handleHeatmapChange}
       />
       <SourceToolbar />
+      <HopMapLegend />
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
     </div>
   );
@@ -2852,6 +2957,12 @@ const NodeDetailController = memo(function NodeDetailController({
       }
       level = next;
       setNodeDetailLevel(next);
+      // The hop map only exists at the glance step. Zooming back in has to take
+      // it with it, or a card would come back to full detail wearing a colour
+      // that means nothing at that size.
+      if (next === NODE_DETAIL_FULL) {
+        clearHopMap();
+      }
       const board = boardRef.current;
       if (!board) {
         return;
@@ -2871,6 +2982,202 @@ const NodeDetailController = memo(function NodeDetailController({
   }, [boardRef, flowStore]);
 
   return null;
+});
+
+/**
+ * Owns the hop map: what the pointer is resting on, and when to paint from it.
+ *
+ * NOT React Flow's `onNodeMouseEnter`, which is where this feature first went
+ * and where it did not work. While the board is being panned or zoomed the
+ * whole nodes layer is `pointer-events: none` (globals.css), so the natural
+ * gesture — wheel out until the cards go to glance, then look at the one under
+ * the cursor — produces no node-enter event at all: the pointer entered the
+ * card before the zoom, when there was nothing to map, and it never crosses a
+ * node boundary again afterwards. The board sat there doing nothing.
+ *
+ * A plain `mousemove` plus a hit-test asks the question the right way round:
+ * not "did you cross into a card" but "what are you on now". Every nudge of the
+ * hand re-arms it, so the map appears whatever order the zooming and the moving
+ * happened in. It is also what gives the settle for free — each move restarts
+ * the timer, so it only fires once the pointer has actually stopped, and
+ * sweeping across the board maps nothing on the way.
+ *
+ * Glance state is read from the board's own attribute rather than from
+ * node-detail's published level. Same value, but it is the one thing here that
+ * is provably in force: it is what CSS is using to draw the glance view.
+ *
+ * The short wait before painting is per CARD — see `pendingId` below for why
+ * that distinction is the difference between "instant" and "sluggish".
+ */
+const HopMapController = memo(function HopMapController({
+  boardRef,
+}: {
+  boardRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) {
+      return;
+    }
+    const unregister = registerHopMapBoard(board);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let pendingId: string | undefined;
+
+    const cancel = () => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      pendingId = undefined;
+      clearHopMap();
+    };
+
+    const handleMove = (event: MouseEvent) => {
+      const target = event.target;
+      const nodeElement =
+        target instanceof Element ? target.closest(".react-flow__node") : undefined;
+      const nodeId = nodeElement?.getAttribute("data-id");
+      // A held wire owns the board; distance from the card under it is not the
+      // question being asked.
+      if (isWiringConnection()) {
+        cancel();
+        return;
+      }
+      if (!nodeId || board.getAttribute(NODE_DETAIL_ATTRIBUTE) !== "glance") {
+        cancel();
+        return;
+      }
+      if (getHopMapHubId() === nodeId || pendingId === nodeId) {
+        // Already the hub, or already on its way. The wait is per CARD, not per
+        // movement: a hand resting on a card still sends a mousemove every few
+        // milliseconds, and restarting the clock on each one meant the map only
+        // appeared once you went perfectly still — which reads as the board
+        // taking about a second to think about it. Landing on the card starts
+        // the clock exactly once, and jitter on top of it changes nothing.
+        return;
+      }
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+      pendingId = nodeId;
+      timer = setTimeout(() => {
+        timer = undefined;
+        pendingId = undefined;
+        const { edges, storages } = useFactoryStore.getState().project;
+        // Drawers, tanks and buffers are handed over as pass-through: a machine
+        // feeding another THROUGH one of them is one step away, not two.
+        setHopMapHub(nodeId, edges, new Set((storages ?? []).map((storage) => storage.id)));
+      }, HOP_MAP_SETTLE_MS);
+    };
+
+    board.addEventListener("mousemove", handleMove);
+    board.addEventListener("mouseleave", cancel);
+    return () => {
+      board.removeEventListener("mousemove", handleMove);
+      board.removeEventListener("mouseleave", cancel);
+      cancel();
+      unregister();
+    };
+  }, [boardRef]);
+
+  return null;
+});
+
+/**
+ * What the colours mean while a hop map is up.
+ *
+ * Colour alone can say "near" and "far", but not "three wires". The legend is
+ * what turns the map from an impression into a number you can count along, and
+ * it costs nothing when no card is hovered: it subscribes to the map's hub, so
+ * with no map it renders null and never hears from the pointer again.
+ *
+ * Long chains get a continuous bar instead of a chip per hop — twenty chips is
+ * a wall, and past a certain depth the exact number stops being the question.
+ */
+const HOP_LEGEND_MAX_CHIPS = 9;
+
+const CHIP_CLASS =
+  "flex h-8 w-8 items-center justify-center border-2 border-black/60 text-[15px] font-black leading-none";
+
+/**
+ * How long the pointer has to be ON a card before the map appears.
+ *
+ * Long enough that crossing the board on the way somewhere else maps nothing,
+ * short enough to feel like the card answered rather than considered it. The
+ * clock starts when you arrive on the card and is not restarted by moving
+ * around on it.
+ */
+const HOP_MAP_SETTLE_MS = 90;
+
+const HopMapLegend = memo(function HopMapLegend() {
+  const map = useHopMapSummary();
+  // Any map at all gets a key, including a card wired to nothing (maxDepth 0).
+  // It used to bail in that case, which meant the one board state where the
+  // colours are hardest to interpret — a lone card and a field of grey — was
+  // also the one with nothing explaining them.
+  if (!map) {
+    return null;
+  }
+  const chipped = map.maxDepth <= HOP_LEGEND_MAX_CHIPS;
+  const depths = chipped
+    ? Array.from({ length: map.maxDepth }, (_, index) => index + 1)
+    : [1, Math.round(map.maxDepth / 2), map.maxDepth];
+  const hubChip = (
+    <span
+      className={CHIP_CLASS}
+      style={{ backgroundColor: hopFill(0, map.maxDepth), color: hopInk(0, map.maxDepth) }}
+    >
+      0
+    </span>
+  );
+
+  return (
+    <div
+      data-board-toolbar
+      aria-hidden
+      // z-40, above every node: a card's z-index is lifted on hover and while a
+      // picker is open, and the legend must not end up underneath whichever
+      // card happens to sit in that corner of a dense board.
+      className="nodrag pointer-events-none absolute bottom-3 right-3 z-40 flex flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-3 py-2.5 font-mono font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.35)]"
+    >
+      <span className="text-[13px] uppercase tracking-[1px]">Hops needed</span>
+      {chipped ? (
+        <div className="flex items-center gap-1.5">
+          {/* The hub sits in the row like any other step, and says 0, because
+              that is what the card under the cursor is showing. */}
+          {hubChip}
+          {depths.map((depth) => (
+            <span
+              key={depth}
+              className={CHIP_CLASS}
+              style={{
+                backgroundColor: hopFill(depth, map.maxDepth),
+                // The far end of the ramp is nearly black; a fixed dark digit on
+                // it is unreadable, so each chip picks its own ink the same way
+                // the cards do.
+                color: hopInk(depth, map.maxDepth),
+              }}
+            >
+              {depth}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          {hubChip}
+          <span
+            className="h-8 w-40 border-2 border-black/60"
+            style={{
+              backgroundImage: `linear-gradient(to right, ${depths
+                .map((depth) => hopFill(depth, map.maxDepth))
+                .join(", ")})`,
+            }}
+          />
+          <span className="text-[15px]">{map.maxDepth}</span>
+        </div>
+      )}
+    </div>
+  );
 });
 
 function FlowLoadingOverlay() {
@@ -3365,13 +3672,11 @@ function ResourceEdgeComponent({
   const resourceColor = data?.resource
     ? getInitialResourceColor(data.resource)
     : (data?.color ?? DEFAULT_ITEM_EDGE_COLOR);
-  const theme = useThemeStore((state) => state.theme);
   // Dominant resource colours are averaged from item sprites, which makes them
-  // muddy; boost saturation everywhere and lift toward white — a touch more
-  // on the dark canvas.
+  // muddy; boost saturation and lift toward white so the wire stays legible
+  // against the dark canvas.
   const vividColor = saturateHexColor(resourceColor, 0.6);
-  const resolvedResourceColor =
-    theme === "dark" ? brightenHexColor(vividColor, 0.2) : brightenHexColor(vividColor, 0.08);
+  const resolvedResourceColor = brightenHexColor(vividColor, 0.2);
   // Flow mode repaints the line by volume. The stroke colour is derived HERE
   // from the resource, not read from `style`, so setting style.stroke upstream
   // did nothing at all — the ramp has to be applied at the point of use.
@@ -4027,15 +4332,24 @@ function ResourceConnectionLine({
   toPosition,
   connectionStatus,
 }: ConnectionLineComponentProps<BoardFlowNode>) {
+  // Over a card that takes this resource, the pipe jumps to the slot it will
+  // land on rather than following the cursor across the card.
+  const snap = getConnectionSnap(toX, toY);
+  const endX = snap?.point.x ?? toX;
+  const endY = snap?.point.y ?? toY;
+  const endPosition = snap ? (snap.side === "input" ? Position.Left : Position.Right) : toPosition;
+
   const [edgePath] = getSmoothStepPath({
     sourceX: fromX,
     sourceY: fromY,
     sourcePosition: fromPosition,
-    targetX: toX,
-    targetY: toY,
-    targetPosition: toPosition,
+    targetX: endX,
+    targetY: endY,
+    targetPosition: endPosition,
   });
-  const color = connectionStatus === "invalid" ? "#ef4444" : "#00d9ff";
+  // A snapped end is by definition a connection that will work, whatever React
+  // Flow thinks — it only ever reports "valid" when the pointer is on a handle.
+  const color = !snap && connectionStatus === "invalid" ? "#ef4444" : "#00d9ff";
 
   return (
     <g className="react-flow__connection">
@@ -4056,7 +4370,7 @@ function ResourceConnectionLine({
         opacity={0.98}
         style={{ filter: `drop-shadow(0 0 5px ${color})` }}
       />
-      <circle cx={toX} cy={toY} r={6} fill={color} stroke="#052e36" strokeWidth={2} />
+      <circle cx={endX} cy={endY} r={6} fill={color} stroke="#052e36" strokeWidth={2} />
     </g>
   );
 }
@@ -7842,6 +8156,264 @@ function getTrashHandleAtPosition(
   }
 
   return undefined;
+}
+
+/**
+ * The whole card is the port. Aiming at a slot is still the precise way to
+ * wire a specific alternative, so the cascade in `handleConnectEnd` tries the
+ * exact handles first — this only catches drops that landed on the frame, the
+ * header, the machine art, anywhere. If the card takes the resource at all,
+ * the drop lands on the slot that takes it.
+ */
+function getNodeCardHandleAtPosition(
+  project: FactoryProject,
+  position: { x: number; y: number } | undefined,
+  draggedResource: DraggedResourceConnection | undefined,
+) {
+  const nodeId = getBoardNodeIdAtPosition(position);
+  return nodeId && draggedResource
+    ? findNodeDropTarget(project, nodeId, draggedResource)
+    : undefined;
+}
+
+/**
+ * The wireable board card under the pointer. Annotations are excluded on
+ * purpose: they are backdrops, often larger than the cluster they frame, and
+ * treating one as a card would swallow every drop made over it.
+ */
+function getBoardNodeIdAtPosition(position: { x: number; y: number } | undefined) {
+  if (!position || typeof document === "undefined") {
+    return undefined;
+  }
+
+  for (const element of document.elementsFromPoint(position.x, position.y)) {
+    const nodeElement = element.closest<HTMLElement>(".react-flow__node");
+    if (nodeElement?.dataset.id && !isAnnotationNodeElement(nodeElement)) {
+      return nodeElement.dataset.id;
+    }
+  }
+
+  // elementsFromPoint reads the live stacking context, which synthetic events
+  // do not always produce; fall back to the smallest card containing the point.
+  let best: { id: string; area: number } | undefined;
+  for (const element of document.querySelectorAll<HTMLElement>(".react-flow__node")) {
+    const id = element.dataset.id;
+    if (!id || isAnnotationNodeElement(element)) {
+      continue;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (
+      position.x < rect.left ||
+      position.x > rect.right ||
+      position.y < rect.top ||
+      position.y > rect.bottom
+    ) {
+      continue;
+    }
+
+    const area = rect.width * rect.height;
+    if (!best || area < best.area) {
+      best = { id, area };
+    }
+  }
+
+  return best?.id;
+}
+
+function isAnnotationNodeElement(element: HTMLElement) {
+  return element.classList.contains("react-flow__node-annotationNode");
+}
+
+/**
+ * Which port on `nodeId` a drop of `draggedResource` should land on, or
+ * undefined when that card cannot take it. This is the single source of truth
+ * for both the drop cascade and the green/red wash painted during the drag, so
+ * a card can never read green and then refuse the wire.
+ */
+function findNodeDropTarget(
+  project: FactoryProject,
+  nodeId: string,
+  draggedResource: DraggedResourceConnection,
+): ResolvedResourceHandle | undefined {
+  if (nodeId === draggedResource.nodeId) {
+    return undefined;
+  }
+
+  const side: ResourceHandleSide = draggedResource.side === "output" ? "input" : "output";
+  const accepts = (candidate: Pick<ResourceAmount, "kind" | "id" | "alternatives">) =>
+    side === "input"
+      ? resourceMatchesInput(draggedResource, candidate)
+      : resourceMatchesInput(candidate, draggedResource);
+  const port = (resource: Pick<ResourceAmount, "kind" | "id">): ResolvedResourceHandle => ({
+    nodeId,
+    handleId: makeResourceHandleId(side, resource),
+    side,
+    kind: resource.kind,
+    resourceId: resource.id,
+  });
+
+  const storage = (project.storages ?? []).find((entry) => entry.id === nodeId);
+  if (storage) {
+    const held = { kind: storage.kind, id: storage.resourceId };
+    return accepts(held) ? port(held) : undefined;
+  }
+
+  const node = project.nodes.find((entry) => entry.id === nodeId);
+  const recipe = project.recipes.find((entry) => entry.id === node?.recipeId);
+  if (!node || !recipe) {
+    return undefined;
+  }
+
+  // A universal port is a socket, not a resource: it can receive a concrete
+  // drag but never starts one that another universal port could answer.
+  const draggingUniversalPort =
+    draggedResource.id === TRASH_ANY_RESOURCE_ID ||
+    draggedResource.id === CUSTOM_RATE_ANY_RESOURCE_ID;
+
+  if (isTrashRecipe(recipe)) {
+    // A can drinks outputs and nothing else — a dragged input looking for a
+    // supplier has no business docking on one.
+    return draggedResource.side === "output" && !draggingUniversalPort
+      ? {
+          nodeId,
+          handleId: makeResourceHandleId("input", { kind: "item", id: TRASH_ANY_RESOURCE_ID }),
+          side: "input",
+          kind: "item",
+          resourceId: TRASH_ANY_RESOURCE_ID,
+        }
+      : undefined;
+  }
+
+  const contextualRecipe = getNodeRecipeForHandles(recipe, node);
+
+  // An unset custom rate node shows universal ports and adopts whatever lands.
+  if (isCustomRateRecipe(recipe) && !getCustomRateSlot(contextualRecipe)) {
+    return draggingUniversalPort ? undefined : port({ kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID });
+  }
+
+  if (draggingUniversalPort) {
+    return undefined;
+  }
+
+  const candidates = side === "input" ? contextualRecipe.inputs : contextualRecipe.outputs;
+  const match = (candidates ?? []).find(
+    (candidate) =>
+      (side === "output" || isRecipeInputConsumed(candidate)) && accepts(candidate),
+  );
+
+  return match ? port(match) : undefined;
+}
+
+/**
+ * Board-wide drag feedback: every card wears the answer to "would this drop
+ * work?" as a data attribute, and rules in globals.css paint the wash. This
+ * deliberately never touches React — a hover/drag effect that re-renders every
+ * node costs multiples of the frame budget (see ARCHITECTURE.md).
+ *
+ * `onlyUnpainted` is the per-frame pass: auto-pan mounts fresh cards mid-drag,
+ * and those are the only ones still missing a verdict.
+ */
+function paintNodeDropFit(
+  project: FactoryProject,
+  draggedResource: DraggedResourceConnection | undefined,
+  onlyUnpainted: boolean,
+) {
+  if (typeof document === "undefined" || !draggedResource) {
+    return;
+  }
+
+  const selector = onlyUnpainted
+    ? ".react-flow__node:not([data-drop-fit])"
+    : ".react-flow__node";
+
+  for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+    const id = element.dataset.id;
+    if (!id) {
+      continue;
+    }
+
+    // The card the wire is coming from and the backdrops stay out of it
+    // entirely — no wash, and no snapping the pipe to them. They are still
+    // marked so the per-frame pass has nothing left to look at.
+    if (id === draggedResource.nodeId || isAnnotationNodeElement(element)) {
+      element.dataset.dropFit = "none";
+      continue;
+    }
+
+    let target = activeDropTargets.get(id);
+    if (target === undefined) {
+      target = findNodeDropTarget(project, id, draggedResource) ?? null;
+      activeDropTargets.set(id, target);
+    }
+
+    const verdict = target ? "yes" : "no";
+    if (element.dataset.dropFit !== verdict) {
+      element.dataset.dropFit = verdict;
+    }
+  }
+}
+
+function clearNodeDropFit() {
+  activeDropTargets.clear();
+
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  for (const element of document.querySelectorAll<HTMLElement>("[data-drop-fit]")) {
+    delete element.dataset.dropFit;
+  }
+}
+
+/**
+ * Where the dragged pipe should actually end. Once the pointer is anywhere
+ * over a card that takes the resource, the wire commits to the slot it will
+ * land on instead of trailing the cursor until it reaches that slot — the same
+ * "the whole card is the port" rule the drop follows, made visible.
+ *
+ * The hit test runs in FLOW space against published geometry, never the DOM,
+ * so it is identical at any zoom and does not care which cards are mounted.
+ * It walks only the cards that would accept the drop, which on any real board
+ * is a small fraction of them.
+ */
+function getConnectionSnap(toX: number, toY: number) {
+  let best: { target: ResolvedResourceHandle; area: number } | undefined;
+
+  for (const [nodeId, target] of activeDropTargets) {
+    if (!target) {
+      continue;
+    }
+
+    const geometry = publishedBoardGeometryById.get(nodeId);
+    if (
+      !geometry ||
+      toX < geometry.x ||
+      toX > geometry.x + geometry.width ||
+      toY < geometry.y ||
+      toY > geometry.y + geometry.height
+    ) {
+      continue;
+    }
+
+    // Smallest card wins, the same tie-break the slot hit-tests use.
+    const area = geometry.width * geometry.height;
+    if (!best || area < best.area) {
+      best = { target, area };
+    }
+  }
+
+  if (!best) {
+    return undefined;
+  }
+
+  const point = getMeasuredSlotEndpoint({
+    nodeId: best.target.nodeId,
+    handleId: best.target.handleId,
+    edgeSide: best.target.side === "input" ? "left" : "right",
+  });
+
+  return point ? { point, side: best.target.side } : undefined;
 }
 
 function brightenHexColor(color: string, amount: number) {

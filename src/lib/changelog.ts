@@ -16,6 +16,30 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.8.0",
+    date: "2026-08-05",
+    headline: "Drop a wire anywhere on a machine and it finds the right slot",
+    notes: [
+      "You no longer have to land on the exact little slot. Drag from any item or fluid and let go anywhere on the machine you want it to go to — the wire snaps onto whichever slot takes it.",
+      "While you are dragging, every card tells you the answer up front: a soft green wash means that machine takes what you are holding, a soft red one means it does not.",
+      "The pipe you are drawing commits as soon as you are over a green card — it jumps straight to the slot it is going to land in instead of trailing your cursor across the machine.",
+      "Drawing a wire is now its own mode. The board stops reacting to everything else while you hold one: lines and their labels do not light up as you sweep past, slots stop highlighting, and no tooltips open. The only thing that answers is the machine you are pointing at.",
+      "Letting go on a red card now does nothing at all, instead of dropping a drawer on top of it.",
+      "The site is dark all the time now. The light theme and the switch in the header are gone.",
+    ],
+  },
+  {
+    version: "1.7.0",
+    date: "2026-08-05",
+    headline: "Hover a machine, see how far everything else is from it",
+    notes: [
+      "Zoomed out, resting on any machine now colours the whole board by how many wires away each other machine is from it. Its direct neighbours glow hot, and the colour fades further out along the chain.",
+      "Every card shows that count while you hover, so you can tell two steps from five without squinting at colours. Anything not connected to the machine you are on goes grey and empty.",
+      "Drawers, tanks and buffers do not add distance. A machine feeding another one through a drawer counts as one step away, not two, because the drawer is where the items wait rather than somewhere the chain goes.",
+      "Wires fade back while you are reading the map, and everything snaps back to normal the moment you move away, zoom in, or drag the board.",
+    ],
+  },
+  {
     version: "1.6.0",
     date: "2026-08-05",
     headline: "Zoom out and read the whole factory at once",

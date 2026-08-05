@@ -23,6 +23,22 @@ import type { ReactNode } from "react";
  *   browser scale it to the box for us — always as large as it can be, exactly.
  */
 
+/*
+ * The hop map paints this layer, and it does it in CSS.
+ *
+ * Hovering a card zoomed out floods the whole board with distance colours (see
+ * hop-map.ts). None of that arrives as props: the map writes two custom
+ * properties onto each node element and the rules in globals.css do the rest,
+ * so a hover costs no React work at all on a board that may be carrying two
+ * hundred cards. What that buys is why the glance layer takes no colour props
+ * here — do not be tempted to "tidy" it into state.
+ *
+ * The paint lands on the glance layer and nowhere else, which is what keeps it
+ * away from the board's geometry: that layer is `absolute inset-0`, it is only
+ * displayed at the zoom step where the card's contents are already hidden, and
+ * it has no say in the card's size. The router never sees it.
+ */
+
 export function NodeGlanceText({
   text,
   className,

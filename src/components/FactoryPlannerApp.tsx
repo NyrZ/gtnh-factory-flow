@@ -18,7 +18,6 @@ import {
   takePendingEditorImport,
 } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
-import { useThemeStore } from "@/store/theme-store";
 import { AppHeader } from "./AppHeader";
 import { DesignTabs } from "./DesignTabs";
 import { FactoryFlow } from "./flow/FactoryFlow";
@@ -36,14 +35,9 @@ export function FactoryPlannerApp() {
   const refreshProjectRecipes = useFactoryStore((state) => state.refreshProjectRecipes);
   const setDatasetLoading = useFactoryStore((state) => state.setDatasetLoading);
   const setDatasetError = useFactoryStore((state) => state.setDatasetError);
-  const syncThemeFromDocument = useThemeStore((state) => state.syncThemeFromDocument);
   const hydratedRef = useRef(false);
   const skipInitialSaveRef = useRef(true);
   const saveTimeoutRef = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    syncThemeFromDocument();
-  }, [syncThemeFromDocument]);
 
   const loadDatasetVersion = useCallback(
     async (versionId: string) => {

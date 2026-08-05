@@ -19,7 +19,7 @@ function relativeLuminance(hex: string): number {
  * ink, so every swatch stays legible. The threshold sits where white and
  * black text reach equal contrast against the panel.
  */
-function inkFor(panel: string): { ink: string; inkMuted: string } {
+export function inkFor(panel: string): { ink: string; inkMuted: string } {
   return relativeLuminance(panel) < 0.34
     ? { ink: "#f2f3f7", inkMuted: "rgba(242,243,247,0.74)" }
     : { ink: "#16161a", inkMuted: "rgba(22,22,26,0.66)" };

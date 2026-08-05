@@ -128,6 +128,16 @@ nodes. Everything below was validated with profiled stress tests (120 nodes /
    DOM probes are scoped to the node element and bail immediately when the
    node isn't mounted; misses are never cached.
 
+8. **Board-wide hover effects are painted, not rendered.** The zoomed-out hop
+   map (`hop-map.ts`) colours every card by its wire distance from the hovered
+   one. It writes CSS custom properties straight onto the node elements and
+   lets rules in `globals.css` do the painting; the first cut subscribed each
+   card to the map through `useSyncExternalStore` and cost 5× the frame rate
+   (363 → 66 fps, 156 nodes at 4× throttle) purely in reconciliation. If an
+   effect touches every node at once, it does not belong in React. The map is
+   also gated on the glance detail step, settles before it paints, and is
+   dropped on pan/zoom, because culled nodes cannot be painted.
+
 ### Rules of thumb for new board code
 
 - Never call `querySelectorAll`/`getBoundingClientRect` per edge, per node, or
