@@ -176,13 +176,19 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         ].join(" ")}
       >
         <NodeGlanceIcon>
-          {/* The card is w-[132px]; this is that, less the frame. */}
+          {/* Deliberately bigger than the card it sits on (w-[132px]).
+              Zoomed out, WHAT is in the drawer is the only thing worth
+              reading, and a sprite confined inside the frame is a few pixels
+              on screen. Nothing clips it — the card sets no overflow — so it
+              spills a little past the frame and reads as the node's identity
+              rather than as its contents. Node SIZE is untouched, which is
+              what the router cares about. */}
           <ResourceIcon
             resource={{ ...storage, id: storage.resourceId, amount: 1 }}
             showAmount={false}
             bare
-            iconPixelSize={104}
-            className="!h-[104px] !w-[104px]"
+            iconPixelSize={168}
+            className="!h-[168px] !w-[168px]"
           />
         </NodeGlanceIcon>
         <StorageHeader storageId={storage.id} title={title} isTank={isTank} />

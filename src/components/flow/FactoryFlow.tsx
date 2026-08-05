@@ -23,7 +23,6 @@ import {
   type NodeTypes,
   type OnSelectionChangeParams,
   type ReactFlowInstance,
-  useStore,
   useStoreApi,
   ViewportPortal,
 } from "@xyflow/react";
@@ -59,6 +58,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -134,17 +134,21 @@ import {
   EDGE_DETAIL_GLOBAL,
   EDGE_DETAIL_LABELS,
   EDGE_DETAIL_PULSE,
-  getEdgeDetailLevel,
+  EDGE_DETAIL_BY_LEVEL,
   hasEdgeDetail,
   reuseDeepObjectIdentity,
   reuseObjectIdentity,
 } from "./edge-detail";
 import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
 import {
-  NODE_DETAIL_CLASSES,
+  NODE_DETAIL_ATTRIBUTE,
   NODE_DETAIL_FULL,
   getNodeDetailLevel,
-  nodeDetailClass,
+  getPublishedNodeDetailLevel,
+  getServerNodeDetailLevel,
+  nodeDetailAttributeValue,
+  setNodeDetailLevel,
+  subscribeNodeDetailLevel,
   type NodeDetailLevel,
 } from "./node-detail";
 import {
@@ -185,9 +189,6 @@ const edgeTypes = {
   resourceEdge: ResourceEdge,
 } satisfies EdgeTypes;
 
-function selectEdgeDetailLevel(store: { transform: [number, number, number] }) {
-  return getEdgeDetailLevel(store.transform[2]);
-}
 
 const connectionLineStyle = {
   stroke: "#00d9ff",
@@ -2820,12 +2821,19 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
 });
 
 /**
- * Drives the board's zoom-detail class.
+ * The single owner of the board's zoom-detail level.
  *
- * Renders nothing and never re-renders anything: it subscribes to the store's
- * transform and writes a class onto the board element directly. Routing detail
- * through React would re-render FactoryFlow — and with it the whole board — on
- * every threshold crossing, to change what is ultimately one attribute.
+ * Renders nothing and re-renders nothing: it watches the store's transform,
+ * publishes the level for edges to subscribe to, and stamps it on the board
+ * element. Routing this through React state would re-render FactoryFlow — and
+ * with it the whole board — on every threshold crossing, to change one
+ * attribute.
+ *
+ * A data ATTRIBUTE rather than a class, deliberately. React owns `className` on
+ * the board and rebuilds that string on every FactoryFlow render, so a class
+ * added here was silently wiped whenever anything else about the board changed
+ * — toggling thickness mode mid-zoom dropped the glance view until the next
+ * threshold crossing. React never touches an attribute it was not given.
  */
 const NodeDetailController = memo(function NodeDetailController({
   boardRef,
@@ -2843,14 +2851,16 @@ const NodeDetailController = memo(function NodeDetailController({
         return;
       }
       level = next;
+      setNodeDetailLevel(next);
       const board = boardRef.current;
       if (!board) {
         return;
       }
-      board.classList.remove(...NODE_DETAIL_CLASSES);
-      const className = nodeDetailClass(next);
-      if (className) {
-        board.classList.add(className);
+      const value = nodeDetailAttributeValue(next);
+      if (value) {
+        board.setAttribute(NODE_DETAIL_ATTRIBUTE, value);
+      } else {
+        board.removeAttribute(NODE_DETAIL_ATTRIBUTE);
       }
     };
 
@@ -3256,7 +3266,20 @@ function ResourceEdgeComponent({
   data,
 }: EdgeProps<ResourceFlowEdge>) {
   const updateEdge = useFactoryStore((state) => state.updateEdge);
-  const detailLevel = useStore(selectEdgeDetailLevel);
+  // The board's single detail level, not a zoom threshold of its own — nodes
+  // and lines have to switch together or the board looks like it is glitching
+  // half a step at a time. Subscribed rather than selected because the level is
+  // hysteretic, which a React Flow selector cannot be (it must be pure over
+  // store state), and because this only fires when the level actually flips.
+  // Kept as two statements: a hook call nested inside another call expression
+  // makes the React Compiler give up on memoizing this component, and this is
+  // the hottest component on the board. Verified with eslint, not assumed.
+  const boardDetailLevel = useSyncExternalStore(
+    subscribeNodeDetailLevel,
+    getPublishedNodeDetailLevel,
+    getServerNodeDetailLevel,
+  );
+  const detailLevel = EDGE_DETAIL_BY_LEVEL[boardDetailLevel];
   // Label dragging needs the exact zoom to convert a pointer delta into flow
   // units, but reading it through a subscription would re-render every edge on
   // every zoom frame. The store API gives the live value on demand instead.

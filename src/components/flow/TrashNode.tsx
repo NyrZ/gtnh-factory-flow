@@ -169,9 +169,10 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         }}
       >
         <NodeGlanceIcon>
-          {/* The can art is a viewBox SVG, so it scales cleanly; the card is
-              w-[116px] and this is that less the frame. */}
-          <div className="[&>svg]:!h-[100px] [&>svg]:!w-[94px]">
+          {/* Same reasoning as the drawer: bigger than the w-[116px] card, so
+              the can reads at a glance. The art is a viewBox SVG, so it scales
+              cleanly at any size. */}
+          <div className="[&>svg]:!h-[156px] [&>svg]:!w-[147px]">
             <TrashCanPixelArt />
           </div>
         </NodeGlanceIcon>

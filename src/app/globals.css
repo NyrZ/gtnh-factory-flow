@@ -252,11 +252,11 @@ textarea {
    `display` for the glance layer specifically: it is absolutely positioned, so
    it has no effect on the card's size either way, and the `visibility` rule
    only binds elements that are IN the layout. */
-.factory-flow-board--detail-glance [data-node-glance-root] > *:not([data-node-detail="glance"]) {
+.factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > *:not([data-node-detail="glance"]) {
   visibility: hidden;
 }
 
-.factory-flow-board--detail-glance [data-node-detail="glance"] {
+.factory-flow-board[data-detail-level="glance"] [data-node-detail="glance"] {
   display: flex;
 }
 
