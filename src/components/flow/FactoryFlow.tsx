@@ -708,6 +708,28 @@ const annotationNodeDataCache = new Map<string, AnnotationFlowNode["data"]>();
 // rebuilds (hover, solver run) leave most edges untouched.
 const edgeObjectCache = new Map<string, ResourceFlowEdge>();
 
+/**
+ * Shallow field-for-field equality between two board nodes.
+ *
+ * Deliberately compares EVERY key on both sides, including the ones React Flow
+ * adds itself (`selected`, `dragging`): a node the library has annotated is not
+ * interchangeable with a freshly built one, so those must count as different
+ * and be replaced, exactly as they were before.
+ */
+function isSameFlowNode(left: BoardFlowNode, right: BoardFlowNode) {
+  const leftKeys = Object.keys(left) as Array<keyof BoardFlowNode>;
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  for (const key of leftKeys) {
+    if (left[key] !== right[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function pruneNodeDataCaches(
   recipeNodeIds: Set<string>,
   storageIds: Set<string>,
@@ -1022,12 +1044,27 @@ export function FactoryFlow() {
     // them in verbatim would zero every node's dimensions until React Flow
     // re-measures, which the geometry fingerprints below would read as the
     // whole board resizing twice — rerouting everything on every hover.
+    //
+    // The merge also has to hand back the PREVIOUS object whenever nothing in
+    // it moved. `nodesFromProject` is rebuilt whenever a hover changes which
+    // node is lifted, and spreading `measured` in produced a brand new object
+    // for every node on the board — so hovering one port re-rendered all of
+    // them, re-ran their memo comparisons and churned the compositor's layer
+    // tree. Identity is the whole mechanism the node memos rely on; this is
+    // where it was being thrown away.
     setFlowNodes((current) => {
-      const measuredById = new Map(current.map((node) => [node.id, node.measured]));
-      return nodesFromProject.map((node) => {
-        const measured = measuredById.get(node.id);
-        return measured ? { ...node, measured } : node;
+      const currentById = new Map(current.map((node) => [node.id, node]));
+      let changed = current.length !== nodesFromProject.length;
+      const next = nodesFromProject.map((node) => {
+        const previous = currentById.get(node.id);
+        const merged = previous?.measured ? { ...node, measured: previous.measured } : node;
+        if (previous && isSameFlowNode(previous, merged)) {
+          return previous;
+        }
+        changed = true;
+        return merged;
       });
+      return changed ? next : current;
     });
   }, [nodesFromProject]);
 
