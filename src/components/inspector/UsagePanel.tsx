@@ -14,8 +14,8 @@ import { buildUsageLimitChain, type UsageLimitEntry } from "./usage-limits";
  * muted is slack capacity.
  */
 const STATUS_TEXT: Record<string, string> = {
-  bottleneck: "text-red-600 dark:text-red-400",
-  balanced: "text-emerald-600 dark:text-emerald-400",
+  bottleneck: "text-red-600",
+  balanced: "text-emerald-600",
 };
 
 function formatUsagePercent(utilization: number): string {
@@ -113,7 +113,7 @@ function UsageCellButton({
       onFocus={() => onHover(cell.nodeId)}
       onBlur={() => onHover(undefined)}
       onClick={() => onSelect(cell.nodeId)}
-      className="relative aspect-square overflow-hidden rounded border border-transparent hover:border-cyan-300 hover:bg-cyan-50 dark:hover:border-cyan-500/60 dark:hover:bg-cyan-500/10"
+      className="relative aspect-square overflow-hidden rounded border border-transparent hover:border-cyan-300 hover:bg-cyan-50"
     >
       {/* The icon owns the whole cell; the percent floats over it so growing
           the art never grows the cell. Sprites ship with a wide transparent
@@ -138,7 +138,7 @@ function UsageCellButton({
       <span
         className={[
           "pointer-events-none absolute inset-x-0 bottom-0 text-center text-[10px] font-bold leading-none tabular-nums",
-          "[text-shadow:0_0_3px_rgba(255,255,255,0.95),0_1px_2px_rgba(255,255,255,0.9)] dark:[text-shadow:0_0_3px_rgba(0,0,0,0.9),0_1px_2px_rgba(0,0,0,0.95)]",
+          "[text-shadow:0_0_3px_rgba(255,255,255,0.95),0_1px_2px_rgba(255,255,255,0.9)]",
           STATUS_TEXT[cell.status] ?? "text-fg",
         ].join(" ")}
       >

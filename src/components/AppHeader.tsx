@@ -7,11 +7,10 @@ import { APP_VERSION } from "@/lib/version";
 import { AccountMenu } from "./community/AccountMenu";
 import { BoardActions } from "./BoardActions";
 import { ChangelogDialog } from "./ChangelogDialog";
-import { ThemeToggleButton } from "./ThemeToggleButton";
 
 /**
- * The one top bar for the whole app. Title, theme, and account are always
- * there; the board actions only exist on the editor; the nav button flips
+ * The one top bar for the whole app. Title and account are always there;
+ * the board actions only exist on the editor; the nav button flips
  * between Community and Editor so switching feels like changing panels, not
  * changing sites.
  */
@@ -40,7 +39,6 @@ export function AppHeader({ page }: { page: "editor" | "community" }) {
       {isChangelogOpen ? <ChangelogDialog onClose={() => setChangelogOpen(false)} /> : null}
       <div className="flex items-center gap-2">
         {page === "editor" ? <BoardActions /> : null}
-        <ThemeToggleButton />
         {page === "editor" ? (
           <Link
             href="/community"

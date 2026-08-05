@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import { Analytics } from "./Analytics";
 import { AnalyticsHeartbeat } from "./AnalyticsHeartbeat";
 import "./globals.css";
@@ -68,10 +67,9 @@ export const metadata: Metadata = {
     apple: "/site-icon.png",
   },
   other: {
-    // The app ships its own light and dark themes. Without this, the Dark
-    // Reader extension darkens the page a second time and rewrites inline
-    // styles before React hydrates, which both wrecks the palette and throws
-    // hydration mismatches.
+    // The app ships a single light palette. Without this, the Dark Reader
+    // extension darkens the page and rewrites inline styles before React
+    // hydrates, which both wrecks the palette and throws hydration mismatches.
     // Next drops metadata entries with an empty content value, so this carries
     // one even though Dark Reader only checks that the tag exists.
     "darkreader-lock": "true",
@@ -84,11 +82,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // The theme script below sets data-theme on <html> before hydration, so the
-    // server and client markup differ here by design.
-    <html lang="en" className={`${monocraft.variable} h-full`} suppressHydrationWarning>
+    <html lang="en" className={`${monocraft.variable} h-full`}>
       <body className="min-h-full">
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         {children}
         <Analytics />
         <AnalyticsHeartbeat />

@@ -107,7 +107,7 @@ export function PowerBreakdown() {
               className={[
                 "px-1.5 py-0.5 text-[11px] font-semibold",
                 mode === option
-                  ? "bg-cyan-100 text-cyan-900 dark:bg-cyan-500/25 dark:text-cyan-50"
+                  ? "bg-cyan-100 text-cyan-900"
                   : "text-fg-muted hover:bg-surface-sunken hover:text-fg",
               ].join(" ")}
             >
@@ -133,7 +133,7 @@ export function PowerBreakdown() {
             className={[
               "flex-1 px-1.5 py-0.5 text-[11px] font-semibold",
               view === option
-                ? "bg-cyan-100 text-cyan-900 dark:bg-cyan-500/25 dark:text-cyan-50"
+                ? "bg-cyan-100 text-cyan-900"
                 : "text-fg-muted hover:bg-surface-sunken hover:text-fg",
             ].join(" ")}
           >
