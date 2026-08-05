@@ -260,6 +260,61 @@ textarea {
   display: flex;
 }
 
+/* The hop map: hovering a card zoomed out colours every other card by how many
+   wires away it is. See hop-map.ts for the whole design, and in particular for
+   why the colours arrive as two custom properties written onto the node
+   elements instead of as React props — the short version is that this is a
+   hover feature on a board that must not re-render on hover, and doing it the
+   obvious way cost 5× the frame rate.
+
+   Only the glance layer is painted, so the map exists only at the zoom step
+   where the cards had stopped saying anything anyway. */
+.factory-flow-board[data-hop-map] .react-flow__node [data-node-detail="glance"] {
+  background-color: var(--hop-fill);
+}
+
+/* Under a map the card answers a different question, so it stops giving the old
+   answer: the utilisation figure and the drawer's item both go, and the card
+   shows its distance from the hub instead. One number, nothing else. */
+.factory-flow-board[data-hop-map] .react-flow__node [data-node-detail="glance"] > * {
+  display: none;
+}
+
+/* The figure itself. `content: var(--hop-label)` is what lets the card change
+   what it SAYS from outside React — hop-map.ts writes the quoted string. Out of
+   reach means an empty label, and the grey card just sits there.
+
+   A fixed size rather than the SVG's scale-to-fit: every card is showing one or
+   two digits of the same quantity, and a drawer whose "3" was twice the size of
+   a machine's "3" would read as emphasis that isn't there. */
+.factory-flow-board[data-hop-map] .react-flow__node [data-node-detail="glance"]::after {
+  content: var(--hop-label, "");
+  color: var(--hop-ink);
+  font-size: 64px;
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The hub gets a hard dark edge rather than a brighter fill — at this zoom the
+   difference between it and its nearest neighbours is a few pixels of hue, but
+   an outline is unmistakable. Inside AND outside the card, so it survives
+   whatever colour lands next to it. */
+.factory-flow-board[data-hop-map] .react-flow__node[data-hop-hub] [data-node-detail="glance"] {
+  box-shadow:
+    inset 0 0 0 3px #101014,
+    0 0 0 4px #101014;
+}
+
+/* While a map is up, the wires step back. The map IS the wiring, counted and
+   coloured, and the lines themselves are what makes a zoomed-out board
+   unreadable in the first place. They stay drawn — the route is still the
+   answer to "how does it get there" — just quiet enough that the colours in
+   front of them win. */
+.factory-flow-board[data-hop-map] .react-flow__edges {
+  opacity: 0.28;
+}
+
 .minecraft-pixel-art,
 .minecraft-pixel-art * {
   image-rendering: crisp-edges;

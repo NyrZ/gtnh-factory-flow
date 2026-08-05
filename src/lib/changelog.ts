@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.7.0",
+    date: "2026-08-05",
+    headline: "Hover a machine, see how far everything else is from it",
+    notes: [
+      "Zoomed out, resting on any machine now colours the whole board by how many wires away each other machine is from it. Its direct neighbours glow hot, and the colour fades further out along the chain.",
+      "Every card shows that count while you hover, so you can tell two steps from five without squinting at colours. Anything not connected to the machine you are on goes grey and empty.",
+      "Wires fade back while you are reading the map, and everything snaps back to normal the moment you move away, zoom in, or drag the board.",
+    ],
+  },
+  {
     version: "1.6.0",
     date: "2026-08-05",
     headline: "Zoom out and read the whole factory at once",

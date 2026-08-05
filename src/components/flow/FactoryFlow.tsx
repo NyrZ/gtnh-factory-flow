@@ -141,8 +141,17 @@ import {
 } from "./edge-detail";
 import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
 import {
+  clearHopMap,
+  hopFill,
+  hopInk,
+  registerHopMapBoard,
+  setHopMapHub,
+  useHopMapSummary,
+} from "./hop-map";
+import {
   NODE_DETAIL_ATTRIBUTE,
   NODE_DETAIL_FULL,
+  NODE_DETAIL_GLANCE,
   getNodeDetailLevel,
   getPublishedNodeDetailLevel,
   getServerNodeDetailLevel,
@@ -1920,6 +1929,10 @@ export function FactoryFlow() {
     };
   }, []);
 
+  // The hop map paints node elements directly rather than through props; see
+  // hop-map.ts. It needs the board element to find them on.
+  useEffect(() => registerHopMapBoard(boardRef.current), []);
+
   const updateFlowViewportCenter = useCallback(() => {
     const instance = flowInstanceRef.current;
     const board = boardRef.current;
@@ -1937,6 +1950,11 @@ export function FactoryFlow() {
   }, [setFlowViewportCenter]);
 
   const handleMoveStart = useCallback(() => {
+    // Panning or zooming drops the map. React Flow culls off-screen nodes, so
+    // a map held across a move would arrive at freshly mounted cards that were
+    // never painted — and moving the board is a deliberate act anyway, not
+    // something you do while reading one node's neighbourhood.
+    clearHopMap();
     boardRef.current?.classList.add("factory-flow-board--moving");
   }, []);
 
@@ -2304,7 +2322,59 @@ export function FactoryFlow() {
     [setNodeColorPaintMode],
   );
 
+  /**
+   * Hovering a card zoomed out turns the board into a distance map from it.
+   *
+   * Only at the glance step: zoomed in the card is showing its real contents
+   * and painting over them would be destructive, and the shape of the plant is
+   * something you can already read there. See hop-map.ts.
+   *
+   * The map waits for the pointer to REST. Crossing the board passes over a
+   * dozen cards on the way to the one you meant, and mapping each of them in
+   * turn is a strobe and a pile of work nobody asked for; a short pause means
+   * the board only answers a hover that was actually a hover.
+   *
+   * The edge list is read with `getState()` rather than subscribed to — this
+   * board must not re-render on hover, and a selector on the project would put
+   * every wire change through FactoryFlow for a feature that only wants a
+   * snapshot at the moment the pointer settles.
+   */
+  const hopMapTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelHopMap = useCallback(() => {
+    if (hopMapTimerRef.current !== undefined) {
+      clearTimeout(hopMapTimerRef.current);
+      hopMapTimerRef.current = undefined;
+    }
+    clearHopMap();
+  }, []);
+
+  const handleNodeMouseEnter = useCallback(
+    (_: unknown, node: Node) => {
+      cancelHopMap();
+      if (getPublishedNodeDetailLevel() !== NODE_DETAIL_GLANCE) {
+        return;
+      }
+      hopMapTimerRef.current = setTimeout(() => {
+        hopMapTimerRef.current = undefined;
+        if (getPublishedNodeDetailLevel() !== NODE_DETAIL_GLANCE) {
+          return;
+        }
+        setHopMapHub(node.id, useFactoryStore.getState().project.edges);
+      }, HOP_MAP_SETTLE_MS);
+    },
+    [cancelHopMap],
+  );
+
+  const handleNodeMouseLeave = useCallback(() => {
+    cancelHopMap();
+  }, [cancelHopMap]);
+
+  useEffect(() => cancelHopMap, [cancelHopMap]);
+
   const handleNodeDragStart = useCallback((_: unknown, node: Node, draggedNodes: Node[]) => {
+    // A drag is about to move geometry; the map under it would be a distraction
+    // and the pointer never leaves the node, so nothing else would clear it.
+    clearHopMap();
     activelyDraggedNodeIds.clear();
     activelyDraggedNodeIds.add(node.id);
     for (const dragged of draggedNodes) {
@@ -2518,6 +2588,8 @@ export function FactoryFlow() {
         elevateNodesOnSelect={false}
         edgesReconnectable={false}
         onNodeClick={handleNodeClick}
+        onNodeMouseEnter={handleNodeMouseEnter}
+        onNodeMouseLeave={handleNodeMouseLeave}
         onEdgeClick={handleEdgeClick}
         onNodesChange={handleNodesChange}
         onSelectionChange={handleSelectionChange}
@@ -2578,6 +2650,7 @@ export function FactoryFlow() {
         onHeatmapChange={handleHeatmapChange}
       />
       <SourceToolbar />
+      <HopMapLegend />
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
     </div>
   );
@@ -2852,6 +2925,12 @@ const NodeDetailController = memo(function NodeDetailController({
       }
       level = next;
       setNodeDetailLevel(next);
+      // The hop map only exists at the glance step. Zooming back in has to take
+      // it with it, or a card would come back to full detail wearing a colour
+      // that means nothing at that size.
+      if (next === NODE_DETAIL_FULL) {
+        clearHopMap();
+      }
       const board = boardRef.current;
       if (!board) {
         return;
@@ -2871,6 +2950,82 @@ const NodeDetailController = memo(function NodeDetailController({
   }, [boardRef, flowStore]);
 
   return null;
+});
+
+/**
+ * What the colours mean while a hop map is up.
+ *
+ * Colour alone can say "near" and "far", but not "three wires". The legend is
+ * what turns the map from an impression into a number you can count along, and
+ * it costs nothing when no card is hovered: it subscribes to the map's hub, so
+ * with no map it renders null and never hears from the pointer again.
+ *
+ * Long chains get a continuous bar instead of a chip per hop — twenty chips is
+ * a wall, and past a certain depth the exact number stops being the question.
+ */
+const HOP_LEGEND_MAX_CHIPS = 9;
+
+/** How long the pointer has to sit still on a card before the map appears. */
+const HOP_MAP_SETTLE_MS = 130;
+
+const HopMapLegend = memo(function HopMapLegend() {
+  const map = useHopMapSummary();
+  if (!map || map.maxDepth < 1) {
+    return null;
+  }
+  const chipped = map.maxDepth <= HOP_LEGEND_MAX_CHIPS;
+  const depths = chipped
+    ? Array.from({ length: map.maxDepth }, (_, index) => index + 1)
+    : [1, Math.round(map.maxDepth / 2), map.maxDepth];
+
+  return (
+    <div
+      data-board-toolbar
+      aria-hidden
+      className="nodrag pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-2 py-1.5 font-mono text-[11px] font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
+    >
+      <span className="text-[10px] uppercase tracking-[0.5px] text-white/70">Wires from here</span>
+      {chipped ? (
+        <div className="flex items-center gap-1">
+          <span
+            className="h-4 w-4 border border-black/50"
+            style={{ backgroundColor: hopFill(0, map.maxDepth) }}
+          />
+          {depths.map((depth) => (
+            <span
+              key={depth}
+              className="flex h-4 w-4 items-center justify-center border border-black/50 text-[9px]"
+              style={{
+                backgroundColor: hopFill(depth, map.maxDepth),
+                // The far end of the ramp is a deep indigo; a fixed dark digit
+                // on it is unreadable, so the chip picks its own ink the same
+                // way the cards do.
+                color: hopInk(depth, map.maxDepth),
+              }}
+            >
+              {depth}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <span
+            className="h-4 w-4 border border-black/50"
+            style={{ backgroundColor: hopFill(0, map.maxDepth) }}
+          />
+          <span
+            className="h-4 w-28 border border-black/50"
+            style={{
+              backgroundImage: `linear-gradient(to right, ${depths
+                .map((depth) => hopFill(depth, map.maxDepth))
+                .join(", ")})`,
+            }}
+          />
+          <span className="text-[10px] text-white/70">{map.maxDepth}</span>
+        </div>
+      )}
+    </div>
+  );
 });
 
 function FlowLoadingOverlay() {
