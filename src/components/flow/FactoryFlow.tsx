@@ -70,8 +70,6 @@ import {
   embedProjectJsonInPng,
   embedProjectJsonInSvg,
 } from "@/lib/import-export/plan-image";
-import type { Theme } from "@/lib/theme";
-import { useThemeStore } from "@/store/theme-store";
 import {
   applyRecipeInputOverrides,
   restoreCrossKindInputOverrideVisuals,
@@ -110,6 +108,7 @@ import {
   canonicalizeResourceHandleId,
   makeResourceHandleId,
   parseResourceHandleId,
+  type ResourceHandleSide,
 } from "./resource-handles";
 import {
   findOrthogonalRoute,
@@ -125,7 +124,11 @@ import {
   isEdgeSurplus,
 } from "./edge-labels";
 import { buildEdgeStory } from "./flow-explainers";
-import { CUSTOM_RATE_ANY_RESOURCE_ID } from "@/lib/model/custom-rate";
+import {
+  CUSTOM_RATE_ANY_RESOURCE_ID,
+  getCustomRateSlot,
+  isCustomRateRecipe,
+} from "@/lib/model/custom-rate";
 import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
 import { rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
 import { getSupplyCeiling } from "@/components/inspector/usage-limits";
@@ -211,14 +214,8 @@ const DEFAULT_FLUID_EDGE_COLOR = "#2f89c5";
 
 // React Flow's Background and the html-to-image exporter both need a concrete
 // colour rather than a CSS variable, so these mirror --canvas / --canvas-dot.
-const CANVAS_COLOR: Record<Theme, string> = {
-  light: "#f5f5f5",
-  dark: "#1b1d21",
-};
-const CANVAS_DOT_COLOR: Record<Theme, string> = {
-  light: "#b8b8b8",
-  dark: "#4a4d55",
-};
+const CANVAS_COLOR = "#f5f5f5";
+const CANVAS_DOT_COLOR = "#b8b8b8";
 
 /** Snap step, and the background gap — same number so nodes land on marks. */
 const BOARD_GRID_SIZE = 24;
@@ -898,7 +895,6 @@ interface ResolvedResourceHandle {
 }
 
 export function FactoryFlow() {
-  const theme = useThemeStore((state) => state.theme);
   const project = useFactoryStore((state) => state.project);
   const result = useFactoryStore((state) => state.lastResult);
   const selectNode = useFactoryStore((state) => state.selectNode);
@@ -1049,6 +1045,10 @@ export function FactoryFlow() {
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const connectCompletedRef = useRef(false);
+  // Per-drag cache of "does this card take what I'm holding", so the wash costs
+  // one answer per node per gesture rather than one per frame.
+  const dropFitVerdictsRef = useRef<Map<string, boolean>>(new Map());
+  const dropFitFrameRef = useRef<number | undefined>(undefined);
   const exportInProgressRef = useRef(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const flowInstanceRef = useRef<ReactFlowInstance<BoardFlowNode, ResourceFlowEdge> | null>(null);
@@ -1759,6 +1759,54 @@ export function FactoryFlow() {
     [project],
   );
 
+  const stopDropFitPainting = useCallback(() => {
+    if (dropFitFrameRef.current !== undefined) {
+      cancelAnimationFrame(dropFitFrameRef.current);
+      dropFitFrameRef.current = undefined;
+    }
+    dropFitVerdictsRef.current.clear();
+    clearNodeDropFit();
+  }, []);
+
+  const startDropFitPainting = useCallback(() => {
+    dropFitVerdictsRef.current.clear();
+    clearNodeDropFit();
+    paintNodeDropFit(project, draggedResourceRef.current, dropFitVerdictsRef.current, false);
+
+    // One cheap selector per frame — it matches nothing until auto-pan mounts
+    // a card that has not been given a verdict yet.
+    const paintNewlyMounted = () => {
+      if (!draggedResourceRef.current) {
+        dropFitFrameRef.current = undefined;
+        return;
+      }
+      paintNodeDropFit(project, draggedResourceRef.current, dropFitVerdictsRef.current, true);
+      dropFitFrameRef.current = requestAnimationFrame(paintNewlyMounted);
+    };
+
+    if (dropFitFrameRef.current === undefined && draggedResourceRef.current) {
+      dropFitFrameRef.current = requestAnimationFrame(paintNewlyMounted);
+    }
+  }, [project]);
+
+  // A pointer that comes up without React Flow reporting a connect end (an
+  // aborted gesture, a drag off the window) must not leave the board washed.
+  useEffect(() => {
+    const clearIfIdle = () => {
+      if (!draggedResourceRef.current) {
+        stopDropFitPainting();
+      }
+    };
+
+    window.addEventListener("pointerup", clearIfIdle);
+    window.addEventListener("pointercancel", clearIfIdle);
+    return () => {
+      window.removeEventListener("pointerup", clearIfIdle);
+      window.removeEventListener("pointercancel", clearIfIdle);
+      stopDropFitPainting();
+    };
+  }, [stopDropFitPainting]);
+
   const handleConnectStart = useCallback(
     (
       event: MouseEvent | TouchEvent,
@@ -1777,14 +1825,16 @@ export function FactoryFlow() {
       lastConnectionPointerRef.current = getClientPosition(event);
       draggedResourceRef.current =
         nodeId && handleId ? getDraggedResourceForHandle(project, nodeId, handleId) : undefined;
+      startDropFitPainting();
     },
-    [project],
+    [project, startDropFitPainting],
   );
 
   const handleConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent) => {
       const draggedResource = draggedResourceRef.current;
       draggedResourceRef.current = undefined;
+      stopDropFitPainting();
       const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
       lastConnectionPointerRef.current = undefined;
       const targetHandle =
@@ -1794,7 +1844,11 @@ export function FactoryFlow() {
         getStorageHandleAtPointer(event, draggedResource) ??
         // Anywhere on a trash card counts as its well: dropping an output on
         // the frame or header must void it, never spawn a tank on top.
-        getTrashHandleAtPosition(clientPosition, draggedResource, event);
+        getTrashHandleAtPosition(clientPosition, draggedResource, event) ??
+        // Last resort: any card that takes the resource anywhere on it. The
+        // exact slot hit-tests above already had their say, so aiming still
+        // beats guessing.
+        getNodeCardHandleAtPosition(project, clientPosition, draggedResource);
 
       if (connectCompletedRef.current) {
         return;
@@ -1895,6 +1949,12 @@ export function FactoryFlow() {
       }
 
       if ((project.storages ?? []).some((storage) => storage.id === draggedResource.nodeId)) {
+        return;
+      }
+
+      // Landing on a card that just washed red means "no" — dropping a fresh
+      // drawer on top of it would be a strange answer to a refused wire.
+      if (getBoardNodeIdAtPosition(clientPosition)) {
         return;
       }
 
@@ -2004,8 +2064,7 @@ export function FactoryFlow() {
         EXPORT_IMAGE_PADDING / Math.max(imageWidth, imageHeight),
       );
       const options = {
-        // Read lazily so switching theme does not rebuild this callback.
-        backgroundColor: CANVAS_COLOR[useThemeStore.getState().theme],
+        backgroundColor: CANVAS_COLOR,
         width: imageWidth,
         height: imageHeight,
         style: {
@@ -2548,7 +2607,6 @@ export function FactoryFlow() {
         onlyRenderVisibleElements
         minZoom={0.15}
         maxZoom={1.8}
-        colorMode={theme}
         // React Flow's default ("basic") raises every edge to at least the
         // z-index of its two endpoint nodes, so an edge can never be told to
         // pass BEHIND a node it connects to — which is why asking for -1 did
@@ -2569,7 +2627,7 @@ export function FactoryFlow() {
             // Lines tile edge to edge, so they need to be thinner than a dot
             // to read as a background instead of as graph paper.
             size={boardView.canvasPattern === "lines" ? 1 : 2}
-            color={CANVAS_DOT_COLOR[theme]}
+            color={CANVAS_DOT_COLOR}
           />
         )}
         <Controls position="bottom-left" />
@@ -3581,13 +3639,10 @@ function ResourceEdgeComponent({
   const resourceColor = data?.resource
     ? getInitialResourceColor(data.resource)
     : (data?.color ?? DEFAULT_ITEM_EDGE_COLOR);
-  const theme = useThemeStore((state) => state.theme);
   // Dominant resource colours are averaged from item sprites, which makes them
-  // muddy; boost saturation everywhere and lift toward white — a touch more
-  // on the dark canvas.
+  // muddy; boost saturation everywhere and lift toward white a touch.
   const vividColor = saturateHexColor(resourceColor, 0.6);
-  const resolvedResourceColor =
-    theme === "dark" ? brightenHexColor(vividColor, 0.2) : brightenHexColor(vividColor, 0.08);
+  const resolvedResourceColor = brightenHexColor(vividColor, 0.08);
   // Flow mode repaints the line by volume. The stroke colour is derived HERE
   // from the resource, not read from `style`, so setting style.stroke upstream
   // did nothing at all — the ramp has to be applied at the point of use.
@@ -8058,6 +8113,212 @@ function getTrashHandleAtPosition(
   }
 
   return undefined;
+}
+
+/**
+ * The whole card is the port. Aiming at a slot is still the precise way to
+ * wire a specific alternative, so the cascade in `handleConnectEnd` tries the
+ * exact handles first — this only catches drops that landed on the frame, the
+ * header, the machine art, anywhere. If the card takes the resource at all,
+ * the drop lands on the slot that takes it.
+ */
+function getNodeCardHandleAtPosition(
+  project: FactoryProject,
+  position: { x: number; y: number } | undefined,
+  draggedResource: DraggedResourceConnection | undefined,
+) {
+  const nodeId = getBoardNodeIdAtPosition(position);
+  return nodeId && draggedResource
+    ? findNodeDropTarget(project, nodeId, draggedResource)
+    : undefined;
+}
+
+/**
+ * The wireable board card under the pointer. Annotations are excluded on
+ * purpose: they are backdrops, often larger than the cluster they frame, and
+ * treating one as a card would swallow every drop made over it.
+ */
+function getBoardNodeIdAtPosition(position: { x: number; y: number } | undefined) {
+  if (!position || typeof document === "undefined") {
+    return undefined;
+  }
+
+  for (const element of document.elementsFromPoint(position.x, position.y)) {
+    const nodeElement = element.closest<HTMLElement>(".react-flow__node");
+    if (nodeElement?.dataset.id && !isAnnotationNodeElement(nodeElement)) {
+      return nodeElement.dataset.id;
+    }
+  }
+
+  // elementsFromPoint reads the live stacking context, which synthetic events
+  // do not always produce; fall back to the smallest card containing the point.
+  let best: { id: string; area: number } | undefined;
+  for (const element of document.querySelectorAll<HTMLElement>(".react-flow__node")) {
+    const id = element.dataset.id;
+    if (!id || isAnnotationNodeElement(element)) {
+      continue;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (
+      position.x < rect.left ||
+      position.x > rect.right ||
+      position.y < rect.top ||
+      position.y > rect.bottom
+    ) {
+      continue;
+    }
+
+    const area = rect.width * rect.height;
+    if (!best || area < best.area) {
+      best = { id, area };
+    }
+  }
+
+  return best?.id;
+}
+
+function isAnnotationNodeElement(element: HTMLElement) {
+  return element.classList.contains("react-flow__node-annotationNode");
+}
+
+/**
+ * Which port on `nodeId` a drop of `draggedResource` should land on, or
+ * undefined when that card cannot take it. This is the single source of truth
+ * for both the drop cascade and the green/red wash painted during the drag, so
+ * a card can never read green and then refuse the wire.
+ */
+function findNodeDropTarget(
+  project: FactoryProject,
+  nodeId: string,
+  draggedResource: DraggedResourceConnection,
+): ResolvedResourceHandle | undefined {
+  if (nodeId === draggedResource.nodeId) {
+    return undefined;
+  }
+
+  const side: ResourceHandleSide = draggedResource.side === "output" ? "input" : "output";
+  const accepts = (candidate: Pick<ResourceAmount, "kind" | "id" | "alternatives">) =>
+    side === "input"
+      ? resourceMatchesInput(draggedResource, candidate)
+      : resourceMatchesInput(candidate, draggedResource);
+  const port = (resource: Pick<ResourceAmount, "kind" | "id">): ResolvedResourceHandle => ({
+    nodeId,
+    handleId: makeResourceHandleId(side, resource),
+    side,
+    kind: resource.kind,
+    resourceId: resource.id,
+  });
+
+  const storage = (project.storages ?? []).find((entry) => entry.id === nodeId);
+  if (storage) {
+    const held = { kind: storage.kind, id: storage.resourceId };
+    return accepts(held) ? port(held) : undefined;
+  }
+
+  const node = project.nodes.find((entry) => entry.id === nodeId);
+  const recipe = project.recipes.find((entry) => entry.id === node?.recipeId);
+  if (!node || !recipe) {
+    return undefined;
+  }
+
+  // A universal port is a socket, not a resource: it can receive a concrete
+  // drag but never starts one that another universal port could answer.
+  const draggingUniversalPort =
+    draggedResource.id === TRASH_ANY_RESOURCE_ID ||
+    draggedResource.id === CUSTOM_RATE_ANY_RESOURCE_ID;
+
+  if (isTrashRecipe(recipe)) {
+    // A can drinks outputs and nothing else — a dragged input looking for a
+    // supplier has no business docking on one.
+    return draggedResource.side === "output" && !draggingUniversalPort
+      ? {
+          nodeId,
+          handleId: makeResourceHandleId("input", { kind: "item", id: TRASH_ANY_RESOURCE_ID }),
+          side: "input",
+          kind: "item",
+          resourceId: TRASH_ANY_RESOURCE_ID,
+        }
+      : undefined;
+  }
+
+  const contextualRecipe = getNodeRecipeForHandles(recipe, node);
+
+  // An unset custom rate node shows universal ports and adopts whatever lands.
+  if (isCustomRateRecipe(recipe) && !getCustomRateSlot(contextualRecipe)) {
+    return draggingUniversalPort ? undefined : port({ kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID });
+  }
+
+  if (draggingUniversalPort) {
+    return undefined;
+  }
+
+  const candidates = side === "input" ? contextualRecipe.inputs : contextualRecipe.outputs;
+  const match = (candidates ?? []).find(
+    (candidate) =>
+      (side === "output" || isRecipeInputConsumed(candidate)) && accepts(candidate),
+  );
+
+  return match ? port(match) : undefined;
+}
+
+/**
+ * Board-wide drag feedback: every card wears the answer to "would this drop
+ * work?" as a data attribute, and rules in globals.css paint the wash. This
+ * deliberately never touches React — a hover/drag effect that re-renders every
+ * node costs multiples of the frame budget (see ARCHITECTURE.md).
+ *
+ * `onlyUnpainted` is the per-frame pass: auto-pan mounts fresh cards mid-drag,
+ * and those are the only ones still missing a verdict.
+ */
+function paintNodeDropFit(
+  project: FactoryProject,
+  draggedResource: DraggedResourceConnection | undefined,
+  verdicts: Map<string, boolean>,
+  onlyUnpainted: boolean,
+) {
+  if (typeof document === "undefined" || !draggedResource) {
+    return;
+  }
+
+  const selector = onlyUnpainted
+    ? ".react-flow__node:not([data-drop-fit])"
+    : ".react-flow__node";
+
+  for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+    const id = element.dataset.id;
+    if (!id) {
+      continue;
+    }
+
+    // The card the wire is coming from and the backdrops stay neutral, but
+    // they still get marked so the per-frame pass skips them.
+    if (id === draggedResource.nodeId || isAnnotationNodeElement(element)) {
+      element.dataset.dropFit = "none";
+      continue;
+    }
+
+    let fits = verdicts.get(id);
+    if (fits === undefined) {
+      fits = Boolean(findNodeDropTarget(project, id, draggedResource));
+      verdicts.set(id, fits);
+    }
+
+    const verdict = fits ? "yes" : "no";
+    if (element.dataset.dropFit !== verdict) {
+      element.dataset.dropFit = verdict;
+    }
+  }
+}
+
+function clearNodeDropFit() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  for (const element of document.querySelectorAll<HTMLElement>("[data-drop-fit]")) {
+    delete element.dataset.dropFit;
+  }
 }
 
 function brightenHexColor(color: string, amount: number) {

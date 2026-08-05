@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.8.0",
+    date: "2026-08-05",
+    headline: "Drop a wire anywhere on a machine and it finds the right slot",
+    notes: [
+      "You no longer have to land on the exact little slot. Drag from any item or fluid and let go anywhere on the machine you want it to go to — the wire snaps onto whichever slot takes it.",
+      "While you are dragging, every card tells you the answer up front: a soft green wash means that machine takes what you are holding, a soft red one means it does not.",
+      "Letting go on a red card now does nothing at all, instead of dropping a drawer on top of it.",
+      "The site is light only now; the dark theme and its switch are gone.",
+    ],
+  },
+  {
     version: "1.7.0",
     date: "2026-08-05",
     headline: "Hover a machine, see how far everything else is from it",
