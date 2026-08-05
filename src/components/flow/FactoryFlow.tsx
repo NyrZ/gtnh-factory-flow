@@ -138,6 +138,7 @@ import {
   reuseDeepObjectIdentity,
   reuseObjectIdentity,
 } from "./edge-detail";
+import { assignEdgeLanes, edgeCasingWidth } from "./edge-geometry";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import {
@@ -320,11 +321,46 @@ const RECIPE_SLOT_EDGE_OFFSET = 20;
 const STORAGE_SLOT_EDGE_OFFSET = 55;
 const EDGE_BUNDLE_CLEARANCE = 30;
 // Wires were correct but claustrophobic at 18 — they hugged node walls.
-const DIRECT_EDGE_NODE_CLEARANCE = 30;
+const BASE_EDGE_NODE_CLEARANCE = 30;
 // Parallel wires were shoulder-to-shoulder at 8; lanes now sit visibly apart.
 const EDGE_LANE_SPACING = 14;
 const EDGE_LANE_BUCKETS = 4;
-const EDGE_LINK_CLEARANCE = 12;
+const BASE_EDGE_LINK_CLEARANCE = 12;
+
+/**
+ * How much room a wire keeps off a node wall, and how close two wires may run
+ * before the scorer charges for it.
+ *
+ * Both were tuned for a ~3px wire, where the stroke is thinner than the
+ * measurement error and a centreline clearance IS a visual clearance. In
+ * thickness mode a line is up to 34px wide, so a route whose CENTRELINE clears
+ * a node by 30px leaves a 13px gap, and two centrelines 12px apart overlap by
+ * 22px of solid colour — the scorer calls that clear because it only ever
+ * measures centre to centre.
+ *
+ * So the clearances become mode-scoped and are published the same way lane
+ * width is: derived from the widest line the mode can draw, never from any
+ * individual edge's width. That distinction is the whole point — per-edge
+ * widths come from normalised throughput, so folding them into routing inputs
+ * would make every solver run reshuffle the ranks, change a width, and reroute
+ * the board. Mode-scoped values change only when the user toggles the mode.
+ */
+let publishedDirectEdgeNodeClearance = BASE_EDGE_NODE_CLEARANCE;
+let publishedEdgeLinkClearance = BASE_EDGE_LINK_CLEARANCE;
+
+function edgeClearancesForMode(thicknessMode: boolean) {
+  if (!thicknessMode) {
+    return { node: BASE_EDGE_NODE_CLEARANCE, link: BASE_EDGE_LINK_CLEARANCE };
+  }
+  // Half of the widest pipe is the amount of stroke that hangs off the
+  // centreline, so adding it restores the gap the base numbers describe.
+  const halfWidest = FLOW_MODE_MAX_WIDTH / 2;
+  return {
+    node: BASE_EDGE_NODE_CLEARANCE + halfWidest,
+    // Two lines both hang half a stroke into the gap between them.
+    link: BASE_EDGE_LINK_CLEARANCE + halfWidest * 2,
+  };
+}
 const EDGE_ENDPOINT_SPACING = 5;
 const EDGE_ROUTE_RELAXATION_PASSES = 2;
 const EDGE_ROUTE_SNAP_GRID = 4;
@@ -442,7 +478,7 @@ const directRouteCache = new Map<
 function getHiddenBundleMemberRoute(
   edgeId: string,
   source: { x: number; y: number },
-): { path: string; labelX: number; labelY: number; labelHidden?: boolean; points: Array<{ x: number; y: number }> } {
+): RoutedEdgePath {
   directRouteCache.delete(edgeId);
   return { path: "", labelX: source.x, labelY: source.y, points: [] };
 }
@@ -543,6 +579,14 @@ function pruneNodeDataCaches(
     }
   }
 }
+
+/**
+ * Set whenever a render writes a route into directRouteCache, so the board can
+ * run one more pass and let hop rendering see a complete cache. See the settle
+ * effect in FactoryFlow.
+ */
+let routeCacheGrewThisPass = false;
+const MAX_HOP_SETTLE_PASSES = 2;
 
 // Node ids currently being dragged. While a drag is live, edges touching these
 // nodes drop to cheap estimated routing (so they can follow the pointer without
@@ -850,8 +894,18 @@ export function FactoryFlow() {
     // is what makes every edge reroute against the new lanes. Widening the
     // lanes invalidates every cached route, so they go too.
     const nextLaneScale = lineThicknessMode ? THICK_LINE_LANE_SCALE : 1;
-    if (publishedEdgeLaneScale !== nextLaneScale) {
+    // Clearances are a routing input for the same reason lane width is, and
+    // they move together: both are functions of the widest line the current
+    // mode can draw. See edgeClearancesForMode.
+    const nextClearances = edgeClearancesForMode(lineThicknessMode);
+    if (
+      publishedEdgeLaneScale !== nextLaneScale ||
+      publishedDirectEdgeNodeClearance !== nextClearances.node ||
+      publishedEdgeLinkClearance !== nextClearances.link
+    ) {
       publishedEdgeLaneScale = nextLaneScale;
+      publishedDirectEdgeNodeClearance = nextClearances.node;
+      publishedEdgeLinkClearance = nextClearances.link;
       // Hop size follows the stroke widths now (see hopRadiusFor), and those
       // are republished on every pass — the routes just have to be rebuilt so
       // the new bumps are drawn.
@@ -912,6 +966,40 @@ export function FactoryFlow() {
     // NEI layout resolve.
     setLayoutVersion((version) => version + 1);
   }, [nodeGeometryFingerprint, publishBoardGeometry]);
+
+  // Settle the hop pass. Hops are drawn against the routes of lower-index
+  // edges, read from directRouteCache — which is filled AS edges render. React
+  // promises no order there, so an edge that rendered before its neighbours saw
+  // an incomplete cache, drew a flat crossing, and then never recomputed,
+  // because its own route signature never changed again. That is why hops went
+  // missing at random rather than consistently.
+  //
+  // Forcing a render order is not on offer, so let the pass settle instead:
+  // whenever a render added routes to the cache, run exactly one more. By then
+  // every route is present and every hop is drawn against the full picture.
+  // The extra pass writes nothing new — same signatures, all cache hits — so it
+  // terminates on its own; the counter is a backstop against a route whose
+  // signature is somehow unstable, and resets as soon as a pass adds nothing.
+  const hopSettlePassesRef = useRef(0);
+  useEffect(() => {
+    // Mid-drag the cache is deliberately frozen and edges route cheaply; the
+    // drop already forces a full precise pass.
+    if (draggingNodeRef.current) {
+      return;
+    }
+    if (!routeCacheGrewThisPass) {
+      hopSettlePassesRef.current = 0;
+      return;
+    }
+
+    routeCacheGrewThisPass = false;
+    if (hopSettlePassesRef.current >= MAX_HOP_SETTLE_PASSES) {
+      return;
+    }
+
+    hopSettlePassesRef.current += 1;
+    setLayoutVersion((version) => version + 1);
+  });
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<BoardFlowNode>[]) => {
@@ -1041,6 +1129,13 @@ export function FactoryFlow() {
       );
     }
 
+    // Which parallel run each edge takes. Published before anything renders,
+    // for the same reason the widths are: routing happens inside the edge
+    // components, and by then this has to be settled. A changed lane offset is
+    // part of the route signature, so reassignment reroutes exactly the edges
+    // that moved and leaves the rest cached.
+    publishEdgeLanes(project.edges);
+
     // Prune ghost routes synchronously (the pruneNodeDataCaches effect runs
     // after render): edges rendered this pass must not hop over or steer
     // around routes of edges that were just deleted.
@@ -1051,7 +1146,7 @@ export function FactoryFlow() {
       }
     }
 
-    return project.edges.map((edge, edgeIndex) => {
+    const builtEdges = project.edges.map((edge, edgeIndex) => {
       const edgeResult = result.edges[edge.id];
       const unit = rateUnitSuffix(edge.resourceKind === "fluid").trim();
       const demand = edgeResult?.demandPerSecond ?? edge.ratePerSecond ?? 0;
@@ -1195,6 +1290,29 @@ export function FactoryFlow() {
                     : 2.9,
         },
       });
+    });
+
+    if (!lineThicknessMode) {
+      return builtEdges;
+    }
+
+    // Paint order IS depth. Some overlap in thickness mode is not a routing
+    // failure and cannot be routed away: ports on one face sit ~18px apart and
+    // a pipe can be 34px wide, so two wires into two neighbouring inputs must
+    // share pixels. What that overlap must not be is ambiguous or unstable —
+    // and left alone it is both, because React Flow paints edges in array
+    // order and this array's order came from whatever the project happened to
+    // hold.
+    //
+    // Widest first: fat pipes go to the back, thin lines stay on top of them.
+    // A thin line buried under a fat one is invisible; a thin line drawn over
+    // a fat one costs the fat one a few percent of its width and stays
+    // readable. Ties break on id so the stack never reshuffles between renders
+    // for lines that carry the same amount.
+    return [...builtEdges].sort((left, right) => {
+      const leftWidth = Number(left.style?.strokeWidth ?? 0);
+      const rightWidth = Number(right.style?.strokeWidth ?? 0);
+      return rightWidth - leftWidth || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
     });
   }, [
     activeFlowResourceKey,
@@ -2845,6 +2963,17 @@ function ResourceEdgeComponent({
   );
   const setHoveredFlowScope = useFactoryStore((state) => state.setHoveredFlowScope);
   const isHighlighted = selected || data?.isFlowHighlighted === true || isFlowScopeLit;
+  // The width this line actually draws at, resolved once. It used to be
+  // written out twice — inline in the casing and again in the stroke — which
+  // is how the two drifted apart in the first place.
+  const coreStrokeWidth =
+    flowWidth !== undefined
+      ? flowWidth + (isHighlighted ? 2 : 0)
+      : isHighlighted
+        ? 6.5
+        : data?.bundle?.role === "primary"
+          ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
+          : Number(style?.strokeWidth ?? 3.1);
   // AGENTS.md requires routing to be deterministic and independent of zoom
   // level. Precise routing used to be switched off below 0.45 because measuring
   // was expensive; now that measurements are cached across frames it always runs,
@@ -2962,6 +3091,7 @@ function ResourceEdgeComponent({
             targetPosition: visualTarget.side,
             laneOffset: getEdgeLaneOffset(id),
             useSmartRouting: shouldUsePreciseRouting,
+            strokeWidth: coreStrokeWidth,
           });
   const labelX = routedEdge.labelX + labelOffset.x;
   const labelY = routedEdge.labelY + labelOffset.y;
@@ -3035,14 +3165,7 @@ function ResourceEdgeComponent({
               strokeLinecap: "round",
               strokeLinejoin: "round",
               strokeOpacity: isHighlighted ? 0.95 : 0.72,
-              strokeWidth:
-                (flowWidth !== undefined
-                  ? flowWidth + (isHighlighted ? 2 : 0)
-                  : isHighlighted
-                    ? 6.5
-                    : data?.bundle?.role === "primary"
-                      ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
-                      : Number(style?.strokeWidth ?? 3.1)) + 2,
+              strokeWidth: edgeCasingWidth(coreStrokeWidth),
               pointerEvents: "none",
             }}
           />
@@ -3060,14 +3183,7 @@ function ResourceEdgeComponent({
               // opacity (0.28 when starved), which read as the whole plan
               // washing out for no reason the user did anything to cause.
               strokeOpacity: isHighlighted ? 1 : style?.strokeOpacity,
-              strokeWidth:
-                flowWidth !== undefined
-                  ? flowWidth + (isHighlighted ? 2 : 0)
-                  : isHighlighted
-                    ? 6.5
-                    : data?.bundle?.role === "primary"
-                      ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
-                      : style?.strokeWidth,
+              strokeWidth: coreStrokeWidth,
               filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
               // Edges select/hover through their label, never the stroke:
               // edges render above nodes (zIndex 20) so their slot-anchored
@@ -3684,10 +3800,13 @@ function getDirectEdgePath({
   targetY,
   targetPosition,
   useSmartRouting = true,
+  strokeWidth,
 }: {
   edgeId?: string;
   laneOffset?: number;
   routeIndex?: number;
+  /** Width this line will actually draw at, for hop sizing and dock tapers. */
+  strokeWidth?: number;
   sourceNodeId?: string;
   sourceIsRecipeNode?: boolean;
   sourceCandidates?: SlotEdgeEndpoint[];
@@ -3763,12 +3882,15 @@ function getDirectEdgePath({
     y: labelPoint.y + labelLift,
   });
 
+  // One collection pass, shared by the hop path below. Walking the route cache
+  // is O(board), so doing it twice per edge would make a full render O(edges²)
+  // — the exact shape ARCHITECTURE.md calls a bug.
+  // Hop bumps are sized from the width this line actually draws at, so a
+  // highlighted (thickened) line still clears what it crosses.
+  const width = strokeWidth ?? ownStrokeWidth(edgeId);
+
   return {
-    path: pointsToHoppedSvgPath(
-      points,
-      collectEarlierRouteSegments(edgeId, routeIndex),
-      ownStrokeWidth(edgeId),
-    ),
+    path: pointsToHoppedSvgPath(points, collectEarlierRouteSegments(edgeId, routeIndex), width),
     labelX: labelPoint.x,
     labelY: labelPoint.y + labelLift,
     labelHidden,
@@ -3896,8 +4018,8 @@ function getSimpleOrthogonalEdgePoints({
 }) {
   const source = { x: sourceX, y: sourceY };
   const target = { x: targetX, y: targetY };
-  const sourceExit = offsetPointFromSide(source, sourcePosition, DIRECT_EDGE_NODE_CLEARANCE);
-  const targetExit = offsetPointFromSide(target, targetPosition, DIRECT_EDGE_NODE_CLEARANCE);
+  const sourceExit = offsetPointFromSide(source, sourcePosition, publishedDirectEdgeNodeClearance);
+  const targetExit = offsetPointFromSide(target, targetPosition, publishedDirectEdgeNodeClearance);
   const sourceVertical = isVerticalSide(String(sourcePosition));
   const targetVertical = isVerticalSide(String(targetPosition));
 
@@ -4048,7 +4170,7 @@ function getBestDirectEdgePoints({
       if (point.y > blockReachBottom) blockReachBottom = point.y;
     }
   }
-  const blockReachMargin = EDGE_LINK_CLEARANCE + 1;
+  const blockReachMargin = publishedEdgeLinkClearance + 1;
   const blockers = boardBounds.filter(
     (bounds) =>
       bounds.right >= blockReachLeft - blockReachMargin &&
@@ -4061,7 +4183,7 @@ function getBestDirectEdgePoints({
     // Detours clear nodes by the same distance direct shapes do — corridors
     // derived from the (smaller) link clearance were the "traces around the
     // node way too close" paths.
-    const detourMargin = DIRECT_EDGE_NODE_CLEARANCE + Math.max(EDGE_LINK_CLEARANCE, laneOffset);
+    const detourMargin = publishedDirectEdgeNodeClearance + Math.max(publishedEdgeLinkClearance, laneOffset);
     const extraXs: number[] = [];
     const extraYs: number[] = [];
     let clusterLeft = Infinity;
@@ -4106,7 +4228,7 @@ function getBestDirectEdgePoints({
       if (point.y > reachBottom) reachBottom = point.y;
     }
   }
-  const reachMargin = EDGE_LINK_CLEARANCE + 1;
+  const reachMargin = publishedEdgeLinkClearance + 1;
   reachLeft -= reachMargin;
   reachRight += reachMargin;
   reachTop -= reachMargin;
@@ -4209,6 +4331,9 @@ function getBestDirectEdgePoints({
       route,
       segments: getPolylineSegments(optimizedRoute),
     });
+    // Edges that already rendered this pass hopped against a cache without
+    // this route in it; the board runs one more pass to fix that.
+    routeCacheGrewThisPass = true;
   }
 
   return optimizedRoute;
@@ -4274,9 +4399,9 @@ function getDirectEdgePointCandidates({
 }) {
   const source = { x: sourceX, y: sourceY };
   const target = { x: targetX, y: targetY };
-  const sourceExit = offsetPointFromSide(source, sourcePosition, DIRECT_EDGE_NODE_CLEARANCE);
-  const targetExit = offsetPointFromSide(target, targetPosition, DIRECT_EDGE_NODE_CLEARANCE);
-  const lane = Math.max(EDGE_LINK_CLEARANCE, laneOffset);
+  const sourceExit = offsetPointFromSide(source, sourcePosition, publishedDirectEdgeNodeClearance);
+  const targetExit = offsetPointFromSide(target, targetPosition, publishedDirectEdgeNodeClearance);
+  const lane = Math.max(publishedEdgeLinkClearance, laneOffset);
   const minX = Math.min(sourceExit.x, targetExit.x);
   const maxX = Math.max(sourceExit.x, targetExit.x);
   const minY = Math.min(sourceExit.y, targetExit.y);
@@ -4346,7 +4471,12 @@ function getDirectEdgePointCandidates({
 // Wires keep a visible gap off every node wall; bundle lanes shift whole
 // corridors apart (capped so detours stay tight); turns cost ~40px of length
 // so bends stay purposeful without being avoided at crossing prices.
-const ORTHO_FOREIGN_MARGIN = EDGE_LINK_CLEARANCE + 16;
+// A function, not a const: the link clearance is republished when the line
+// mode changes, and a module const would freeze the thin-mode value for the
+// life of the page.
+function orthoForeignMargin() {
+  return publishedEdgeLinkClearance + 16;
+}
 // Port chips sit a few pixels inside the node edge, so the exit stub lands
 // ~9px past the wall. Own bounds must shrink (not grow) or the start vertex
 // is born inside its own obstacle and every search dies immediately.
@@ -4411,7 +4541,7 @@ function findBestOrthogonalPortalRoute({
   // Generous clearance first; when fat margins seal every corridor on a
   // packed board, retry tighter — a squeezed pass always beats the fallback
   // route that crosses a node.
-  for (const margin of [ORTHO_FOREIGN_MARGIN + lane, EDGE_LINK_CLEARANCE, 6]) {
+  for (const margin of [orthoForeignMargin() + lane, publishedEdgeLinkClearance, 6]) {
   const obstacles = [
     ...foreignBounds.map((bounds) => expandBounds(bounds, margin)),
     ...[sourceOwnBounds, targetOwnBounds]
@@ -4433,12 +4563,12 @@ function findBestOrthogonalPortalRoute({
       const sourceExit = offsetPointFromSide(
         sourceEndpoint,
         sourceEndpoint.side,
-        DIRECT_EDGE_NODE_CLEARANCE,
+        publishedDirectEdgeNodeClearance,
       );
       const targetExit = offsetPointFromSide(
         targetEndpoint,
         targetEndpoint.side,
-        DIRECT_EDGE_NODE_CLEARANCE,
+        publishedDirectEdgeNodeClearance,
       );
       const spanX = Math.abs(sourceExit.x - targetExit.x);
       const spanY = Math.abs(sourceExit.y - targetExit.y);
@@ -4509,7 +4639,7 @@ function findBestOrthogonalPortalRoute({
         congestion,
         turnCost: ORTHO_TURN_COST,
         crossingCost: ORTHO_CROSSING_COST,
-        nearness: { distance: EDGE_LINK_CLEARANCE, costPerPixel: 8 },
+        nearness: { distance: publishedEdgeLinkClearance, costPerPixel: 8 },
         maxPops: 4000,
       });
       if (!path) {
@@ -4689,7 +4819,7 @@ function scoreEdgeRoute(
       const overlapLength = getSegmentRectOverlapLength(
         segment.start,
         segment.end,
-        expandBounds(bounds, EDGE_LINK_CLEARANCE),
+        expandBounds(bounds, publishedEdgeLinkClearance),
       );
       if (overlapLength > 0) {
         nodeHits += 1;
@@ -4709,8 +4839,8 @@ function scoreEdgeRoute(
       edgeOverlap += getCollinearOverlapLength(segment, existing);
 
       const distance = getSegmentDistance(segment.start, segment.end, existing.start, existing.end);
-      if (distance < EDGE_LINK_CLEARANCE) {
-        edgeNearness += ((EDGE_LINK_CLEARANCE - distance) / EDGE_LINK_CLEARANCE) * segment.length;
+      if (distance < publishedEdgeLinkClearance) {
+        edgeNearness += ((publishedEdgeLinkClearance - distance) / publishedEdgeLinkClearance) * segment.length;
       }
     }
   }
@@ -4985,32 +5115,32 @@ function getNodeClearancePoint({
   switch (side) {
     case "right":
       return {
-        x: Math.max(point.x, bounds.right) + DIRECT_EDGE_NODE_CLEARANCE,
+        x: Math.max(point.x, bounds.right) + publishedDirectEdgeNodeClearance,
         y: point.y,
       };
     case "left":
       return {
-        x: Math.min(point.x, bounds.left) - DIRECT_EDGE_NODE_CLEARANCE,
+        x: Math.min(point.x, bounds.left) - publishedDirectEdgeNodeClearance,
         y: point.y,
       };
     case "bottom":
       return {
         x: point.x,
-        y: Math.max(point.y, bounds.bottom) + DIRECT_EDGE_NODE_CLEARANCE,
+        y: Math.max(point.y, bounds.bottom) + publishedDirectEdgeNodeClearance,
       };
     case "top":
       return {
         x: point.x,
-        y: Math.min(point.y, bounds.top) - DIRECT_EDGE_NODE_CLEARANCE,
+        y: Math.min(point.y, bounds.top) - publishedDirectEdgeNodeClearance,
       };
     default:
       return role === "source"
         ? {
-            x: point.x + DIRECT_EDGE_NODE_CLEARANCE,
+            x: point.x + publishedDirectEdgeNodeClearance,
             y: point.y,
           }
         : {
-            x: point.x - DIRECT_EDGE_NODE_CLEARANCE,
+            x: point.x - publishedDirectEdgeNodeClearance,
             y: point.y,
           };
   }
@@ -5035,11 +5165,11 @@ function getHorizontalLaneDirectPoints(
   if (hasVerticalGap && sourceBounds && targetBounds && (targetWantsLeft || targetWantsRight)) {
     const sourceLaneY =
       end.y >= start.y
-        ? sourceBounds.bottom + DIRECT_EDGE_NODE_CLEARANCE + laneOffset
-        : sourceBounds.top - DIRECT_EDGE_NODE_CLEARANCE - laneOffset;
+        ? sourceBounds.bottom + publishedDirectEdgeNodeClearance + laneOffset
+        : sourceBounds.top - publishedDirectEdgeNodeClearance - laneOffset;
     const targetLaneX = targetWantsLeft
-      ? Math.min(end.x, targetBounds.left - DIRECT_EDGE_NODE_CLEARANCE - laneOffset)
-      : Math.max(end.x, targetBounds.right + DIRECT_EDGE_NODE_CLEARANCE + laneOffset);
+      ? Math.min(end.x, targetBounds.left - publishedDirectEdgeNodeClearance - laneOffset)
+      : Math.max(end.x, targetBounds.right + publishedDirectEdgeNodeClearance + laneOffset);
     return [
       { x: start.x, y: sourceLaneY },
       { x: targetLaneX, y: sourceLaneY },
@@ -5051,16 +5181,16 @@ function getHorizontalLaneDirectPoints(
     (sourceWantsRight && !targetWantsLeft) || (!sourceSide && goesRight) || sourceSide === "right";
   const routeX = routeOutsideRight
     ? Math.max(start.x, end.x, sourceBounds?.right ?? -Infinity, targetBounds?.right ?? -Infinity) +
-      DIRECT_EDGE_NODE_CLEARANCE +
+      publishedDirectEdgeNodeClearance +
       laneOffset
     : Math.min(start.x, end.x, sourceBounds?.left ?? Infinity, targetBounds?.left ?? Infinity) -
-      DIRECT_EDGE_NODE_CLEARANCE -
+      publishedDirectEdgeNodeClearance -
       laneOffset;
 
   if (
     sourceWantsRight &&
     targetWantsLeft &&
-    Math.abs(end.x - start.x) > DIRECT_EDGE_NODE_CLEARANCE * 3
+    Math.abs(end.x - start.x) > publishedDirectEdgeNodeClearance * 3
   ) {
     const midX = (start.x + end.x) / 2;
     return [
@@ -5092,10 +5222,10 @@ function getVerticalLaneDirectPoints(
         sourceBounds?.bottom ?? -Infinity,
         targetBounds?.bottom ?? -Infinity,
       ) +
-      DIRECT_EDGE_NODE_CLEARANCE +
+      publishedDirectEdgeNodeClearance +
       laneOffset
     : Math.min(start.y, end.y, sourceBounds?.top ?? Infinity, targetBounds?.top ?? Infinity) -
-      DIRECT_EDGE_NODE_CLEARANCE -
+      publishedDirectEdgeNodeClearance -
       laneOffset;
 
   return [
@@ -5117,12 +5247,12 @@ function getSelfNodeEdgePoints(
       targetSide === "left" ||
       (sourceSide !== "right" && Math.abs(end.x - bounds.left) < Math.abs(end.x - bounds.right));
     const routeX = useLeftLane
-      ? bounds.left - DIRECT_EDGE_NODE_CLEARANCE - laneOffset
-      : bounds.right + DIRECT_EDGE_NODE_CLEARANCE + laneOffset;
+      ? bounds.left - publishedDirectEdgeNodeClearance - laneOffset
+      : bounds.right + publishedDirectEdgeNodeClearance + laneOffset;
     const routeAbove = end.y < start.y;
     const routeY = routeAbove
-      ? bounds.top - DIRECT_EDGE_NODE_CLEARANCE - laneOffset
-      : bounds.bottom + DIRECT_EDGE_NODE_CLEARANCE + laneOffset;
+      ? bounds.top - publishedDirectEdgeNodeClearance - laneOffset
+      : bounds.bottom + publishedDirectEdgeNodeClearance + laneOffset;
 
     return [
       { x: start.x, y: routeY },
@@ -5133,8 +5263,8 @@ function getSelfNodeEdgePoints(
 
   const routeBelow = targetSide === "bottom" || end.y >= start.y;
   const routeY = routeBelow
-    ? bounds.bottom + DIRECT_EDGE_NODE_CLEARANCE + laneOffset
-    : bounds.top - DIRECT_EDGE_NODE_CLEARANCE - laneOffset;
+    ? bounds.bottom + publishedDirectEdgeNodeClearance + laneOffset
+    : bounds.top - publishedDirectEdgeNodeClearance - laneOffset;
 
   return [
     { x: start.x, y: routeY },
@@ -5150,8 +5280,22 @@ function isVerticalSide(side: string) {
   return side === "top" || side === "bottom";
 }
 
+/**
+ * Which parallel run each edge takes, by edge id. Republished by the board
+ * (see the edges memo) before any edge renders, because routing happens inside
+ * the edge components and by then this has to be settled. The allocator itself
+ * lives in edge-geometry.ts — it is pure, and that is where it can be tested.
+ */
+let publishedEdgeLaneIndexById = new Map<string, number>();
+
+function publishEdgeLanes(edges: FactoryProject["edges"]) {
+  publishedEdgeLaneIndexById = assignEdgeLanes(edges);
+}
+
 function getEdgeLaneOffset(edgeId: string) {
-  return getEdgeHash(edgeId, EDGE_LANE_BUCKETS) * EDGE_LANE_SPACING * publishedEdgeLaneScale;
+  const laneIndex =
+    publishedEdgeLaneIndexById.get(edgeId) ?? getEdgeHash(edgeId, EDGE_LANE_BUCKETS);
+  return laneIndex * EDGE_LANE_SPACING * publishedEdgeLaneScale;
 }
 
 function getEdgeHash(edgeId: string, buckets: number) {
@@ -5585,6 +5729,7 @@ const EDGE_HOP_MAX_RADIUS = 44;
  */
 const publishedEdgeStrokeWidths = new Map<string, number>();
 const DEFAULT_EDGE_STROKE_WIDTH = 3;
+
 
 /**
  * How far a line must lift to clear the one it crosses: half of each stroke,

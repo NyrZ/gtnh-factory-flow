@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.5.0",
+    date: "2026-08-04",
+    headline: "Lines that stop piling up",
+    notes: [
+      "Wires running the same way no longer land on top of each other. Every line leaving a machine, and every line arriving at one, now gets its own track instead of picking one at random — so a machine with four outputs shows you four lines, not two.",
+      "Thick lines keep their distance. With line thickness on, wires now leave more room around machines and around each other, instead of using the spacing meant for thin ones and ending up squeezed against the cards.",
+      "Where one line crosses another it hops over it with a visible bump. Those bumps used to go missing on some crossings depending on how the board happened to draw itself; now every crossing gets one.",
+      "When lines do overlap, the thinner one stays on top and every line has a darker outline, so you can still follow each one through the pile instead of losing it.",
+    ],
+  },
+  {
     version: "1.4.1",
     date: "2026-08-04",
     headline: "Cell recipes asked for 1000× too much",
