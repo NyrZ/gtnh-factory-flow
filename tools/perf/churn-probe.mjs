@@ -7,7 +7,7 @@
  *
  * Usage: node tools/perf/churn-probe.mjs --plan plan.json
  */
-import { chromium } from "playwright";
+import { chromium, firefox } from "playwright";
 import { readFileSync } from "node:fs";
 
 const args = new Map();
@@ -17,7 +17,8 @@ for (let i = 2; i < process.argv.length; i += 2) {
 const project = JSON.parse(readFileSync(args.get("plan") ?? "plan.json", "utf8"));
 const BASE = args.get("base") ?? "http://localhost:3000";
 
-const browser = await chromium.launch({
+const engine = args.get("browser") === "firefox" ? firefox : chromium;
+const browser = await engine.launch({
   headless: args.get("headed") !== "1",
   args: ["--disable-frame-rate-limit"],
 });
@@ -46,6 +47,7 @@ await page.evaluate(async (plan) => {
   });
   db.close();
   localStorage.setItem("gtnh-factory-flow.active-design.v1", plan.id);
+  localStorage.setItem("gtnh-factory-flow-board-view", JSON.stringify({snapToGrid:false,canvasPattern:"dots",heatmapMode:false,lineHeatMode:false,lineThicknessMode:false,linePulseMode:false}));
 }, project);
 await page.reload({ waitUntil: "domcontentloaded" });
 await page.waitForSelector(".react-flow__node", { timeout: 120_000 });
