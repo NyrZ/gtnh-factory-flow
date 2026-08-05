@@ -89,7 +89,7 @@ Use `$HOME/apps/gtnh-factory-flow/analytics.env` for prod and
 `$HOME/apps/gtnh-factory-flow-dev/analytics.env` for dev.
 
 The deployment workflow writes the production env file with a stable website id for
-`gtnh.samiracle.fr`. Re-run the site deploy after first deploying Umami so Next.js includes
+`gtnhplanner.com`. Re-run the site deploy after first deploying Umami so Next.js includes
 the tracking script in the production build.
 
 ## Load Real Recipes
@@ -201,3 +201,11 @@ should consume only the normalized dataset model, never raw exporter output.
 - Diff views between GTNH versions.
 - Advanced solver for GTNH overclocks, machines, multis, chance outputs, and ore dictionary.
 - Base-wide planner for power, fuel, logistics, storage, and deficits.
+
+## Credits
+
+This project started as a fork of
+[Samiracle64/gtnh-factory-flow](https://github.com/Samiracle64/gtnh-factory-flow) and has
+since diverged into an independent codebase, developed and deployed separately at
+[gtnhplanner.com](https://gtnhplanner.com). The original work is MIT licensed and that
+copyright is retained in `LICENSE`.

@@ -21,8 +21,10 @@ Working notes for future agents on GTNH Factory Flow.
   (no "solver", "refactor", "edge role"), newest first.
 - Default working branch for feature work is `develop`.
 - `main` is production. Push/merge there only when the user asks for main/prod deployment.
-- `https://dev-gtnh.samiracle.fr/` is the develop deployment.
-- `https://gtnh.samiracle.fr/` is production.
+- `https://gtnhplanner.com/` is production for this repo.
+- `origin` is `jackwrichards/gtnh-factory-flow` (this project). `upstream` is
+  `Samiracle64/gtnh-factory-flow`, the repo this was originally forked from -
+  it is not a push target and the two have long since diverged.
 - Pushing code can deploy the app, but dataset changes require the dataset pipeline.
 - To regenerate both datasets:
 
