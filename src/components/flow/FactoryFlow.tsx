@@ -143,6 +143,7 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
+import { isWiringConnection, setWiringConnection, WIRING_BOARD_CLASS } from "./connection-drag";
 import {
   clearHopMap,
   getHopMapHubId,
@@ -1772,11 +1773,28 @@ export function FactoryFlow() {
       cancelAnimationFrame(dropFitFrameRef.current);
       dropFitFrameRef.current = undefined;
     }
+    setWiringConnection(false);
+    boardRef.current?.classList.remove(WIRING_BOARD_CLASS);
     clearNodeDropFit();
   }, []);
 
   const startDropFitPainting = useCallback(() => {
     clearNodeDropFit();
+
+    if (!draggedResourceRef.current) {
+      return;
+    }
+
+    // Entering wiring mode. Whatever the pointer was lighting up on the way to
+    // the handle — a highlighted line, a lit slot, a hop map — is answering a
+    // question nobody is asking any more.
+    setWiringConnection(true);
+    boardRef.current?.classList.add(WIRING_BOARD_CLASS);
+    const store = useFactoryStore.getState();
+    store.setHoveredFlowScope(undefined);
+    store.setHoveredStorageResourceKey(undefined);
+    clearHopMap();
+
     paintNodeDropFit(project, draggedResourceRef.current, false);
 
     // One cheap selector per frame — it matches nothing until auto-pan mounts
@@ -3019,6 +3037,12 @@ const HopMapController = memo(function HopMapController({
       const nodeElement =
         target instanceof Element ? target.closest(".react-flow__node") : undefined;
       const nodeId = nodeElement?.getAttribute("data-id");
+      // A held wire owns the board; distance from the card under it is not the
+      // question being asked.
+      if (isWiringConnection()) {
+        cancel();
+        return;
+      }
       if (!nodeId || board.getAttribute(NODE_DETAIL_ATTRIBUTE) !== "glance") {
         cancel();
         return;

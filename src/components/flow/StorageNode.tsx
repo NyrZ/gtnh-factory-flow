@@ -8,6 +8,7 @@ import { makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { NodeGlanceIcon } from "./NodeGlance";
+import { isWiringConnection } from "./connection-drag";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useFactoryStore } from "@/store/factory-store";
 import { formatSlotRate } from "./flow-explainers";
@@ -124,7 +125,10 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
       data-storage-node-id={storage.id}
       data-storage-kind={storage.kind}
       data-storage-resource-id={storage.resourceId}
-      onMouseEnter={() => setHoveredStorageResourceKey(resourceKey)}
+      // Wiring is a mode; a held wire must not also be lighting up cards.
+      onMouseEnter={() =>
+        isWiringConnection() ? undefined : setHoveredStorageResourceKey(resourceKey)
+      }
       onMouseLeave={() => setHoveredStorageResourceKey(undefined)}
       className={[
         "group relative text-[#202020]",

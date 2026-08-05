@@ -430,6 +430,28 @@ img {
   box-shadow: inset 0 0 0 1px rgb(248 113 113 / 0.35);
 }
 
+/* Wiring is a MODE. With a wire out, the only live question is where it lands,
+   and the wash plus the snapping pipe answer it. Lines, labels and their
+   tooltips stop taking the pointer entirely, so none of their hover handlers
+   ever fire — cheaper and more certain than gating each one in JS. The hover
+   effects that live purely in CSS are switched off below for the same reason.
+   (Item tooltips need no help: MinecraftTooltip already refuses to open while
+   a button is held.) */
+.factory-flow-board--wiring .react-flow__edge,
+.factory-flow-board--wiring .react-flow__edgelabel-renderer,
+.factory-flow-board--wiring .react-flow__edgelabel-renderer * {
+  pointer-events: none !important;
+}
+
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
+  outline: none;
+  filter: none;
+  z-index: auto;
+}
+
 .nei-tab-scroll {
   scrollbar-color: var(--mc-54) var(--mc-82);
   scrollbar-width: thin;

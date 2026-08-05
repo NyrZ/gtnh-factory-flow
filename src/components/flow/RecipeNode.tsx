@@ -57,6 +57,7 @@ import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { CropPickerMenu } from "./CropPickerMenu";
 import { MachineCompareTable, MachineTabStrip } from "./MachinePicker";
 import { NodeGlanceText } from "./NodeGlance";
+import { isWiringConnection } from "./connection-drag";
 import { useMachineHandlerIcons } from "./machine-icons";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
@@ -1148,7 +1149,10 @@ function OutputSocketRow({
       data-resource-edge-anchor="true"
       data-resource-node-id={nodeId}
       data-resource-handle-id={port.handleId}
-      onPointerEnter={() => setHoveredFlowScope(buildPortFlowScope(nodeId, port))}
+      // Wiring is a mode: a held wire must not also be lighting up slots.
+      onPointerEnter={() =>
+        isWiringConnection() ? undefined : setHoveredFlowScope(buildPortFlowScope(nodeId, port))
+      }
       onPointerLeave={() => setHoveredFlowScope(undefined)}
     >
       <PortChip nodeId={nodeId} port={port} pending={pending} plugRow />
@@ -1400,7 +1404,8 @@ function PortChip({
             "data-resource-edge-anchor": "true",
             "data-resource-node-id": nodeId,
             "data-resource-handle-id": port.handleId,
-            onPointerEnter: () => setHoveredFlowScope(buildPortFlowScope(nodeId, port)),
+            onPointerEnter: () =>
+              isWiringConnection() ? undefined : setHoveredFlowScope(buildPortFlowScope(nodeId, port)),
             onPointerLeave: () => setHoveredFlowScope(undefined),
           })}
     >
