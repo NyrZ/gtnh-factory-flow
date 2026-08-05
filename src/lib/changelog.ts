@@ -22,8 +22,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: [
       "Wires running the same way no longer land on top of each other. Every line leaving a machine, and every line arriving at one, now gets its own track instead of picking one at random — so a machine with four outputs shows you four lines, not two.",
       "Thick lines keep their distance. With line thickness on, wires now leave more room around machines and around each other, instead of using the spacing meant for thin ones and ending up squeezed against the cards.",
-      "Where one line crosses another it hops over it with a visible bump. Those bumps used to go missing on some crossings depending on how the board happened to draw itself; now every crossing gets one.",
+      "Where one line crosses another it hops over it with a visible bump, and it is always the thinner line that does the hopping. Those bumps used to go missing on some crossings depending on how the board happened to draw itself, and sometimes appeared on the line hidden underneath; now every crossing gets one and you can always see it.",
       "When lines do overlap, the thinner one stays on top and every line has a darker outline, so you can still follow each one through the pile instead of losing it.",
+      "Thick lines are easier to point at — hovering anywhere on a fat pipe now lights it up, instead of only a narrow strip down its middle.",
     ],
   },
   {

@@ -138,7 +138,7 @@ import {
   reuseDeepObjectIdentity,
   reuseObjectIdentity,
 } from "./edge-detail";
-import { assignEdgeLanes, edgeCasingWidth } from "./edge-geometry";
+import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import {
@@ -1292,28 +1292,33 @@ export function FactoryFlow() {
       });
     });
 
-    if (!lineThicknessMode) {
-      return builtEdges;
-    }
-
-    // Paint order IS depth. Some overlap in thickness mode is not a routing
-    // failure and cannot be routed away: ports on one face sit ~18px apart and
-    // a pipe can be 34px wide, so two wires into two neighbouring inputs must
-    // share pixels. What that overlap must not be is ambiguous or unstable —
-    // and left alone it is both, because React Flow paints edges in array
-    // order and this array's order came from whatever the project happened to
-    // hold.
+    // Paint order IS depth, and it has to be the SAME order hop rendering
+    // uses — otherwise a line hops over something that is drawn on top of it
+    // anyway. compareEdgeDepth is that single order; see it for why thin goes
+    // on top.
     //
-    // Widest first: fat pipes go to the back, thin lines stay on top of them.
-    // A thin line buried under a fat one is invisible; a thin line drawn over
-    // a fat one costs the fat one a few percent of its width and stays
-    // readable. Ties break on id so the stack never reshuffles between renders
-    // for lines that carry the same amount.
-    return [...builtEdges].sort((left, right) => {
-      const leftWidth = Number(left.style?.strokeWidth ?? 0);
-      const rightWidth = Number(right.style?.strokeWidth ?? 0);
-      return rightWidth - leftWidth || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
-    });
+    // Some overlap in thickness mode is not a routing failure and cannot be
+    // routed away: ports on one face sit ~18px apart and a pipe can be 34px
+    // wide, so two wires into two neighbouring inputs must share pixels. What
+    // that overlap must not be is ambiguous or unstable — and left alone it is
+    // both, because React Flow paints edges in array order and this array's
+    // order came from whatever the project happened to hold.
+    //
+    // Applied in both modes. In thin mode every line publishes the same width,
+    // so this collapses to routeIndex order — exactly the order the array was
+    // already in, and not a single edge moves.
+    return [...builtEdges].sort((left, right) =>
+      compareEdgeDepth(
+        {
+          width: ownStrokeWidth(left.id),
+          routeIndex: left.data?.routeIndex ?? 0,
+        },
+        {
+          width: ownStrokeWidth(right.id),
+          routeIndex: right.data?.routeIndex ?? 0,
+        },
+      ),
+    );
   }, [
     activeFlowResourceKey,
     anyLineMode,
@@ -3265,7 +3270,12 @@ function ResourceEdgeComponent({
           d={hoverPathD}
           fill="none"
           stroke="transparent"
-          strokeWidth={14}
+          // Has to cover the line it belongs to. A flat 14 was a comfortable
+          // grab area for a 3px wire and a DEAD ZONE on a 34px pipe: the
+          // pointer sat visibly on the pipe, outside the strip, and nothing
+          // lit up. The margin keeps thin lines exactly as grabbable as they
+          // were while a fat pipe is hoverable across its whole width.
+          strokeWidth={Math.max(14, coreStrokeWidth + 6)}
           style={{ pointerEvents: "stroke" }}
           onMouseEnter={applyEdgeFlowScope}
           onMouseLeave={() => setHoveredFlowScope(undefined)}
@@ -3890,7 +3900,7 @@ function getDirectEdgePath({
   const width = strokeWidth ?? ownStrokeWidth(edgeId);
 
   return {
-    path: pointsToHoppedSvgPath(points, collectEarlierRouteSegments(edgeId, routeIndex), width),
+    path: pointsToHoppedSvgPath(points, collectHoppedRouteSegments(edgeId, routeIndex), width),
     labelX: labelPoint.x,
     labelY: labelPoint.y + labelLift,
     labelHidden,
@@ -5422,7 +5432,7 @@ function getBundledEdgePath({
     `M ${busX},${minY} L ${busX},${maxY}`,
     pointsToHoppedSvgPath(
       trunkPoints,
-      collectEarlierRouteSegments(edgeId, routeIndex),
+      collectHoppedRouteSegments(edgeId, routeIndex),
       ownStrokeWidth(edgeId),
     ),
   ].join(" ");
@@ -5552,7 +5562,7 @@ function getBundledMemberEdgePath({
   };
   const path = pointsToHoppedSvgPath(
       points,
-      collectEarlierRouteSegments(edgeId, routeIndex),
+      collectHoppedRouteSegments(edgeId, routeIndex),
       ownStrokeWidth(edgeId),
     );
   const [estimatedPath, estimatedLabelX, estimatedLabelY] = getSmoothStepPath({
@@ -5748,23 +5758,36 @@ function ownStrokeWidth(edgeId: string | undefined): number {
 }
 
 /**
- * Earlier-routed edges' segments, for hop rendering: the later routeIndex
- * hops over the earlier one, so exactly one side of every crossing bumps.
+ * Segments this edge should hop over: every other routed line that sits
+ * BEHIND it (see compareEdgeDepth), so exactly one side of every crossing
+ * bumps and it is always the side you can see.
+ *
  * Reads the same cache the relaxation loop uses, with the same staleness
  * class: a neighbour's reroute refreshes this edge on the next epoch.
  */
-function collectEarlierRouteSegments(edgeId: string | undefined, routeIndex: number | undefined) {
+function collectHoppedRouteSegments(edgeId: string | undefined, routeIndex: number | undefined) {
   if (routeIndex === undefined) {
     return [];
   }
 
+  // Compared through the PUBLISHED widths on both sides, never the render
+  // width: the render width picks up a highlight bump, and a comparison where
+  // one side is measured differently is not antisymmetric — both edges of a
+  // pair could decide to hop, or neither.
+  const own = { width: ownStrokeWidth(edgeId), routeIndex };
   const segments: Array<{
     start: { x: number; y: number };
     end: { x: number; y: number };
     width: number;
   }> = [];
   for (const [otherId, entry] of directRouteCache) {
-    if (otherId === edgeId || entry.routeIndex >= routeIndex) {
+    if (
+      otherId === edgeId ||
+      compareEdgeDepth(own, {
+        width: ownStrokeWidth(otherId),
+        routeIndex: entry.routeIndex,
+      }) <= 0
+    ) {
       continue;
     }
     // Carry the crossed line's thickness along with its geometry: the hop is

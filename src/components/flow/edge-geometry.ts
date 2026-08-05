@@ -22,6 +22,38 @@ export function edgeCasingWidth(coreWidth: number): number {
   return coreWidth + Math.max(2, coreWidth * 0.22);
 }
 
+export interface EdgeDepth {
+  /** The line's published stroke width. */
+  width: number;
+  /** Its index in project edge order — the stable tiebreak. */
+  routeIndex: number;
+}
+
+/**
+ * Back-to-front order for lines that share pixels. Sorted with this, the line
+ * that ends up ON TOP sorts last — and that same line is the one that hops.
+ *
+ * The two used to disagree, which is what made hops look broken. Paint order
+ * went by width (thin on top) while hop precedence went by routeIndex, so a
+ * fat pipe with a later routeIndex would rear up over a thin line that was
+ * painted above it for the whole crossing: a big hump, buried, arcing over
+ * nothing you could see.
+ *
+ * Thinner lines go on top and do the hopping, which is also the right way
+ * round on its own merits. A thin line survives being drawn over a fat pipe;
+ * a thin line UNDER a fat pipe is simply gone. And a small bump on a hair line
+ * reads instantly, where a 34px pipe rearing over something is a blob.
+ *
+ * Equal widths fall back to routeIndex, so thin mode — where every line
+ * publishes the same width — keeps exactly the precedence it always had.
+ */
+export function compareEdgeDepth(left: EdgeDepth, right: EdgeDepth): number {
+  if (left.width !== right.width) {
+    return right.width - left.width;
+  }
+  return left.routeIndex - right.routeIndex;
+}
+
 /**
  * Lanes beyond this wrap. Every finite cap collides eventually; this one is
  * chosen so the worst case is a node with more than six wires on one face,
