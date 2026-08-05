@@ -142,6 +142,7 @@ import {
 import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
 import {
   clearHopMap,
+  getHopMapHubId,
   hopFill,
   hopInk,
   registerHopMapBoard,
@@ -151,7 +152,6 @@ import {
 import {
   NODE_DETAIL_ATTRIBUTE,
   NODE_DETAIL_FULL,
-  NODE_DETAIL_GLANCE,
   getNodeDetailLevel,
   getPublishedNodeDetailLevel,
   getServerNodeDetailLevel,
@@ -1929,9 +1929,6 @@ export function FactoryFlow() {
     };
   }, []);
 
-  // The hop map paints node elements directly rather than through props; see
-  // hop-map.ts. It needs the board element to find them on.
-  useEffect(() => registerHopMapBoard(boardRef.current), []);
 
   const updateFlowViewportCenter = useCallback(() => {
     const instance = flowInstanceRef.current;
@@ -2322,55 +2319,6 @@ export function FactoryFlow() {
     [setNodeColorPaintMode],
   );
 
-  /**
-   * Hovering a card zoomed out turns the board into a distance map from it.
-   *
-   * Only at the glance step: zoomed in the card is showing its real contents
-   * and painting over them would be destructive, and the shape of the plant is
-   * something you can already read there. See hop-map.ts.
-   *
-   * The map waits for the pointer to REST. Crossing the board passes over a
-   * dozen cards on the way to the one you meant, and mapping each of them in
-   * turn is a strobe and a pile of work nobody asked for; a short pause means
-   * the board only answers a hover that was actually a hover.
-   *
-   * The edge list is read with `getState()` rather than subscribed to — this
-   * board must not re-render on hover, and a selector on the project would put
-   * every wire change through FactoryFlow for a feature that only wants a
-   * snapshot at the moment the pointer settles.
-   */
-  const hopMapTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const cancelHopMap = useCallback(() => {
-    if (hopMapTimerRef.current !== undefined) {
-      clearTimeout(hopMapTimerRef.current);
-      hopMapTimerRef.current = undefined;
-    }
-    clearHopMap();
-  }, []);
-
-  const handleNodeMouseEnter = useCallback(
-    (_: unknown, node: Node) => {
-      cancelHopMap();
-      if (getPublishedNodeDetailLevel() !== NODE_DETAIL_GLANCE) {
-        return;
-      }
-      hopMapTimerRef.current = setTimeout(() => {
-        hopMapTimerRef.current = undefined;
-        if (getPublishedNodeDetailLevel() !== NODE_DETAIL_GLANCE) {
-          return;
-        }
-        setHopMapHub(node.id, useFactoryStore.getState().project.edges);
-      }, HOP_MAP_SETTLE_MS);
-    },
-    [cancelHopMap],
-  );
-
-  const handleNodeMouseLeave = useCallback(() => {
-    cancelHopMap();
-  }, [cancelHopMap]);
-
-  useEffect(() => cancelHopMap, [cancelHopMap]);
-
   const handleNodeDragStart = useCallback((_: unknown, node: Node, draggedNodes: Node[]) => {
     // A drag is about to move geometry; the map under it would be a distraction
     // and the pointer never leaves the node, so nothing else would clear it.
@@ -2588,8 +2536,6 @@ export function FactoryFlow() {
         elevateNodesOnSelect={false}
         edgesReconnectable={false}
         onNodeClick={handleNodeClick}
-        onNodeMouseEnter={handleNodeMouseEnter}
-        onNodeMouseLeave={handleNodeMouseLeave}
         onEdgeClick={handleEdgeClick}
         onNodesChange={handleNodesChange}
         onSelectionChange={handleSelectionChange}
@@ -2614,6 +2560,7 @@ export function FactoryFlow() {
         snapGrid={BOARD_GRID_SNAP}
       >
         <NodeDetailController boardRef={boardRef} />
+        <HopMapController boardRef={boardRef} />
         {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
         {boardView.canvasPattern === "none" ? null : (
           <Background
@@ -2948,6 +2895,85 @@ const NodeDetailController = memo(function NodeDetailController({
       apply(state.transform[2]);
     });
   }, [boardRef, flowStore]);
+
+  return null;
+});
+
+/**
+ * Owns the hop map: what the pointer is resting on, and when to paint from it.
+ *
+ * NOT React Flow's `onNodeMouseEnter`, which is where this feature first went
+ * and where it did not work. While the board is being panned or zoomed the
+ * whole nodes layer is `pointer-events: none` (globals.css), so the natural
+ * gesture — wheel out until the cards go to glance, then look at the one under
+ * the cursor — produces no node-enter event at all: the pointer entered the
+ * card before the zoom, when there was nothing to map, and it never crosses a
+ * node boundary again afterwards. The board sat there doing nothing.
+ *
+ * A plain `mousemove` plus a hit-test asks the question the right way round:
+ * not "did you cross into a card" but "what are you on now". Every nudge of the
+ * hand re-arms it, so the map appears whatever order the zooming and the moving
+ * happened in. It is also what gives the settle for free — each move restarts
+ * the timer, so it only fires once the pointer has actually stopped, and
+ * sweeping across the board maps nothing on the way.
+ *
+ * Glance state is read from the board's own attribute rather than from
+ * node-detail's published level. Same value, but it is the one thing here that
+ * is provably in force: it is what CSS is using to draw the glance view.
+ */
+const HopMapController = memo(function HopMapController({
+  boardRef,
+}: {
+  boardRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) {
+      return;
+    }
+    const unregister = registerHopMapBoard(board);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const cancel = () => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      clearHopMap();
+    };
+
+    const handleMove = (event: MouseEvent) => {
+      const target = event.target;
+      const nodeElement =
+        target instanceof Element ? target.closest(".react-flow__node") : undefined;
+      const nodeId = nodeElement?.getAttribute("data-id");
+      if (!nodeId || board.getAttribute(NODE_DETAIL_ATTRIBUTE) !== "glance") {
+        cancel();
+        return;
+      }
+      if (getHopMapHubId() === nodeId) {
+        // Already the hub. Moving around inside your own card is not a request
+        // to rebuild the same map.
+        return;
+      }
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        timer = undefined;
+        setHopMapHub(nodeId, useFactoryStore.getState().project.edges);
+      }, HOP_MAP_SETTLE_MS);
+    };
+
+    board.addEventListener("mousemove", handleMove);
+    board.addEventListener("mouseleave", cancel);
+    return () => {
+      board.removeEventListener("mousemove", handleMove);
+      board.removeEventListener("mouseleave", cancel);
+      cancel();
+      unregister();
+    };
+  }, [boardRef]);
 
   return null;
 });
