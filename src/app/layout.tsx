@@ -67,8 +67,8 @@ export const metadata: Metadata = {
     apple: "/site-icon.png",
   },
   other: {
-    // The app ships a single light palette. Without this, the Dark Reader
-    // extension darkens the page and rewrites inline styles before React
+    // The app is already dark. Without this, the Dark Reader extension
+    // darkens it a second time and rewrites inline styles before React
     // hydrates, which both wrecks the palette and throws hydration mismatches.
     // Next drops metadata entries with an empty content value, so this carries
     // one even though Dark Reader only checks that the tag exists.

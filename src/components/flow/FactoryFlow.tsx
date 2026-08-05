@@ -214,8 +214,8 @@ const DEFAULT_FLUID_EDGE_COLOR = "#2f89c5";
 
 // React Flow's Background and the html-to-image exporter both need a concrete
 // colour rather than a CSS variable, so these mirror --canvas / --canvas-dot.
-const CANVAS_COLOR = "#f5f5f5";
-const CANVAS_DOT_COLOR = "#b8b8b8";
+const CANVAS_COLOR = "#1b1d21";
+const CANVAS_DOT_COLOR = "#4a4d55";
 
 /** Snap step, and the background gap — same number so nodes land on marks. */
 const BOARD_GRID_SIZE = 24;
@@ -2587,6 +2587,9 @@ export function FactoryFlow() {
         onInit={handleInit}
         onMoveStart={handleMoveStart}
         onMoveEnd={handleMoveEnd}
+        // React Flow styles its own controls and minimap off this; the app has
+        // no light palette to switch to.
+        colorMode="dark"
         isValidConnection={isValidResourceConnection}
         connectionLineComponent={ResourceConnectionLine}
         connectionLineStyle={connectionLineStyle}
@@ -3640,9 +3643,10 @@ function ResourceEdgeComponent({
     ? getInitialResourceColor(data.resource)
     : (data?.color ?? DEFAULT_ITEM_EDGE_COLOR);
   // Dominant resource colours are averaged from item sprites, which makes them
-  // muddy; boost saturation everywhere and lift toward white a touch.
+  // muddy; boost saturation and lift toward white so the wire stays legible
+  // against the dark canvas.
   const vividColor = saturateHexColor(resourceColor, 0.6);
-  const resolvedResourceColor = brightenHexColor(vividColor, 0.08);
+  const resolvedResourceColor = brightenHexColor(vividColor, 0.2);
   // Flow mode repaints the line by volume. The stroke colour is derived HERE
   // from the resource, not read from `style`, so setting style.stroke upstream
   // did nothing at all — the ramp has to be applied at the point of use.

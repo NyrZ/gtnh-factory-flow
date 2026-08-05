@@ -340,7 +340,7 @@ function MenuItem({
       onClick={onClick}
       className={[
         "block w-full px-2 py-1.5 text-left text-xs hover:bg-surface-sunken",
-        tone === "danger" ? "text-red-600" : "text-fg",
+        tone === "danger" ? "text-red-400" : "text-fg",
       ].join(" ")}
     >
       {label}

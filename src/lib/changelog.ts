@@ -23,7 +23,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "You no longer have to land on the exact little slot. Drag from any item or fluid and let go anywhere on the machine you want it to go to — the wire snaps onto whichever slot takes it.",
       "While you are dragging, every card tells you the answer up front: a soft green wash means that machine takes what you are holding, a soft red one means it does not.",
       "Letting go on a red card now does nothing at all, instead of dropping a drawer on top of it.",
-      "The site is light only now; the dark theme and its switch are gone.",
+      "The site is dark all the time now. The light theme and the switch in the header are gone.",
     ],
   },
   {
