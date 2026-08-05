@@ -271,6 +271,11 @@ textarea {
    where the cards had stopped saying anything anyway. */
 .factory-flow-board[data-hop-map] .react-flow__node [data-node-detail="glance"] {
   background-color: var(--hop-fill);
+  /* Makes the layer a query container so the figure below can be sized from the
+     card it is sitting in. The layer is `absolute inset-0`, so its size comes
+     from the card and containment cannot feed back into the card's own size —
+     which the router measures. */
+  container-type: size;
 }
 
 /* Under a map the card answers a different question, so it stops giving the old
@@ -284,13 +289,22 @@ textarea {
    what it SAYS from outside React — hop-map.ts writes the quoted string. Out of
    reach means an empty label, and the grey card just sits there.
 
-   A fixed size rather than the SVG's scale-to-fit: every card is showing one or
-   two digits of the same quantity, and a drawer whose "3" was twice the size of
-   a machine's "3" would read as emphasis that isn't there. */
+   Sized from the card, to land on the same glyph height as the utilisation
+   figure it replaces. That one is an SVG with a `viewBox`, so the browser fits
+   it to the card for free; a pseudo-element gets no such help, and a fixed size
+   left the number looking timid next to the percentage on every card bigger
+   than a drawer. The two numbers are the same thing said differently and they
+   should be the same size.
+
+   The maths, exactly: the percentage fits a 100×30 viewBox into the layer's
+   content box, then draws 30 units of text into it — so its font size is
+   min(0.3 × content width, content height). Container query units resolve
+   against that same content box, which makes the two expressions the same
+   number rather than a tuned approximation of it. */
 .factory-flow-board[data-hop-map] .react-flow__node [data-node-detail="glance"]::after {
   content: var(--hop-label, "");
   color: var(--hop-ink);
-  font-size: 64px;
+  font-size: min(30cqw, 100cqh);
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
