@@ -22,6 +22,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: [
       "You no longer have to land on the exact little slot. Drag from any item or fluid and let go anywhere on the machine you want it to go to — the wire snaps onto whichever slot takes it.",
       "While you are dragging, every card tells you the answer up front: a soft green wash means that machine takes what you are holding, a soft red one means it does not.",
+      "The pipe you are drawing commits as soon as you are over a green card — it jumps straight to the slot it is going to land in instead of trailing your cursor across the machine.",
       "Letting go on a red card now does nothing at all, instead of dropping a drawer on top of it.",
       "The site is dark all the time now. The light theme and the switch in the header are gone.",
     ],

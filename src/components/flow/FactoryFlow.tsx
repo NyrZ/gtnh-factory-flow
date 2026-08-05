@@ -818,6 +818,17 @@ let publishedBoardGeometryById = new Map<
   { x: number; y: number; width: number; height: number }
 >();
 
+/**
+ * While a wire is being dragged: for every card on the board, the port a drop
+ * would land on, or null when that card refuses the resource. Empty at rest.
+ *
+ * Module state rather than a ref because two unrelated consumers read it — the
+ * green/red wash painter and the connection line, which React Flow renders
+ * itself with no path to pass props down. Both answering from one map is what
+ * keeps the pipe, the wash and the drop from ever disagreeing.
+ */
+const activeDropTargets = new Map<string, ResolvedResourceHandle | null>();
+
 // Slot endpoints cached relative to their node's origin, keyed by node size.
 // Measuring through the DOM made an edge's endpoints depend on whether its
 // node happened to be mounted (`onlyRenderVisibleElements` culls off-screen
@@ -1045,9 +1056,6 @@ export function FactoryFlow() {
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const connectCompletedRef = useRef(false);
-  // Per-drag cache of "does this card take what I'm holding", so the wash costs
-  // one answer per node per gesture rather than one per frame.
-  const dropFitVerdictsRef = useRef<Map<string, boolean>>(new Map());
   const dropFitFrameRef = useRef<number | undefined>(undefined);
   const exportInProgressRef = useRef(false);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -1764,14 +1772,12 @@ export function FactoryFlow() {
       cancelAnimationFrame(dropFitFrameRef.current);
       dropFitFrameRef.current = undefined;
     }
-    dropFitVerdictsRef.current.clear();
     clearNodeDropFit();
   }, []);
 
   const startDropFitPainting = useCallback(() => {
-    dropFitVerdictsRef.current.clear();
     clearNodeDropFit();
-    paintNodeDropFit(project, draggedResourceRef.current, dropFitVerdictsRef.current, false);
+    paintNodeDropFit(project, draggedResourceRef.current, false);
 
     // One cheap selector per frame — it matches nothing until auto-pan mounts
     // a card that has not been given a verdict yet.
@@ -1780,7 +1786,7 @@ export function FactoryFlow() {
         dropFitFrameRef.current = undefined;
         return;
       }
-      paintNodeDropFit(project, draggedResourceRef.current, dropFitVerdictsRef.current, true);
+      paintNodeDropFit(project, draggedResourceRef.current, true);
       dropFitFrameRef.current = requestAnimationFrame(paintNewlyMounted);
     };
 
@@ -4302,15 +4308,24 @@ function ResourceConnectionLine({
   toPosition,
   connectionStatus,
 }: ConnectionLineComponentProps<BoardFlowNode>) {
+  // Over a card that takes this resource, the pipe jumps to the slot it will
+  // land on rather than following the cursor across the card.
+  const snap = getConnectionSnap(toX, toY);
+  const endX = snap?.point.x ?? toX;
+  const endY = snap?.point.y ?? toY;
+  const endPosition = snap ? (snap.side === "input" ? Position.Left : Position.Right) : toPosition;
+
   const [edgePath] = getSmoothStepPath({
     sourceX: fromX,
     sourceY: fromY,
     sourcePosition: fromPosition,
-    targetX: toX,
-    targetY: toY,
-    targetPosition: toPosition,
+    targetX: endX,
+    targetY: endY,
+    targetPosition: endPosition,
   });
-  const color = connectionStatus === "invalid" ? "#ef4444" : "#00d9ff";
+  // A snapped end is by definition a connection that will work, whatever React
+  // Flow thinks — it only ever reports "valid" when the pointer is on a handle.
+  const color = !snap && connectionStatus === "invalid" ? "#ef4444" : "#00d9ff";
 
   return (
     <g className="react-flow__connection">
@@ -4331,7 +4346,7 @@ function ResourceConnectionLine({
         opacity={0.98}
         style={{ filter: `drop-shadow(0 0 5px ${color})` }}
       />
-      <circle cx={toX} cy={toY} r={6} fill={color} stroke="#052e36" strokeWidth={2} />
+      <circle cx={endX} cy={endY} r={6} fill={color} stroke="#052e36" strokeWidth={2} />
     </g>
   );
 }
@@ -8278,7 +8293,6 @@ function findNodeDropTarget(
 function paintNodeDropFit(
   project: FactoryProject,
   draggedResource: DraggedResourceConnection | undefined,
-  verdicts: Map<string, boolean>,
   onlyUnpainted: boolean,
 ) {
   if (typeof document === "undefined" || !draggedResource) {
@@ -8295,20 +8309,21 @@ function paintNodeDropFit(
       continue;
     }
 
-    // The card the wire is coming from and the backdrops stay neutral, but
-    // they still get marked so the per-frame pass skips them.
+    // The card the wire is coming from and the backdrops stay out of it
+    // entirely — no wash, and no snapping the pipe to them. They are still
+    // marked so the per-frame pass has nothing left to look at.
     if (id === draggedResource.nodeId || isAnnotationNodeElement(element)) {
       element.dataset.dropFit = "none";
       continue;
     }
 
-    let fits = verdicts.get(id);
-    if (fits === undefined) {
-      fits = Boolean(findNodeDropTarget(project, id, draggedResource));
-      verdicts.set(id, fits);
+    let target = activeDropTargets.get(id);
+    if (target === undefined) {
+      target = findNodeDropTarget(project, id, draggedResource) ?? null;
+      activeDropTargets.set(id, target);
     }
 
-    const verdict = fits ? "yes" : "no";
+    const verdict = target ? "yes" : "no";
     if (element.dataset.dropFit !== verdict) {
       element.dataset.dropFit = verdict;
     }
@@ -8316,6 +8331,8 @@ function paintNodeDropFit(
 }
 
 function clearNodeDropFit() {
+  activeDropTargets.clear();
+
   if (typeof document === "undefined") {
     return;
   }
@@ -8323,6 +8340,56 @@ function clearNodeDropFit() {
   for (const element of document.querySelectorAll<HTMLElement>("[data-drop-fit]")) {
     delete element.dataset.dropFit;
   }
+}
+
+/**
+ * Where the dragged pipe should actually end. Once the pointer is anywhere
+ * over a card that takes the resource, the wire commits to the slot it will
+ * land on instead of trailing the cursor until it reaches that slot — the same
+ * "the whole card is the port" rule the drop follows, made visible.
+ *
+ * The hit test runs in FLOW space against published geometry, never the DOM,
+ * so it is identical at any zoom and does not care which cards are mounted.
+ * It walks only the cards that would accept the drop, which on any real board
+ * is a small fraction of them.
+ */
+function getConnectionSnap(toX: number, toY: number) {
+  let best: { target: ResolvedResourceHandle; area: number } | undefined;
+
+  for (const [nodeId, target] of activeDropTargets) {
+    if (!target) {
+      continue;
+    }
+
+    const geometry = publishedBoardGeometryById.get(nodeId);
+    if (
+      !geometry ||
+      toX < geometry.x ||
+      toX > geometry.x + geometry.width ||
+      toY < geometry.y ||
+      toY > geometry.y + geometry.height
+    ) {
+      continue;
+    }
+
+    // Smallest card wins, the same tie-break the slot hit-tests use.
+    const area = geometry.width * geometry.height;
+    if (!best || area < best.area) {
+      best = { target, area };
+    }
+  }
+
+  if (!best) {
+    return undefined;
+  }
+
+  const point = getMeasuredSlotEndpoint({
+    nodeId: best.target.nodeId,
+    handleId: best.target.handleId,
+    edgeSide: best.target.side === "input" ? "left" : "right",
+  });
+
+  return point ? { point, side: best.target.side } : undefined;
 }
 
 function brightenHexColor(color: string, amount: number) {
