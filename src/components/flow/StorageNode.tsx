@@ -7,6 +7,7 @@ import type { FactoryStorage, StorageThroughputResult } from "@/lib/model/types"
 import { makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import { NodeGlanceIcon } from "./NodeGlance";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useFactoryStore } from "@/store/factory-store";
 import { formatSlotRate } from "./flow-explainers";
@@ -123,6 +124,9 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
       data-storage-node-id={storage.id}
       data-storage-kind={storage.kind}
       data-storage-resource-id={storage.resourceId}
+      // See the far-zoom rule in globals.css: everything but the glance layer
+      // stops being drawn, and a drawer's one fact is what is in it.
+      data-node-glance-root=""
       onMouseEnter={() => setHoveredStorageResourceKey(resourceKey)}
       onMouseLeave={() => setHoveredStorageResourceKey(undefined)}
       className={[
@@ -147,6 +151,16 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
     >
+      <NodeGlanceIcon>
+        {/* The card is w-[132px]; this is that, less the frame. */}
+        <ResourceIcon
+          resource={{ ...storage, id: storage.resourceId, amount: 1 }}
+          showAmount={false}
+          bare
+          iconPixelSize={104}
+          className="!h-[104px] !w-[104px]"
+        />
+      </NodeGlanceIcon>
       {/* Wires dock anywhere on the card's PERIMETER — the anchors span the
           whole card, and the router already picks the best side. */}
       <span

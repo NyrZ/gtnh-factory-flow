@@ -133,12 +133,20 @@ import {
   EDGE_DETAIL_ARROWS,
   EDGE_DETAIL_GLOBAL,
   EDGE_DETAIL_LABELS,
+  EDGE_DETAIL_PULSE,
   getEdgeDetailLevel,
   hasEdgeDetail,
   reuseDeepObjectIdentity,
   reuseObjectIdentity,
 } from "./edge-detail";
 import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
+import {
+  NODE_DETAIL_CLASSES,
+  NODE_DETAIL_FULL,
+  getNodeDetailLevel,
+  nodeDetailClass,
+  type NodeDetailLevel,
+} from "./node-detail";
 import {
   clearEdgePulses,
   drawEdgePulses,
@@ -2532,6 +2540,7 @@ export function FactoryFlow() {
         snapToGrid={boardView.snapToGrid}
         snapGrid={BOARD_GRID_SNAP}
       >
+        <NodeDetailController boardRef={boardRef} />
         {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
         {boardView.canvasPattern === "none" ? null : (
           <Background
@@ -2808,6 +2817,50 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
       style={{ zIndex: 5 }}
     />
   );
+});
+
+/**
+ * Drives the board's zoom-detail class.
+ *
+ * Renders nothing and never re-renders anything: it subscribes to the store's
+ * transform and writes a class onto the board element directly. Routing detail
+ * through React would re-render FactoryFlow — and with it the whole board — on
+ * every threshold crossing, to change what is ultimately one attribute.
+ */
+const NodeDetailController = memo(function NodeDetailController({
+  boardRef,
+}: {
+  boardRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const flowStore = useStoreApi();
+
+  useEffect(() => {
+    let level: NodeDetailLevel = NODE_DETAIL_FULL;
+
+    const apply = (zoom: number) => {
+      const next = getNodeDetailLevel(zoom, level);
+      if (next === level) {
+        return;
+      }
+      level = next;
+      const board = boardRef.current;
+      if (!board) {
+        return;
+      }
+      board.classList.remove(...NODE_DETAIL_CLASSES);
+      const className = nodeDetailClass(next);
+      if (className) {
+        board.classList.add(className);
+      }
+    };
+
+    apply(flowStore.getState().transform[2]);
+    return flowStore.subscribe((state) => {
+      apply(state.transform[2]);
+    });
+  }, [boardRef, flowStore]);
+
+  return null;
 });
 
 function FlowLoadingOverlay() {
@@ -3484,16 +3537,27 @@ function ResourceEdgeComponent({
   // The whole line is a hover surface now, not just the label - but it stops
   // short of the ports so it can never steal the pointer-down that starts a
   // wire drag from a chip (edges hit-test above nodes).
-  const hoverTrimmedPoints = isHiddenBundleMember
-    ? undefined
-    : trimPolylineEnds(routedEdge.points, 26);
+  // It goes away with the labels. Zoomed out, a line is a couple of pixels
+  // wide and lands under the pointer by accident rather than by aim, so the
+  // surface stops being an affordance and is just six hundred more paths for
+  // the browser to hit-test on every mouse move.
+  const hoverTrimmedPoints =
+    isHiddenBundleMember || !hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS)
+      ? undefined
+      : trimPolylineEnds(routedEdge.points, 26);
   const hoverPathD = hoverTrimmedPoints ? pointsToSvgPath(hoverTrimmedPoints) : undefined;
 
   // Hand this line's dashes to the board's pulse canvas (see edge-pulse.ts).
   // Published after commit rather than during render because it is a
   // side-effecting registration, and dropped on unmount so a culled or deleted
   // edge cannot leave a ghost marching across the board.
-  const pulseActive = flowRate?.pulse === true && !isHiddenBundleMember && Boolean(routedEdge.path);
+  // Zoomed far enough out the dashes are a shimmer rather than a reading, and
+  // six hundred of them are the most expensive shimmer on the board.
+  const pulseActive =
+    flowRate?.pulse === true &&
+    !isHiddenBundleMember &&
+    Boolean(routedEdge.path) &&
+    hasEdgeDetail(detailLevel, EDGE_DETAIL_PULSE);
   useEffect(() => {
     if (!pulseActive) {
       retractEdgePulse(id);

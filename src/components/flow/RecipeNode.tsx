@@ -56,6 +56,7 @@ import {
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { CropPickerMenu } from "./CropPickerMenu";
 import { MachineCompareTable, MachineTabStrip } from "./MachinePicker";
+import { NodeGlanceText } from "./NodeGlance";
 import { useMachineHandlerIcons } from "./machine-icons";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
@@ -428,6 +429,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       // a starved node blames its binding input, an over-asked one blames its
       // couplings, and lighting both at once answers the wrong question.
       data-verdict={verdict.kind}
+      // Everything inside goes at the far zoom step except the glance layer;
+      // see the rule in globals.css. Marking the root rather than listing the
+      // sections means a panel added later is covered without being wired up.
+      data-node-glance-root=""
       className={[
         // recipe-node-shell scopes the strip↔row hover link (globals.css):
         // hovering the verdict lights the input it blames, in pure CSS, so a
@@ -464,6 +469,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
     >
+      {/* Zoomed out the card carries one fact: how hard this machine is
+          running. Coloured by the same verdict tone the footer's state word
+          uses, so a board full of these reads as a health map — red starved,
+          amber over-asked, plain fine. */}
+      <NodeGlanceText
+        text={
+          verdict.kind === "off" || verdict.kind === "no-recipe"
+            ? "—"
+            : `${verdict.pct > 0 && verdict.pct < 0.5 ? formatRate(verdict.pct, 1) : formatPct(verdict.pct)}%`
+        }
+        className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
+      />
       {exceedsMaxTier ? (
         <div className="pointer-events-none absolute -right-3 -top-3 z-40 flex max-w-[210px] items-center gap-2 border-4 border-red-700 bg-[#facc15] px-2 py-1 font-mono text-[13px] font-black uppercase leading-tight text-red-950 shadow-[4px_4px_0_rgba(0,0,0,0.45)] [text-shadow:1px_1px_0_rgba(255,255,255,0.45)]">
           <AlertTriangle className="h-7 w-7 shrink-0 fill-red-700 text-red-950" />
@@ -476,6 +493,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             no matter how long a machine name or tab strip gets. */}
         <div className="w-0 min-w-full">
         {hasMachinePicker ? (
+          // Zoom detail hook (node-detail.ts): a tab strip is a control, and
+          // the tabs are a few pixels wide once the board is zoomed out.
+          <div data-node-detail="strip">
           <MachineTabStrip
             handlers={machineHandlers}
             selectedId={selectedMachineHandler.id}
@@ -486,8 +506,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             onToggleCompare={() => setCompareOpen((open) => !open)}
             isCompareOpen={isCompareOpen}
           />
+          </div>
         ) : null}
         <div
+          // Zoom detail hook (node-detail.ts): the title row goes at the far
+          // step, where the card is reduced to its usage figure.
+          data-node-detail="header"
           className={[
             "mb-1 grid min-w-0 items-center gap-1",
             tierControl
@@ -662,6 +686,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           // lives in the header (name hover = full machine stats) and in the
           // port icons (click = recipes, right-click = uses).
           <div
+            // Zoom detail hook (node-detail.ts): the ports are the last thing
+            // dropped, and only when the card is too small to aim at.
+            data-node-detail="ports"
             className={[
               "flex items-start gap-1",
               rails.inputs.length > 0 && rails.outputs.length > 0
@@ -708,6 +735,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             costs more board than the sentence was worth. */}
         {!isCropFarmPlaceholder && !isCustomRatePlaceholder ? (
           <div
+            // Zoom detail hook (node-detail.ts): these are dials, and a dial
+            // you cannot read or click is not worth rasterising.
+            data-node-detail="stats"
             className={[
               // A hairline over the dials: the machine is one thing, the knobs
               // under it are another. No extra padding — tight everywhere.

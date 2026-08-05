@@ -10,6 +10,7 @@ import { useFactoryStore } from "@/store/factory-store";
 import { makeResourceHandleId } from "./resource-handles";
 import { GT_NODE_COLORS } from "./node-colors";
 import { getPaintBrushCursor } from "./paint-cursor";
+import { NodeGlanceIcon } from "./NodeGlance";
 
 export interface TrashNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
@@ -142,12 +143,22 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
   return (
     <div
       data-trash-node-id={projectNode.id}
+      // See the far-zoom rule in globals.css: the can keeps its shape and
+      // loses its chrome, which is all a trash can ever needed to say.
+      data-node-glance-root=""
       className={[
         "group relative text-[#202020]",
         selected ? "ring-2 ring-cyan-300" : "",
       ].join(" ")}
       style={paintCursor ? { cursor: paintCursor } : undefined}
     >
+      <NodeGlanceIcon>
+        {/* The can art is a viewBox SVG, so it scales cleanly; the card is
+            w-[116px] and this is that less the frame. */}
+        <div className="[&>svg]:!h-[100px] [&>svg]:!w-[94px]">
+          <TrashCanPixelArt />
+        </div>
+      </NodeGlanceIcon>
       {/* Wires dock anywhere on the card's PERIMETER — the anchor spans the
           whole card, and the router already picks the best side. */}
       <span

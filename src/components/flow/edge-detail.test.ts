@@ -4,6 +4,7 @@ import {
   EDGE_DETAIL_ARROWS,
   EDGE_DETAIL_GLOBAL,
   EDGE_DETAIL_LABELS,
+  EDGE_DETAIL_PULSE,
   EDGE_GLOBAL_ZOOM,
   EDGE_LABEL_ZOOM,
   getEdgeDetailLevel,
@@ -16,8 +17,16 @@ describe("getEdgeDetailLevel", () => {
     // The whole point of the bitmask: panning the zoom slider within a band must
     // not produce a new value, or every edge re-renders and re-routes per frame.
     expect(getEdgeDetailLevel(1.0)).toBe(getEdgeDetailLevel(1.4));
-    expect(getEdgeDetailLevel(0.5)).toBe(getEdgeDetailLevel(0.7));
-    expect(getEdgeDetailLevel(0.2)).toBe(getEdgeDetailLevel(0.4));
+    // Written against the thresholds rather than against numbers that happened
+    // to sit inside a band: retuning the zoom steps must not silently turn this
+    // into a test of nothing. The bands are [0, GLOBAL), [GLOBAL, LABEL) and
+    // [LABEL, ∞) — two samples from inside one band must agree.
+    expect(getEdgeDetailLevel(EDGE_LABEL_ZOOM + 0.05)).toBe(
+      getEdgeDetailLevel(EDGE_LABEL_ZOOM + 0.5),
+    );
+    expect(getEdgeDetailLevel(EDGE_GLOBAL_ZOOM - 0.2)).toBe(
+      getEdgeDetailLevel(EDGE_GLOBAL_ZOOM - 0.05),
+    );
   });
 
   it("shows arrows and labels when zoomed in", () => {
@@ -27,11 +36,21 @@ describe("getEdgeDetailLevel", () => {
     expect(hasEdgeDetail(detail, EDGE_DETAIL_GLOBAL)).toBe(false);
   });
 
-  it("drops to global view when zoomed far out but keeps arrows and labels", () => {
-    const detail = getEdgeDetailLevel(0.2);
-    expect(hasEdgeDetail(detail, EDGE_DETAIL_GLOBAL)).toBe(true);
+  it("keeps arrows and labels at the zooms they can still be read at", () => {
+    const detail = getEdgeDetailLevel(EDGE_LABEL_ZOOM + 0.01);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_ARROWS)).toBe(true);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_LABELS)).toBe(true);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_PULSE)).toBe(true);
+  });
+
+  it("strips the line down to its route once nothing on it can be read", () => {
+    // Past this the chip is a few pixels tall, the arrowhead is a smudge and
+    // the dashes are a shimmer — and there are hundreds of each.
+    const detail = getEdgeDetailLevel(EDGE_GLOBAL_ZOOM - 0.05);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_GLOBAL)).toBe(true);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_LABELS)).toBe(false);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_ARROWS)).toBe(false);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_PULSE)).toBe(false);
   });
 
   it("treats each threshold as inclusive at its exact value", () => {

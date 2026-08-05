@@ -1,3 +1,5 @@
+import { NODE_BLOCK_ENTER_ZOOM } from "./node-detail";
+
 /**
  * Zoom-derived edge detail, encoded as a bitmask.
  *
@@ -8,21 +10,50 @@
  * is actually crossed.
  */
 
-// Labels and arrows used to fade out below ~0.7 zoom, but the rate legends are
-// the primary way to read a plan, so they now stay visible at every zoom level.
-export const EDGE_LABEL_ZOOM = 0;
-export const EDGE_ARROW_ZOOM = 0;
+/**
+ * Below this zoom the rate chips stop being drawn.
+ *
+ * They used to fade out below ~0.7, which was wrong: a legend that disappears
+ * while you can still read it reads as the board breaking, and the rates are
+ * the main thing a plan is FOR. So this went to 0 and they stayed on at every
+ * zoom.
+ *
+ * That is right up to the point where the chip is a few pixels tall and its
+ * number cannot be read by anyone. Past there it is not a legend any more, it
+ * is 600-odd bordered, inset-shadowed boxes with a sprite in each, and they are
+ * the single most expensive thing left on a big board — measured on a 300-node
+ * plan, dropping them takes panning from 22 to 59fps and an idle board from 46
+ * to 81. The threshold is set where the digits stop being legible, not where
+ * they get small, so nothing you could actually have read goes away.
+ *
+ * TUNING: raise it to drop the chips sooner (faster, less readable when zoomed
+ * out), lower it to keep them longer. Setting it back to 0 restores the
+ * always-on behaviour exactly.
+ */
+export const EDGE_LABEL_ZOOM = NODE_BLOCK_ENTER_ZOOM;
+/**
+ * Arrowheads and the marching dashes stop at the same place the chips do.
+ *
+ * Two polylines and a dashed stroke per line is cheap on one edge and is not
+ * cheap on six hundred, and at this size an arrowhead is a smudge and the
+ * dashes are a shimmer. The board zoomed out is a map: shapes, colour, and
+ * which way things run — which the routes themselves already say.
+ */
+export const EDGE_ARROW_ZOOM = NODE_BLOCK_ENTER_ZOOM;
+export const EDGE_PULSE_ZOOM = NODE_BLOCK_ENTER_ZOOM;
 export const EDGE_GLOBAL_ZOOM = 0.45;
 
 export const EDGE_DETAIL_GLOBAL = 1;
 export const EDGE_DETAIL_ARROWS = 2;
 export const EDGE_DETAIL_LABELS = 4;
+export const EDGE_DETAIL_PULSE = 8;
 
 export function getEdgeDetailLevel(zoom: number) {
   return (
     (zoom < EDGE_GLOBAL_ZOOM ? EDGE_DETAIL_GLOBAL : 0) |
     (zoom >= EDGE_ARROW_ZOOM ? EDGE_DETAIL_ARROWS : 0) |
-    (zoom >= EDGE_LABEL_ZOOM ? EDGE_DETAIL_LABELS : 0)
+    (zoom >= EDGE_LABEL_ZOOM ? EDGE_DETAIL_LABELS : 0) |
+    (zoom >= EDGE_PULSE_ZOOM ? EDGE_DETAIL_PULSE : 0)
   );
 }
 
