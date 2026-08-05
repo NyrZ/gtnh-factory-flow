@@ -3022,28 +3022,35 @@ const HopMapLegend = memo(function HopMapLegend() {
     ? Array.from({ length: map.maxDepth }, (_, index) => index + 1)
     : [1, Math.round(map.maxDepth / 2), map.maxDepth];
 
+  const chipClass =
+    "flex h-8 w-8 items-center justify-center border-2 border-black/60 text-[15px] font-black leading-none";
+
   return (
     <div
       data-board-toolbar
       aria-hidden
-      className="nodrag pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-2 py-1.5 font-mono text-[11px] font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
+      className="nodrag pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-3 py-2.5 font-mono font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.35)]"
     >
-      <span className="text-[10px] uppercase tracking-[0.5px] text-white/70">Wires from here</span>
+      <span className="text-[13px] uppercase tracking-[1px]">Wires from here</span>
       {chipped ? (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          {/* The hub sits in the row like any other step, and says 0, because
+              that is what the card under the cursor is showing. */}
           <span
-            className="h-4 w-4 border border-black/50"
-            style={{ backgroundColor: hopFill(0, map.maxDepth) }}
-          />
+            className={chipClass}
+            style={{ backgroundColor: hopFill(0, map.maxDepth), color: hopInk(0, map.maxDepth) }}
+          >
+            0
+          </span>
           {depths.map((depth) => (
             <span
               key={depth}
-              className="flex h-4 w-4 items-center justify-center border border-black/50 text-[9px]"
+              className={chipClass}
               style={{
                 backgroundColor: hopFill(depth, map.maxDepth),
-                // The far end of the ramp is a deep indigo; a fixed dark digit
-                // on it is unreadable, so the chip picks its own ink the same
-                // way the cards do.
+                // The far end of the ramp is nearly black; a fixed dark digit on
+                // it is unreadable, so each chip picks its own ink the same way
+                // the cards do.
                 color: hopInk(depth, map.maxDepth),
               }}
             >
@@ -3054,18 +3061,20 @@ const HopMapLegend = memo(function HopMapLegend() {
       ) : (
         <div className="flex items-center gap-2">
           <span
-            className="h-4 w-4 border border-black/50"
-            style={{ backgroundColor: hopFill(0, map.maxDepth) }}
-          />
+            className={chipClass}
+            style={{ backgroundColor: hopFill(0, map.maxDepth), color: hopInk(0, map.maxDepth) }}
+          >
+            0
+          </span>
           <span
-            className="h-4 w-28 border border-black/50"
+            className="h-8 w-40 border-2 border-black/60"
             style={{
               backgroundImage: `linear-gradient(to right, ${depths
                 .map((depth) => hopFill(depth, map.maxDepth))
                 .join(", ")})`,
             }}
           />
-          <span className="text-[10px] text-white/70">{map.maxDepth}</span>
+          <span className="text-[15px]">{map.maxDepth}</span>
         </div>
       )}
     </div>
