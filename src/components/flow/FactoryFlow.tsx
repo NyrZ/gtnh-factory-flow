@@ -3005,6 +3005,9 @@ const HopMapController = memo(function HopMapController({
  */
 const HOP_LEGEND_MAX_CHIPS = 9;
 
+const CHIP_CLASS =
+  "flex h-8 w-8 items-center justify-center border-2 border-black/60 text-[15px] font-black leading-none";
+
 /**
  * How long the pointer has to be ON a card before the map appears.
  *
@@ -3017,38 +3020,45 @@ const HOP_MAP_SETTLE_MS = 90;
 
 const HopMapLegend = memo(function HopMapLegend() {
   const map = useHopMapSummary();
-  if (!map || map.maxDepth < 1) {
+  // Any map at all gets a key, including a card wired to nothing (maxDepth 0).
+  // It used to bail in that case, which meant the one board state where the
+  // colours are hardest to interpret — a lone card and a field of grey — was
+  // also the one with nothing explaining them.
+  if (!map) {
     return null;
   }
   const chipped = map.maxDepth <= HOP_LEGEND_MAX_CHIPS;
   const depths = chipped
     ? Array.from({ length: map.maxDepth }, (_, index) => index + 1)
     : [1, Math.round(map.maxDepth / 2), map.maxDepth];
-
-  const chipClass =
-    "flex h-8 w-8 items-center justify-center border-2 border-black/60 text-[15px] font-black leading-none";
+  const hubChip = (
+    <span
+      className={CHIP_CLASS}
+      style={{ backgroundColor: hopFill(0, map.maxDepth), color: hopInk(0, map.maxDepth) }}
+    >
+      0
+    </span>
+  );
 
   return (
     <div
       data-board-toolbar
       aria-hidden
-      className="nodrag pointer-events-none absolute bottom-3 right-3 z-20 flex flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-3 py-2.5 font-mono font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.35)]"
+      // z-40, above every node: a card's z-index is lifted on hover and while a
+      // picker is open, and the legend must not end up underneath whichever
+      // card happens to sit in that corner of a dense board.
+      className="nodrag pointer-events-none absolute bottom-3 right-3 z-40 flex flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-3 py-2.5 font-mono font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.35)]"
     >
       <span className="text-[13px] uppercase tracking-[1px]">Wires from here</span>
       {chipped ? (
         <div className="flex items-center gap-1.5">
           {/* The hub sits in the row like any other step, and says 0, because
               that is what the card under the cursor is showing. */}
-          <span
-            className={chipClass}
-            style={{ backgroundColor: hopFill(0, map.maxDepth), color: hopInk(0, map.maxDepth) }}
-          >
-            0
-          </span>
+          {hubChip}
           {depths.map((depth) => (
             <span
               key={depth}
-              className={chipClass}
+              className={CHIP_CLASS}
               style={{
                 backgroundColor: hopFill(depth, map.maxDepth),
                 // The far end of the ramp is nearly black; a fixed dark digit on
@@ -3063,12 +3073,7 @@ const HopMapLegend = memo(function HopMapLegend() {
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <span
-            className={chipClass}
-            style={{ backgroundColor: hopFill(0, map.maxDepth), color: hopInk(0, map.maxDepth) }}
-          >
-            0
-          </span>
+          {hubChip}
           <span
             className="h-8 w-40 border-2 border-black/60"
             style={{
