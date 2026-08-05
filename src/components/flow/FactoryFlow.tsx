@@ -2920,6 +2920,9 @@ const NodeDetailController = memo(function NodeDetailController({
  * Glance state is read from the board's own attribute rather than from
  * node-detail's published level. Same value, but it is the one thing here that
  * is provably in force: it is what CSS is using to draw the glance view.
+ *
+ * The short wait before painting is per CARD — see `pendingId` below for why
+ * that distinction is the difference between "instant" and "sluggish".
  */
 const HopMapController = memo(function HopMapController({
   boardRef,
@@ -2933,12 +2936,14 @@ const HopMapController = memo(function HopMapController({
     }
     const unregister = registerHopMapBoard(board);
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let pendingId: string | undefined;
 
     const cancel = () => {
       if (timer !== undefined) {
         clearTimeout(timer);
         timer = undefined;
       }
+      pendingId = undefined;
       clearHopMap();
     };
 
@@ -2951,16 +2956,22 @@ const HopMapController = memo(function HopMapController({
         cancel();
         return;
       }
-      if (getHopMapHubId() === nodeId) {
-        // Already the hub. Moving around inside your own card is not a request
-        // to rebuild the same map.
+      if (getHopMapHubId() === nodeId || pendingId === nodeId) {
+        // Already the hub, or already on its way. The wait is per CARD, not per
+        // movement: a hand resting on a card still sends a mousemove every few
+        // milliseconds, and restarting the clock on each one meant the map only
+        // appeared once you went perfectly still — which reads as the board
+        // taking about a second to think about it. Landing on the card starts
+        // the clock exactly once, and jitter on top of it changes nothing.
         return;
       }
       if (timer !== undefined) {
         clearTimeout(timer);
       }
+      pendingId = nodeId;
       timer = setTimeout(() => {
         timer = undefined;
+        pendingId = undefined;
         setHopMapHub(nodeId, useFactoryStore.getState().project.edges);
       }, HOP_MAP_SETTLE_MS);
     };
@@ -2991,8 +3002,15 @@ const HopMapController = memo(function HopMapController({
  */
 const HOP_LEGEND_MAX_CHIPS = 9;
 
-/** How long the pointer has to sit still on a card before the map appears. */
-const HOP_MAP_SETTLE_MS = 130;
+/**
+ * How long the pointer has to be ON a card before the map appears.
+ *
+ * Long enough that crossing the board on the way somewhere else maps nothing,
+ * short enough to feel like the card answered rather than considered it. The
+ * clock starts when you arrive on the card and is not restarted by moving
+ * around on it.
+ */
+const HOP_MAP_SETTLE_MS = 90;
 
 const HopMapLegend = memo(function HopMapLegend() {
   const map = useHopMapSummary();
