@@ -1,4 +1,4 @@
-import { NODE_BLOCK_ENTER_ZOOM } from "./node-detail";
+import { NODE_GLANCE_ENTER_ZOOM } from "./node-detail";
 
 /**
  * Zoom-derived edge detail, encoded as a bitmask.
@@ -30,7 +30,7 @@ import { NODE_BLOCK_ENTER_ZOOM } from "./node-detail";
  * out), lower it to keep them longer. Setting it back to 0 restores the
  * always-on behaviour exactly.
  */
-export const EDGE_LABEL_ZOOM = NODE_BLOCK_ENTER_ZOOM;
+export const EDGE_LABEL_ZOOM = NODE_GLANCE_ENTER_ZOOM;
 /**
  * Arrowheads and the marching dashes stop at the same place the chips do.
  *
@@ -39,8 +39,8 @@ export const EDGE_LABEL_ZOOM = NODE_BLOCK_ENTER_ZOOM;
  * dashes are a shimmer. The board zoomed out is a map: shapes, colour, and
  * which way things run — which the routes themselves already say.
  */
-export const EDGE_ARROW_ZOOM = NODE_BLOCK_ENTER_ZOOM;
-export const EDGE_PULSE_ZOOM = NODE_BLOCK_ENTER_ZOOM;
+export const EDGE_ARROW_ZOOM = NODE_GLANCE_ENTER_ZOOM;
+export const EDGE_PULSE_ZOOM = NODE_GLANCE_ENTER_ZOOM;
 export const EDGE_GLOBAL_ZOOM = 0.45;
 
 export const EDGE_DETAIL_GLOBAL = 1;

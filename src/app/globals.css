@@ -237,27 +237,26 @@ textarea {
    Hiding a subtree also removes it from hit-testing, which is the intent: at
    these sizes the dials and tabs are far too small to aim at, and the pointer
    should fall through to the card. */
-.factory-flow-board--detail-coarse [data-node-detail="stats"],
-.factory-flow-board--detail-coarse [data-node-detail="strip"] {
-  visibility: hidden;
-}
+/* Zoomed out, a node is reduced to its one legible fact. See node-detail.ts.
 
-/* The far step: a node is reduced to its one legible fact.
+   The glance root is the CARD — the element carrying the frame, the colour and
+   the texture — and what stops painting is its contents. So a drawer still
+   looks like a drawer and a tank like a tank; they just hold a big item icon
+   instead of a name, a rate and a fill bar.
 
-   Everything inside the card stops painting EXCEPT the glance layer — stated
-   as "every child that isn't the glance" rather than as a list of sections, so
-   a panel, dropdown or badge added later is covered without anyone having to
-   remember to wire it up. That list is exactly what leaked dropdowns through
-   the first time.
+   Stated as "every child that isn't the glance" rather than as a list of
+   sections, so a panel, dropdown or badge added later is covered without anyone
+   having to remember to wire it up. A list is exactly what leaked dropdowns
+   through the first time.
 
    `display` for the glance layer specifically: it is absolutely positioned, so
-   it has no effect on the card's size either way, and the size rule above only
-   binds elements that are IN the layout. */
-.factory-flow-board--detail-block [data-node-glance-root] > *:not([data-node-detail="glance"]) {
+   it has no effect on the card's size either way, and the `visibility` rule
+   only binds elements that are IN the layout. */
+.factory-flow-board--detail-glance [data-node-glance-root] > *:not([data-node-detail="glance"]) {
   visibility: hidden;
 }
 
-.factory-flow-board--detail-block [data-node-detail="glance"] {
+.factory-flow-board--detail-glance [data-node-detail="glance"] {
   display: flex;
 }
 

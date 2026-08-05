@@ -124,9 +124,6 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
       data-storage-node-id={storage.id}
       data-storage-kind={storage.kind}
       data-storage-resource-id={storage.resourceId}
-      // See the far-zoom rule in globals.css: everything but the glance layer
-      // stops being drawn, and a drawer's one fact is what is in it.
-      data-node-glance-root=""
       onMouseEnter={() => setHoveredStorageResourceKey(resourceKey)}
       onMouseLeave={() => setHoveredStorageResourceKey(undefined)}
       className={[
@@ -151,16 +148,6 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
     >
-      <NodeGlanceIcon>
-        {/* The card is w-[132px]; this is that, less the frame. */}
-        <ResourceIcon
-          resource={{ ...storage, id: storage.resourceId, amount: 1 }}
-          showAmount={false}
-          bare
-          iconPixelSize={104}
-          className="!h-[104px] !w-[104px]"
-        />
-      </NodeGlanceIcon>
       {/* Wires dock anywhere on the card's PERIMETER — the anchors span the
           whole card, and the router already picks the best side. */}
       <span
@@ -176,14 +163,28 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         className="pointer-events-none absolute inset-0"
       />
       <div
+        // Glance root is the CARD, not the wrapper: the frame, the drawer wood
+        // and the tank glass stay, and only what is written on them goes. A
+        // drawer zoomed out still reads as a drawer.
+        data-node-glance-root=""
         className={[
-          "storage-node-card w-[132px] border-2 p-1",
+          "storage-node-card relative w-[132px] border-2 p-1",
           isTank
             ? "border-[#565f72] bg-[#b9c2d4] shadow-[inset_2px_2px_0_#e8edf7,inset_-2px_-2px_0_#7b8497]"
             : "border-[#2b1c0e] bg-[#8a6030] shadow-[inset_3px_3px_0_#ad7b3e,inset_-3px_-3px_0_#3e2a13]",
           isHighlighted || isSearchHighlighted ? "brightness-125 saturate-150" : "",
         ].join(" ")}
       >
+        <NodeGlanceIcon>
+          {/* The card is w-[132px]; this is that, less the frame. */}
+          <ResourceIcon
+            resource={{ ...storage, id: storage.resourceId, amount: 1 }}
+            showAmount={false}
+            bare
+            iconPixelSize={104}
+            className="!h-[104px] !w-[104px]"
+          />
+        </NodeGlanceIcon>
         <StorageHeader storageId={storage.id} title={title} isTank={isTank} />
         <div
           className={[

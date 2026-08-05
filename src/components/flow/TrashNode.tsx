@@ -143,22 +143,12 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
   return (
     <div
       data-trash-node-id={projectNode.id}
-      // See the far-zoom rule in globals.css: the can keeps its shape and
-      // loses its chrome, which is all a trash can ever needed to say.
-      data-node-glance-root=""
       className={[
         "group relative text-[#202020]",
         selected ? "ring-2 ring-cyan-300" : "",
       ].join(" ")}
       style={paintCursor ? { cursor: paintCursor } : undefined}
     >
-      <NodeGlanceIcon>
-        {/* The can art is a viewBox SVG, so it scales cleanly; the card is
-            w-[116px] and this is that less the frame. */}
-        <div className="[&>svg]:!h-[100px] [&>svg]:!w-[94px]">
-          <TrashCanPixelArt />
-        </div>
-      </NodeGlanceIcon>
       {/* Wires dock anywhere on the card's PERIMETER — the anchor spans the
           whole card, and the router already picks the best side. */}
       <span
@@ -168,13 +158,23 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         className="pointer-events-none absolute inset-0"
       />
       <div
-        className="w-[116px] border-2 p-1"
+        // Glance root is the CARD, so the can keeps its frame and colour and
+        // only loses the buttons and the title.
+        data-node-glance-root=""
+        className="relative w-[116px] border-2 p-1"
         style={{
           borderColor: nodeColor?.border ?? "#565f72",
           backgroundColor: nodeColor?.panel ?? "#b9c2d4",
           boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.45), inset -2px -2px 0 rgba(0,0,0,0.28)",
         }}
       >
+        <NodeGlanceIcon>
+          {/* The can art is a viewBox SVG, so it scales cleanly; the card is
+              w-[116px] and this is that less the frame. */}
+          <div className="[&>svg]:!h-[100px] [&>svg]:!w-[94px]">
+            <TrashCanPixelArt />
+          </div>
+        </NodeGlanceIcon>
         <div
           className="relative z-40 -m-1 mb-0 flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.55)]"
           style={{

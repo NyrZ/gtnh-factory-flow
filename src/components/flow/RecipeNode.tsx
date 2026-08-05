@@ -493,9 +493,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             no matter how long a machine name or tab strip gets. */}
         <div className="w-0 min-w-full">
         {hasMachinePicker ? (
-          // Zoom detail hook (node-detail.ts): a tab strip is a control, and
-          // the tabs are a few pixels wide once the board is zoomed out.
-          <div data-node-detail="strip">
           <MachineTabStrip
             handlers={machineHandlers}
             selectedId={selectedMachineHandler.id}
@@ -506,12 +503,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             onToggleCompare={() => setCompareOpen((open) => !open)}
             isCompareOpen={isCompareOpen}
           />
-          </div>
         ) : null}
         <div
-          // Zoom detail hook (node-detail.ts): the title row goes at the far
-          // step, where the card is reduced to its usage figure.
-          data-node-detail="header"
           className={[
             "mb-1 grid min-w-0 items-center gap-1",
             tierControl
@@ -686,9 +679,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           // lives in the header (name hover = full machine stats) and in the
           // port icons (click = recipes, right-click = uses).
           <div
-            // Zoom detail hook (node-detail.ts): the ports are the last thing
-            // dropped, and only when the card is too small to aim at.
-            data-node-detail="ports"
             className={[
               "flex items-start gap-1",
               rails.inputs.length > 0 && rails.outputs.length > 0
@@ -735,9 +725,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             costs more board than the sentence was worth. */}
         {!isCropFarmPlaceholder && !isCustomRatePlaceholder ? (
           <div
-            // Zoom detail hook (node-detail.ts): these are dials, and a dial
-            // you cannot read or click is not worth rasterising.
-            data-node-detail="stats"
             className={[
               // A hairline over the dials: the machine is one thing, the knobs
               // under it are another. No extra padding — tight everywhere.
