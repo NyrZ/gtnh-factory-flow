@@ -3049,7 +3049,7 @@ const HopMapLegend = memo(function HopMapLegend() {
       // card happens to sit in that corner of a dense board.
       className="nodrag pointer-events-none absolute bottom-3 right-3 z-40 flex flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-3 py-2.5 font-mono font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.35)]"
     >
-      <span className="text-[13px] uppercase tracking-[1px]">Wires from here</span>
+      <span className="text-[13px] uppercase tracking-[1px]">Hops needed</span>
       {chipped ? (
         <div className="flex items-center gap-1.5">
           {/* The hub sits in the row like any other step, and says 0, because
