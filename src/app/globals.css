@@ -224,6 +224,42 @@ textarea {
   contain: layout style;
 }
 
+/* Zoom detail steps. See node-detail.ts for what each step keeps and why, and
+   for the four numbers that decide when they happen.
+
+   `visibility` and NOT `display`: every hidden element keeps its layout box, so
+   the card's size never changes with zoom. The router measures node bounds and
+   slot anchors through those boxes (getBoundingClientRect still reports a real
+   rect for a hidden element), which means a route computed zoomed in and the
+   same route computed zoomed out are identical — the viewport-independent
+   routing rule holds by construction rather than by luck.
+
+   Hiding a subtree also removes it from hit-testing, which is the intent: at
+   these sizes the dials and tabs are far too small to aim at, and the pointer
+   should fall through to the card. */
+/* Zoomed out, a node is reduced to its one legible fact. See node-detail.ts.
+
+   The glance root is the CARD — the element carrying the frame, the colour and
+   the texture — and what stops painting is its contents. So a drawer still
+   looks like a drawer and a tank like a tank; they just hold a big item icon
+   instead of a name, a rate and a fill bar.
+
+   Stated as "every child that isn't the glance" rather than as a list of
+   sections, so a panel, dropdown or badge added later is covered without anyone
+   having to remember to wire it up. A list is exactly what leaked dropdowns
+   through the first time.
+
+   `display` for the glance layer specifically: it is absolutely positioned, so
+   it has no effect on the card's size either way, and the `visibility` rule
+   only binds elements that are IN the layout. */
+.factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > *:not([data-node-detail="glance"]) {
+  visibility: hidden;
+}
+
+.factory-flow-board[data-detail-level="glance"] [data-node-detail="glance"] {
+  display: flex;
+}
+
 .minecraft-pixel-art,
 .minecraft-pixel-art * {
   image-rendering: crisp-edges;

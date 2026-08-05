@@ -7,6 +7,7 @@ import type { FactoryStorage, StorageThroughputResult } from "@/lib/model/types"
 import { makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import { NodeGlanceIcon } from "./NodeGlance";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useFactoryStore } from "@/store/factory-store";
 import { formatSlotRate } from "./flow-explainers";
@@ -162,14 +163,34 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         className="pointer-events-none absolute inset-0"
       />
       <div
+        // Glance root is the CARD, not the wrapper: the frame, the drawer wood
+        // and the tank glass stay, and only what is written on them goes. A
+        // drawer zoomed out still reads as a drawer.
+        data-node-glance-root=""
         className={[
-          "storage-node-card w-[132px] border-2 p-1",
+          "storage-node-card relative w-[132px] border-2 p-1",
           isTank
             ? "border-[#565f72] bg-[#b9c2d4] shadow-[inset_2px_2px_0_#e8edf7,inset_-2px_-2px_0_#7b8497]"
             : "border-[#2b1c0e] bg-[#8a6030] shadow-[inset_3px_3px_0_#ad7b3e,inset_-3px_-3px_0_#3e2a13]",
           isHighlighted || isSearchHighlighted ? "brightness-125 saturate-150" : "",
         ].join(" ")}
       >
+        <NodeGlanceIcon>
+          {/* Deliberately bigger than the card it sits on (w-[132px]).
+              Zoomed out, WHAT is in the drawer is the only thing worth
+              reading, and a sprite confined inside the frame is a few pixels
+              on screen. Nothing clips it — the card sets no overflow — so it
+              spills a little past the frame and reads as the node's identity
+              rather than as its contents. Node SIZE is untouched, which is
+              what the router cares about. */}
+          <ResourceIcon
+            resource={{ ...storage, id: storage.resourceId, amount: 1 }}
+            showAmount={false}
+            bare
+            iconPixelSize={168}
+            className="!h-[168px] !w-[168px]"
+          />
+        </NodeGlanceIcon>
         <StorageHeader storageId={storage.id} title={title} isTank={isTank} />
         <div
           className={[

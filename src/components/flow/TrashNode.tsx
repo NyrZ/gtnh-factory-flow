@@ -10,6 +10,7 @@ import { useFactoryStore } from "@/store/factory-store";
 import { makeResourceHandleId } from "./resource-handles";
 import { GT_NODE_COLORS } from "./node-colors";
 import { getPaintBrushCursor } from "./paint-cursor";
+import { NodeGlanceIcon } from "./NodeGlance";
 
 export interface TrashNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
@@ -157,13 +158,24 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         className="pointer-events-none absolute inset-0"
       />
       <div
-        className="w-[116px] border-2 p-1"
+        // Glance root is the CARD, so the can keeps its frame and colour and
+        // only loses the buttons and the title.
+        data-node-glance-root=""
+        className="relative w-[116px] border-2 p-1"
         style={{
           borderColor: nodeColor?.border ?? "#565f72",
           backgroundColor: nodeColor?.panel ?? "#b9c2d4",
           boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.45), inset -2px -2px 0 rgba(0,0,0,0.28)",
         }}
       >
+        <NodeGlanceIcon>
+          {/* Same reasoning as the drawer: bigger than the w-[116px] card, so
+              the can reads at a glance. The art is a viewBox SVG, so it scales
+              cleanly at any size. */}
+          <div className="[&>svg]:!h-[156px] [&>svg]:!w-[147px]">
+            <TrashCanPixelArt />
+          </div>
+        </NodeGlanceIcon>
         <div
           className="relative z-40 -m-1 mb-0 flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.55)]"
           style={{

@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.6.0",
+    date: "2026-08-05",
+    headline: "Zoom out and read the whole factory at once",
+    notes: [
+      "Zoomed out, machines now show one big number: how hard they are running. Red means starved, amber means more is being asked of it than it can give, plain means fine — so a whole plan reads as a health map at a glance instead of a wall of unreadable cards.",
+      "Drawers, tanks and trash cans do the same, showing a large picture of what is inside. Zoom back in and everything returns exactly as it was.",
+      "At that distance lines drop their rate chips, arrowheads and moving dashes too — none of it could be read at that size, and leaving it out makes zoomed-out boards far smoother.",
+      "Big plans are quicker everywhere. Opening one takes about half as long, and boards that used to crawl while panning or zooming now keep up.",
+      "The moving dashes used to keep the whole board busy redrawing itself even when you were not touching it. They no longer do, so a plan left alone now costs nothing.",
+      "A few wires take tidier paths than before. The planner was throwing away most of what it knew about neighbouring lines while working out where each one should go; now it sees all of them, and the route you get is the same every time.",
+    ],
+  },
+  {
     version: "1.5.0",
     date: "2026-08-04",
     headline: "Lines that stop piling up",

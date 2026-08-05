@@ -1,43 +1,74 @@
 import { describe, expect, it } from "vitest";
 import {
-  EDGE_ARROW_ZOOM,
   EDGE_DETAIL_ARROWS,
   EDGE_DETAIL_GLOBAL,
   EDGE_DETAIL_LABELS,
-  EDGE_GLOBAL_ZOOM,
-  EDGE_LABEL_ZOOM,
-  getEdgeDetailLevel,
+  EDGE_DETAIL_PULSE,
+  edgeDetailForLevel,
   hasEdgeDetail,
   reuseObjectIdentity,
 } from "./edge-detail";
+import {
+  NODE_DETAIL_FULL,
+  NODE_DETAIL_GLANCE,
+  NODE_GLANCE_ENTER_ZOOM,
+  NODE_GLANCE_LEAVE_ZOOM,
+  getNodeDetailLevel,
+} from "./node-detail";
 
-describe("getEdgeDetailLevel", () => {
-  it("is stable across a zoom gesture that crosses no threshold", () => {
-    // The whole point of the bitmask: panning the zoom slider within a band must
-    // not produce a new value, or every edge re-renders and re-routes per frame.
-    expect(getEdgeDetailLevel(1.0)).toBe(getEdgeDetailLevel(1.4));
-    expect(getEdgeDetailLevel(0.5)).toBe(getEdgeDetailLevel(0.7));
-    expect(getEdgeDetailLevel(0.2)).toBe(getEdgeDetailLevel(0.4));
-  });
-
-  it("shows arrows and labels when zoomed in", () => {
-    const detail = getEdgeDetailLevel(1.5);
+describe("edgeDetailForLevel", () => {
+  it("draws everything while the board is readable", () => {
+    const detail = edgeDetailForLevel(NODE_DETAIL_FULL);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_ARROWS)).toBe(true);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_LABELS)).toBe(true);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_PULSE)).toBe(true);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_GLOBAL)).toBe(false);
   });
 
-  it("drops to global view when zoomed far out but keeps arrows and labels", () => {
-    const detail = getEdgeDetailLevel(0.2);
+  it("strips a line down to its route at a glance", () => {
+    // The chip is a few pixels tall here, the arrowhead is a smudge and the
+    // dashes are a shimmer — and there are hundreds of each.
+    const detail = edgeDetailForLevel(NODE_DETAIL_GLANCE);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_GLOBAL)).toBe(true);
-    expect(hasEdgeDetail(detail, EDGE_DETAIL_ARROWS)).toBe(true);
-    expect(hasEdgeDetail(detail, EDGE_DETAIL_LABELS)).toBe(true);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_LABELS)).toBe(false);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_ARROWS)).toBe(false);
+    expect(hasEdgeDetail(detail, EDGE_DETAIL_PULSE)).toBe(false);
   });
 
-  it("treats each threshold as inclusive at its exact value", () => {
-    expect(hasEdgeDetail(getEdgeDetailLevel(EDGE_ARROW_ZOOM), EDGE_DETAIL_ARROWS)).toBe(true);
-    expect(hasEdgeDetail(getEdgeDetailLevel(EDGE_LABEL_ZOOM), EDGE_DETAIL_LABELS)).toBe(true);
-    expect(hasEdgeDetail(getEdgeDetailLevel(EDGE_GLOBAL_ZOOM), EDGE_DETAIL_GLOBAL)).toBe(false);
+  it("switches lines at exactly the zoom the cards switch at", () => {
+    // The bug this pins: nodes used a hysteretic threshold and edges a plain
+    // one, so between them sat a band where the rate chips had come back but
+    // the cards were still showing percentages. One level, one switch.
+    const zoomedOut = getNodeDetailLevel(NODE_GLANCE_ENTER_ZOOM - 0.01, NODE_DETAIL_FULL);
+    const zoomedIn = getNodeDetailLevel(NODE_GLANCE_LEAVE_ZOOM + 0.01, NODE_DETAIL_GLANCE);
+    expect(zoomedOut).toBe(NODE_DETAIL_GLANCE);
+    expect(zoomedIn).toBe(NODE_DETAIL_FULL);
+    expect(hasEdgeDetail(edgeDetailForLevel(zoomedOut), EDGE_DETAIL_LABELS)).toBe(false);
+    expect(hasEdgeDetail(edgeDetailForLevel(zoomedIn), EDGE_DETAIL_LABELS)).toBe(true);
+  });
+});
+
+describe("getNodeDetailLevel", () => {
+  it("holds its level inside the dead zone, from either side", () => {
+    // Anti-flicker: parked between the thresholds, the board keeps whatever it
+    // already had rather than strobing on sub-pixel zoom drift.
+    const middle = (NODE_GLANCE_ENTER_ZOOM + NODE_GLANCE_LEAVE_ZOOM) / 2;
+    expect(getNodeDetailLevel(middle, NODE_DETAIL_FULL)).toBe(NODE_DETAIL_FULL);
+    expect(getNodeDetailLevel(middle, NODE_DETAIL_GLANCE)).toBe(NODE_DETAIL_GLANCE);
+  });
+
+  it("is stable across a zoom gesture that crosses no threshold", () => {
+    expect(getNodeDetailLevel(1.0, NODE_DETAIL_FULL)).toBe(
+      getNodeDetailLevel(1.4, NODE_DETAIL_FULL),
+    );
+    expect(getNodeDetailLevel(0.1, NODE_DETAIL_GLANCE)).toBe(
+      getNodeDetailLevel(0.2, NODE_DETAIL_GLANCE),
+    );
+  });
+
+  it("keeps its level when the zoom is not a usable number", () => {
+    expect(getNodeDetailLevel(Number.NaN, NODE_DETAIL_GLANCE)).toBe(NODE_DETAIL_GLANCE);
+    expect(getNodeDetailLevel(0, NODE_DETAIL_FULL)).toBe(NODE_DETAIL_FULL);
   });
 });
 

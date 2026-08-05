@@ -1,29 +1,53 @@
+import { NODE_DETAIL_FULL, NODE_DETAIL_GLANCE, type NodeDetailLevel } from "./node-detail";
+
 /**
- * Zoom-derived edge detail, encoded as a bitmask.
+ * Edge detail, encoded as a bitmask.
  *
- * Zoom only ever feeds a few boolean thresholds, but edges used to subscribe to
- * the raw `transform[2]` scalar — which meant every visible edge re-rendered on
- * every frame of a zoom gesture, and each of those re-renders re-ran the route
- * solver. Selecting this mask instead means edges re-render only when a threshold
- * is actually crossed.
+ * Edges must never subscribe to the raw `transform[2]` scalar: that re-renders
+ * every visible edge on every frame of a zoom gesture, and each re-render
+ * re-runs the route solver. They read a level that only changes when the board
+ * actually crosses its threshold.
  */
 
-// Labels and arrows used to fade out below ~0.7 zoom, but the rate legends are
-// the primary way to read a plan, so they now stay visible at every zoom level.
-export const EDGE_LABEL_ZOOM = 0;
-export const EDGE_ARROW_ZOOM = 0;
-export const EDGE_GLOBAL_ZOOM = 0.45;
-
+/**
+ * What a line draws, as a bitmask.
+ *
+ * These no longer have thresholds of their own. Edges used to derive detail
+ * straight from zoom while nodes used a hysteretic threshold, so between the
+ * two there was a band where the rate chips had returned but the cards were
+ * still showing their glance percentages — and coming back the other way the
+ * two flipped at different points again. Detail arriving in pieces reads as the
+ * board glitching rather than as a zoom level.
+ *
+ * Both now read the single level in node-detail.ts, so everything switches at
+ * once, in both directions, at the same zoom.
+ */
 export const EDGE_DETAIL_GLOBAL = 1;
 export const EDGE_DETAIL_ARROWS = 2;
 export const EDGE_DETAIL_LABELS = 4;
+export const EDGE_DETAIL_PULSE = 8;
 
-export function getEdgeDetailLevel(zoom: number) {
-  return (
-    (zoom < EDGE_GLOBAL_ZOOM ? EDGE_DETAIL_GLOBAL : 0) |
-    (zoom >= EDGE_ARROW_ZOOM ? EDGE_DETAIL_ARROWS : 0) |
-    (zoom >= EDGE_LABEL_ZOOM ? EDGE_DETAIL_LABELS : 0)
-  );
+/**
+ * At a glance, a line is its route: no rate chip, no arrowhead, no marching
+ * dashes, no hover surface. Each of those is per-edge cost paid hundreds of
+ * times over for something a few pixels tall — dropping the chips alone was
+ * worth 22 to 59fps of panning on a 300-node plan — and none of them can be
+ * read at that size anyway.
+ */
+export const EDGE_DETAIL_BY_LEVEL: Record<NodeDetailLevel, number> = {
+  [NODE_DETAIL_FULL]: EDGE_DETAIL_ARROWS | EDGE_DETAIL_LABELS | EDGE_DETAIL_PULSE,
+  [NODE_DETAIL_GLANCE]: EDGE_DETAIL_GLOBAL,
+};
+
+/**
+ * A table rather than a function on purpose. Calling an imported function to
+ * derive this made the React Compiler give up on memoizing ResourceEdgeComponent
+ * entirely ("Existing memoization could not be preserved") — the same trap the
+ * edges memo carries a note about. A property read does not. Verified with
+ * eslint, not assumed.
+ */
+export function edgeDetailForLevel(level: NodeDetailLevel): number {
+  return EDGE_DETAIL_BY_LEVEL[level];
 }
 
 export function hasEdgeDetail(detailLevel: number, flag: number) {

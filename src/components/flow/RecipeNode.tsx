@@ -56,6 +56,7 @@ import {
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { CropPickerMenu } from "./CropPickerMenu";
 import { MachineCompareTable, MachineTabStrip } from "./MachinePicker";
+import { NodeGlanceText } from "./NodeGlance";
 import { useMachineHandlerIcons } from "./machine-icons";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
@@ -428,6 +429,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       // a starved node blames its binding input, an over-asked one blames its
       // couplings, and lighting both at once answers the wrong question.
       data-verdict={verdict.kind}
+      // Everything inside goes at the far zoom step except the glance layer;
+      // see the rule in globals.css. Marking the root rather than listing the
+      // sections means a panel added later is covered without being wired up.
+      data-node-glance-root=""
       className={[
         // recipe-node-shell scopes the strip↔row hover link (globals.css):
         // hovering the verdict lights the input it blames, in pure CSS, so a
@@ -464,6 +469,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
     >
+      {/* Zoomed out the card carries one fact: how hard this machine is
+          running. Coloured by the same verdict tone the footer's state word
+          uses, so a board full of these reads as a health map — red starved,
+          amber over-asked, plain fine. */}
+      <NodeGlanceText
+        text={
+          verdict.kind === "off" || verdict.kind === "no-recipe"
+            ? "—"
+            : `${verdict.pct > 0 && verdict.pct < 0.5 ? formatRate(verdict.pct, 1) : formatPct(verdict.pct)}%`
+        }
+        className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
+      />
       {exceedsMaxTier ? (
         <div className="pointer-events-none absolute -right-3 -top-3 z-40 flex max-w-[210px] items-center gap-2 border-4 border-red-700 bg-[#facc15] px-2 py-1 font-mono text-[13px] font-black uppercase leading-tight text-red-950 shadow-[4px_4px_0_rgba(0,0,0,0.45)] [text-shadow:1px_1px_0_rgba(255,255,255,0.45)]">
           <AlertTriangle className="h-7 w-7 shrink-0 fill-red-700 text-red-950" />

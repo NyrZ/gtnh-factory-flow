@@ -23,7 +23,6 @@ import {
   type NodeTypes,
   type OnSelectionChangeParams,
   type ReactFlowInstance,
-  useStore,
   useStoreApi,
   ViewportPortal,
 } from "@xyflow/react";
@@ -59,6 +58,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -133,12 +133,34 @@ import {
   EDGE_DETAIL_ARROWS,
   EDGE_DETAIL_GLOBAL,
   EDGE_DETAIL_LABELS,
-  getEdgeDetailLevel,
+  EDGE_DETAIL_PULSE,
+  EDGE_DETAIL_BY_LEVEL,
   hasEdgeDetail,
   reuseDeepObjectIdentity,
   reuseObjectIdentity,
 } from "./edge-detail";
 import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
+import {
+  NODE_DETAIL_ATTRIBUTE,
+  NODE_DETAIL_FULL,
+  getNodeDetailLevel,
+  getPublishedNodeDetailLevel,
+  getServerNodeDetailLevel,
+  nodeDetailAttributeValue,
+  setNodeDetailLevel,
+  subscribeNodeDetailLevel,
+  type NodeDetailLevel,
+} from "./node-detail";
+import {
+  clearEdgePulses,
+  drawEdgePulses,
+  edgePulseCount,
+  eraseEdgePulseOcclusion,
+  publishEdgeLabelBox,
+  publishEdgePulse,
+  retractEdgeLabelBox,
+  retractEdgePulse,
+} from "./edge-pulse";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import {
@@ -167,9 +189,6 @@ const edgeTypes = {
   resourceEdge: ResourceEdge,
 } satisfies EdgeTypes;
 
-function selectEdgeDetailLevel(store: { transform: [number, number, number] }) {
-  return getEdgeDetailLevel(store.transform[2]);
-}
 
 const connectionLineStyle = {
   stroke: "#00d9ff",
@@ -362,7 +381,6 @@ function edgeClearancesForMode(thicknessMode: boolean) {
   };
 }
 const EDGE_ENDPOINT_SPACING = 5;
-const EDGE_ROUTE_RELAXATION_PASSES = 2;
 const EDGE_ROUTE_SNAP_GRID = 4;
 const EXPORT_IMAGE_PADDING = 80;
 const EXPORT_PNG_PIXEL_RATIO = 2;
@@ -470,6 +488,170 @@ const directRouteCache = new Map<
 >();
 
 /**
+ * Spatial index over every cached route's segments.
+ *
+ * Two hot paths need "the other lines near this one": the scorer's congestion
+ * set and the hop pass. Both used to answer that by walking the ENTIRE route
+ * cache once per edge, which is O(edges²) per board render — the exact shape
+ * ARCHITECTURE.md calls a bug, and the reason a 600-edge plan spent seconds
+ * per frame in `segmentsIntersect`. A uniform grid answers the same question
+ * against the handful of segments that could possibly be in reach.
+ *
+ * Cells are big relative to a wire and small relative to the board, so a
+ * typical query touches a few cells and a long segment spans a few dozen.
+ */
+const ROUTE_SEGMENT_CELL_SIZE = 512;
+/** Guards the packed cell key against absurd coordinates. */
+const ROUTE_CELL_LIMIT = 30_000;
+
+type IndexedRouteSegment = {
+  edgeId: string;
+  routeIndex: number;
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  length: number;
+  /** Query stamp, so a segment spanning several cells is yielded once. */
+  seen: number;
+};
+
+const routeSegmentGrid = new Map<number, IndexedRouteSegment[]>();
+/** Which cells each edge currently occupies, so removal stays O(cells). */
+const routeSegmentCellsByEdge = new Map<string, number[]>();
+let routeSegmentQueryStamp = 0;
+
+function routeCellKey(cellX: number, cellY: number) {
+  const x = Math.max(-ROUTE_CELL_LIMIT, Math.min(ROUTE_CELL_LIMIT, cellX)) + ROUTE_CELL_LIMIT;
+  const y = Math.max(-ROUTE_CELL_LIMIT, Math.min(ROUTE_CELL_LIMIT, cellY)) + ROUTE_CELL_LIMIT;
+  return x * (ROUTE_CELL_LIMIT * 2 + 1) + y;
+}
+
+function unindexRouteSegments(edgeId: string) {
+  const cells = routeSegmentCellsByEdge.get(edgeId);
+  if (!cells) {
+    return;
+  }
+  for (const cell of cells) {
+    const bucket = routeSegmentGrid.get(cell);
+    if (!bucket) {
+      continue;
+    }
+    const kept = bucket.filter((segment) => segment.edgeId !== edgeId);
+    if (kept.length === 0) {
+      routeSegmentGrid.delete(cell);
+    } else {
+      routeSegmentGrid.set(cell, kept);
+    }
+  }
+  routeSegmentCellsByEdge.delete(edgeId);
+}
+
+function indexRouteSegments(
+  edgeId: string,
+  routeIndex: number,
+  segments: ReturnType<typeof getPolylineSegments>,
+) {
+  unindexRouteSegments(edgeId);
+  if (segments.length === 0) {
+    return;
+  }
+
+  const cells = new Set<number>();
+  for (const segment of segments) {
+    const indexed: IndexedRouteSegment = {
+      edgeId,
+      routeIndex,
+      start: segment.start,
+      end: segment.end,
+      length: segment.length,
+      seen: 0,
+    };
+    const minCellX = Math.floor(Math.min(segment.start.x, segment.end.x) / ROUTE_SEGMENT_CELL_SIZE);
+    const maxCellX = Math.floor(Math.max(segment.start.x, segment.end.x) / ROUTE_SEGMENT_CELL_SIZE);
+    const minCellY = Math.floor(Math.min(segment.start.y, segment.end.y) / ROUTE_SEGMENT_CELL_SIZE);
+    const maxCellY = Math.floor(Math.max(segment.start.y, segment.end.y) / ROUTE_SEGMENT_CELL_SIZE);
+    for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+      for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+        const cell = routeCellKey(cellX, cellY);
+        cells.add(cell);
+        const bucket = routeSegmentGrid.get(cell);
+        if (bucket) {
+          bucket.push(indexed);
+        } else {
+          routeSegmentGrid.set(cell, [indexed]);
+        }
+      }
+    }
+  }
+  routeSegmentCellsByEdge.set(edgeId, [...cells]);
+}
+
+/** Every indexed segment whose cell overlaps the rect, each yielded once. */
+function queryRouteSegments(rect: {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}): IndexedRouteSegment[] {
+  if (
+    !Number.isFinite(rect.left) ||
+    !Number.isFinite(rect.right) ||
+    !Number.isFinite(rect.top) ||
+    !Number.isFinite(rect.bottom)
+  ) {
+    return [];
+  }
+
+  routeSegmentQueryStamp += 1;
+  const stamp = routeSegmentQueryStamp;
+  const found: IndexedRouteSegment[] = [];
+  const minCellX = Math.floor(rect.left / ROUTE_SEGMENT_CELL_SIZE);
+  const maxCellX = Math.floor(rect.right / ROUTE_SEGMENT_CELL_SIZE);
+  const minCellY = Math.floor(rect.top / ROUTE_SEGMENT_CELL_SIZE);
+  const maxCellY = Math.floor(rect.bottom / ROUTE_SEGMENT_CELL_SIZE);
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+      const bucket = routeSegmentGrid.get(routeCellKey(cellX, cellY));
+      if (!bucket) {
+        continue;
+      }
+      for (const segment of bucket) {
+        if (segment.seen === stamp) {
+          continue;
+        }
+        segment.seen = stamp;
+        found.push(segment);
+      }
+    }
+  }
+  return found;
+}
+
+/** The single door into the route cache, so the index can never drift from it. */
+function setDirectRoute(
+  edgeId: string,
+  entry: {
+    signature: string;
+    routeIndex: number;
+    route: RoutedEdgePath;
+    segments: ReturnType<typeof getPolylineSegments>;
+  },
+) {
+  directRouteCache.set(edgeId, entry);
+  indexRouteSegments(edgeId, entry.routeIndex, entry.segments);
+}
+
+function deleteDirectRoute(edgeId: string) {
+  directRouteCache.delete(edgeId);
+  unindexRouteSegments(edgeId);
+}
+
+function clearDirectRoutes() {
+  directRouteCache.clear();
+  routeSegmentGrid.clear();
+  routeSegmentCellsByEdge.clear();
+}
+
+/**
  * A hidden single-target bundle member draws nothing — the primary draws the
  * whole bundle. Routing it anyway cached an invisible standalone route that
  * other edges hopped over (phantom humps) and steered around (phantom walls);
@@ -479,7 +661,7 @@ function getHiddenBundleMemberRoute(
   edgeId: string,
   source: { x: number; y: number },
 ): RoutedEdgePath {
-  directRouteCache.delete(edgeId);
+  deleteDirectRoute(edgeId);
   return { path: "", labelX: source.x, labelY: source.y, points: [] };
 }
 // Measured geometry is stored in FLOW coordinates, which are invariant under pan
@@ -535,6 +717,28 @@ const annotationNodeDataCache = new Map<string, AnnotationFlowNode["data"]>();
 // rebuilds (hover, solver run) leave most edges untouched.
 const edgeObjectCache = new Map<string, ResourceFlowEdge>();
 
+/**
+ * Shallow field-for-field equality between two board nodes.
+ *
+ * Deliberately compares EVERY key on both sides, including the ones React Flow
+ * adds itself (`selected`, `dragging`): a node the library has annotated is not
+ * interchangeable with a freshly built one, so those must count as different
+ * and be replaced, exactly as they were before.
+ */
+function isSameFlowNode(left: BoardFlowNode, right: BoardFlowNode) {
+  const leftKeys = Object.keys(left) as Array<keyof BoardFlowNode>;
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  for (const key of leftKeys) {
+    if (left[key] !== right[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function pruneNodeDataCaches(
   recipeNodeIds: Set<string>,
   storageIds: Set<string>,
@@ -549,9 +753,9 @@ function pruneNodeDataCaches(
 
   // A deleted edge's cached route otherwise lives on as a ghost: hop
   // rendering bumps over it and nearness scoring steers around it.
-  for (const id of directRouteCache.keys()) {
+  for (const id of [...directRouteCache.keys()]) {
     if (!edgeIds.has(id)) {
-      directRouteCache.delete(id);
+      deleteDirectRoute(id);
     }
   }
 
@@ -622,8 +826,18 @@ const relativeSlotCenterCache = new Map<string, { x: number; y: number }>();
 function boardGeometryDimsKey(geometry: { width: number; height: number } | undefined) {
   return geometry ? `${Math.round(geometry.width)}x${Math.round(geometry.height)}` : "?";
 }
+/** Node-obstacle grid cell, in flow px. See queryMeasuredNodeBounds. */
+const NODE_BOUNDS_CELL_SIZE = 1024;
 let measuredAvoidanceSweep:
-  | { epoch: number; bounds: Array<{ id: string; bounds: MeasuredBounds }>; hash: string }
+  | {
+      epoch: number;
+      bounds: Array<{ id: string; bounds: MeasuredBounds }>;
+      /** id -> rect, so an edge's own nodes are a lookup, not a scan. */
+      byId: Map<string, MeasuredBounds>;
+      /** Uniform grid over the same rects, for "what is near this route". */
+      grid: Map<number, Array<{ id: string; bounds: MeasuredBounds }>>;
+      hash: string;
+    }
   | undefined;
 let measuredLayoutEpoch = 0;
 
@@ -839,14 +1053,38 @@ export function FactoryFlow() {
     // them in verbatim would zero every node's dimensions until React Flow
     // re-measures, which the geometry fingerprints below would read as the
     // whole board resizing twice — rerouting everything on every hover.
+    //
+    // The merge also has to hand back the PREVIOUS object whenever nothing in
+    // it moved. `nodesFromProject` is rebuilt whenever a hover changes which
+    // node is lifted, and spreading `measured` in produced a brand new object
+    // for every node on the board — so hovering one port re-rendered all of
+    // them, re-ran their memo comparisons and churned the compositor's layer
+    // tree. Identity is the whole mechanism the node memos rely on; this is
+    // where it was being thrown away.
     setFlowNodes((current) => {
-      const measuredById = new Map(current.map((node) => [node.id, node.measured]));
-      return nodesFromProject.map((node) => {
-        const measured = measuredById.get(node.id);
-        return measured ? { ...node, measured } : node;
+      const currentById = new Map(current.map((node) => [node.id, node]));
+      let changed = current.length !== nodesFromProject.length;
+      const next = nodesFromProject.map((node) => {
+        const previous = currentById.get(node.id);
+        const merged = previous?.measured ? { ...node, measured: previous.measured } : node;
+        if (previous && isSameFlowNode(previous, merged)) {
+          return previous;
+        }
+        changed = true;
+        return merged;
       });
+      return changed ? next : current;
     });
   }, [nodesFromProject]);
+
+  // Switching pulse mode off has to empty the canvas registry: the edges stay
+  // mounted and simply stop publishing, so without this the last frame's
+  // dashes would march on forever.
+  useEffect(() => {
+    if (!linePulseMode) {
+      clearEdgePulses();
+    }
+  }, [linePulseMode]);
 
   useEffect(() => {
     pruneNodeDataCaches(
@@ -909,7 +1147,7 @@ export function FactoryFlow() {
       // Hop size follows the stroke widths now (see hopRadiusFor), and those
       // are republished on every pass — the routes just have to be rebuilt so
       // the new bumps are drawn.
-      directRouteCache.clear();
+      clearDirectRoutes();
     }
     const geometryById = new Map<string, { x: number; y: number; width: number; height: number }>();
     for (const node of flowNodesRef.current) {
@@ -1140,9 +1378,9 @@ export function FactoryFlow() {
     // after render): edges rendered this pass must not hop over or steer
     // around routes of edges that were just deleted.
     const liveEdgeIds = new Set(project.edges.map((edge) => edge.id));
-    for (const id of directRouteCache.keys()) {
+    for (const id of [...directRouteCache.keys()]) {
       if (!liveEdgeIds.has(id)) {
-        directRouteCache.delete(id);
+        deleteDirectRoute(id);
       }
     }
 
@@ -2303,6 +2541,8 @@ export function FactoryFlow() {
         snapToGrid={boardView.snapToGrid}
         snapGrid={BOARD_GRID_SNAP}
       >
+        <NodeDetailController boardRef={boardRef} />
+        {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
         {boardView.canvasPattern === "none" ? null : (
           <Background
             variant={CANVAS_PATTERN_VARIANT[boardView.canvasPattern]}
@@ -2448,6 +2688,189 @@ const SourceToolbar = memo(function SourceToolbar() {
       </div>
     </div>
   );
+});
+
+/**
+ * The board's marching dashes, on one canvas.
+ *
+ * Sits inside the viewport (so it shares the edge layer's stacking context)
+ * but counter-scales itself back to screen resolution, so the dashes are drawn
+ * at device pixels at every zoom instead of being a bitmap the browser
+ * stretches. The canvas covers exactly the visible rectangle, so its cost is
+ * a function of the window, not of the plan: a 10,000-edge board draws the
+ * same number of pixels as a 10-edge one.
+ *
+ * It reads the viewport transform out of the store on each frame rather than
+ * subscribing to it — a subscription here would re-render this component on
+ * every pan frame, which is the thing the whole layer exists to avoid.
+ */
+const EdgePulseCanvas = memo(function EdgePulseCanvas({
+  edgesUnderNodes,
+}: {
+  /** Thickness mode: cards sit ON the pipes, so the dashes stop at them. */
+  edgesUnderNodes: boolean;
+}) {
+  // Held in state, not a ref, so the draw loop starts on the render where the
+  // element actually exists.
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const flowStore = useStoreApi();
+  // Read inside the loop rather than baked into it, so toggling thickness mode
+  // does not tear down and restart the animation.
+  const edgesUnderNodesRef = useRef(edgesUnderNodes);
+  useEffect(() => {
+    edgesUnderNodesRef.current = edgesUnderNodes;
+  }, [edgesUnderNodes]);
+
+  useEffect(() => {
+    if (!canvas) {
+      return;
+    }
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    let frame = 0;
+    let backingWidth = 0;
+    let backingHeight = 0;
+    // The pane is what the canvas has to cover. Measured from the DOM rather
+    // than read from the store's width/height, which are only populated once
+    // React Flow's own observer has fired and would leave the layer blank
+    // until then.
+    const pane =
+      canvas.closest<HTMLElement>(".react-flow") ??
+      (typeof document !== "undefined"
+        ? document.querySelector<HTMLElement>(".react-flow")
+        : null);
+    let width = pane?.clientWidth ?? 0;
+    let height = pane?.clientHeight ?? 0;
+    const observer =
+      pane && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            width = pane.clientWidth;
+            height = pane.clientHeight;
+          })
+        : undefined;
+    observer?.observe(pane!);
+
+    const draw = (timeMs: number) => {
+      frame = window.requestAnimationFrame(draw);
+      const [translateX, translateY, zoom] = flowStore.getState().transform;
+      if (width <= 0 || height <= 0 || zoom <= 0) {
+        return;
+      }
+
+      const ratio = window.devicePixelRatio || 1;
+      const nextBackingWidth = Math.round(width * ratio);
+      const nextBackingHeight = Math.round(height * ratio);
+      if (backingWidth !== nextBackingWidth || backingHeight !== nextBackingHeight) {
+        backingWidth = nextBackingWidth;
+        backingHeight = nextBackingHeight;
+        canvas.width = nextBackingWidth;
+        canvas.height = nextBackingHeight;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+      }
+
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      if (edgePulseCount() === 0) {
+        return;
+      }
+
+      // From here the context speaks flow coordinates, exactly like the SVG.
+      context.translate(translateX, translateY);
+      context.scale(zoom, zoom);
+      const visible = {
+        left: -translateX / zoom,
+        top: -translateY / zoom,
+        right: (-translateX + width) / zoom,
+        bottom: (-translateY + height) / zoom,
+      };
+      drawEdgePulses(context, visible, timeMs / 1000);
+      // Punch back out what the dashes are supposed to be behind. `publishedBoardBounds`
+      // is the card set already — it excludes annotations, which wires (and so
+      // their dashes) legitimately pass straight over.
+      eraseEdgePulseOcclusion(
+        context,
+        visible,
+        edgesUnderNodesRef.current
+          ? (publishedBoardBounds ?? []).map((entry) => entry.bounds)
+          : [],
+      );
+    };
+
+    frame = window.requestAnimationFrame(draw);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [canvas, flowStore]);
+
+  // Deliberately NOT inside the viewport: it is the last thing painted in the
+  // board, which is what keeps it from promoting every node and label above it
+  // into its own composited layer. It draws in screen space and applies the
+  // viewport transform itself, so it stays pixel-crisp at every zoom.
+  return (
+    <canvas
+      ref={setCanvas}
+      className="pointer-events-none absolute left-0 top-0 h-full w-full"
+      style={{ zIndex: 5 }}
+    />
+  );
+});
+
+/**
+ * The single owner of the board's zoom-detail level.
+ *
+ * Renders nothing and re-renders nothing: it watches the store's transform,
+ * publishes the level for edges to subscribe to, and stamps it on the board
+ * element. Routing this through React state would re-render FactoryFlow — and
+ * with it the whole board — on every threshold crossing, to change one
+ * attribute.
+ *
+ * A data ATTRIBUTE rather than a class, deliberately. React owns `className` on
+ * the board and rebuilds that string on every FactoryFlow render, so a class
+ * added here was silently wiped whenever anything else about the board changed
+ * — toggling thickness mode mid-zoom dropped the glance view until the next
+ * threshold crossing. React never touches an attribute it was not given.
+ */
+const NodeDetailController = memo(function NodeDetailController({
+  boardRef,
+}: {
+  boardRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const flowStore = useStoreApi();
+
+  useEffect(() => {
+    let level: NodeDetailLevel = NODE_DETAIL_FULL;
+
+    const apply = (zoom: number) => {
+      const next = getNodeDetailLevel(zoom, level);
+      if (next === level) {
+        return;
+      }
+      level = next;
+      setNodeDetailLevel(next);
+      const board = boardRef.current;
+      if (!board) {
+        return;
+      }
+      const value = nodeDetailAttributeValue(next);
+      if (value) {
+        board.setAttribute(NODE_DETAIL_ATTRIBUTE, value);
+      } else {
+        board.removeAttribute(NODE_DETAIL_ATTRIBUTE);
+      }
+    };
+
+    apply(flowStore.getState().transform[2]);
+    return flowStore.subscribe((state) => {
+      apply(state.transform[2]);
+    });
+  }, [boardRef, flowStore]);
+
+  return null;
 });
 
 function FlowLoadingOverlay() {
@@ -2843,7 +3266,20 @@ function ResourceEdgeComponent({
   data,
 }: EdgeProps<ResourceFlowEdge>) {
   const updateEdge = useFactoryStore((state) => state.updateEdge);
-  const detailLevel = useStore(selectEdgeDetailLevel);
+  // The board's single detail level, not a zoom threshold of its own — nodes
+  // and lines have to switch together or the board looks like it is glitching
+  // half a step at a time. Subscribed rather than selected because the level is
+  // hysteretic, which a React Flow selector cannot be (it must be pure over
+  // store state), and because this only fires when the level actually flips.
+  // Kept as two statements: a hook call nested inside another call expression
+  // makes the React Compiler give up on memoizing this component, and this is
+  // the hottest component on the board. Verified with eslint, not assumed.
+  const boardDetailLevel = useSyncExternalStore(
+    subscribeNodeDetailLevel,
+    getPublishedNodeDetailLevel,
+    getServerNodeDetailLevel,
+  );
+  const detailLevel = EDGE_DETAIL_BY_LEVEL[boardDetailLevel];
   // Label dragging needs the exact zoom to convert a pointer delta into flow
   // units, but reading it through a subscription would re-render every edge on
   // every zoom frame. The store API gives the live value on demand instead.
@@ -2959,7 +3395,6 @@ function ResourceEdgeComponent({
   // leaking into a reading that is supposed to be about flow alone.
   const pulseVelocity = PULSE_MIN_VELOCITY +
     (flowRate?.heat ?? 0) * (PULSE_MAX_VELOCITY - PULSE_MIN_VELOCITY);
-  const pulseDuration = ((pulseDash + pulseGap) / pulseVelocity).toFixed(3);
   const isGlobalView = hasEdgeDetail(detailLevel, EDGE_DETAIL_GLOBAL);
   // Lit when a hovered port or label pulls this line into its flow scope.
   // Boolean selector: only involved edges re-render on hover changes.
@@ -3125,10 +3560,123 @@ function ResourceEdgeComponent({
   // The whole line is a hover surface now, not just the label - but it stops
   // short of the ports so it can never steal the pointer-down that starts a
   // wire drag from a chip (edges hit-test above nodes).
-  const hoverTrimmedPoints = isHiddenBundleMember
-    ? undefined
-    : trimPolylineEnds(routedEdge.points, 26);
+  // It goes away with the labels. Zoomed out, a line is a couple of pixels
+  // wide and lands under the pointer by accident rather than by aim, so the
+  // surface stops being an affordance and is just six hundred more paths for
+  // the browser to hit-test on every mouse move.
+  const hoverTrimmedPoints =
+    isHiddenBundleMember || !hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS)
+      ? undefined
+      : trimPolylineEnds(routedEdge.points, 26);
   const hoverPathD = hoverTrimmedPoints ? pointsToSvgPath(hoverTrimmedPoints) : undefined;
+
+  // Hand this line's dashes to the board's pulse canvas (see edge-pulse.ts).
+  // Published after commit rather than during render because it is a
+  // side-effecting registration, and dropped on unmount so a culled or deleted
+  // edge cannot leave a ghost marching across the board.
+  // Zoomed far enough out the dashes are a shimmer rather than a reading, and
+  // six hundred of them are the most expensive shimmer on the board.
+  const pulseActive =
+    flowRate?.pulse === true &&
+    !isHiddenBundleMember &&
+    Boolean(routedEdge.path) &&
+    hasEdgeDetail(detailLevel, EDGE_DETAIL_PULSE);
+  useEffect(() => {
+    if (!pulseActive) {
+      retractEdgePulse(id);
+      return;
+    }
+
+    let left = Infinity;
+    let right = -Infinity;
+    let top = Infinity;
+    let bottom = -Infinity;
+    for (const point of routedEdge.points) {
+      if (point.x < left) left = point.x;
+      if (point.x > right) right = point.x;
+      if (point.y < top) top = point.y;
+      if (point.y > bottom) bottom = point.y;
+    }
+    // Hops bulge off the polyline; the cull box has to cover them or a line
+    // would wink out a fraction early at the edge of the screen.
+    const margin = EDGE_HOP_MAX_RADIUS + pulseStroke;
+    publishEdgePulse(id, {
+      path: routedEdge.path,
+      // Same numbers the SVG overlay used, so the marks are unchanged.
+      width: Math.max(2, pulseStroke * 0.38),
+      dash: pulseDash,
+      gap: pulseGap,
+      velocity: pulseVelocity,
+      left: left - margin,
+      right: right + margin,
+      top: top - margin,
+      bottom: bottom + margin,
+    });
+  });
+  useEffect(() => () => {
+    retractEdgePulse(id);
+    retractEdgeLabelBox(id);
+  }, [id]);
+
+  // Where this edge's rate chip sits, so the pulse canvas can keep its dashes
+  // out from under it (the canvas paints above everything — see
+  // EdgePulseCanvas for why it has to). The chip is inside the transformed
+  // viewport, so its LAYOUT size is already in flow units.
+  //
+  // Measured through a ResizeObserver, and ONLY when the dashes are actually
+  // being drawn. The first version read `offsetWidth` inside the ref callback,
+  // which React runs during commit — so every commit that attached a chip
+  // forced a synchronous style-and-layout flush, once per edge. On a board
+  // where something re-renders during a pan that is a reflow storm on the
+  // pointer-move path, and it showed up in a real profile as exactly that:
+  // commitAttachRef -> offsetWidth -> PresShell::DoFlushPendingNotifications.
+  //
+  // A ResizeObserver reports the same box without ever forcing layout, and the
+  // whole thing is skipped when pulse mode is off, where the measurement was
+  // pure waste — nothing consumes it.
+  const wantsLabelBox = flowRate?.pulse === true;
+  const [labelSize, setLabelSize] = useState<{ width: number; height: number } | undefined>(
+    undefined,
+  );
+  const [labelElement, setLabelElement] = useState<HTMLDivElement | null>(null);
+  const publishLabelBox = useCallback((element: HTMLDivElement | null) => {
+    setLabelElement(element);
+  }, []);
+  useEffect(() => {
+    if (!labelElement || !wantsLabelBox || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver((entries) => {
+      const size = entries[0]?.borderBoxSize?.[0];
+      if (!size) {
+        return;
+      }
+      const width = size.inlineSize;
+      const height = size.blockSize;
+      setLabelSize((current) =>
+        current && current.width === width && current.height === height
+          ? current
+          : { width, height },
+      );
+    });
+    observer.observe(labelElement);
+    return () => observer.disconnect();
+  }, [labelElement, wantsLabelBox]);
+  const labelBoxWidth = labelSize?.width;
+  const labelBoxHeight = labelSize?.height;
+  useEffect(() => {
+    if (!wantsLabelBox || !showLabel || !labelBoxWidth || !labelBoxHeight) {
+      retractEdgeLabelBox(id);
+      return;
+    }
+    // The chip is centred on its anchor (translate(-50%, -50%)).
+    publishEdgeLabelBox(id, {
+      left: labelX - labelBoxWidth / 2,
+      top: labelY - labelBoxHeight / 2,
+      width: labelBoxWidth,
+      height: labelBoxHeight,
+    });
+  });
 
 
   const stopLabelDrag = useCallback(
@@ -3197,32 +3745,11 @@ function ResourceEdgeComponent({
               pointerEvents: "none",
             }}
           />
-          {flowRate?.pulse ? (
-            // Which way it moves. Dashes march from source to target along the
-            // route's own direction, faster on the busier lines. The dash and
-            // gap scale with the line so they stay readable whether the stroke
-            // is 3px or 34px, and the offset animates by exactly one dash+gap
-            // period so the loop is seamless.
-            //
-            // The whole animation is declared inline as the `animation`
-            // shorthand rather than as class longhands plus an inline
-            // duration: one property, nothing to compose, nothing to be
-            // overridden by a stale stylesheet chunk.
-            <path
-              d={routedEdge.path}
-              fill="none"
-              stroke="rgba(255,255,255,0.92)"
-              strokeWidth={Math.max(2, pulseStroke * 0.38)}
-              strokeDasharray={`${pulseDash} ${pulseGap}`}
-              strokeLinecap="butt"
-              pointerEvents="none"
-              style={{
-                animation: `flow-rate-march ${pulseDuration}s linear infinite`,
-                // The keyframe travels one period; this is that period.
-                ["--flow-march-period" as string]: `${pulseDash + pulseGap}px`,
-              }}
-            />
-          ) : null}
+          {/* Which way it moves. Dashes march from source to target along the
+              route's own direction, faster on the busier lines — drawn on the
+              board's pulse canvas rather than as an animated path here. See
+              edge-pulse.ts: an animated stroke-dashoffset is a paint property,
+              so one per edge repainted the entire board every frame. */}
         </>
       ) : null}
       {!isHiddenBundleMember && showArrowHead ? (
@@ -3297,6 +3824,7 @@ function ResourceEdgeComponent({
       !(routedEdge.labelHidden && !data.labelOffset && !isLabelDragging) ? (
         <EdgeLabelRenderer>
           <div
+            ref={publishLabelBox}
             className="nodrag nopan absolute flex cursor-grab items-center gap-1.5 border border-[var(--mc-15)] bg-[#2b2d32] px-2 py-1 text-[13px] font-medium text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.55)] transition-shadow duration-100 active:cursor-grabbing"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
@@ -3862,9 +4390,34 @@ function getDirectEdgePath({
   // short edges put the blind polyline midpoint exactly there. Prefer the
   // longest stretch of the route clear of EVERY node, then clear of the
   // edge's own nodes.
-  const allNodeBounds = getMeasuredAvoidanceSweep().bounds.map((entry) => entry.bounds);
+  // Only rects the route actually passes through can carve a gap out of it, so
+  // this asks the sweep's grid for the route's own box rather than handing it
+  // the whole board — the same answer, without an O(nodes) pass per edge.
+  let routeLeft = Infinity;
+  let routeRight = -Infinity;
+  let routeTop = Infinity;
+  let routeBottom = -Infinity;
+  for (const point of points) {
+    if (point.x < routeLeft) routeLeft = point.x;
+    if (point.x > routeRight) routeRight = point.x;
+    if (point.y < routeTop) routeTop = point.y;
+    if (point.y > routeBottom) routeBottom = point.y;
+  }
+  const nearbyNodeBounds = queryMeasuredNodeBounds({
+    left: routeLeft,
+    right: routeRight,
+    top: routeTop,
+    bottom: routeBottom,
+  });
+  // "No node is near this route" is a real answer, not a reason to fall
+  // through: the whole-board call used to reach here with rects that simply
+  // did not clip anything, and picked the longest stretch. Passing
+  // `allowNoRects` keeps that, while the own-bounds fallback below still
+  // treats an empty list as "we do not know where this node is".
   const clearOfEverything =
-    allNodeBounds.length > 0 ? getRouteLabelPoint(points, allNodeBounds) : undefined;
+    getMeasuredAvoidanceSweep().bounds.length > 0
+      ? getRouteLabelPoint(points, nearbyNodeBounds, true)
+      : undefined;
   const labelPoint = clearOfEverything ??
     getRouteLabelPoint(points, [
       getMeasuredNodeBoundsById(sourceNodeId),
@@ -3900,7 +4453,11 @@ function getDirectEdgePath({
   const width = strokeWidth ?? ownStrokeWidth(edgeId);
 
   return {
-    path: pointsToHoppedSvgPath(points, collectHoppedRouteSegments(edgeId, routeIndex), width),
+    path: pointsToHoppedSvgPath(
+      points,
+      collectHoppedRouteSegments(edgeId, routeIndex, points),
+      width,
+    ),
     labelX: labelPoint.x,
     labelY: labelPoint.y + labelLift,
     labelHidden,
@@ -3921,12 +4478,14 @@ const SHORT_EDGE_LABEL_LIFT = 40;
 function getRouteLabelPoint(
   points: Array<{ x: number; y: number }>,
   ownBounds: Array<{ left: number; right: number; top: number; bottom: number } | undefined>,
+  /** Treat an empty rect list as "nothing is in the way", not "we can't tell". */
+  allowNoRects = false,
 ) {
   const rects = ownBounds.filter(
     (bounds): bounds is { left: number; right: number; top: number; bottom: number } =>
       bounds !== undefined,
   );
-  if (rects.length === 0) {
+  if (rects.length === 0 && !allowNoRects) {
     return undefined;
   }
 
@@ -4127,7 +4686,6 @@ function getBestDirectEdgePoints({
   // that traverses the node loses to one that leaves it first.
   const sourceOwnBounds = getMeasuredNodeBoundsById(sourceNodeId);
   const targetOwnBounds = getMeasuredNodeBoundsById(targetNodeId);
-  const allAvoidanceBounds = getMeasuredAvoidanceNodeBounds([sourceNodeId, targetNodeId]);
   // The edge's own nodes come back as CLIPPED obstacles: the sliver holding
   // the exit stays open (an edge must be allowed to leave), but the body is
   // solid — "come out of the output, turn around, and ride over your own
@@ -4136,7 +4694,20 @@ function getBestDirectEdgePoints({
     clipOwnBoundsForExits(sourceOwnBounds, sourceEndpoints),
     clipOwnBoundsForExits(targetOwnBounds, targetEndpoints),
   ].filter((bounds): bounds is NonNullable<typeof bounds> => bounds !== undefined);
-  const boardBounds = allAvoidanceBounds.concat(ownClippedObstacles);
+  const excludedOwnNodeIds = new Set(
+    [sourceNodeId, targetNodeId].filter((id): id is string => Boolean(id)),
+  );
+  // The obstacle set is fetched from the sweep's grid by rectangle instead of
+  // being the whole board copied per edge. Everything downstream filters this
+  // list to a smaller envelope anyway, so as long as the query rectangle is a
+  // SUPERSET of what each consumer looks at, the scores are identical — see
+  // the two queries below for what each has to cover.
+  const queryBoardBounds = (rect: {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  }) => queryMeasuredNodeBounds(rect, excludedOwnNodeIds).concat(ownClippedObstacles);
 
   const buildCandidates = (extraRouteXs?: number[], extraRouteYs?: number[]) =>
     sourceEndpoints.flatMap((sourceEndpoint) =>
@@ -4181,7 +4752,14 @@ function getBestDirectEdgePoints({
     }
   }
   const blockReachMargin = publishedEdgeLinkClearance + 1;
-  const blockers = boardBounds.filter(
+  // Query rectangle IS the blockers test, so this is exact rather than a
+  // prefilter: only nodes touching the base shapes' reach can be blockers.
+  const blockers = queryBoardBounds({
+    left: blockReachLeft - blockReachMargin,
+    right: blockReachRight + blockReachMargin,
+    top: blockReachTop - blockReachMargin,
+    bottom: blockReachBottom + blockReachMargin,
+  }).filter(
     (bounds) =>
       bounds.right >= blockReachLeft - blockReachMargin &&
       bounds.left <= blockReachRight + blockReachMargin &&
@@ -4244,6 +4822,38 @@ function getBestDirectEdgePoints({
   reachTop -= reachMargin;
   reachBottom += reachMargin;
 
+  // One obstacle fetch covering everything still to come: candidate scoring
+  // and the crossing check both live inside `reach`, and the A* router's
+  // per-pair search window is the endpoint box grown by at most
+  // `max(240, 0.3 * span)` (see findBestOrthogonalPortalRoute) plus the exit
+  // clearance. Union them, so every consumer below sees a superset of what it
+  // would have seen from the whole board — and therefore the same answers.
+  let endpointLeft = Infinity;
+  let endpointRight = -Infinity;
+  let endpointTop = Infinity;
+  let endpointBottom = -Infinity;
+  for (const endpoint of [...sourceEndpoints, ...targetEndpoints]) {
+    if (endpoint.x < endpointLeft) endpointLeft = endpoint.x;
+    if (endpoint.x > endpointRight) endpointRight = endpoint.x;
+    if (endpoint.y < endpointTop) endpointTop = endpoint.y;
+    if (endpoint.y > endpointBottom) endpointBottom = endpoint.y;
+  }
+  const orthoPad =
+    Math.max(
+      240,
+      0.3 * (endpointRight - endpointLeft + (endpointBottom - endpointTop)) +
+        0.6 * publishedDirectEdgeNodeClearance,
+    ) +
+    publishedDirectEdgeNodeClearance +
+    orthoForeignMargin() +
+    ORTHO_LANE_CAP;
+  const boardBounds = queryBoardBounds({
+    left: Math.min(reachLeft, endpointLeft - orthoPad),
+    right: Math.max(reachRight, endpointRight + orthoPad),
+    top: Math.min(reachTop, endpointTop - orthoPad),
+    bottom: Math.max(reachBottom, endpointBottom + orthoPad),
+  });
+
   const normalizedNodeBounds = boardBounds.filter(
     (bounds) =>
       bounds.right >= reachLeft &&
@@ -4251,7 +4861,14 @@ function getBestDirectEdgePoints({
       bounds.bottom >= reachTop &&
       bounds.top <= reachBottom,
   );
-  const obstacleSegments = getIndexedRouteObstacleSegments(edgeId, routeIndex, routeSignature).filter(
+  // The grid answers by cell, which is coarser than the envelope, so the exact
+  // reach test still runs — over a handful of candidates instead of the board.
+  const obstacleSegments = getIndexedRouteObstacleSegments(edgeId, routeIndex, routeSignature, {
+    left: reachLeft,
+    right: reachRight,
+    top: reachTop,
+    bottom: reachBottom,
+  }).filter(
     (segment) =>
       Math.max(segment.start.x, segment.end.x) >= reachLeft &&
       Math.min(segment.start.x, segment.end.x) <= reachRight &&
@@ -4271,35 +4888,17 @@ function getBestDirectEdgePoints({
     return undefined;
   }
 
+  // The relaxation loop that used to sit here could never do anything, and
+  // cost a full re-scoring of every candidate to find that out.
+  //
+  // It re-picked the best candidate against `obstacleSegments` — the same set
+  // it had just been picked against, since nothing in the loop could change it
+  // — so the winner was always the candidate already chosen, with the same
+  // score plus its (non-negative) endpoint penalty. It then compared that
+  // penalty-inclusive score against a penalty-EXCLUSIVE score of the same
+  // route, so the "did it improve" test was `S + P >= S`, which is true for
+  // every P >= 0. It broke on the first pass, every time, for every edge.
   let optimizedRoute = bestRoute;
-  let optimizedScore = scoreEdgeRoute(bestRoute, normalizedNodeBounds, obstacleSegments);
-  for (let pass = 0; pass < EDGE_ROUTE_RELAXATION_PASSES; pass += 1) {
-    // The cache this reads from cannot change within the loop, so the filtered
-    // obstacle set from above is still exact.
-    const relaxedObstacleSegments = obstacleSegments;
-    const relaxedRoute = candidates
-      .map((candidate) => ({
-        points: candidate.points,
-        score:
-          scoreEdgeRoute(candidate.points, normalizedNodeBounds, relaxedObstacleSegments) +
-          candidate.endpointPenalty,
-      }))
-      .sort((left, right) => left.score - right.score)[0];
-    const currentScore = scoreEdgeRoute(
-      optimizedRoute,
-      normalizedNodeBounds,
-      relaxedObstacleSegments,
-    );
-    if (
-      !relaxedRoute ||
-      relaxedRoute.score >= currentScore ||
-      relaxedRoute.score >= optimizedScore
-    ) {
-      break;
-    }
-    optimizedRoute = relaxedRoute.points;
-    optimizedScore = relaxedRoute.score;
-  }
 
   // The candidate menu can only jog once, so on packed boards its winner may
   // still cross a node - or lie exactly on top of a neighbouring wire when
@@ -4335,7 +4934,7 @@ function getBestDirectEdgePoints({
 
   if (edgeId && routeIndex !== undefined) {
     const route = buildRoutedEdgePath(optimizedRoute);
-    directRouteCache.set(edgeId, {
+    setDirectRoute(edgeId, {
       signature: routeSignature,
       routeIndex,
       route,
@@ -4734,10 +5333,21 @@ function getRouteSideOrder(side: Position) {
   }
 }
 
+/**
+ * Already-routed lines this edge has to steer around, limited to the ones
+ * inside its own reach envelope.
+ *
+ * The reach filter is not an approximation: the scorer only ever charges for a
+ * segment it can come within `publishedEdgeLinkClearance` of, and the caller
+ * pads the envelope by exactly that. Segments outside it scored zero anyway —
+ * they were just being visited to find that out, once per edge, for every edge
+ * on the board.
+ */
 function getIndexedRouteObstacleSegments(
   edgeId: string | undefined,
   routeIndex: number | undefined,
   routeSignature: string,
+  reach: { left: number; right: number; top: number; bottom: number },
 ) {
   if (routeIndex === undefined) {
     return [];
@@ -4750,41 +5360,40 @@ function getIndexedRouteObstacleSegments(
     length: number;
   }> = [];
 
-  for (const [cachedEdgeId, cachedRoute] of directRouteCache) {
-    if (cachedEdgeId === edgeId || cachedRoute.routeIndex >= routeIndex) {
+  for (const segment of queryRouteSegments(reach)) {
+    if (segment.edgeId === edgeId || segment.routeIndex >= routeIndex) {
       continue;
     }
-
-    segments.push(
-      ...cachedRoute.segments.map((segment) => ({
-        ...segment,
-        edgeId: cachedEdgeId,
-      })),
-    );
+    segments.push({
+      edgeId: segment.edgeId,
+      start: segment.start,
+      end: segment.end,
+      length: segment.length,
+    });
   }
 
-  pruneStaleDirectRoutes(edgeId, routeSignature, routeIndex);
+  pruneStaleDirectRoutes(edgeId, routeSignature);
   return segments;
 }
 
-function pruneStaleDirectRoutes(
-  edgeId: string | undefined,
-  routeSignature: string,
-  routeIndex: number,
-) {
+/**
+ * Drops this edge's own entry when its inputs moved.
+ *
+ * This used to ALSO evict every cached route with a routeIndex 128 or more
+ * above the one being routed. On a plan with more than ~128 edges that turned
+ * every render into a rolling wipe of most of the cache: edge 0 rendering
+ * threw away the routes of edges 128 and up, which then re-solved from
+ * scratch, which is why route scoring showed up in pan and zoom profiles at
+ * all. Staleness is already tracked exactly, per edge, by the signature.
+ */
+function pruneStaleDirectRoutes(edgeId: string | undefined, routeSignature: string) {
   if (!edgeId) {
     return;
   }
 
   const cachedRoute = directRouteCache.get(edgeId);
   if (cachedRoute && cachedRoute.signature !== routeSignature) {
-    directRouteCache.delete(edgeId);
-  }
-
-  for (const [cachedEdgeId, cachedRouteEntry] of directRouteCache) {
-    if (cachedRouteEntry.routeIndex >= routeIndex + 128) {
-      directRouteCache.delete(cachedEdgeId);
-    }
+    deleteDirectRoute(edgeId);
   }
 }
 
@@ -4824,12 +5433,29 @@ function scoreEdgeRoute(
   let selfOverlap = 0;
   let foldBacks = 0;
 
+  const clearance = publishedEdgeLinkClearance;
   for (const segment of segments) {
+    // This segment's box, reused by both inner loops below.
+    const segmentLeft = Math.min(segment.start.x, segment.end.x);
+    const segmentRight = Math.max(segment.start.x, segment.end.x);
+    const segmentTop = Math.min(segment.start.y, segment.end.y);
+    const segmentBottom = Math.max(segment.start.y, segment.end.y);
+
     for (const bounds of nodeBounds) {
+      // Cheap box test before the clip: a rect further away than the clearance
+      // cannot contribute overlap, and most rects are.
+      if (
+        bounds.right + clearance < segmentLeft ||
+        bounds.left - clearance > segmentRight ||
+        bounds.bottom + clearance < segmentTop ||
+        bounds.top - clearance > segmentBottom
+      ) {
+        continue;
+      }
       const overlapLength = getSegmentRectOverlapLength(
         segment.start,
         segment.end,
-        expandBounds(bounds, publishedEdgeLinkClearance),
+        expandBounds(bounds, clearance),
       );
       if (overlapLength > 0) {
         nodeHits += 1;
@@ -4837,8 +5463,27 @@ function scoreEdgeRoute(
       }
     }
 
+    if (segment.length < 0.5) {
+      continue;
+    }
+
     for (const existing of existingEdgeSegments) {
-      if (segment.length < 0.5 || existing.length < 0.5) {
+      if (existing.length < 0.5) {
+        continue;
+      }
+
+      // Box separation is a lower bound on the true segment distance, so a
+      // pair further apart than the clearance can contribute nothing to ANY of
+      // the three terms below: they cannot cross (crossing needs overlapping
+      // boxes), cannot overlap collinearly (that needs distance ~0), and the
+      // nearness term is zero past the clearance. Skipping them is exact, and
+      // it is most pairs — this loop is the hottest in the router.
+      if (
+        Math.max(existing.start.x, existing.end.x) + clearance < segmentLeft ||
+        Math.min(existing.start.x, existing.end.x) - clearance > segmentRight ||
+        Math.max(existing.start.y, existing.end.y) + clearance < segmentTop ||
+        Math.min(existing.start.y, existing.end.y) - clearance > segmentBottom
+      ) {
         continue;
       }
 
@@ -4849,8 +5494,8 @@ function scoreEdgeRoute(
       edgeOverlap += getCollinearOverlapLength(segment, existing);
 
       const distance = getSegmentDistance(segment.start, segment.end, existing.start, existing.end);
-      if (distance < publishedEdgeLinkClearance) {
-        edgeNearness += ((publishedEdgeLinkClearance - distance) / publishedEdgeLinkClearance) * segment.length;
+      if (distance < clearance) {
+        edgeNearness += ((clearance - distance) / clearance) * segment.length;
       }
     }
   }
@@ -5432,7 +6077,7 @@ function getBundledEdgePath({
     `M ${busX},${minY} L ${busX},${maxY}`,
     pointsToHoppedSvgPath(
       trunkPoints,
-      collectHoppedRouteSegments(edgeId, routeIndex),
+      collectHoppedRouteSegments(edgeId, routeIndex, trunkPoints),
       ownStrokeWidth(edgeId),
     ),
   ].join(" ");
@@ -5562,7 +6207,7 @@ function getBundledMemberEdgePath({
   };
   const path = pointsToHoppedSvgPath(
       points,
-      collectHoppedRouteSegments(edgeId, routeIndex),
+      collectHoppedRouteSegments(edgeId, routeIndex, points),
       ownStrokeWidth(edgeId),
     );
   const [estimatedPath, estimatedLabelX, estimatedLabelY] = getSmoothStepPath({
@@ -5765,10 +6410,30 @@ function ownStrokeWidth(edgeId: string | undefined): number {
  * Reads the same cache the relaxation loop uses, with the same staleness
  * class: a neighbour's reroute refreshes this edge on the next epoch.
  */
-function collectHoppedRouteSegments(edgeId: string | undefined, routeIndex: number | undefined) {
-  if (routeIndex === undefined) {
+function collectHoppedRouteSegments(
+  edgeId: string | undefined,
+  routeIndex: number | undefined,
+  points: Array<{ x: number; y: number }>,
+) {
+  if (routeIndex === undefined || points.length < 2) {
     return [];
   }
+
+  // Only a line that runs through this route's own bounding box can cross it,
+  // so the hop pass asks the segment index for that box rather than walking
+  // every cached route on the board. The margin covers the tallest bump a hop
+  // can be, which is the only way a segment just outside the box can matter.
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const point of points) {
+    if (point.x < left) left = point.x;
+    if (point.x > right) right = point.x;
+    if (point.y < top) top = point.y;
+    if (point.y > bottom) bottom = point.y;
+  }
+  const margin = EDGE_HOP_MAX_RADIUS + 2;
 
   // Compared through the PUBLISHED widths on both sides, never the render
   // width: the render width picks up a highlight bump, and a comparison where
@@ -5780,11 +6445,16 @@ function collectHoppedRouteSegments(edgeId: string | undefined, routeIndex: numb
     end: { x: number; y: number };
     width: number;
   }> = [];
-  for (const [otherId, entry] of directRouteCache) {
+  for (const entry of queryRouteSegments({
+    left: left - margin,
+    right: right + margin,
+    top: top - margin,
+    bottom: bottom + margin,
+  })) {
     if (
-      otherId === edgeId ||
+      entry.edgeId === edgeId ||
       compareEdgeDepth(own, {
-        width: ownStrokeWidth(otherId),
+        width: ownStrokeWidth(entry.edgeId),
         routeIndex: entry.routeIndex,
       }) <= 0
     ) {
@@ -5792,13 +6462,11 @@ function collectHoppedRouteSegments(edgeId: string | undefined, routeIndex: numb
     }
     // Carry the crossed line's thickness along with its geometry: the hop is
     // sized from it, not from a constant.
-    const width = publishedEdgeStrokeWidths.get(otherId) ?? DEFAULT_EDGE_STROKE_WIDTH;
-    for (const segment of entry.segments) {
-      segments.push({ ...segment, width });
-    }
-    if (segments.length > 600) {
-      break;
-    }
+    segments.push({
+      start: entry.start,
+      end: entry.end,
+      width: publishedEdgeStrokeWidths.get(entry.edgeId) ?? DEFAULT_EDGE_STROKE_WIDTH,
+    });
   }
   return segments;
 }
@@ -6052,9 +6720,36 @@ function getMeasuredAvoidanceSweep() {
         left.bounds.right - right.bounds.right,
     );
 
+  // Two lookup structures built once per epoch, because everything downstream
+  // used to answer "which nodes are near me" by walking the whole board once
+  // per edge — O(nodes x edges) per render, which is the shape ARCHITECTURE.md
+  // forbids and which a 1,200-node plan feels immediately.
+  const byId = new Map<string, MeasuredBounds>();
+  const grid = new Map<number, Array<{ id: string; bounds: MeasuredBounds }>>();
+  for (const entry of normalized) {
+    byId.set(entry.id, entry.bounds);
+    const minCellX = Math.floor(entry.bounds.left / NODE_BOUNDS_CELL_SIZE);
+    const maxCellX = Math.floor(entry.bounds.right / NODE_BOUNDS_CELL_SIZE);
+    const minCellY = Math.floor(entry.bounds.top / NODE_BOUNDS_CELL_SIZE);
+    const maxCellY = Math.floor(entry.bounds.bottom / NODE_BOUNDS_CELL_SIZE);
+    for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+      for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+        const cell = routeCellKey(cellX, cellY);
+        const bucket = grid.get(cell);
+        if (bucket) {
+          bucket.push(entry);
+        } else {
+          grid.set(cell, [entry]);
+        }
+      }
+    }
+  }
+
   measuredAvoidanceSweep = {
     epoch: measuredLayoutEpoch,
     bounds: normalized,
+    byId,
+    grid,
     hash: bounds
       .map(
         (entry) =>
@@ -6065,18 +6760,63 @@ function getMeasuredAvoidanceSweep() {
   return measuredAvoidanceSweep;
 }
 
-function getMeasuredAvoidanceNodeBounds(excludedNodeIds: Array<string | undefined>) {
-  const excluded = new Set(excludedNodeIds.filter((id): id is string => Boolean(id)));
-  return getMeasuredAvoidanceSweep()
-    .bounds.filter((entry) => !excluded.has(entry.id))
-    .map((entry) => entry.bounds);
+/**
+ * Node rects whose cell overlaps the rect, in the sweep's stable order.
+ *
+ * Order matters: route scoring sums over this list, and a different order
+ * would give a (slightly) different floating-point score, so the grid's
+ * results are re-sorted into the sweep's canonical geometry order rather than
+ * returned in whatever order the cells happened to hold them.
+ */
+function queryMeasuredNodeBounds(
+  rect: { left: number; right: number; top: number; bottom: number },
+  excludedNodeIds?: Set<string>,
+): MeasuredBounds[] {
+  const sweep = getMeasuredAvoidanceSweep();
+  if (
+    !Number.isFinite(rect.left) ||
+    !Number.isFinite(rect.right) ||
+    !Number.isFinite(rect.top) ||
+    !Number.isFinite(rect.bottom)
+  ) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const found: Array<{ id: string; bounds: MeasuredBounds }> = [];
+  const minCellX = Math.floor(rect.left / NODE_BOUNDS_CELL_SIZE);
+  const maxCellX = Math.floor(rect.right / NODE_BOUNDS_CELL_SIZE);
+  const minCellY = Math.floor(rect.top / NODE_BOUNDS_CELL_SIZE);
+  const maxCellY = Math.floor(rect.bottom / NODE_BOUNDS_CELL_SIZE);
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+      const bucket = sweep.grid.get(routeCellKey(cellX, cellY));
+      if (!bucket) {
+        continue;
+      }
+      for (const entry of bucket) {
+        if (seen.has(entry.id) || excludedNodeIds?.has(entry.id)) {
+          continue;
+        }
+        seen.add(entry.id);
+        found.push(entry);
+      }
+    }
+  }
+  found.sort(
+    (left, right) =>
+      left.bounds.left - right.bounds.left ||
+      left.bounds.top - right.bounds.top ||
+      left.bounds.right - right.bounds.right,
+  );
+  return found.map((entry) => entry.bounds);
 }
 
 function getMeasuredNodeBoundsById(nodeId: string | undefined) {
   if (!nodeId) {
     return undefined;
   }
-  return getMeasuredAvoidanceSweep().bounds.find((entry) => entry.id === nodeId)?.bounds;
+  return getMeasuredAvoidanceSweep().byId.get(nodeId);
 }
 
 /**
@@ -6088,8 +6828,14 @@ function isPointInsideAnyMeasuredNode(
   marginX = 60,
   marginY = 16,
 ) {
-  for (const entry of getMeasuredAvoidanceSweep().bounds) {
-    const bounds = entry.bounds;
+  // Only nodes whose cell covers the point (plus the label's own half-box) can
+  // possibly contain it; the rest of the board never needs looking at.
+  for (const bounds of queryMeasuredNodeBounds({
+    left: point.x - marginX,
+    right: point.x + marginX,
+    top: point.y - marginY,
+    bottom: point.y + marginY,
+  })) {
     if (
       point.x >= bounds.left - marginX &&
       point.x <= bounds.right + marginX &&
