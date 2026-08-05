@@ -139,6 +139,13 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { assignEdgeLanes, compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
+import {
+  clearEdgePulses,
+  drawEdgePulses,
+  edgePulseCount,
+  publishEdgePulse,
+  retractEdgePulse,
+} from "./edge-pulse";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import {
@@ -470,6 +477,170 @@ const directRouteCache = new Map<
 >();
 
 /**
+ * Spatial index over every cached route's segments.
+ *
+ * Two hot paths need "the other lines near this one": the scorer's congestion
+ * set and the hop pass. Both used to answer that by walking the ENTIRE route
+ * cache once per edge, which is O(edges²) per board render — the exact shape
+ * ARCHITECTURE.md calls a bug, and the reason a 600-edge plan spent seconds
+ * per frame in `segmentsIntersect`. A uniform grid answers the same question
+ * against the handful of segments that could possibly be in reach.
+ *
+ * Cells are big relative to a wire and small relative to the board, so a
+ * typical query touches a few cells and a long segment spans a few dozen.
+ */
+const ROUTE_SEGMENT_CELL_SIZE = 512;
+/** Guards the packed cell key against absurd coordinates. */
+const ROUTE_CELL_LIMIT = 30_000;
+
+type IndexedRouteSegment = {
+  edgeId: string;
+  routeIndex: number;
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  length: number;
+  /** Query stamp, so a segment spanning several cells is yielded once. */
+  seen: number;
+};
+
+const routeSegmentGrid = new Map<number, IndexedRouteSegment[]>();
+/** Which cells each edge currently occupies, so removal stays O(cells). */
+const routeSegmentCellsByEdge = new Map<string, number[]>();
+let routeSegmentQueryStamp = 0;
+
+function routeCellKey(cellX: number, cellY: number) {
+  const x = Math.max(-ROUTE_CELL_LIMIT, Math.min(ROUTE_CELL_LIMIT, cellX)) + ROUTE_CELL_LIMIT;
+  const y = Math.max(-ROUTE_CELL_LIMIT, Math.min(ROUTE_CELL_LIMIT, cellY)) + ROUTE_CELL_LIMIT;
+  return x * (ROUTE_CELL_LIMIT * 2 + 1) + y;
+}
+
+function unindexRouteSegments(edgeId: string) {
+  const cells = routeSegmentCellsByEdge.get(edgeId);
+  if (!cells) {
+    return;
+  }
+  for (const cell of cells) {
+    const bucket = routeSegmentGrid.get(cell);
+    if (!bucket) {
+      continue;
+    }
+    const kept = bucket.filter((segment) => segment.edgeId !== edgeId);
+    if (kept.length === 0) {
+      routeSegmentGrid.delete(cell);
+    } else {
+      routeSegmentGrid.set(cell, kept);
+    }
+  }
+  routeSegmentCellsByEdge.delete(edgeId);
+}
+
+function indexRouteSegments(
+  edgeId: string,
+  routeIndex: number,
+  segments: ReturnType<typeof getPolylineSegments>,
+) {
+  unindexRouteSegments(edgeId);
+  if (segments.length === 0) {
+    return;
+  }
+
+  const cells = new Set<number>();
+  for (const segment of segments) {
+    const indexed: IndexedRouteSegment = {
+      edgeId,
+      routeIndex,
+      start: segment.start,
+      end: segment.end,
+      length: segment.length,
+      seen: 0,
+    };
+    const minCellX = Math.floor(Math.min(segment.start.x, segment.end.x) / ROUTE_SEGMENT_CELL_SIZE);
+    const maxCellX = Math.floor(Math.max(segment.start.x, segment.end.x) / ROUTE_SEGMENT_CELL_SIZE);
+    const minCellY = Math.floor(Math.min(segment.start.y, segment.end.y) / ROUTE_SEGMENT_CELL_SIZE);
+    const maxCellY = Math.floor(Math.max(segment.start.y, segment.end.y) / ROUTE_SEGMENT_CELL_SIZE);
+    for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+      for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+        const cell = routeCellKey(cellX, cellY);
+        cells.add(cell);
+        const bucket = routeSegmentGrid.get(cell);
+        if (bucket) {
+          bucket.push(indexed);
+        } else {
+          routeSegmentGrid.set(cell, [indexed]);
+        }
+      }
+    }
+  }
+  routeSegmentCellsByEdge.set(edgeId, [...cells]);
+}
+
+/** Every indexed segment whose cell overlaps the rect, each yielded once. */
+function queryRouteSegments(rect: {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}): IndexedRouteSegment[] {
+  if (
+    !Number.isFinite(rect.left) ||
+    !Number.isFinite(rect.right) ||
+    !Number.isFinite(rect.top) ||
+    !Number.isFinite(rect.bottom)
+  ) {
+    return [];
+  }
+
+  routeSegmentQueryStamp += 1;
+  const stamp = routeSegmentQueryStamp;
+  const found: IndexedRouteSegment[] = [];
+  const minCellX = Math.floor(rect.left / ROUTE_SEGMENT_CELL_SIZE);
+  const maxCellX = Math.floor(rect.right / ROUTE_SEGMENT_CELL_SIZE);
+  const minCellY = Math.floor(rect.top / ROUTE_SEGMENT_CELL_SIZE);
+  const maxCellY = Math.floor(rect.bottom / ROUTE_SEGMENT_CELL_SIZE);
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+      const bucket = routeSegmentGrid.get(routeCellKey(cellX, cellY));
+      if (!bucket) {
+        continue;
+      }
+      for (const segment of bucket) {
+        if (segment.seen === stamp) {
+          continue;
+        }
+        segment.seen = stamp;
+        found.push(segment);
+      }
+    }
+  }
+  return found;
+}
+
+/** The single door into the route cache, so the index can never drift from it. */
+function setDirectRoute(
+  edgeId: string,
+  entry: {
+    signature: string;
+    routeIndex: number;
+    route: RoutedEdgePath;
+    segments: ReturnType<typeof getPolylineSegments>;
+  },
+) {
+  directRouteCache.set(edgeId, entry);
+  indexRouteSegments(edgeId, entry.routeIndex, entry.segments);
+}
+
+function deleteDirectRoute(edgeId: string) {
+  directRouteCache.delete(edgeId);
+  unindexRouteSegments(edgeId);
+}
+
+function clearDirectRoutes() {
+  directRouteCache.clear();
+  routeSegmentGrid.clear();
+  routeSegmentCellsByEdge.clear();
+}
+
+/**
  * A hidden single-target bundle member draws nothing — the primary draws the
  * whole bundle. Routing it anyway cached an invisible standalone route that
  * other edges hopped over (phantom humps) and steered around (phantom walls);
@@ -479,7 +650,7 @@ function getHiddenBundleMemberRoute(
   edgeId: string,
   source: { x: number; y: number },
 ): RoutedEdgePath {
-  directRouteCache.delete(edgeId);
+  deleteDirectRoute(edgeId);
   return { path: "", labelX: source.x, labelY: source.y, points: [] };
 }
 // Measured geometry is stored in FLOW coordinates, which are invariant under pan
@@ -549,9 +720,9 @@ function pruneNodeDataCaches(
 
   // A deleted edge's cached route otherwise lives on as a ghost: hop
   // rendering bumps over it and nearness scoring steers around it.
-  for (const id of directRouteCache.keys()) {
+  for (const id of [...directRouteCache.keys()]) {
     if (!edgeIds.has(id)) {
-      directRouteCache.delete(id);
+      deleteDirectRoute(id);
     }
   }
 
@@ -848,6 +1019,15 @@ export function FactoryFlow() {
     });
   }, [nodesFromProject]);
 
+  // Switching pulse mode off has to empty the canvas registry: the edges stay
+  // mounted and simply stop publishing, so without this the last frame's
+  // dashes would march on forever.
+  useEffect(() => {
+    if (!linePulseMode) {
+      clearEdgePulses();
+    }
+  }, [linePulseMode]);
+
   useEffect(() => {
     pruneNodeDataCaches(
       new Set(project.nodes.map((node) => node.id)),
@@ -909,7 +1089,7 @@ export function FactoryFlow() {
       // Hop size follows the stroke widths now (see hopRadiusFor), and those
       // are republished on every pass — the routes just have to be rebuilt so
       // the new bumps are drawn.
-      directRouteCache.clear();
+      clearDirectRoutes();
     }
     const geometryById = new Map<string, { x: number; y: number; width: number; height: number }>();
     for (const node of flowNodesRef.current) {
@@ -1140,9 +1320,9 @@ export function FactoryFlow() {
     // after render): edges rendered this pass must not hop over or steer
     // around routes of edges that were just deleted.
     const liveEdgeIds = new Set(project.edges.map((edge) => edge.id));
-    for (const id of directRouteCache.keys()) {
+    for (const id of [...directRouteCache.keys()]) {
       if (!liveEdgeIds.has(id)) {
-        directRouteCache.delete(id);
+        deleteDirectRoute(id);
       }
     }
 
@@ -2303,6 +2483,13 @@ export function FactoryFlow() {
         snapToGrid={boardView.snapToGrid}
         snapGrid={BOARD_GRID_SNAP}
       >
+        {linePulseMode ? (
+          // One above the edge LAYER, whatever depth that layer is currently
+          // at (globals.css flips it wholesale: 10 under the cards in
+          // thickness mode, 80 over them otherwise, 2000 while dragging).
+          // That is exactly where the per-edge animated path used to sit.
+          <EdgePulseCanvas zIndex={isNodeDragging ? 2001 : lineThicknessMode ? 11 : 81} />
+        ) : null}
         {boardView.canvasPattern === "none" ? null : (
           <Background
             variant={CANVAS_PATTERN_VARIANT[boardView.canvasPattern]}
@@ -2447,6 +2634,124 @@ const SourceToolbar = memo(function SourceToolbar() {
         ))}
       </div>
     </div>
+  );
+});
+
+/**
+ * The board's marching dashes, on one canvas.
+ *
+ * Sits inside the viewport (so it shares the edge layer's stacking context)
+ * but counter-scales itself back to screen resolution, so the dashes are drawn
+ * at device pixels at every zoom instead of being a bitmap the browser
+ * stretches. The canvas covers exactly the visible rectangle, so its cost is
+ * a function of the window, not of the plan: a 10,000-edge board draws the
+ * same number of pixels as a 10-edge one.
+ *
+ * It reads the viewport transform out of the store on each frame rather than
+ * subscribing to it — a subscription here would re-render this component on
+ * every pan frame, which is the thing the whole layer exists to avoid.
+ */
+const EdgePulseCanvas = memo(function EdgePulseCanvas({ zIndex }: { zIndex: number }) {
+  // Held in state, not a ref: ViewportPortal renders nothing on its first pass
+  // (it has to find the viewport's portal div in the store first), so a ref
+  // would still be null when the effect below ran — and the effect would never
+  // be retried, leaving a permanently blank layer.
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const flowStore = useStoreApi();
+
+  useEffect(() => {
+    if (!canvas) {
+      return;
+    }
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    let frame = 0;
+    let backingWidth = 0;
+    let backingHeight = 0;
+    // The pane is what the canvas has to cover. Measured from the DOM rather
+    // than read from the store's width/height, which are only populated once
+    // React Flow's own observer has fired and would leave the layer blank
+    // until then.
+    const pane =
+      canvas.closest<HTMLElement>(".react-flow") ??
+      (typeof document !== "undefined"
+        ? document.querySelector<HTMLElement>(".react-flow")
+        : null);
+    let width = pane?.clientWidth ?? 0;
+    let height = pane?.clientHeight ?? 0;
+    const observer =
+      pane && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            width = pane.clientWidth;
+            height = pane.clientHeight;
+          })
+        : undefined;
+    observer?.observe(pane!);
+
+    const draw = (timeMs: number) => {
+      frame = window.requestAnimationFrame(draw);
+      const [translateX, translateY, zoom] = flowStore.getState().transform;
+      if (width <= 0 || height <= 0 || zoom <= 0) {
+        return;
+      }
+
+      const ratio = window.devicePixelRatio || 1;
+      const nextBackingWidth = Math.round(width * ratio);
+      const nextBackingHeight = Math.round(height * ratio);
+      if (backingWidth !== nextBackingWidth || backingHeight !== nextBackingHeight) {
+        backingWidth = nextBackingWidth;
+        backingHeight = nextBackingHeight;
+        canvas.width = nextBackingWidth;
+        canvas.height = nextBackingHeight;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+      }
+
+      // Park the canvas over the visible rectangle in FLOW space and undo the
+      // viewport's zoom, so what lands on screen is a 1:1 pixel surface.
+      const flowLeft = -translateX / zoom;
+      const flowTop = -translateY / zoom;
+      canvas.style.transform = `translate(${flowLeft}px, ${flowTop}px) scale(${1 / zoom})`;
+
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      if (edgePulseCount() === 0) {
+        return;
+      }
+
+      // From here the context speaks flow coordinates, exactly like the SVG.
+      context.translate(translateX, translateY);
+      context.scale(zoom, zoom);
+      drawEdgePulses(
+        context,
+        {
+          left: flowLeft,
+          top: flowTop,
+          right: flowLeft + width / zoom,
+          bottom: flowTop + height / zoom,
+        },
+        timeMs / 1000,
+      );
+    };
+
+    frame = window.requestAnimationFrame(draw);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [canvas, flowStore]);
+
+  return (
+    <ViewportPortal>
+      <canvas
+        ref={setCanvas}
+        className="pointer-events-none absolute left-0 top-0"
+        style={{ transformOrigin: "0 0", zIndex }}
+      />
+    </ViewportPortal>
   );
 });
 
@@ -2959,7 +3264,6 @@ function ResourceEdgeComponent({
   // leaking into a reading that is supposed to be about flow alone.
   const pulseVelocity = PULSE_MIN_VELOCITY +
     (flowRate?.heat ?? 0) * (PULSE_MAX_VELOCITY - PULSE_MIN_VELOCITY);
-  const pulseDuration = ((pulseDash + pulseGap) / pulseVelocity).toFixed(3);
   const isGlobalView = hasEdgeDetail(detailLevel, EDGE_DETAIL_GLOBAL);
   // Lit when a hovered port or label pulls this line into its flow scope.
   // Boolean selector: only involved edges re-render on hover changes.
@@ -3130,6 +3434,45 @@ function ResourceEdgeComponent({
     : trimPolylineEnds(routedEdge.points, 26);
   const hoverPathD = hoverTrimmedPoints ? pointsToSvgPath(hoverTrimmedPoints) : undefined;
 
+  // Hand this line's dashes to the board's pulse canvas (see edge-pulse.ts).
+  // Published after commit rather than during render because it is a
+  // side-effecting registration, and dropped on unmount so a culled or deleted
+  // edge cannot leave a ghost marching across the board.
+  const pulseActive = flowRate?.pulse === true && !isHiddenBundleMember && Boolean(routedEdge.path);
+  useEffect(() => {
+    if (!pulseActive) {
+      retractEdgePulse(id);
+      return;
+    }
+
+    let left = Infinity;
+    let right = -Infinity;
+    let top = Infinity;
+    let bottom = -Infinity;
+    for (const point of routedEdge.points) {
+      if (point.x < left) left = point.x;
+      if (point.x > right) right = point.x;
+      if (point.y < top) top = point.y;
+      if (point.y > bottom) bottom = point.y;
+    }
+    // Hops bulge off the polyline; the cull box has to cover them or a line
+    // would wink out a fraction early at the edge of the screen.
+    const margin = EDGE_HOP_MAX_RADIUS + pulseStroke;
+    publishEdgePulse(id, {
+      path: routedEdge.path,
+      // Same numbers the SVG overlay used, so the marks are unchanged.
+      width: Math.max(2, pulseStroke * 0.38),
+      dash: pulseDash,
+      gap: pulseGap,
+      velocity: pulseVelocity,
+      left: left - margin,
+      right: right + margin,
+      top: top - margin,
+      bottom: bottom + margin,
+    });
+  });
+  useEffect(() => () => retractEdgePulse(id), [id]);
+
 
   const stopLabelDrag = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -3197,32 +3540,11 @@ function ResourceEdgeComponent({
               pointerEvents: "none",
             }}
           />
-          {flowRate?.pulse ? (
-            // Which way it moves. Dashes march from source to target along the
-            // route's own direction, faster on the busier lines. The dash and
-            // gap scale with the line so they stay readable whether the stroke
-            // is 3px or 34px, and the offset animates by exactly one dash+gap
-            // period so the loop is seamless.
-            //
-            // The whole animation is declared inline as the `animation`
-            // shorthand rather than as class longhands plus an inline
-            // duration: one property, nothing to compose, nothing to be
-            // overridden by a stale stylesheet chunk.
-            <path
-              d={routedEdge.path}
-              fill="none"
-              stroke="rgba(255,255,255,0.92)"
-              strokeWidth={Math.max(2, pulseStroke * 0.38)}
-              strokeDasharray={`${pulseDash} ${pulseGap}`}
-              strokeLinecap="butt"
-              pointerEvents="none"
-              style={{
-                animation: `flow-rate-march ${pulseDuration}s linear infinite`,
-                // The keyframe travels one period; this is that period.
-                ["--flow-march-period" as string]: `${pulseDash + pulseGap}px`,
-              }}
-            />
-          ) : null}
+          {/* Which way it moves. Dashes march from source to target along the
+              route's own direction, faster on the busier lines — drawn on the
+              board's pulse canvas rather than as an animated path here. See
+              edge-pulse.ts: an animated stroke-dashoffset is a paint property,
+              so one per edge repainted the entire board every frame. */}
         </>
       ) : null}
       {!isHiddenBundleMember && showArrowHead ? (
@@ -3900,7 +4222,11 @@ function getDirectEdgePath({
   const width = strokeWidth ?? ownStrokeWidth(edgeId);
 
   return {
-    path: pointsToHoppedSvgPath(points, collectHoppedRouteSegments(edgeId, routeIndex), width),
+    path: pointsToHoppedSvgPath(
+      points,
+      collectHoppedRouteSegments(edgeId, routeIndex, points),
+      width,
+    ),
     labelX: labelPoint.x,
     labelY: labelPoint.y + labelLift,
     labelHidden,
@@ -4251,7 +4577,14 @@ function getBestDirectEdgePoints({
       bounds.bottom >= reachTop &&
       bounds.top <= reachBottom,
   );
-  const obstacleSegments = getIndexedRouteObstacleSegments(edgeId, routeIndex, routeSignature).filter(
+  // The grid answers by cell, which is coarser than the envelope, so the exact
+  // reach test still runs — over a handful of candidates instead of the board.
+  const obstacleSegments = getIndexedRouteObstacleSegments(edgeId, routeIndex, routeSignature, {
+    left: reachLeft,
+    right: reachRight,
+    top: reachTop,
+    bottom: reachBottom,
+  }).filter(
     (segment) =>
       Math.max(segment.start.x, segment.end.x) >= reachLeft &&
       Math.min(segment.start.x, segment.end.x) <= reachRight &&
@@ -4335,7 +4668,7 @@ function getBestDirectEdgePoints({
 
   if (edgeId && routeIndex !== undefined) {
     const route = buildRoutedEdgePath(optimizedRoute);
-    directRouteCache.set(edgeId, {
+    setDirectRoute(edgeId, {
       signature: routeSignature,
       routeIndex,
       route,
@@ -4734,10 +5067,21 @@ function getRouteSideOrder(side: Position) {
   }
 }
 
+/**
+ * Already-routed lines this edge has to steer around, limited to the ones
+ * inside its own reach envelope.
+ *
+ * The reach filter is not an approximation: the scorer only ever charges for a
+ * segment it can come within `publishedEdgeLinkClearance` of, and the caller
+ * pads the envelope by exactly that. Segments outside it scored zero anyway —
+ * they were just being visited to find that out, once per edge, for every edge
+ * on the board.
+ */
 function getIndexedRouteObstacleSegments(
   edgeId: string | undefined,
   routeIndex: number | undefined,
   routeSignature: string,
+  reach: { left: number; right: number; top: number; bottom: number },
 ) {
   if (routeIndex === undefined) {
     return [];
@@ -4750,41 +5094,40 @@ function getIndexedRouteObstacleSegments(
     length: number;
   }> = [];
 
-  for (const [cachedEdgeId, cachedRoute] of directRouteCache) {
-    if (cachedEdgeId === edgeId || cachedRoute.routeIndex >= routeIndex) {
+  for (const segment of queryRouteSegments(reach)) {
+    if (segment.edgeId === edgeId || segment.routeIndex >= routeIndex) {
       continue;
     }
-
-    segments.push(
-      ...cachedRoute.segments.map((segment) => ({
-        ...segment,
-        edgeId: cachedEdgeId,
-      })),
-    );
+    segments.push({
+      edgeId: segment.edgeId,
+      start: segment.start,
+      end: segment.end,
+      length: segment.length,
+    });
   }
 
-  pruneStaleDirectRoutes(edgeId, routeSignature, routeIndex);
+  pruneStaleDirectRoutes(edgeId, routeSignature);
   return segments;
 }
 
-function pruneStaleDirectRoutes(
-  edgeId: string | undefined,
-  routeSignature: string,
-  routeIndex: number,
-) {
+/**
+ * Drops this edge's own entry when its inputs moved.
+ *
+ * This used to ALSO evict every cached route with a routeIndex 128 or more
+ * above the one being routed. On a plan with more than ~128 edges that turned
+ * every render into a rolling wipe of most of the cache: edge 0 rendering
+ * threw away the routes of edges 128 and up, which then re-solved from
+ * scratch, which is why route scoring showed up in pan and zoom profiles at
+ * all. Staleness is already tracked exactly, per edge, by the signature.
+ */
+function pruneStaleDirectRoutes(edgeId: string | undefined, routeSignature: string) {
   if (!edgeId) {
     return;
   }
 
   const cachedRoute = directRouteCache.get(edgeId);
   if (cachedRoute && cachedRoute.signature !== routeSignature) {
-    directRouteCache.delete(edgeId);
-  }
-
-  for (const [cachedEdgeId, cachedRouteEntry] of directRouteCache) {
-    if (cachedRouteEntry.routeIndex >= routeIndex + 128) {
-      directRouteCache.delete(cachedEdgeId);
-    }
+    deleteDirectRoute(edgeId);
   }
 }
 
@@ -5432,7 +5775,7 @@ function getBundledEdgePath({
     `M ${busX},${minY} L ${busX},${maxY}`,
     pointsToHoppedSvgPath(
       trunkPoints,
-      collectHoppedRouteSegments(edgeId, routeIndex),
+      collectHoppedRouteSegments(edgeId, routeIndex, trunkPoints),
       ownStrokeWidth(edgeId),
     ),
   ].join(" ");
@@ -5562,7 +5905,7 @@ function getBundledMemberEdgePath({
   };
   const path = pointsToHoppedSvgPath(
       points,
-      collectHoppedRouteSegments(edgeId, routeIndex),
+      collectHoppedRouteSegments(edgeId, routeIndex, points),
       ownStrokeWidth(edgeId),
     );
   const [estimatedPath, estimatedLabelX, estimatedLabelY] = getSmoothStepPath({
@@ -5765,10 +6108,30 @@ function ownStrokeWidth(edgeId: string | undefined): number {
  * Reads the same cache the relaxation loop uses, with the same staleness
  * class: a neighbour's reroute refreshes this edge on the next epoch.
  */
-function collectHoppedRouteSegments(edgeId: string | undefined, routeIndex: number | undefined) {
-  if (routeIndex === undefined) {
+function collectHoppedRouteSegments(
+  edgeId: string | undefined,
+  routeIndex: number | undefined,
+  points: Array<{ x: number; y: number }>,
+) {
+  if (routeIndex === undefined || points.length < 2) {
     return [];
   }
+
+  // Only a line that runs through this route's own bounding box can cross it,
+  // so the hop pass asks the segment index for that box rather than walking
+  // every cached route on the board. The margin covers the tallest bump a hop
+  // can be, which is the only way a segment just outside the box can matter.
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const point of points) {
+    if (point.x < left) left = point.x;
+    if (point.x > right) right = point.x;
+    if (point.y < top) top = point.y;
+    if (point.y > bottom) bottom = point.y;
+  }
+  const margin = EDGE_HOP_MAX_RADIUS + 2;
 
   // Compared through the PUBLISHED widths on both sides, never the render
   // width: the render width picks up a highlight bump, and a comparison where
@@ -5780,11 +6143,16 @@ function collectHoppedRouteSegments(edgeId: string | undefined, routeIndex: numb
     end: { x: number; y: number };
     width: number;
   }> = [];
-  for (const [otherId, entry] of directRouteCache) {
+  for (const entry of queryRouteSegments({
+    left: left - margin,
+    right: right + margin,
+    top: top - margin,
+    bottom: bottom + margin,
+  })) {
     if (
-      otherId === edgeId ||
+      entry.edgeId === edgeId ||
       compareEdgeDepth(own, {
-        width: ownStrokeWidth(otherId),
+        width: ownStrokeWidth(entry.edgeId),
         routeIndex: entry.routeIndex,
       }) <= 0
     ) {
@@ -5792,13 +6160,11 @@ function collectHoppedRouteSegments(edgeId: string | undefined, routeIndex: numb
     }
     // Carry the crossed line's thickness along with its geometry: the hop is
     // sized from it, not from a constant.
-    const width = publishedEdgeStrokeWidths.get(otherId) ?? DEFAULT_EDGE_STROKE_WIDTH;
-    for (const segment of entry.segments) {
-      segments.push({ ...segment, width });
-    }
-    if (segments.length > 600) {
-      break;
-    }
+    segments.push({
+      start: entry.start,
+      end: entry.end,
+      width: publishedEdgeStrokeWidths.get(entry.edgeId) ?? DEFAULT_EDGE_STROKE_WIDTH,
+    });
   }
   return segments;
 }
