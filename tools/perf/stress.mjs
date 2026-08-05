@@ -28,6 +28,8 @@ const HEADED = args.get("headed") === "1";
 const ZOOM = args.get("zoom") ? Number(args.get("zoom")) : undefined;
 const OUT_JSON = args.get("out");
 const ONLY = args.get("only");
+const TRACE = args.get("trace");
+const PROFILE_SETTLE = args.get("profileSettle") === "1";
 const BOARD_VIEW = args.get("boardView") ? JSON.parse(args.get("boardView")) : undefined;
 
 const project = JSON.parse(readFileSync(PLAN_PATH, "utf8"));
@@ -88,10 +90,65 @@ if (BOARD_VIEW) {
   }, BOARD_VIEW);
 }
 
+// Opening a big plan is itself a thing users wait through, so time it: from
+// reload to the first node on screen, then second-by-second frame rates while
+// the dataset resolves, the solver runs and the first routing pass lands.
+const settleCdp = await context.newCDPSession(page);
+if (PROFILE_SETTLE) {
+  await settleCdp.send("Profiler.enable");
+  await settleCdp.send("Profiler.setSamplingInterval", { interval: 200 });
+  await settleCdp.send("Profiler.start");
+}
+const reloadStart = Date.now();
 await page.reload({ waitUntil: "domcontentloaded" });
+await page.evaluate(() => {
+  window.__settle = [];
+  const tick = (time) => {
+    window.__settle.push(time);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+});
 await page.waitForSelector(".react-flow__node", { timeout: 120_000 });
-// Settle: dataset resolve, solver, first routing pass.
-await page.waitForTimeout(12_000);
+const firstNodeMs = Date.now() - reloadStart;
+await page.waitForTimeout(14_000);
+const settleBuckets = await page.evaluate(() => {
+  const frames = window.__settle ?? [];
+  window.__settle = [];
+  if (frames.length < 2) return [];
+  const start = frames[0];
+  const buckets = [];
+  for (const time of frames) {
+    const index = Math.floor((time - start) / 1000);
+    buckets[index] = (buckets[index] ?? 0) + 1;
+  }
+  return [...buckets].map((count) => count ?? 0);
+});
+console.log(
+  `[${LABEL}] first node on screen after ${firstNodeMs}ms; fps by second while settling: ${settleBuckets.join(" ")}`,
+);
+
+if (PROFILE_SETTLE) {
+  const { profile } = await settleCdp.send("Profiler.stop");
+  const byId = new Map(profile.nodes.map((node) => [node.id, node]));
+  const selfTime = new Map();
+  const total = profile.samples?.length ?? 0;
+  const interval =
+    profile.endTime && profile.startTime && total
+      ? (profile.endTime - profile.startTime) / total / 1000
+      : 0.2;
+  for (const sampleId of profile.samples ?? []) {
+    const node = byId.get(sampleId);
+    if (!node) continue;
+    const frame = node.callFrame;
+    const key = `${frame.functionName || "(anonymous)"} @ ${(frame.url || "").split("/").pop()}:${frame.lineNumber}`;
+    selfTime.set(key, (selfTime.get(key) ?? 0) + interval);
+  }
+  console.log(`\n[${LABEL}] load/settle self-time:`);
+  for (const [name, ms] of [...selfTime.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)) {
+    console.log(`  ${String(ms.toFixed(0)).padStart(8)}ms  ${name}`);
+  }
+}
 
 const counts = await page.evaluate(() => ({
   nodes: document.querySelectorAll(".react-flow__node").length,
@@ -229,10 +286,83 @@ const scenarios = [
   ["hover", hover],
   ["drag-node", dragNode],
 ];
+const traceEvents = [];
+if (TRACE) {
+  cdp.on("Tracing.dataCollected", ({ value }) => traceEvents.push(...value));
+}
+
 const results = [];
 for (const [name, action] of scenarios) {
   if (ONLY && name !== ONLY) continue;
+  if (TRACE === name) {
+    await cdp.send("Tracing.start", {
+      traceConfig: {
+        includedCategories: [
+          "devtools.timeline",
+          "disabled-by-default-devtools.timeline",
+          "disabled-by-default-devtools.timeline.frame",
+        ],
+      },
+      transferMode: "ReportEvents",
+    });
+  }
   results.push(await measure(name, action));
+  if (TRACE === name) {
+    const finished = new Promise((resolve) => cdp.once("Tracing.tracingComplete", resolve));
+    await cdp.send("Tracing.end");
+    await finished;
+  }
+}
+
+if (TRACE && traceEvents.length) {
+  const byName = new Map();
+  for (const event of traceEvents) {
+    if (event.ph !== "X" || !event.dur) continue;
+    const entry = byName.get(event.name) ?? { totalUs: 0, count: 0, maxUs: 0 };
+    entry.totalUs += event.dur;
+    entry.count += 1;
+    entry.maxUs = Math.max(entry.maxUs, event.dur);
+    byName.set(event.name, entry);
+  }
+  console.log(`\ntrace of "${TRACE}", busiest events:`);
+  for (const [name, entry] of [...byName.entries()].sort((a, b) => b[1].totalUs - a[1].totalUs).slice(0, 16)) {
+    console.log(
+      `  ${String((entry.totalUs / 1000).toFixed(1)).padStart(9)}ms  x${String(entry.count).padStart(6)}  max=${String((entry.maxUs / 1000).toFixed(1)).padStart(8)}ms  ${name}`,
+    );
+  }
+  // The long tasks are what the user actually feels; show what was inside them.
+  const longTasks = traceEvents
+    .filter((event) => event.name === "RunTask" && event.dur > 40_000)
+    .sort((a, b) => b.dur - a.dur)
+    .slice(0, 6);
+  console.log(`\nlongest main-thread tasks (${longTasks.length} over 40ms):`);
+  for (const task of longTasks) {
+    const inside = traceEvents.filter(
+      (event) =>
+        event.ph === "X" &&
+        event.dur &&
+        event.ts >= task.ts &&
+        event.ts + event.dur <= task.ts + task.dur &&
+        event !== task,
+    );
+    const rollup = new Map();
+    for (const event of inside) {
+      const label =
+        event.name === "FunctionCall"
+          ? `FunctionCall ${event.args?.data?.functionName || "(anon)"}`
+          : event.name;
+      const entry = rollup.get(label) ?? { totalUs: 0, count: 0 };
+      entry.totalUs += event.dur;
+      entry.count += 1;
+      rollup.set(label, entry);
+    }
+    const top = [...rollup.entries()]
+      .sort((a, b) => b[1].totalUs - a[1].totalUs)
+      .slice(0, 5)
+      .map(([label, entry]) => `${label} ${(entry.totalUs / 1000).toFixed(0)}ms x${entry.count}`)
+      .join(", ");
+    console.log(`  ${(task.dur / 1000).toFixed(1)}ms :: ${top}`);
+  }
 }
 
 let topFunctions = [];

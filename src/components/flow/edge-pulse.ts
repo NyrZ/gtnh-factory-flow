@@ -109,10 +109,88 @@ export function retractEdgePulse(edgeId: string) {
 
 export function clearEdgePulses() {
   pulses.clear();
+  labelBoxes.clear();
 }
 
 export function edgePulseCount() {
   return pulses.size;
+}
+
+/**
+ * Where each edge's rate chip sits, in flow units.
+ *
+ * The canvas has to sit at the very TOP of the paint order — anything drawn
+ * above a composited layer has to be composited too, and letting 300 nodes and
+ * 600 labels each become their own layer cost ~140ms of Layerize per frame. So
+ * instead of relying on stacking to keep the dashes underneath the chips and
+ * the cards, the canvas punches those rectangles back out after drawing. The
+ * result on screen is the same; the layer tree stays at a handful.
+ */
+export interface EdgeLabelBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+const labelBoxes = new Map<string, EdgeLabelBox>();
+
+export function publishEdgeLabelBox(edgeId: string, box: EdgeLabelBox) {
+  const existing = labelBoxes.get(edgeId);
+  if (
+    existing &&
+    existing.left === box.left &&
+    existing.top === box.top &&
+    existing.width === box.width &&
+    existing.height === box.height
+  ) {
+    return;
+  }
+  labelBoxes.set(edgeId, box);
+}
+
+export function retractEdgeLabelBox(edgeId: string) {
+  labelBoxes.delete(edgeId);
+}
+
+/**
+ * Clears the rectangles the dashes must not show through: the rate chips
+ * always, and the machine cards whenever the edge layer is running beneath
+ * them (thickness mode, where fat pipes deliberately dive under the cards).
+ */
+export function eraseEdgePulseOcclusion(
+  context: CanvasRenderingContext2D,
+  visible: { left: number; right: number; top: number; bottom: number },
+  cardRects: Array<{ left: number; top: number; right: number; bottom: number }>,
+) {
+  const previousOperation = context.globalCompositeOperation;
+  context.globalCompositeOperation = "destination-out";
+
+  for (const rect of cardRects) {
+    if (
+      rect.right < visible.left ||
+      rect.left > visible.right ||
+      rect.bottom < visible.top ||
+      rect.top > visible.bottom
+    ) {
+      continue;
+    }
+    context.fillRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+  }
+
+  for (const box of labelBoxes.values()) {
+    if (
+      box.left + box.width < visible.left ||
+      box.left > visible.right ||
+      box.top + box.height < visible.top ||
+      box.top > visible.bottom
+    ) {
+      continue;
+    }
+    context.fillRect(box.left, box.top, box.width, box.height);
+  }
+
+  context.globalCompositeOperation = previousOperation;
 }
 
 /** Colour and cap match the SVG overlay this replaces, exactly. */
