@@ -31,10 +31,17 @@ export const NODE_DETAIL_GLANCE = 1;
 
 export type NodeDetailLevel = typeof NODE_DETAIL_FULL | typeof NODE_DETAIL_GLANCE;
 
-/** Below this a node drops to its glance figure. */
-export const NODE_GLANCE_ENTER_ZOOM = 0.55;
+/**
+ * Below this a node drops to its glance figure.
+ *
+ * Set where a card genuinely stops being readable rather than where it starts
+ * getting small — at 0.55 the step fired while cards were still legible, which
+ * reads as the board deciding for you. Anything below ~0.4 is a map, not a
+ * document.
+ */
+export const NODE_GLANCE_ENTER_ZOOM = 0.4;
 /** And above this it comes back. The gap is the anti-flicker dead zone. */
-export const NODE_GLANCE_LEAVE_ZOOM = 0.62;
+export const NODE_GLANCE_LEAVE_ZOOM = 0.47;
 
 /**
  * The level for this zoom, given the level currently in force.

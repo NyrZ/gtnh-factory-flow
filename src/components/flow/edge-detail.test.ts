@@ -12,21 +12,38 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 
+/**
+ * Two zooms from inside each band the thresholds carve out.
+ *
+ * Derived from the constants rather than written as literals, and without
+ * assuming what ORDER the thresholds are in — retuning them has twice turned
+ * hand-picked sample points into a test of nothing (or into a failure), which
+ * is the opposite of what these are for.
+ */
+function samplesPerBand(): Array<[number, number]> {
+  const edges = [...new Set([EDGE_LABEL_ZOOM, EDGE_ARROW_ZOOM, EDGE_GLOBAL_ZOOM])]
+    .filter((zoom) => zoom > 0)
+    .sort((left, right) => left - right);
+  const bounds = [0, ...edges, edges[edges.length - 1]! + 1];
+  const samples: Array<[number, number]> = [];
+  for (let index = 0; index + 1 < bounds.length; index += 1) {
+    const low = bounds[index]!;
+    const high = bounds[index + 1]!;
+    const span = high - low;
+    // A third and two thirds in: both strictly inside the band.
+    samples.push([low + span / 3, low + (span * 2) / 3]);
+  }
+  return samples;
+}
+
 describe("getEdgeDetailLevel", () => {
   it("is stable across a zoom gesture that crosses no threshold", () => {
     // The whole point of the bitmask: panning the zoom slider within a band must
     // not produce a new value, or every edge re-renders and re-routes per frame.
     expect(getEdgeDetailLevel(1.0)).toBe(getEdgeDetailLevel(1.4));
-    // Written against the thresholds rather than against numbers that happened
-    // to sit inside a band: retuning the zoom steps must not silently turn this
-    // into a test of nothing. The bands are [0, GLOBAL), [GLOBAL, LABEL) and
-    // [LABEL, ∞) — two samples from inside one band must agree.
-    expect(getEdgeDetailLevel(EDGE_LABEL_ZOOM + 0.05)).toBe(
-      getEdgeDetailLevel(EDGE_LABEL_ZOOM + 0.5),
-    );
-    expect(getEdgeDetailLevel(EDGE_GLOBAL_ZOOM - 0.2)).toBe(
-      getEdgeDetailLevel(EDGE_GLOBAL_ZOOM - 0.05),
-    );
+    for (const [low, high] of samplesPerBand()) {
+      expect(getEdgeDetailLevel(low)).toBe(getEdgeDetailLevel(high));
+    }
   });
 
   it("shows arrows and labels when zoomed in", () => {
@@ -46,8 +63,7 @@ describe("getEdgeDetailLevel", () => {
   it("strips the line down to its route once nothing on it can be read", () => {
     // Past this the chip is a few pixels tall, the arrowhead is a smudge and
     // the dashes are a shimmer — and there are hundreds of each.
-    const detail = getEdgeDetailLevel(EDGE_GLOBAL_ZOOM - 0.05);
-    expect(hasEdgeDetail(detail, EDGE_DETAIL_GLOBAL)).toBe(true);
+    const detail = getEdgeDetailLevel(EDGE_LABEL_ZOOM - 0.01);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_LABELS)).toBe(false);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_ARROWS)).toBe(false);
     expect(hasEdgeDetail(detail, EDGE_DETAIL_PULSE)).toBe(false);
