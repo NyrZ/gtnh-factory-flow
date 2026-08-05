@@ -143,8 +143,21 @@ export function hopInk(depth: number, maxDepth: number): string {
  * Nodes are discovered from the edge list rather than from the node list: a
  * node with no wires at all can only ever be unreachable, and never appearing
  * in the map is the same answer as appearing at distance -1.
+ *
+ * `passThrough` — the drawers, tanks and buffers — are the exception to one hop
+ * per wire. A machine feeding a drawer that feeds another machine is one step
+ * away from it in the only sense a player cares about; the drawer is where the
+ * items wait, not somewhere the chain goes. So going IN to a buffer costs a
+ * hop and coming back out is free, which makes the round trip through it count
+ * as one, and puts the buffer itself at the same distance as what it feeds.
+ * Leaving the hub is never free, even when the hub is a buffer — hovering a
+ * drawer has to put its neighbours at 1, not at 0.
  */
-export function computeHopDepths(hubId: string, edges: readonly FactoryEdge[]): Map<string, number> {
+export function computeHopDepths(
+  hubId: string,
+  edges: readonly FactoryEdge[],
+  passThrough?: ReadonlySet<string>,
+): Map<string, number> {
   const neighbours = new Map<string, string[]>();
   const link = (from: string, to: string) => {
     const existing = neighbours.get(from);
@@ -166,6 +179,27 @@ export function computeHopDepths(hubId: string, edges: readonly FactoryEdge[]): 
   let frontier = [hubId];
   let depth = 0;
   while (frontier.length > 0) {
+    // Free first: anything reachable out of a buffer already in the frontier
+    // joins it at the SAME distance, and can in turn leak through a buffer of
+    // its own. Only then does the frontier take a real step.
+    if (passThrough?.size) {
+      const leaking = [...frontier];
+      while (leaking.length > 0) {
+        const id = leaking.pop()!;
+        if (id === hubId || !passThrough.has(id)) {
+          continue;
+        }
+        for (const neighbour of neighbours.get(id) ?? []) {
+          if (depths.has(neighbour)) {
+            continue;
+          }
+          depths.set(neighbour, depth);
+          frontier.push(neighbour);
+          leaking.push(neighbour);
+        }
+      }
+    }
+
     depth += 1;
     const next: string[] = [];
     for (const id of frontier) {
@@ -293,11 +327,15 @@ function publish() {
   }
 }
 
-export function setHopMapHub(hubId: string, edges: readonly FactoryEdge[]) {
+export function setHopMapHub(
+  hubId: string,
+  edges: readonly FactoryEdge[],
+  passThrough?: ReadonlySet<string>,
+) {
   if (hopMap?.hubId === hubId) {
     return;
   }
-  const depthById = computeHopDepths(hubId, edges);
+  const depthById = computeHopDepths(hubId, edges, passThrough);
   let maxDepth = 0;
   for (const depth of depthById.values()) {
     if (depth > maxDepth) {

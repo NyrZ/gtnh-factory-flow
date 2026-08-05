@@ -22,6 +22,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: [
       "Zoomed out, resting on any machine now colours the whole board by how many wires away each other machine is from it. Its direct neighbours glow hot, and the colour fades further out along the chain.",
       "Every card shows that count while you hover, so you can tell two steps from five without squinting at colours. Anything not connected to the machine you are on goes grey and empty.",
+      "Drawers, tanks and buffers do not add distance. A machine feeding another one through a drawer counts as one step away, not two, because the drawer is where the items wait rather than somewhere the chain goes.",
       "Wires fade back while you are reading the map, and everything snaps back to normal the moment you move away, zoom in, or drag the board.",
     ],
   },

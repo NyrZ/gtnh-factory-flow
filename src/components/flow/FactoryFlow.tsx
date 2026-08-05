@@ -2972,7 +2972,10 @@ const HopMapController = memo(function HopMapController({
       timer = setTimeout(() => {
         timer = undefined;
         pendingId = undefined;
-        setHopMapHub(nodeId, useFactoryStore.getState().project.edges);
+        const { edges, storages } = useFactoryStore.getState().project;
+        // Drawers, tanks and buffers are handed over as pass-through: a machine
+        // feeding another THROUGH one of them is one step away, not two.
+        setHopMapHub(nodeId, edges, new Set((storages ?? []).map((storage) => storage.id)));
       }, HOP_MAP_SETTLE_MS);
     };
 

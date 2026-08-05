@@ -37,6 +37,51 @@ describe("computeHopDepths", () => {
     expect(depths.has("z")).toBe(false);
   });
 
+  it("counts a round trip through a buffer as one hop", () => {
+    const depths = computeHopDepths(
+      "a",
+      [edge("1", "a", "drawer"), edge("2", "drawer", "b")],
+      new Set(["drawer"]),
+    );
+    expect(depths.get("drawer")).toBe(1);
+    expect(depths.get("b")).toBe(1);
+  });
+
+  it("charges for leaving the hub even when the hub is a buffer", () => {
+    const depths = computeHopDepths(
+      "drawer",
+      [edge("1", "drawer", "a"), edge("2", "a", "b")],
+      new Set(["drawer"]),
+    );
+    expect(depths.get("a")).toBe(1);
+    expect(depths.get("b")).toBe(2);
+  });
+
+  it("does not let a buffer shortcut a longer way round", () => {
+    // b is two machines out the long way, one hop through the drawer.
+    const depths = computeHopDepths(
+      "a",
+      [edge("1", "a", "mid"), edge("2", "mid", "b"), edge("3", "a", "drawer"), edge("4", "drawer", "b")],
+      new Set(["drawer"]),
+    );
+    expect(depths.get("b")).toBe(1);
+  });
+
+  it("keeps buffers back to back from costing twice", () => {
+    const depths = computeHopDepths(
+      "a",
+      [edge("1", "a", "d1"), edge("2", "d1", "d2"), edge("3", "d2", "b")],
+      new Set(["d1", "d2"]),
+    );
+    expect(depths.get("d2")).toBe(1);
+    expect(depths.get("b")).toBe(1);
+  });
+
+  it("still counts every wire when nothing is pass-through", () => {
+    const depths = computeHopDepths("a", [edge("1", "a", "drawer"), edge("2", "drawer", "b")]);
+    expect(depths.get("b")).toBe(2);
+  });
+
   it("terminates on a cycle", () => {
     const depths = computeHopDepths("a", [
       edge("1", "a", "b"),
