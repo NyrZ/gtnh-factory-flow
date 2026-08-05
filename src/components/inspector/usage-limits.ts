@@ -40,6 +40,66 @@ interface InputAvailability {
 }
 
 /**
+ * The board-wide tables `computeInputAvailability` needs, built once.
+ *
+ * Both describe the WHOLE board and are identical no matter which node is being
+ * asked about, but they used to be rebuilt inside every call — and the call is
+ * made once per node. On a 1,200-node plan with 1,650 edges that is about two
+ * million edge visits, plus a string key allocated per edge per call, to answer
+ * a question whose inputs never changed. It was the most expensive function on
+ * the board by self-time, and it ran on every rebuild of the edge set.
+ *
+ * Cached against the identity of the two inputs it derives from. `result` is
+ * replaced wholesale by each solver run and `project` by each edit, so identity
+ * is exactly the right invalidation signal — nothing can change underneath a
+ * cached index without one of them being a different object.
+ */
+interface AvailabilityIndex {
+  /** `${sourceId}|${resourceKey}` -> total already shipped out. */
+  takenBySourceResource: Map<string, number>;
+  /** Consumer node id -> the edges arriving at it. */
+  edgesByTarget: Map<string, Array<FactoryProject["edges"][number]>>;
+}
+
+let cachedAvailabilityIndex:
+  | { project: unknown; result: unknown; index: AvailabilityIndex }
+  | undefined;
+
+function getAvailabilityIndex(
+  project: Pick<FactoryProject, "nodes" | "edges" | "storages">,
+  result: Pick<ThroughputResult, "nodes" | "edges">,
+): AvailabilityIndex {
+  if (cachedAvailabilityIndex?.project === project && cachedAvailabilityIndex.result === result) {
+    return cachedAvailabilityIndex.index;
+  }
+
+  const takenBySourceResource = new Map<string, number>();
+  const edgesByTarget = new Map<string, Array<FactoryProject["edges"][number]>>();
+  for (const edge of project.edges) {
+    const bucket = edgesByTarget.get(edge.target);
+    if (bucket) {
+      bucket.push(edge);
+    } else {
+      edgesByTarget.set(edge.target, [edge]);
+    }
+
+    const edgeResult = result.edges[edge.id];
+    if (!edgeResult) {
+      continue;
+    }
+    const takenKey = `${edge.source}|${makeResourceKey(edge.resourceKind, edge.resourceId)}`;
+    takenBySourceResource.set(
+      takenKey,
+      (takenBySourceResource.get(takenKey) ?? 0) + edgeResult.transferredPerSecond,
+    );
+  }
+
+  const index = { takenBySourceResource, edgesByTarget };
+  cachedAvailabilityIndex = { project, result, index };
+  return index;
+}
+
+/**
  * What each connected ingredient's suppliers can actually deliver. A starved
  * producer's nameplate is a promise, not a supply: `capacityNow` scales each
  * producer by its own solved utilization, plus whatever it ships elsewhere is
@@ -58,25 +118,9 @@ export function computeInputAvailability(
 
   // How much each producer already ships out per resource, across the whole
   // board, so the leftover a producer can still offer is real.
-  const takenBySourceResource = new Map<string, number>();
-  for (const edge of project.edges) {
-    const edgeResult = result.edges[edge.id];
-    if (!edgeResult) {
-      continue;
-    }
+  const { takenBySourceResource, edgesByTarget } = getAvailabilityIndex(project, result);
 
-    const takenKey = `${edge.source}|${makeResourceKey(edge.resourceKind, edge.resourceId)}`;
-    takenBySourceResource.set(
-      takenKey,
-      (takenBySourceResource.get(takenKey) ?? 0) + edgeResult.transferredPerSecond,
-    );
-  }
-
-  for (const edge of project.edges) {
-    if (edge.target !== nodeId) {
-      continue;
-    }
-
+  for (const edge of edgesByTarget.get(nodeId) ?? []) {
     const edgeResult = result.edges[edge.id];
     if (!edgeResult) {
       continue;
