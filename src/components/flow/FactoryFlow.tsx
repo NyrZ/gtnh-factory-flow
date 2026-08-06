@@ -1717,13 +1717,10 @@ export function FactoryFlow() {
         // into, so in thickness mode the pipe passes behind the card and only
         // its approach is visible. -1 keeps it above annotation boxes (-5),
         // which must stay the backmost thing on the board.
-        zIndex: isNodeDragging
-          ? 2000
-          : lineThicknessMode
-            ? -1
-            : isFlowHighlighted
-              ? 1200
-              : 20,
+        // No drag-time bump any more: wires hold still during a drag and the
+        // dragged card itself is elevated (see handleNodeDragStart), so a
+        // card in hand always passes OVER the board's wiring.
+        zIndex: lineThicknessMode ? -1 : isFlowHighlighted ? 1200 : 20,
         source: edge.source,
         target: edge.target,
         sourceHandle: canonicalSourceHandle,
@@ -1845,7 +1842,6 @@ export function FactoryFlow() {
     lineLabelsMode,
     linePulseMode,
     lineThicknessMode,
-    isNodeDragging,
     layoutVersion,
     project,
     recipeSearch,
@@ -2677,6 +2673,16 @@ export function FactoryFlow() {
     }
     draggingNodeRef.current = true;
     setNodeDragging(true);
+    // The card in hand rides above everything, wires included. Edges paint
+    // at zIndex 20 by design (their stubs must show over resting cards), so
+    // without this bump a dragged card slides UNDER the board's wiring.
+    setFlowNodes((currentNodes) =>
+      currentNodes.map((entry) =>
+        activelyDraggedNodeIds.has(entry.id)
+          ? ({ ...entry, zIndex: 2500 } as typeof entry)
+          : entry,
+      ),
+    );
   }, []);
 
   const handleNodeDragStop = useCallback(
@@ -2702,7 +2708,11 @@ export function FactoryFlow() {
       setNodeDragging(false);
       setFlowNodes((currentNodes) =>
         currentNodes.map((entry) =>
-          entry.id === node.id ? ({ ...entry, position: node.position } as typeof entry) : entry,
+          entry.id === node.id
+            ? ({ ...entry, position: node.position, zIndex: undefined } as typeof entry)
+            : entry.zIndex === 2500
+              ? ({ ...entry, zIndex: undefined } as typeof entry)
+              : entry,
         ),
       );
     },
@@ -4279,12 +4289,27 @@ function ResourceEdgeComponent({
                 waypointDragRef.current = undefined;
                 if (draftWaypoints) {
                   // On grid, always: the dot commits to the nearest corner.
-                  updateEdge(id, {
-                    waypoints: draftWaypoints.map((point) => ({
-                      x: Math.round(point.x / BOARD_GRID) * BOARD_GRID,
-                      y: Math.round(point.y / BOARD_GRID) * BOARD_GRID,
-                    })),
-                  });
+                  const snapped = draftWaypoints.map((point) => ({
+                    x: Math.round(point.x / BOARD_GRID) * BOARD_GRID,
+                    y: Math.round(point.y / BOARD_GRID) * BOARD_GRID,
+                  }));
+                  // Dots are ordered by where they sit ALONG THE STREAM, not
+                  // by when they were made: drag a dot upstream past its
+                  // sibling and the two swap, so the wire visits them in the
+                  // order you see them instead of doubling back to honour
+                  // creation order.
+                  const ordered = snapped
+                    .map((point, pointIndex) => ({
+                      point,
+                      pointIndex,
+                      position: polylineArcPositionOf(routedEdge.points, point),
+                    }))
+                    .sort(
+                      (left, right) =>
+                        left.position - right.position || left.pointIndex - right.pointIndex,
+                    )
+                    .map((entry) => entry.point);
+                  updateEdge(id, { waypoints: ordered });
                 }
                 setDraftWaypoints(undefined);
               }}
