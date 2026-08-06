@@ -344,7 +344,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
         ) : blueprints.length === 0 ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
             Nothing saved yet. Compact cards into a pocket (Ctrl+G), then hit the save button on
-            the pocket card — the whole dimension lands here under the pocket&apos;s name.
+            the pocket card. The whole dimension lands here under the pocket&apos;s name.
           </p>
         ) : filtered.length === 0 && isFiltering ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
@@ -437,7 +437,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                       onClick={() => void publish(blueprint.id, !blueprint.isPublic)}
                       title={
                         blueprint.isPublic
-                          ? "Published to the network — click to unpublish"
+                          ? "Published to the network. Click to unpublish"
                           : "Publish to the network"
                       }
                       aria-label={
@@ -497,7 +497,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         </>
                       ) : (
                         <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
-                          Now click a pocket on the board — it becomes this blueprint.
+                          Now click a pocket on the board. It becomes this blueprint.
                         </span>
                       )}
                       <button
@@ -649,7 +649,7 @@ function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
         ) : publicBlueprints.length === 0 && hasLoadedPublic && !publicError ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
             Nothing published{query.trim() ? " that matches" : " yet"}. Save a pocket on the Mine
-            shelf and hit its globe — your build becomes the network&apos;s first.
+            shelf and hit its globe. Your build becomes the network&apos;s first.
           </p>
         ) : (
           <>
@@ -713,7 +713,7 @@ function PublicBlueprintRow({
         <button
           type="button"
           onClick={onUpvote}
-          title={blueprint.myVote === 1 ? "Upvoted — click to retract" : "Upvote"}
+          title={blueprint.myVote === 1 ? "Upvoted. Click to retract" : "Upvote"}
           aria-label={`Upvote ${blueprint.name}`}
           className={[
             "flex shrink-0 items-center gap-0.5 rounded-[4px] border px-1 py-0.5 text-[11px] font-bold tabular-nums",

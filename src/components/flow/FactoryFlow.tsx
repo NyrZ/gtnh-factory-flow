@@ -3453,7 +3453,7 @@ export function FactoryFlow() {
             activePocketId ? "top-14" : "top-3",
           ].join(" ")}
         >
-          Pick a pocket on the board — it becomes &ldquo;{overwritePicking.name}&rdquo;. Esc
+          Pick a pocket on the board. It becomes &ldquo;{overwritePicking.name}&rdquo;. Esc
           cancels.
         </div>
       ) : null}
@@ -3462,13 +3462,13 @@ export function FactoryFlow() {
           <div className="max-w-[460px] border-2 border-amber-500 bg-[#1b1d21] p-4 font-mono text-neutral-100 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
             <p className="text-[13px] font-bold text-amber-300">One port per resource</p>
             <p className="mt-2 text-[12px] leading-relaxed text-neutral-300">
-              Pockets allow one connection per resource — this selection doesn&apos;t fit that.
+              Pockets allow one connection per resource. This selection doesn&apos;t fit that.
               Compacting shares everything below with every machine that asks for it:
             </p>
             <ul className="mt-2 flex flex-col gap-0.5 text-[12px] text-amber-200">
               {compactWarning.warnings.map((warning) => (
                 <li key={`${warning.side}:${warning.kind}:${warning.resourceId}`}>
-                  {warning.label} —{" "}
+                  {warning.label}:{" "}
                   {warning.side === "input"
                     ? warning.farEndCount >= 2
                       ? `${warning.farEndCount} sources merge`
