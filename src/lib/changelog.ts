@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.14.0",
+    date: "2026-08-06",
+    headline: "Select part of your factory, see what just that part needs",
+    notes: [
+      "Pick some cards and the panel on the right switches to them alone: what they need, what they make, what stays inside.",
+      "It works out the answer as if the rest of the board was not there, so anything piped in from outside now shows up under Need.",
+      "The panel wears a purple ring while it is showing a selection, so you always know which numbers you are reading.",
+      "Click an empty bit of the board to go back to the whole plan.",
+      "Shift click now adds a card to your selection instead of starting over. Shift drag still lassoes, and Ctrl click still works too.",
+    ],
+  },
+  {
     version: "1.13.0",
     date: "2026-08-06",
     headline: "The community hub moved in next door",

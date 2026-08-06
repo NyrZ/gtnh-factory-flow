@@ -2,7 +2,13 @@
 
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ResourceBalance } from "@/lib/model/types";
+import { gtnhFuelProfiles } from "@/lib/model/fuels";
+import {
+  PROJECT_SCHEMA_VERSION,
+  type FactoryProject,
+  type ResourceBalance,
+} from "@/lib/model/types";
+import { calculateThroughput } from "@/lib/solver";
 import { useFactoryStore } from "@/store/factory-store";
 import { InspectorPanel } from "./InspectorPanel";
 
@@ -99,6 +105,7 @@ describe("InspectorPanel", () => {
     useFactoryStore.setState({
       selectedFlowResourceKey: undefined,
       hoveredFlowResourceKey: undefined,
+      selectedBoardIds: [],
     });
     seedResult({});
   });
@@ -203,5 +210,110 @@ describe("InspectorPanel", () => {
     fireEvent.click(screen.getByText("Resource 1").closest("button")!);
 
     expect(useFactoryStore.getState().selectedFlowResourceKey).toBe("item:resource_1");
+  });
+
+  describe("scoped to a board selection", () => {
+    /** Ore into ingots into plates, so ingots are internal plan-wide. */
+    function seedChain() {
+      const project: FactoryProject = {
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        id: "panel-scope-project",
+        name: "Panel scope",
+        recipes: [
+          {
+            id: "smelt",
+            name: "Smelt",
+            machineType: "Furnace",
+            minimumTier: "LV",
+            durationTicks: 20,
+            eut: 30,
+            inputs: [{ kind: "item", id: "ore", amount: 1, displayName: "Ore" }],
+            outputs: [{ kind: "item", id: "ingot", amount: 1, displayName: "Ingot" }],
+          },
+          {
+            id: "bend",
+            name: "Bend",
+            machineType: "Bender",
+            minimumTier: "LV",
+            durationTicks: 20,
+            eut: 30,
+            inputs: [{ kind: "item", id: "ingot", amount: 1, displayName: "Ingot" }],
+            outputs: [{ kind: "item", id: "plate", amount: 1, displayName: "Plate" }],
+          },
+        ],
+        nodes: [
+          {
+            id: "smelter",
+            recipeId: "smelt",
+            machineCount: 1,
+            parallel: 1,
+            overclockTier: "LV",
+            enabled: true,
+            position: { x: 0, y: 0 },
+          },
+          {
+            id: "bender",
+            recipeId: "bend",
+            machineCount: 1,
+            parallel: 1,
+            overclockTier: "LV",
+            enabled: true,
+            position: { x: 200, y: 0 },
+          },
+        ],
+        edges: [
+          {
+            id: "smelter-to-bender",
+            source: "smelter",
+            target: "bender",
+            resourceKind: "item",
+            resourceId: "ingot",
+          },
+        ],
+        fuelProfiles: gtnhFuelProfiles,
+        selectedFuelProfileId: "biodiesel",
+      };
+
+      useFactoryStore.setState({
+        project,
+        lastResult: calculateThroughput(project, { generatedAt: "fixed" }),
+        selectedBoardIds: [],
+      });
+    }
+
+    it("shows the whole plan until cards are selected", () => {
+      seedChain();
+      render(<InspectorPanel />);
+
+      expect(screen.queryByText("Selection")).toBeNull();
+      // Made and eaten in-plan, so it sits under Internal, not Need.
+      expect(screen.getByText("Ore")).toBeDefined();
+      expect(screen.getByText("Ingot")).toBeDefined();
+    });
+
+    it("re-books the groups over the selection alone", () => {
+      seedChain();
+      useFactoryStore.setState({ selectedBoardIds: ["bender"] });
+      render(<InspectorPanel />);
+
+      // The smelter is outside the box, so its ingots now have to arrive from
+      // somewhere: Need gains the ingot and loses the ore the smelter ate.
+      const needHeader = screen.getByText("Need").closest("button")!;
+      expect(within(needHeader).getByText("1")).toBeDefined();
+      expect(screen.getByText("Ingot")).toBeDefined();
+      expect(screen.queryByText("Ore")).toBeNull();
+      expect(screen.getByText("Selection")).toBeDefined();
+      expect(screen.getByText("1 machine")).toBeDefined();
+    });
+
+    it("rings the whole panel while scoped, not just the strip", () => {
+      seedChain();
+      useFactoryStore.setState({ selectedBoardIds: ["bender"] });
+      const { container } = render(<InspectorPanel />);
+
+      // The mode has to be readable from anywhere in the list, so the ring
+      // belongs to the panel that wraps every group.
+      expect(container.querySelector("section.ring-purple-500\\/60")).not.toBeNull();
+    });
   });
 });

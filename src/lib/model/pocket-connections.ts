@@ -91,6 +91,60 @@ export function collectPocketMembers(project: FactoryProject, pocketId: string):
   };
 }
 
+/**
+ * Expand a board selection through pocket membership: selecting a pocket
+ * card means selecting everything inside it, transitively. Returns the
+ * concrete item ids (nodes/storages/annotations) and the pocket ids.
+ *
+ * Every feature that acts on "what is selected" runs through here — copy,
+ * blueprint capture, compact, and the selection-scoped flow panel — so a
+ * pocket card always means the same thing to all of them.
+ */
+export function expandPocketSelection(
+  project: FactoryProject,
+  selectedIds: Iterable<string>,
+): { itemIds: Set<string>; pocketIds: Set<string> } {
+  const pockets = project.pockets ?? [];
+  const selected = new Set(selectedIds);
+  const pocketIds = new Set<string>();
+  const queue: string[] = [];
+  for (const pocket of pockets) {
+    if (selected.has(pocket.id)) {
+      pocketIds.add(pocket.id);
+      queue.push(pocket.id);
+    }
+  }
+  while (queue.length > 0) {
+    const parentId = queue.pop();
+    for (const pocket of pockets) {
+      if (pocket.parentPocketId === parentId && !pocketIds.has(pocket.id)) {
+        pocketIds.add(pocket.id);
+        queue.push(pocket.id);
+      }
+    }
+  }
+
+  const itemIds = new Set<string>();
+  const isMember = (item: { id: string; pocketId?: string }) =>
+    selected.has(item.id) || (item.pocketId !== undefined && pocketIds.has(item.pocketId));
+  for (const node of project.nodes) {
+    if (isMember(node)) {
+      itemIds.add(node.id);
+    }
+  }
+  for (const storage of project.storages ?? []) {
+    if (isMember(storage)) {
+      itemIds.add(storage.id);
+    }
+  }
+  for (const annotation of project.annotations ?? []) {
+    if (isMember(annotation)) {
+      itemIds.add(annotation.id);
+    }
+  }
+  return { itemIds, pocketIds };
+}
+
 function storageResource(storage: FactoryStorage): ResourceAmount {
   return {
     kind: storage.kind,

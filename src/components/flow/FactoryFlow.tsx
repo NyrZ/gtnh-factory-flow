@@ -3498,6 +3498,12 @@ export function FactoryFlow() {
         // made rubber-banding big cards feel broken - clipping a card's edge
         // did nothing.
         selectionMode={SelectionMode.Partial}
+        // Shift adds a card to the selection, the same key that drags the
+        // band. React Flow's default is Ctrl/Cmd only, which left shift-click
+        // REPLACING the selection - the one gesture everyone reaches for.
+        // Both keys work; shift doing two jobs is not a clash, since the band
+        // starts on the pane and this only fires on a card.
+        multiSelectionKeyCode={["Shift", "Control", "Meta"]}
         onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
         onEdgeClick={handleEdgeClick}

@@ -55,6 +55,7 @@ import type {
 } from "@/lib/model/types";
 import {
   collectPocketMembers,
+  expandPocketSelection,
   resolveMemberIdsForResource,
   resolvePocketMemberIds,
 } from "@/lib/model/pocket-connections";
@@ -349,56 +350,6 @@ export interface BoardClipboardPayload {
 }
 
 /**
- * Expand a board selection through pocket membership: selecting a pocket
- * card means selecting everything inside it, transitively. Returns the
- * concrete item ids (nodes/storages/annotations) and the pocket ids.
- */
-function collectPocketSelection(
-  project: FactoryProject,
-  selectedIds: Iterable<string>,
-): { itemIds: Set<string>; pocketIds: Set<string> } {
-  const pockets = project.pockets ?? [];
-  const selected = new Set(selectedIds);
-  const pocketIds = new Set<string>();
-  const queue: string[] = [];
-  for (const pocket of pockets) {
-    if (selected.has(pocket.id)) {
-      pocketIds.add(pocket.id);
-      queue.push(pocket.id);
-    }
-  }
-  while (queue.length > 0) {
-    const parentId = queue.pop();
-    for (const pocket of pockets) {
-      if (pocket.parentPocketId === parentId && !pocketIds.has(pocket.id)) {
-        pocketIds.add(pocket.id);
-        queue.push(pocket.id);
-      }
-    }
-  }
-
-  const itemIds = new Set<string>();
-  const isMember = (item: { id: string; pocketId?: string }) =>
-    selected.has(item.id) || (item.pocketId !== undefined && pocketIds.has(item.pocketId));
-  for (const node of project.nodes) {
-    if (isMember(node)) {
-      itemIds.add(node.id);
-    }
-  }
-  for (const storage of project.storages ?? []) {
-    if (isMember(storage)) {
-      itemIds.add(storage.id);
-    }
-  }
-  for (const annotation of project.annotations ?? []) {
-    if (isMember(annotation)) {
-      itemIds.add(annotation.id);
-    }
-  }
-  return { itemIds, pocketIds };
-}
-
-/**
  * Snapshot a board selection as a clipboard/blueprint payload. Pocket cards
  * expand to their full contents; wires survive only when both feet stand
  * inside the capture. Returns undefined when the selection holds nothing.
@@ -407,7 +358,7 @@ export function captureBoardSelection(
   project: FactoryProject,
   selectedIds: Iterable<string>,
 ): BoardClipboardPayload | undefined {
-  const { itemIds, pocketIds } = collectPocketSelection(project, selectedIds);
+  const { itemIds, pocketIds } = expandPocketSelection(project, selectedIds);
   const nodes = project.nodes.filter((node) => itemIds.has(node.id));
   const storages = (project.storages ?? []).filter((storage) => itemIds.has(storage.id));
   const annotations = (project.annotations ?? []).filter((annotation) =>
@@ -1473,7 +1424,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     set((state) => {
       // Deleting a pocket card deletes the dimension AND everything in it,
       // the way deleting a folder deletes its files.
-      const { itemIds: doomedItems, pocketIds: doomedPockets } = collectPocketSelection(
+      const { itemIds: doomedItems, pocketIds: doomedPockets } = expandPocketSelection(
         state.project,
         nodeIds,
       );
@@ -2615,7 +2566,7 @@ export function collectPocketConvergenceWarnings(
   project: FactoryProject,
   selectedIds: string[],
 ): PocketConvergenceWarning[] {
-  const { itemIds } = collectPocketSelection(project, selectedIds);
+  const { itemIds } = expandPocketSelection(project, selectedIds);
   if (itemIds.size === 0) {
     return [];
   }

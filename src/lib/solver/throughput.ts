@@ -1,10 +1,8 @@
 ﻿import {
   getChanceMultiplier,
-  getFilledCellFluidEquivalent,
   isRecipeInputConsumed,
   makeResourceKey,
   primaryOutput,
-  resourceMatchesInput,
   resourceLabel,
 } from "../model/resources";
 import type {
@@ -26,7 +24,7 @@ import type {
 import { TICKS_PER_SECOND } from "../model/types";
 import { applyRecipeInputOverrides } from "../model/recipe-input-overrides";
 import { applyMachineHandlerToRecipe } from "../model/recipe-rules";
-import { collectTrashNodeIds } from "../model/trash";
+import { calculateEffectiveBalances, splitBalances } from "./balances";
 import {
   addRequiredRate,
   clampUtilization,
@@ -204,12 +202,7 @@ export function calculateThroughput(
   const resourceResults = Object.fromEntries(
     calculateEffectiveBalances(project, nodes, edgeResults, storagesById),
   ) as Record<ResourceKey, ResourceBalance>;
-  const externalInputs = Object.values(resourceResults)
-    .filter((balance) => balance.deficitPerSecond > EPSILON)
-    .sort((a, b) => b.deficitPerSecond - a.deficitPerSecond);
-  const unconsumedOutputs = Object.values(resourceResults)
-    .filter((balance) => balance.surplusPerSecond > EPSILON)
-    .sort((a, b) => b.surplusPerSecond - a.surplusPerSecond);
+  const { externalInputs, unconsumedOutputs } = splitBalances(Object.values(resourceResults));
 
   for (const balance of externalInputs) {
     bottlenecks.push({
@@ -278,217 +271,6 @@ function addFlow(record: FlowRecord, resource: ResourceAmount, amountPerSecond: 
     amountPerSecond: (existing?.amountPerSecond ?? 0) + amountPerSecond,
   };
 }
-
-function ensureBalance(
-  balances: Map<ResourceKey, ResourceBalance>,
-  resource: ResourceAmount,
-): ResourceBalance {
-  const key = makeResourceKey(resource.kind, resource.id);
-  const existing = balances.get(key);
-
-  if (existing) {
-    return existing;
-  }
-
-  const balance: ResourceBalance = {
-    key,
-    kind: resource.kind,
-    resourceId: resource.id,
-    displayName: resource.displayName,
-    producedPerSecond: 0,
-    consumedPerSecond: 0,
-    netPerSecond: 0,
-    surplusPerSecond: 0,
-    deficitPerSecond: 0,
-  };
-  balances.set(key, balance);
-  return balance;
-}
-
-function addBalanceProduction(
-  balances: Map<ResourceKey, ResourceBalance>,
-  resource: ResourceAmount,
-  amountPerSecond: number,
-): void {
-  const balance = ensureBalance(balances, resource);
-  balance.producedPerSecond += amountPerSecond;
-  updateBalanceNet(balance);
-}
-
-function subtractBalanceProduction(
-  balances: Map<ResourceKey, ResourceBalance>,
-  resource: ResourceAmount,
-  amountPerSecond: number,
-): void {
-  const balance = ensureBalance(balances, resource);
-  balance.producedPerSecond = Math.max(0, balance.producedPerSecond - amountPerSecond);
-  updateBalanceNet(balance);
-}
-
-function addBalanceConsumption(
-  balances: Map<ResourceKey, ResourceBalance>,
-  resource: ResourceAmount,
-  amountPerSecond: number,
-): void {
-  const balance = ensureBalance(balances, resource);
-  balance.consumedPerSecond += amountPerSecond;
-  updateBalanceNet(balance);
-}
-
-function updateBalanceNet(balance: ResourceBalance): void {
-  balance.netPerSecond = balance.producedPerSecond - balance.consumedPerSecond;
-  balance.surplusPerSecond = Math.max(0, balance.netPerSecond);
-  balance.deficitPerSecond = Math.max(0, -balance.netPerSecond);
-}
-
-function calculateEffectiveBalances(
-  project: FactoryProject,
-  nodes: Record<string, NodeThroughputResult>,
-  edgeResults: Record<string, EdgeThroughput>,
-  storagesById: Map<string, FactoryStorage>,
-): Map<ResourceKey, ResourceBalance> {
-  const balances = new Map<ResourceKey, ResourceBalance>();
-
-  for (const node of Object.values(nodes)) {
-    if (!node.enabled || node.status === "missing-recipe") {
-      continue;
-    }
-
-    const utilization = clampUtilization(node.utilization);
-    for (const input of Object.values(node.inputs)) {
-      addBalanceConsumption(
-        balances,
-        {
-          kind: input.kind,
-          id: input.resourceId,
-          displayName: input.displayName,
-          amount: 0,
-        },
-        input.amountPerSecond * utilization,
-      );
-    }
-
-    for (const output of Object.values(node.outputs)) {
-      addBalanceProduction(
-        balances,
-        {
-          kind: output.kind,
-          id: output.resourceId,
-          displayName: output.displayName,
-          amount: 0,
-        },
-        output.amountPerSecond * utilization,
-      );
-    }
-  }
-
-  applyConvertedStorageOutputBalances(project, nodes, edgeResults, storagesById, balances);
-  applyTrashedOutputBalances(project, edgeResults, balances);
-
-  return balances;
-}
-
-/**
- * Whatever flows into a trash can never existed as far as the plan's books
- * are concerned: it leaves the produced column (floored at zero, so a mid-
- * convergence overshoot can never mint a phantom deficit) and therefore
- * never appears in the unconsumed-outputs panel. Runs after the cell/fluid
- * conversion pass so a tank-drained fluid subtracts from the converted row.
- */
-function applyTrashedOutputBalances(
-  project: FactoryProject,
-  edgeResults: Record<string, EdgeThroughput>,
-  balances: Map<ResourceKey, ResourceBalance>,
-): void {
-  const trashNodeIds = collectTrashNodeIds(project);
-  if (trashNodeIds.size === 0) {
-    return;
-  }
-
-  for (const edge of project.edges) {
-    if (!trashNodeIds.has(edge.target)) {
-      continue;
-    }
-    const transferredPerSecond = edgeResults[edge.id]?.transferredPerSecond ?? 0;
-    if (transferredPerSecond <= EPSILON) {
-      continue;
-    }
-    subtractBalanceProduction(
-      balances,
-      {
-        kind: edge.resourceKind,
-        id: edge.resourceId,
-        displayName: edge.label,
-        amount: 0,
-      },
-      transferredPerSecond,
-    );
-  }
-}
-
-function applyConvertedStorageOutputBalances(
-  project: FactoryProject,
-  nodes: Record<string, NodeThroughputResult>,
-  edgeResults: Record<string, EdgeThroughput>,
-  storagesById: Map<string, FactoryStorage>,
-  balances: Map<ResourceKey, ResourceBalance>,
-): void {
-  for (const edge of project.edges) {
-    if (!storagesById.has(edge.target) || storagesById.has(edge.source)) {
-      continue;
-    }
-
-    const transferredPerSecond = edgeResults[edge.id]?.transferredPerSecond ?? 0;
-    if (transferredPerSecond <= EPSILON) {
-      continue;
-    }
-
-    const sourceResult = nodes[edge.source];
-    const output = sourceResult
-      ? Object.values(sourceResult.outputs).find(
-          (candidate) =>
-            candidate.kind !== edge.resourceKind &&
-            resourceMatchesInput(
-              { kind: edge.resourceKind, id: edge.resourceId },
-              {
-                kind: candidate.kind,
-                id: candidate.resourceId,
-                displayName: candidate.displayName,
-              },
-            ),
-        )
-      : undefined;
-    if (!sourceResult || !output) {
-      continue;
-    }
-
-    const outputResource = {
-      kind: output.kind,
-      id: output.resourceId,
-      displayName: output.displayName,
-      alternatives: output.alternatives,
-      amount: transferredPerSecond,
-    };
-    const edgeResource = {
-      kind: edge.resourceKind,
-      id: edge.resourceId,
-      displayName: edge.label,
-      amount: transferredPerSecond,
-    };
-
-    if (edge.resourceKind === "fluid" && output.kind === "item") {
-      const fluid = getFilledCellFluidEquivalent(outputResource);
-      if (fluid?.id !== edge.resourceId || !fluid.amount || fluid.amount <= 0) {
-        continue;
-      }
-
-      const cellAmountPerSecond = transferredPerSecond * (output.amountPerSecond / fluid.amount);
-      subtractBalanceProduction(balances, outputResource, cellAmountPerSecond);
-      addBalanceProduction(balances, edgeResource, transferredPerSecond);
-    }
-  }
-}
-
 
 /**
  * Writes displayed edge results from the equilibrium engine's allocations.
