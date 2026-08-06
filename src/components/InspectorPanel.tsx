@@ -16,8 +16,6 @@ import {
   type FlowSectionId,
   type FlowSectionTone,
 } from "./inspector/flow-sections";
-import { PowerBreakdown } from "./inspector/PowerBreakdown";
-import { UsagePanel } from "./inspector/UsagePanel";
 import { ResourceIcon } from "./nei/ResourceIcon";
 
 const FLOW_FILTER_DEBOUNCE_MS = 120;
@@ -35,49 +33,10 @@ const ROW_OVERSCAN = 6;
 export function InspectorPanel() {
   return (
     <aside className="flex h-full min-h-[360px] flex-col bg-surface">
-      <SummaryPanel />
-    </aside>
-  );
-}
-
-function SummaryPanel() {
-  const project = useFactoryStore((state) => state.project);
-  const result = useFactoryStore((state) => state.lastResult);
-  const hoveredNodeBottlenecks = useFactoryStore((state) => state.hoveredNodeBottlenecks);
-  const selectedNodeBottlenecks = useFactoryStore((state) => state.selectedNodeBottlenecks);
-  const setHoveredNodeBottlenecks = useFactoryStore((state) => state.setHoveredNodeBottlenecks);
-  const toggleNodeBottlenecks = useFactoryStore((state) => state.toggleNodeBottlenecks);
-  const nodeBottlenecks = useMemo(
-    () => result.bottlenecks.filter((bottleneck) => bottleneck.kind === "node-capacity").length,
-    [result.bottlenecks],
-  );
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2">
-      <div className="grid shrink-0 grid-cols-4 gap-1">
-        <Metric label="EU/t" value={formatCompact(result.totalEuT)} />
-        <Metric label="EU/s" value={formatCompact(result.totalEuPerSecond)} />
-        <Metric label="Nodes" value={String(project.nodes.length)} />
-        <Metric
-          label="Capped"
-          value={String(nodeBottlenecks)}
-          tone={nodeBottlenecks > 0 ? "alert" : "default"}
-          active={hoveredNodeBottlenecks || selectedNodeBottlenecks}
-          interactive={nodeBottlenecks > 0}
-          onMouseEnter={() => setHoveredNodeBottlenecks(nodeBottlenecks > 0)}
-          onMouseLeave={() => setHoveredNodeBottlenecks(false)}
-          onFocus={() => setHoveredNodeBottlenecks(nodeBottlenecks > 0)}
-          onBlur={() => setHoveredNodeBottlenecks(false)}
-          onClick={nodeBottlenecks > 0 ? toggleNodeBottlenecks : undefined}
-        />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2">
+        <FlowIOPanel />
       </div>
-
-      <PowerBreakdown />
-
-      <UsagePanel />
-
-      <FlowIOPanel />
-    </div>
+    </aside>
   );
 }
 
@@ -538,74 +497,4 @@ function buildProjectResourceLookup(project: FactoryProject): Map<string, FlowRe
   }
 
   return resources;
-}
-
-function Metric({
-  label,
-  value,
-  tone = "default",
-  active = false,
-  interactive = false,
-  onMouseEnter,
-  onMouseLeave,
-  onFocus,
-  onBlur,
-  onClick,
-}: {
-  label: string;
-  value: string;
-  tone?: "default" | "alert";
-  active?: boolean;
-  interactive?: boolean;
-  onMouseEnter?: () => void;
-  onMouseLeave?: () => void;
-  onFocus?: () => void;
-  onBlur?: () => void;
-  onClick?: () => void;
-}) {
-  const className = [
-    "rounded border px-2 py-1 text-left",
-    active
-      ? "border-cyan-500 bg-cyan-500/25 ring-1 ring-cyan-500/50"
-      : tone === "alert"
-        ? "border-red-500/50 bg-red-500/15"
-        : "border-line bg-surface-raised",
-    interactive
-      ? "cursor-pointer hover:border-cyan-500/60 hover:bg-cyan-500/10"
-      : "",
-  ].join(" ");
-  const content = (
-    <>
-      <div className="text-[11px] font-semibold uppercase leading-tight tracking-wide text-fg-muted">
-        {label}
-      </div>
-      <div
-        className={[
-          "truncate text-base font-bold leading-tight tabular-nums",
-          tone === "alert" && !active ? "text-red-300" : "text-fg",
-        ].join(" ")}
-      >
-        {value}
-      </div>
-    </>
-  );
-
-  if (!interactive) {
-    return <div className={className}>{content}</div>;
-  }
-
-  return (
-    <button
-      type="button"
-      className={className}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      onClick={onClick}
-      title="Highlight bottleneck nodes"
-    >
-      {content}
-    </button>
-  );
 }
