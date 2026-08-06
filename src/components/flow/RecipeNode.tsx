@@ -997,8 +997,17 @@ function GlanceIdentityLayer({
     <div
       data-node-detail="glance"
       aria-hidden
-      className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center"
-      style={glanceTileStyle(tileTint)}
+      // glance-identity-tile: globals.css holds the rim at constant SCREEN
+      // thickness in LED mode, same rule as the drawer and trash borders.
+      className="glance-identity-tile pointer-events-none absolute inset-0 z-10 hidden items-center justify-center"
+      style={{
+        ...glanceTileStyle(tileTint),
+        // The same rim the storage cards show in LED mode: their real
+        // border, the tile's colour a step brighter. A recipe card has
+        // no real border - its frame is an inset shadow the tile covers -
+        // so the tile draws the rim itself, same formula as the drawers'.
+        border: `2px solid color-mix(in srgb, ${tileTint} 55%, #262b34)`,
+      }}
     >
       {machineIcon ? (
         <ResourceIcon

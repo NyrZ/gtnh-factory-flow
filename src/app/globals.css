@@ -234,6 +234,18 @@ textarea {
   background-color: var(--glance-bg, transparent);
 }
 
+/* The LED rim: every card wears its thin coloured border at constant SCREEN
+   thickness — divided by the live zoom so it neither fades to sub-pixel when
+   parked way out (a 2px border at 0.2 zoom is 0.4px: gone) nor fattens as
+   you come back in. min() caps it so a deep zoom-out can't turn the rim
+   into the card. !important because the identity tile's border arrives as
+   an inline shorthand. */
+.factory-flow-board[data-detail-level="glance"] .storage-node-card,
+.factory-flow-board[data-detail-level="glance"] .trash-node-card,
+.factory-flow-board[data-detail-level="glance"] .glance-identity-tile {
+  border-width: min(calc(2px / var(--board-zoom, 1)), 12px) !important;
+}
+
 /* The identity glance's hover reveal: name, count and I/O rates in a panel
    below the card. Pure CSS — hover must never rebuild the board — and only at
    the glance step, where the reveal replaces the hop map's job of answering

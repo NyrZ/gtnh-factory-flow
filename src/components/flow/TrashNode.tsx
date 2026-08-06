@@ -166,7 +166,7 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         // only loses the buttons and the title.
         data-node-glance-root=""
         // Six cells by seven, fixed — the can docks wires on its perimeter.
-        className="relative h-[140px] w-[120px] border-2 p-1"
+        className="trash-node-card relative h-[140px] w-[120px] border-2 p-1"
         style={{
           borderColor: `color-mix(in srgb, ${tint} 55%, #262b34)`,
           background: `color-mix(in srgb, ${tint} 24%, #101318)`,
