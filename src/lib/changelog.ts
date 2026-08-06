@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.10.1",
+    date: "2026-08-05",
+    headline: "Wires you can actually see",
+    notes: [
+      "Every wire is about twice as thick — the thinnest lines were reading as scratches.",
+      "Thickness-by-volume mode has eight width steps now instead of four, so a 5k line and a 10k line look different even with a 100k pipe on the same board.",
+    ],
+  },
+  {
     version: "1.10.0",
     date: "2026-08-05",
     headline: "Wires live on the grid — and you can steer them",

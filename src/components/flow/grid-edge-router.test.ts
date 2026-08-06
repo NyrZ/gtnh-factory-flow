@@ -58,13 +58,23 @@ function isOrthogonal(points: GridPoint[]): boolean {
 
 describe("laneWidthForHeat", () => {
   it("quantizes to lane fractions and never exceeds the lane", () => {
-    expect(laneWidthForHeat(0)).toBe(2);
-    expect(laneWidthForHeat(0.1)).toBe(2);
-    expect(laneWidthForHeat(0.25)).toBe(4);
-    expect(laneWidthForHeat(0.3)).toBeCloseTo(16 / 3, 1);
+    expect(laneWidthForHeat(0)).toBe(4);
+    expect(laneWidthForHeat(0.1)).toBe(5);
+    expect(laneWidthForHeat(0.25)).toBe(6);
     expect(laneWidthForHeat(0.5)).toBe(8);
+    expect(laneWidthForHeat(0.75)).toBe(10);
+    expect(laneWidthForHeat(0.9)).toBe(12);
     expect(laneWidthForHeat(1)).toBe(LANE_CAPACITY);
     expect(laneWidthForHeat(2)).toBe(LANE_CAPACITY);
+  });
+
+  it("gives adjacent heats distinct widths across the whole range", () => {
+    // Eight steps, evenly indexed: a step exists roughly every 0.14 of heat.
+    const widths = new Set<number>();
+    for (let heat = 0; heat <= 1.0001; heat += 1 / 14) {
+      widths.add(laneWidthForHeat(heat));
+    }
+    expect(widths.size).toBe(8);
   });
 });
 
