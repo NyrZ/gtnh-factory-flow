@@ -694,7 +694,18 @@ function PublicBlueprintRow({
   onUpvote: () => void;
 }) {
   return (
-    <li className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500">
+    <li
+      className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500"
+      // Double-click anywhere on the row downloads it onto the board — the
+      // button stays as the single-click way. Dblclicks that land on the
+      // buttons themselves don't count (an upvote toggled twice must not
+      // also place the blueprint).
+      onDoubleClick={(event) => {
+        if (!isBusy && !(event.target as HTMLElement).closest("button")) {
+          onPlace();
+        }
+      }}
+    >
       {/* display:contents wrapper — the I/O reveal opens from anywhere on
           the row, not just the name. */}
       <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
