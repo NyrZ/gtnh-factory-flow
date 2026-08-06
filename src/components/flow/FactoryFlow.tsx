@@ -1275,7 +1275,10 @@ export function FactoryFlow() {
   const hoveredUsageNodeId = useFactoryStore((state) => state.hoveredUsageNodeId);
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
   const isProjectImporting = useFactoryStore((state) => state.isProjectImporting);
-  const activeFlowResourceKey = hoveredFlowResourceKey ?? selectedFlowResourceKey;
+  // Hovering a storage's item is hovering that resource, the same as a port
+  // label: the wires (and cards) carrying it light up in the glow colour.
+  const activeFlowResourceKey =
+    hoveredFlowResourceKey ?? hoveredStorageResourceKey ?? selectedFlowResourceKey;
   const activeNodeBottlenecks = hoveredNodeBottlenecks || selectedNodeBottlenecks;
   const recipesById = useMemo(
     () => new Map(project.recipes.map((recipe) => [recipe.id, recipe])),
@@ -5087,12 +5090,17 @@ function ResourceEdgeComponent({
             path={routedEdge.path}
             interactionWidth={0}
             style={{
-              stroke: "#111827",
+              // Highlighted, the casing IS the solid part of the glow: the
+              // same gold line the cards outline in, 3px per side to match
+              // their outline, with the resource colour still in the core.
+              stroke: isHighlighted ? "var(--glow-line)" : "#111827",
               strokeDasharray: isGlobalView && isEdgeStarved(data) ? "2 8" : style?.strokeDasharray,
               strokeLinecap: "round",
               strokeLinejoin: "round",
-              strokeOpacity: isHighlighted ? 0.95 : 0.72,
-              strokeWidth: edgeCasingWidth(coreStrokeWidth),
+              strokeOpacity: isHighlighted ? 1 : 0.72,
+              strokeWidth: isHighlighted
+                ? coreStrokeWidth + 6
+                : edgeCasingWidth(coreStrokeWidth),
               pointerEvents: "none",
             }}
           />
@@ -5111,7 +5119,7 @@ function ResourceEdgeComponent({
               // washing out for no reason the user did anything to cause.
               strokeOpacity: isHighlighted ? 1 : style?.strokeOpacity,
               strokeWidth: coreStrokeWidth,
-              filter: isHighlighted ? "drop-shadow(0 0 4px var(--glow-halo))" : undefined,
+              filter: isHighlighted ? "drop-shadow(0 0 6px var(--glow-halo))" : undefined,
               // Edges select/hover through their label, never the stroke:
               // edges render above nodes (zIndex 20) so their slot-anchored
               // stubs stay visible, and an interactive stroke there swallows
