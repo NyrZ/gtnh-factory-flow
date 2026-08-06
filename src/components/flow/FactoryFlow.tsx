@@ -3276,7 +3276,13 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
           if (dragging && activelyDraggedNodeIds.has(entry.id)) {
             continue;
           }
-          occlusionBounds.push(entry.bounds);
+          // The tab zone at a card's top is transparent canvas and the wire
+          // stub visibly crosses it — the dashes must ride the stub all the
+          // way to the window's edge, so only the WINDOW occludes.
+          const dockInset = getDockTopInset(entry.id);
+          occlusionBounds.push(
+            dockInset > 0 ? { ...entry.bounds, top: entry.bounds.top + dockInset } : entry.bounds,
+          );
         }
         if (dragging) {
           const nodeLookup = flowStore.getState().nodeLookup;
@@ -3292,7 +3298,7 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
             if (nodeWidth > 0 && nodeHeight > 0) {
               occlusionBounds.push({
                 left: position.x,
-                top: position.y,
+                top: position.y + getDockTopInset(draggedId),
                 right: position.x + nodeWidth,
                 bottom: position.y + nodeHeight,
               });
