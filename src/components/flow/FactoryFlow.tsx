@@ -259,8 +259,10 @@ const FLOW_MODE_MAX_WIDTH = LANE_CAPACITY;
  * the busiest. Expressed as a velocity rather than a duration so the speed
  * reads as flow and nothing else — see the note where it is applied.
  */
-const PULSE_MIN_VELOCITY = 130;
-const PULSE_MAX_VELOCITY = 434;
+// A third slower than the first cut (130/434): the quiet lines idled fine
+// but the busy ones read as agitation rather than flow.
+const PULSE_MIN_VELOCITY = 85;
+const PULSE_MAX_VELOCITY = 290;
 
 /**
  * How far apart parallel runs sit, as a multiple of EDGE_LANE_SPACING.
@@ -2844,6 +2846,24 @@ export function FactoryFlow() {
     [setNodeColorPaintMode],
   );
 
+  // One short line of caution before the dock-mode flip rewires the board —
+  // shown when there is real work to redo (lots of lines) or user work to
+  // unsettle (pinned dots). Undefined means flip silently.
+  const dockToggleWarning = useMemo(() => {
+    const edgeCount = project.edges.length;
+    const hasDots = project.edges.some((edge) => (edge.waypoints?.length ?? 0) > 0);
+    if (edgeCount < 50 && !hasDots) {
+      return undefined;
+    }
+    if (hasDots && edgeCount >= 50) {
+      return `Rewires all ${edgeCount} lines and your pinned dots — may take a moment and look odd at first. Flipping back restores it. Continue?`;
+    }
+    if (hasDots) {
+      return "Rewires your lines and pinned dots — may look odd for a moment. Flipping back restores it. Continue?";
+    }
+    return `Rewires all ${edgeCount} lines — may take a moment. Flipping back restores it. Continue?`;
+  }, [project.edges]);
+
   const paintCursor =
     nodeColorPaintMode !== undefined
       ? getPaintBrushCursor(
@@ -2956,6 +2976,7 @@ export function FactoryFlow() {
         view={boardView}
         onChange={writeBoardView}
         onHeatmapChange={handleHeatmapChange}
+        dockToggleWarning={dockToggleWarning}
       />
       <SourceToolbar />
       <HopMapLegend />
@@ -3580,11 +3601,14 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
   view,
   onChange,
   onHeatmapChange,
+  dockToggleWarning,
 }: {
   view: BoardView;
   onChange: (patch: Partial<BoardView>) => void;
   /** Heatmap also drops the paint brush, which lives in the Zustand store. */
   onHeatmapChange: (enabled: boolean) => void;
+  /** One-line caution before the dock flip rewires a big or dotted board. */
+  dockToggleWarning?: string;
 }) {
   const {
     canvasPattern,
@@ -3709,7 +3733,12 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       </button>
       <button
         type="button"
-        onClick={() => onChange({ freeDockMode: !freeDockMode })}
+        onClick={() => {
+          if (dockToggleWarning && !window.confirm(dockToggleWarning)) {
+            return;
+          }
+          onChange({ freeDockMode: !freeDockMode });
+        }}
         className={buttonClass(freeDockMode)}
         title={
           freeDockMode
