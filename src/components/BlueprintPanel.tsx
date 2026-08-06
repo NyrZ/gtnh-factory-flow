@@ -3,6 +3,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowBigUp,
+  Boxes,
+  Cog,
   Download,
   Globe,
   LoaderCircle,
@@ -511,17 +513,26 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                       </button>
                     </div>
                   ) : null}
-                  <div className="mt-0.5 flex items-center gap-2 pl-5 text-[10px] text-neutral-500">
-                    <span title={new Date(blueprint.createdAt).toLocaleString()}>
+                  {/* Facts as icon pairs, words in the hover — text rows kept
+                      truncating to three dots in a 300px column. */}
+                  <div className="mt-0.5 flex items-center gap-2.5 pl-5 text-[10px] tabular-nums text-neutral-500">
+                    <span title={`Saved ${new Date(blueprint.createdAt).toLocaleString()}`}>
                       {formatRelativeDate(blueprint.createdAt)}
                     </span>
-                    <span className="truncate">
-                      {blueprint.nodeCount + blueprint.storageCount} cards
-                      {blueprint.machineCount > 0 ? ` · ${blueprint.machineCount} machines` : ""}
-                      {blueprint.pocketCount > 0
-                        ? ` · ✦ ${blueprint.pocketCount} pocket${blueprint.pocketCount === 1 ? "" : "s"}`
-                        : ""}
+                    <span
+                      className="flex shrink-0 items-center gap-0.5"
+                      title={`${blueprint.nodeCount + blueprint.storageCount} cards inside`}
+                    >
+                      <Boxes className="h-3 w-3" /> {blueprint.nodeCount + blueprint.storageCount}
                     </span>
+                    {blueprint.machineCount > 0 ? (
+                      <span
+                        className="flex shrink-0 items-center gap-0.5"
+                        title={`${blueprint.machineCount} machines configured`}
+                      >
+                        <Cog className="h-3 w-3" /> {blueprint.machineCount}
+                      </span>
+                    ) : null}
                     {blueprint.isPublic ? (
                       <span
                         className="ml-auto flex shrink-0 items-center gap-1.5 text-emerald-500"
@@ -721,17 +732,38 @@ function PublicBlueprintRow({
           )}
         </button>
       </div>
-      <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] text-neutral-500">
+      {/* Facts as icon pairs, words in the hover — text rows kept truncating
+          to three dots in a 300px column. */}
+      <div className="mt-0.5 flex items-center gap-2.5 pl-0.5 text-[10px] tabular-nums text-neutral-500">
         {blueprint.authorName ? (
-          <span className="truncate text-neutral-400">{blueprint.authorName}</span>
+          <span className="truncate text-neutral-400" title={`By ${blueprint.authorName}`}>
+            {blueprint.authorName}
+          </span>
         ) : null}
-        <span title={blueprint.publishedAt ? new Date(blueprint.publishedAt).toLocaleString() : ""}>
+        <span
+          className="shrink-0"
+          title={
+            blueprint.publishedAt
+              ? `Published ${new Date(blueprint.publishedAt).toLocaleString()}`
+              : ""
+          }
+        >
           {formatRelativeDate(blueprint.publishedAt ?? blueprint.createdAt)}
         </span>
-        <span className="truncate">
-          {blueprint.nodeCount + blueprint.storageCount} cards
-          {blueprint.pocketCount > 0 ? ` · ✦ ${blueprint.pocketCount}` : ""}
+        <span
+          className="flex shrink-0 items-center gap-0.5"
+          title={`${blueprint.nodeCount + blueprint.storageCount} cards inside`}
+        >
+          <Boxes className="h-3 w-3" /> {blueprint.nodeCount + blueprint.storageCount}
         </span>
+        {blueprint.machineCount > 0 ? (
+          <span
+            className="flex shrink-0 items-center gap-0.5"
+            title={`${blueprint.machineCount} machines configured`}
+          >
+            <Cog className="h-3 w-3" /> {blueprint.machineCount}
+          </span>
+        ) : null}
         <span
           className="ml-auto flex shrink-0 items-center gap-0.5"
           title={`Placed ${blueprint.downloads} time${blueprint.downloads === 1 ? "" : "s"}`}
