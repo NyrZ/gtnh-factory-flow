@@ -481,6 +481,14 @@ type ResourceEdgeData = {
   };
   isFlowHighlighted?: boolean;
   /**
+   * Collapsed-pocket channels: convergence keeps several flat wires crossing
+   * one boundary with the same resource, but the card advertises ONE channel
+   * per resource, so the view draws one wire. Set on the representative edge
+   * only — every flat edge id the drawn wire stands for, itself included.
+   * Rates on the wire are the channel's sums; deleting it deletes them all.
+   */
+  mergedEdgeIds?: string[];
+  /**
    * Set when any of the three line modes is on. `heat` is this line's share of
    * its own kind's range, 0 for the quietest line on the board and 1 for the
    * busiest; the flags say which of colour, thickness and marching dashes to
@@ -1014,6 +1022,18 @@ const pocketNodeDataCache = new Map<string, PocketFlowNode["data"]>();
 // but-new identity re-renders the edge — which re-runs the route solver. Most
 // rebuilds (hover, solver run) leave most edges untouched.
 const edgeObjectCache = new Map<string, ResourceFlowEdge>();
+
+/**
+ * Representative edge id → every flat edge id its drawn wire stands for
+ * (collapsed-pocket channels). Rebuilt by the edges memo each pass; the
+ * delete paths read it so removing the wire removes the whole channel.
+ */
+const channelEdgeIdsByRepresentative = new Map<string, string[]>();
+
+/** Deleting a drawn wire deletes every flat edge it stands for. */
+function expandChannelEdgeIds(edgeIds: string[]): string[] {
+  return edgeIds.flatMap((id) => channelEdgeIdsByRepresentative.get(id) ?? [id]);
+}
 
 /**
  * Shallow field-for-field equality between two board nodes.
@@ -1816,6 +1836,81 @@ export function FactoryFlow() {
       }
     }
 
+    // Collapsed-pocket channels. Convergence keeps several flat wires
+    // crossing one boundary with the same resource (a maker feeding both
+    // melters inside a pocket is TWO real edges), but the collapsed card
+    // advertises one channel per resource — so the view draws ONE wire per
+    // (visible far end, pocket, resource, ports) group: the first flat edge
+    // is the representative, the rest are skipped, the rates are summed.
+    const channelKeyFor = (
+      edge: FactoryEdge,
+      sourceRep: string,
+      targetRep: string,
+      sourceIsPocket: boolean,
+      targetIsPocket: boolean,
+    ) =>
+      [
+        sourceRep,
+        targetRep,
+        edge.resourceKind,
+        edge.resourceId,
+        (sourceIsPocket
+          ? (canonicalizeResourceHandleId(edge.sourceHandle) ??
+            makeResourceHandleId("output", { kind: edge.resourceKind, id: edge.resourceId }))
+          : canonicalizeResourceHandleId(edge.sourceHandle)) ?? "",
+        (targetIsPocket
+          ? (canonicalizeResourceHandleId(edge.targetHandle) ??
+            makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId }))
+          : canonicalizeResourceHandleId(edge.targetHandle)) ?? "",
+      ].join("|");
+
+    channelEdgeIdsByRepresentative.clear();
+    const channelSkip = new Set<string>();
+    // Representative id → summed rates for the one wire that stands in.
+    const channelTotals = new Map<string, { transferred: number; demand: number }>();
+    {
+      const groups = new Map<string, { representativeId: string; ids: string[] }>();
+      for (const edge of project.edges) {
+        const sourceRep = pocketView.representativeOf(edge.source);
+        const targetRep = pocketView.representativeOf(edge.target);
+        if (!sourceRep || !targetRep || sourceRep === targetRep) {
+          continue;
+        }
+        const sourceIsPocket = sourceRep !== edge.source;
+        const targetIsPocket = targetRep !== edge.target;
+        if (!sourceIsPocket && !targetIsPocket) {
+          continue;
+        }
+        const key = channelKeyFor(edge, sourceRep, targetRep, sourceIsPocket, targetIsPocket);
+        const group = groups.get(key);
+        if (group) {
+          group.ids.push(edge.id);
+        } else {
+          groups.set(key, { representativeId: edge.id, ids: [edge.id] });
+        }
+      }
+      for (const group of groups.values()) {
+        if (group.ids.length < 2) {
+          continue;
+        }
+        channelEdgeIdsByRepresentative.set(group.representativeId, group.ids);
+        let transferred = 0;
+        let demand = 0;
+        for (const id of group.ids) {
+          transferred += transferredById.get(id) ?? 0;
+          const edgeResult = result.edges[id];
+          demand +=
+            edgeResult?.demandPerSecond ??
+            project.edges.find((entry) => entry.id === id)?.ratePerSecond ??
+            0;
+          if (id !== group.representativeId) {
+            channelSkip.add(id);
+          }
+        }
+        channelTotals.set(group.representativeId, { transferred, demand });
+      }
+    }
+
     // What the grid solve needs about every wire, collected as the edge
     // objects are built and published in one shot below.
     const gridRouteInputs: GridRouteEdgeInput[] = [];
@@ -1833,13 +1928,20 @@ export function FactoryFlow() {
       }
       const sourceIsPocket = sourceRep !== edge.source;
       const targetIsPocket = targetRep !== edge.target;
+      // A channel member rides its representative's wire — nothing to draw.
+      if (channelSkip.has(edge.id)) {
+        return [];
+      }
+      const channelTotal = channelTotals.get(edge.id);
       const edgeResult = result.edges[edge.id];
       const unit = rateUnitSuffix(edge.resourceKind === "fluid").trim();
-      const demand = edgeResult?.demandPerSecond ?? edge.ratePerSecond ?? 0;
+      const demand =
+        channelTotal?.demand ?? edgeResult?.demandPerSecond ?? edge.ratePerSecond ?? 0;
       const sourceStorage = storagesById.get(edge.source);
       const targetStorage = storagesById.get(edge.target);
-      // Pre-computed above, storage adjustment and all.
-      const transferred = transferredById.get(edge.id) ?? 0;
+      // Pre-computed above, storage adjustment and all; a channel
+      // representative carries the whole channel's flow.
+      const transferred = channelTotal?.transferred ?? transferredById.get(edge.id) ?? 0;
       // This line's place in its own kind's range: 0 is the quietest line on
       // the board, 1 the busiest. A single line, or a board where every line
       // is equal, reads as the biggest there is.
@@ -1968,6 +2070,7 @@ export function FactoryFlow() {
           targetStorageEndpoint: Boolean(targetHandle && (targetStorage || targetIsTrashCan)),
           sourceEndpointOffset: endpointOffsets.get(`${edge.id}:source`),
           targetEndpointOffset: endpointOffsets.get(`${edge.id}:target`),
+          mergedEdgeIds: channelEdgeIdsByRepresentative.get(edge.id),
           routeIndex: edgeIndex,
           bundle: edgeBundles.get(edge.id),
           isFlowHighlighted,
@@ -2759,7 +2862,10 @@ export function FactoryFlow() {
       return false;
     }
 
-    deleteBoardSelection({ nodeIds: selectedNodeIds, edgeIds: selectedEdgeIds });
+    deleteBoardSelection({
+      nodeIds: selectedNodeIds,
+      edgeIds: expandChannelEdgeIds(selectedEdgeIds),
+    });
     setSelectedNodeIds([]);
     setSelectedEdgeIds([]);
     selectNode(undefined);
@@ -3041,9 +3147,14 @@ export function FactoryFlow() {
       }
 
       event.stopPropagation();
-      deleteEdge(edge.id);
+      const edgeIds = expandChannelEdgeIds([edge.id]);
+      if (edgeIds.length > 1) {
+        deleteBoardSelection({ edgeIds });
+      } else {
+        deleteEdge(edge.id);
+      }
     },
-    [deleteEdge, isDeleteMode],
+    [deleteBoardSelection, deleteEdge, isDeleteMode],
   );
 
   const handlePaneClick = useCallback(() => {
@@ -3161,9 +3272,14 @@ export function FactoryFlow() {
 
   const handleEdgesDelete = useCallback(
     (deletedEdges: Edge[]) => {
-      deletedEdges.forEach((edge) => deleteEdge(edge.id));
+      // One entry, channels expanded: a collapsed-pocket wire stands for
+      // every flat edge in its channel and they leave together.
+      const edgeIds = expandChannelEdgeIds(deletedEdges.map((edge) => edge.id));
+      if (edgeIds.length > 0) {
+        deleteBoardSelection({ edgeIds });
+      }
     },
-    [deleteEdge],
+    [deleteBoardSelection],
   );
 
   const commitAnnotationDraft = useCallback(
@@ -3459,34 +3575,29 @@ export function FactoryFlow() {
       ) : null}
       {compactWarning ? (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55">
-          <div className="max-w-[460px] border-2 border-amber-500 bg-[#1b1d21] p-4 font-mono text-neutral-100 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
-            <p className="text-[13px] font-bold text-amber-300">One port per resource</p>
-            <p className="mt-2 text-[12px] leading-relaxed text-neutral-300">
-              Pockets allow one connection per resource. This selection doesn&apos;t fit that:
+          <div className="max-w-[560px] border-2 border-amber-500 bg-[#1b1d21] p-5 font-mono text-neutral-100 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
+            <p className="text-[17px] font-bold text-amber-300">One port per resource</p>
+            <p className="mt-3 text-[14px] leading-relaxed text-neutral-300">
+              Pockets allow one connection per resource. This selection has more:
             </p>
-            <ul className="mt-2 flex flex-col gap-0.5 text-[12px] text-amber-200">
+            <ul className="mt-2 flex flex-col gap-1 text-[15px] font-bold text-amber-200">
               {compactWarning.warnings.map((warning) => (
                 <li key={`${warning.side}:${warning.kind}:${warning.resourceId}`}>
-                  {warning.label}:{" "}
                   {warning.side === "input"
-                    ? warning.farEndCount >= 2
-                      ? `${warning.farEndCount} sources merge`
-                      : `shared with all ${warning.memberCount} machines`
-                    : warning.farEndCount >= 2
-                      ? `${warning.farEndCount} destinations share one output`
-                      : `collected from all ${warning.memberCount} machines`}
+                    ? `${warning.label} will be shared between all ${warning.memberCount} machines`
+                    : `${warning.label} will be collected from all ${warning.memberCount} machines`}
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-[12px] leading-relaxed text-neutral-300">
-              Make the pocket and these wires merge. Every machine that asks gets a share, and
-              the planner decides the split. Unpacking keeps the new wiring.
+            <p className="mt-3 text-[14px] leading-relaxed text-neutral-300">
+              Making the pocket merges these wires: every machine that asks gets a share, and the
+              planner decides the split. Unpacking keeps this wiring.
             </p>
-            <div className="mt-3 flex justify-end gap-1.5">
+            <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setCompactWarning(undefined)}
-                className="h-7 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2.5 text-[12px] text-neutral-300 hover:text-neutral-100"
+                className="h-9 rounded-[4px] border border-neutral-700 bg-[#17191d] px-3 text-[14px] text-neutral-300 hover:text-neutral-100"
               >
                 Cancel
               </button>
@@ -3498,7 +3609,7 @@ export function FactoryFlow() {
                   setCompactWarning(undefined);
                   runCompact(ids);
                 }}
-                className="h-7 rounded-[4px] border border-amber-600 bg-amber-950 px-2.5 text-[12px] font-medium text-amber-200 hover:bg-amber-900"
+                className="h-9 rounded-[4px] border border-amber-600 bg-amber-950 px-3 text-[14px] font-medium text-amber-200 hover:bg-amber-900"
               >
                 Make the pocket
               </button>
