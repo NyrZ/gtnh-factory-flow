@@ -33,7 +33,12 @@ export interface BoardView {
   // No `snapToGrid`. Snapping was a preference back when cards were sized by
   // their contents; now they are sized in grid cells, so it is a fact.
   canvasPattern: CanvasPattern;
-  /** Machines take their colour from how hard they run. */
+  /**
+   * Machines take their colour from how hard they run. Not its own toggle
+   * any more: it rides the status glance view (the gauge button, bottom
+   * right), so "show me usage" is one mode at every zoom — percentages far
+   * out, heat colours up close.
+   */
   heatmapMode: boolean;
   /** Lines take their colour from how much moves through them. */
   lineHeatMode: boolean;
@@ -90,21 +95,25 @@ function readBoardView(): BoardView {
     // and every new default would ship switched off for existing users.
     const flag = (value: unknown, fallback: boolean) =>
       typeof value === "boolean" ? value : fallback;
+    const glanceMode =
+      parsed.glanceMode === "status" || parsed.glanceMode === "identity"
+        ? parsed.glanceMode
+        : DEFAULT_BOARD_VIEW.glanceMode;
     return {
       canvasPattern: CANVAS_PATTERNS.includes(parsed.canvasPattern as CanvasPattern)
         ? (parsed.canvasPattern as CanvasPattern)
         : DEFAULT_BOARD_VIEW.canvasPattern,
-      heatmapMode: flag(parsed.heatmapMode, DEFAULT_BOARD_VIEW.heatmapMode),
+      // Derived, not read: the heatmap rides the status glance view, and a
+      // saved blob from when it had its own button must not strand a heated
+      // board with no control that turns it off.
+      heatmapMode: glanceMode === "status",
       lineHeatMode: flag(parsed.lineHeatMode, DEFAULT_BOARD_VIEW.lineHeatMode),
       freeDockMode: flag(parsed.freeDockMode, DEFAULT_BOARD_VIEW.freeDockMode),
       lineLabelsMode: flag(parsed.lineLabelsMode, DEFAULT_BOARD_VIEW.lineLabelsMode),
       lineThicknessMode: flag(parsed.lineThicknessMode, DEFAULT_BOARD_VIEW.lineThicknessMode),
       linePulseMode: flag(parsed.linePulseMode, DEFAULT_BOARD_VIEW.linePulseMode),
       calmMode: flag(parsed.calmMode, DEFAULT_BOARD_VIEW.calmMode),
-      glanceMode:
-        parsed.glanceMode === "status" || parsed.glanceMode === "identity"
-          ? parsed.glanceMode
-          : DEFAULT_BOARD_VIEW.glanceMode,
+      glanceMode,
     };
   } catch {
     // Corrupt or unreadable storage is not worth breaking the board over.
