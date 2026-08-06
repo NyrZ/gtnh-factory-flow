@@ -150,7 +150,7 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
-import { getDockTopInset } from "./dock-insets";
+import { getDockTabsRight, getDockTopInset } from "./dock-insets";
 import { isWiringConnection, setWiringConnection, WIRING_BOARD_CLASS } from "./connection-drag";
 import {
   clearHopMap,
@@ -177,8 +177,10 @@ import {
   drawEdgePulses,
   edgePulseCount,
   eraseEdgePulseOcclusion,
+  publishEdgeLabelBox,
   publishEdgePulse,
   publishEdgeWaypointDots,
+  retractEdgeLabelBox,
   retractEdgePulse,
   retractEdgeWaypointDots,
 } from "./edge-pulse";
@@ -796,15 +798,21 @@ function resolveGridRouteEndpoints(
   // The window's true top: side docks exist only below it, and the corner
   // keep-out measures from IT — the window's corner, not the phantom box's.
   const dockTop = top + topInset;
+  // A top-dock stub descends straight through the zone at its own x. Left of
+  // this line the tab art sits, and a stub there would draw the wire (and
+  // its marching dashes) across a tab — those docks simply do not exist.
+  // Half a cell of margin keeps a fat stub's edge off the last tab too.
+  const tabsKeepOut =
+    topInset > 0 ? rect.left + getDockTabsRight(nodeId) + BOARD_GRID / 2 : -Infinity;
   const centerX = (left + right) / 2;
   const centerY = (dockTop + bottom) / 2;
   const candidates: GridEndpoint[] = [];
   for (let x = left + cornerKeepOut; x <= right - cornerKeepOut; x += step) {
     const penalty = Math.abs(x - centerX) * DOCK_CENTER_BIAS;
-    candidates.push(
-      { x, y: top, side: "top", penalty, stubDepth: topInset || undefined },
-      { x, y: bottom, side: "bottom", penalty },
-    );
+    if (x > tabsKeepOut) {
+      candidates.push({ x, y: top, side: "top", penalty, stubDepth: topInset || undefined });
+    }
+    candidates.push({ x, y: bottom, side: "bottom", penalty });
   }
   for (let y = dockTop + cornerKeepOut; y <= bottom - cornerKeepOut; y += step) {
     const penalty = Math.abs(y - centerY) * DOCK_CENTER_BIAS;
@@ -816,9 +824,11 @@ function resolveGridRouteEndpoints(
     candidates.push(
       { x: left, y: snap(centerY), side: "left" },
       { x: right, y: snap(centerY), side: "right" },
-      { x: snap(centerX), y: top, side: "top", stubDepth: topInset || undefined },
       { x: snap(centerX), y: bottom, side: "bottom" },
     );
+    if (snap(centerX) > tabsKeepOut) {
+      candidates.push({ x: snap(centerX), y: top, side: "top", stubDepth: topInset || undefined });
+    }
   }
   return candidates;
 }
@@ -4217,6 +4227,53 @@ function ResourceEdgeComponent({
       : trimPolylineEnds(routedEdge.points, 26);
   const hoverPathD = hoverTrimmedPoints ? pointsToSvgPath(hoverTrimmedPoints) : undefined;
 
+  // The rate pill: on only in label mode, and never parked on a card — a
+  // pill with no clear stretch of wire to sit on goes away entirely.
+  const showRateLabel = Boolean(
+    data?.showLabel &&
+      data.resource &&
+      !routedEdge.labelHidden &&
+      hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS),
+  );
+  // The pulse canvas paints over the whole board and punches back out what
+  // the dashes must stay under (see edge-pulse.ts). The pill publishes its
+  // box for that punch-out: measured once per mount/text change through a
+  // ResizeObserver — never per frame — and centred on the label anchor.
+  const labelBoxRef = useRef<HTMLDivElement>(null);
+  const labelBoxX = routedEdge.labelX;
+  const labelBoxY = routedEdge.labelY;
+  useLayoutEffect(() => {
+    if (!showRateLabel) {
+      retractEdgeLabelBox(id);
+      return;
+    }
+    const element = labelBoxRef.current;
+    const publish = () => {
+      const pill = labelBoxRef.current;
+      if (!pill) {
+        return;
+      }
+      // offsetWidth/Height are pre-transform layout px, which are flow px:
+      // zoom is a transform on the viewport, not a layout input.
+      publishEdgeLabelBox(id, {
+        left: labelBoxX - pill.offsetWidth / 2,
+        top: labelBoxY - pill.offsetHeight / 2,
+        width: pill.offsetWidth,
+        height: pill.offsetHeight,
+      });
+    };
+    publish();
+    if (!element || typeof ResizeObserver === "undefined") {
+      return () => retractEdgeLabelBox(id);
+    }
+    const observer = new ResizeObserver(publish);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      retractEdgeLabelBox(id);
+    };
+  }, [id, labelBoxX, labelBoxY, showRateLabel]);
+
   // Hand this line's dashes to the board's pulse canvas (see edge-pulse.ts).
   // Published after commit rather than during render because it is a
   // side-effecting registration, and dropped on unmount so a culled or deleted
@@ -4477,11 +4534,13 @@ function ResourceEdgeComponent({
                 // Clicky, not smooth: the dot lives on the grid, so it MOVES
                 // on the grid — cell to cell under the pointer, exactly where
                 // it will land, instead of gliding free and snapping late.
-                const snappedX = Math.round(flowPoint.x / BOARD_GRID) * BOARD_GRID;
-                const snappedY = Math.round(flowPoint.y / BOARD_GRID) * BOARD_GRID;
+                // And never onto a card or its wire margin: dragged over one,
+                // the dot rides the nearest legal cell instead, which is
+                // exactly where releasing it will put it.
+                const clamped = clampWaypointToClearSpace(flowPoint.x, flowPoint.y);
                 setDraftWaypoints((current) =>
                   current?.map((point, pointIndex) =>
-                    pointIndex === drag.index ? { x: snappedX, y: snappedY } : point,
+                    pointIndex === drag.index ? clamped : point,
                   ),
                 );
               }}
@@ -4493,16 +4552,18 @@ function ResourceEdgeComponent({
                 event.currentTarget.releasePointerCapture(drag.pointerId);
                 waypointDragRef.current = undefined;
                 if (draftWaypoints) {
-                  // On grid, always: the dot commits to the nearest corner.
+                  // On grid and in clear space, always: the dot commits to
+                  // the nearest legal corner (plans saved before the clamp
+                  // existed can carry dots inside cards — the commit heals
+                  // whichever one was touched).
                   // Order is sacred: the first dot made is the first stop,
                   // wherever either gets dragged — the wire doubles back if
                   // it must. Re-sorting by position here silently swapped
                   // the user's itinerary.
                   updateEdge(id, {
-                    waypoints: draftWaypoints.map((point) => ({
-                      x: Math.round(point.x / BOARD_GRID) * BOARD_GRID,
-                      y: Math.round(point.y / BOARD_GRID) * BOARD_GRID,
-                    })),
+                    waypoints: draftWaypoints.map((point) =>
+                      clampWaypointToClearSpace(point.x, point.y),
+                    ),
                   });
                 }
                 setDraftWaypoints(undefined);
@@ -4516,13 +4577,14 @@ function ResourceEdgeComponent({
             </circle>
           ))
         : null}
-      {data?.showLabel && data.resource && hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS) ? (
+      {showRateLabel && data?.resource ? (
         // The rate pill, back by request as a VIEW mode (the tag button in
         // the board toolbar), and deliberately lean this time: what flows
         // and how fast, at the route's midpoint. No dragging, no popover —
         // the port chips carry the full story.
         <EdgeLabelRenderer>
           <div
+            ref={labelBoxRef}
             className="nodrag nopan absolute flex cursor-pointer items-center gap-1.5 border border-[var(--mc-15)] bg-[#2b2d32] px-1.5 py-0.5 text-[12px] font-medium text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.55)]"
             style={{
               transform: `translate(-50%, -50%) translate(${routedEdge.labelX}px, ${routedEdge.labelY}px)`,
@@ -4911,8 +4973,8 @@ function getDirectEdgePath({
       targetPosition,
     });
 
-  // Labels are gone from the lines; the midpoint anchor sticks around for
-  // the hover story and anything else that wants "somewhere on this wire".
+  // The midpoint anchor: where the rate pill sits when labels are on, and
+  // "somewhere on this wire" for the hover story either way.
   const labelPoint = getPointAtPolylineRatio(points, 0.5) ?? {
     x: (sourceX + targetX) / 2,
     y: (sourceY + targetY) / 2,
@@ -4930,6 +4992,9 @@ function getDirectEdgePath({
     ),
     labelX: labelPoint.x,
     labelY: labelPoint.y,
+    // A pill with no room is a pill not shown: anchored over (or hard
+    // against) a card, it would sit on the card instead of the wire.
+    labelHidden: isPointInsideAnyMeasuredNode(labelPoint),
     points,
   };
 }
@@ -5562,9 +5627,63 @@ function getMeasuredNodeBoundsById(nodeId: string | undefined) {
  * Whether a label ANCHORED here would overlap some node: the margins are
  * half the label box, so this tests the box, not just the center point.
  */
+/**
+ * The nearest grid corner a waypoint dot may legally sit on: outside every
+ * card and its one-cell wire clearance — the same margin routes keep. A dot
+ * inside that space is a stop the router could only ignore, so instead of
+ * letting it sit on a card it slides out of the nearest side. A push can
+ * land inside a neighbouring card's margin; a few passes settle it, and a
+ * dot buried in a wall of cards just stays where the passes left it.
+ */
+function clampWaypointToClearSpace(x: number, y: number): { x: number; y: number } {
+  const snap = (value: number) => Math.round(value / BOARD_GRID) * BOARD_GRID;
+  let px = snap(x);
+  let py = snap(y);
+  for (let pass = 0; pass < 4; pass += 1) {
+    let moved = false;
+    for (const bounds of queryMeasuredNodeBounds({
+      left: px - BOARD_GRID,
+      right: px + BOARD_GRID,
+      top: py - BOARD_GRID,
+      bottom: py + BOARD_GRID,
+    })) {
+      const inflated = {
+        left: bounds.left - BOARD_GRID,
+        right: bounds.right + BOARD_GRID,
+        top: bounds.top - BOARD_GRID,
+        bottom: bounds.bottom + BOARD_GRID,
+      };
+      // ON the clearance line is legal — that is where the wires travel.
+      if (
+        px <= inflated.left ||
+        px >= inflated.right ||
+        py <= inflated.top ||
+        py >= inflated.bottom
+      ) {
+        continue;
+      }
+      const pushes = [
+        { dx: inflated.left - px, dy: 0, cost: px - inflated.left },
+        { dx: inflated.right - px, dy: 0, cost: inflated.right - px },
+        { dx: 0, dy: inflated.top - py, cost: py - inflated.top },
+        { dx: 0, dy: inflated.bottom - py, cost: inflated.bottom - py },
+      ].sort((left, right) => left.cost - right.cost);
+      px = snap(px + pushes[0]!.dx);
+      py = snap(py + pushes[0]!.dy);
+      moved = true;
+    }
+    if (!moved) {
+      break;
+    }
+  }
+  return { x: px, y: py };
+}
+
 function isPointInsideAnyMeasuredNode(
   point: { x: number; y: number },
-  marginX = 60,
+  // Half the label box. 80, not 60: the pill grew a supply percent
+  // ("100 L/s · 100%") and the old half-width let its ends rest on cards.
+  marginX = 80,
   marginY = 16,
 ) {
   // Only nodes whose cell covers the point (plus the label's own half-box) can

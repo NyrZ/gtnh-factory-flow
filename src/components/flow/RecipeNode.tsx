@@ -446,7 +446,27 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const tabZoneRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = tabZoneRef.current;
-    const publish = () => publishDockTopInset(projectNode.id, element?.offsetHeight ?? 0);
+    const publish = () => {
+      const zoneHeight = element?.offsetHeight ?? 0;
+      if (!element || zoneHeight === 0) {
+        publishDockTopInset(projectNode.id, 0);
+        return;
+      }
+      // How far right the tab ART reaches: the widest in-flow child across
+      // every row (the baseline strip is absolute and spans the whole zone,
+      // so it is skipped). Top docks refuse to land left of this line — a
+      // stub there would draw straight across a tab.
+      let tabsRight = 0;
+      const zone = element.firstElementChild;
+      for (const child of zone?.children ?? []) {
+        const box = child as HTMLElement;
+        if (getComputedStyle(box).position === "absolute") {
+          continue;
+        }
+        tabsRight = Math.max(tabsRight, box.offsetLeft + box.offsetWidth);
+      }
+      publishDockTopInset(projectNode.id, zoneHeight, tabsRight);
+    };
     publish();
     if (!element || typeof ResizeObserver === "undefined") {
       return;

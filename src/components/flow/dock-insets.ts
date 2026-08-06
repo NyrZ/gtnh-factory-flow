@@ -15,16 +15,26 @@
  * off-screen nodes, and routes are viewport-independent — a culled card's
  * wires must keep docking exactly where they did while it was mounted.
  */
-const dockTopInsets = new Map<string, number>();
+const dockTopInsets = new Map<string, { inset: number; tabsRight: number }>();
 
-export function publishDockTopInset(nodeId: string, px: number) {
-  if (px > 0) {
-    dockTopInsets.set(nodeId, px);
+export function publishDockTopInset(nodeId: string, insetPx: number, tabsRightPx = 0) {
+  if (insetPx > 0) {
+    dockTopInsets.set(nodeId, { inset: insetPx, tabsRight: tabsRightPx });
   } else {
     dockTopInsets.delete(nodeId);
   }
 }
 
 export function getDockTopInset(nodeId: string): number {
-  return dockTopInsets.get(nodeId) ?? 0;
+  return dockTopInsets.get(nodeId)?.inset ?? 0;
+}
+
+/**
+ * How far right of the card's left edge the tab ART reaches, in px. A
+ * top-dock stub descends straight through the zone at its dock's x, so docks
+ * left of this line would draw the wire (and its dashes) across a tab; the
+ * candidate builder simply refuses them. Zero when the zone is empty.
+ */
+export function getDockTabsRight(nodeId: string): number {
+  return dockTopInsets.get(nodeId)?.tabsRight ?? 0;
 }
