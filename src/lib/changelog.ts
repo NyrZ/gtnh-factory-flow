@@ -16,6 +16,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.12.0",
+    date: "2026-08-06",
+    headline: "Pocket dimensions, a blueprint shelf, and a board that explains itself",
+    notes: [
+      "Shift+drag a box around machines, then Ctrl+G: they compact into one pocket card carrying the group's ins and outs. Double-click it to step inside its own purple room. Esc steps back out.",
+      "Pocket cards wire like machines: one port per resource at the boundary. Compacting warns first when it would pool supplies that came from different places.",
+      "A Blueprints tab now sits beside the item search: save a pocket as a blueprint, publish it, browse and vote on everyone else's, and place one straight onto your board.",
+      "Blueprints take tags and search by them. Rename in place, overwrite one from your board, and double-click a public row to download it.",
+      "Drawers, tanks and trash cans went dark and wear their item's colour. Zoomed out, hovering one shows its item and rate.",
+      "Zoomed way out the board becomes an LED wall: card faces glow their item's colour with bright rims, and wires light up gold to match.",
+      "Box select got real: drag, then copy, cut, paste, delete and undo the whole selection at once.",
+      "The zoom buttons are gone; the scroll wheel does that job. In their corner lives a question mark: hover it and every toolbar and panel explains itself, with a cheat sheet of the mouse and key moves.",
+    ],
+  },
+  {
     version: "1.11.2",
     date: "2026-08-05",
     headline: "Dots, pills and dashes all know their place now",
