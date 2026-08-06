@@ -1,6 +1,7 @@
 "use client";
 
 import { useFactoryStore } from "@/store/factory-store";
+import { writeWorkspaceView } from "@/lib/workspace-view";
 
 interface AppIdentityProps {
   onLoadDatasetVersion: (versionId: string) => void;
@@ -25,11 +26,11 @@ export function AppIdentity({ onLoadDatasetVersion }: AppIdentityProps) {
   const isDatasetLoading = useFactoryStore((state) => state.isDatasetLoading);
 
   return (
-    <div className="shrink-0 border-b border-neutral-800 px-3 py-2">
+    <div className="flex shrink-0 items-center gap-2 border-b border-neutral-800 px-3 py-2">
       {/* The app title lives in the global header row now; this panel head
-          only carries the dataset picker. */}
+          only carries the dataset picker and the button that shuts the column. */}
       <label
-        className="flex items-center gap-2"
+        className="flex min-w-0 flex-1 items-center gap-2"
         title="Which GTNH pack version every recipe is loaded from. Changing it reloads the recipe list and re-resolves the recipes already on your board."
       >
         <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
@@ -52,6 +53,27 @@ export function AppIdentity({ onLoadDatasetVersion }: AppIdentityProps) {
           )}
         </select>
       </label>
+      {/* The column's own close button, at the top of the column it closes.
+          The rail it leaves behind carries the way back. */}
+      <button
+        type="button"
+        onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
+        title="Hide this column and give the board the room"
+        aria-label="Hide the items, blueprints and setups column"
+        className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400"
+      >
+        <svg
+          viewBox="0 0 16 16"
+          className="h-3.5 w-3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M10 3L5 8l5 5" />
+        </svg>
+      </button>
     </div>
   );
 }

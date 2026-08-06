@@ -151,7 +151,7 @@ describe("InspectorPanel", () => {
       seedResult({ internal: Array.from({ length: 400 }, (_, index) => makeInternal(index, 100)) });
 
       const { container } = render(<InspectorPanel />);
-      const rowCount = container.querySelectorAll("button[title]").length;
+      const rowCount = container.querySelectorAll("[data-resource-row]").length;
 
       // 600px of viewport over 30px rows is ~20 visible, plus overscan at each end.
       expect(rowCount).toBeGreaterThan(15);

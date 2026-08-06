@@ -12,6 +12,8 @@ import {
 } from "@/lib/datasets/browser-loader";
 import { loadResourceHistory, useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
+import { recordResourceTrend, resetResourceTrends } from "@/lib/resource-trends";
+import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { AppHeader } from "./AppHeader";
@@ -23,6 +25,8 @@ import { RecipeBrowser } from "./RecipeBrowser";
 
 export function FactoryPlannerApp() {
   const project = useFactoryStore((state) => state.project);
+  const lastResult = useFactoryStore((state) => state.lastResult);
+  const workspace = useWorkspaceView();
   const hydrateResourceHistory = useFactoryStore((state) => state.hydrateResourceHistory);
   const hydrateDesigns = useDesignStore((state) => state.hydrate);
   const saveActiveProject = useDesignStore((state) => state.saveActiveProject);
@@ -125,6 +129,19 @@ export function FactoryPlannerApp() {
     return cancelHydration;
   }, [hydrateDesigns, hydrateResourceHistory]);
 
+  // Recorded here rather than in the resource panel: the charts must not lose
+  // their history because the right column happened to be closed, and every
+  // path that re-solves lands in `lastResult` whether it came from the board,
+  // an undo, or a dataset reload.
+  useEffect(() => {
+    recordResourceTrend(lastResult);
+  }, [lastResult]);
+
+  // A different design is a different story, so the chart starts over.
+  useEffect(() => {
+    resetResourceTrends();
+  }, [activeDesignId]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -196,13 +213,28 @@ export function FactoryPlannerApp() {
       <AppHeader />
       {/* 344/277: the browser column carries three iconed tabs and the setup
           shelf now, so it gets a touch more than the old 312; the inspector
-          keeps its width so stat rows don't wrap. */}
-      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[344px_minmax(0,1fr)_277px]">
+          keeps its width so stat rows don't wrap. A closed column drops to a
+          rail wide enough for one button, so the way back is always on screen
+          and the board never has to give the width back to a hover target. */}
+      <main
+        className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden"
+        style={{
+          gridTemplateColumns: [
+            workspace.leftPanelOpen ? "344px" : `${RAIL_WIDTH}px`,
+            "minmax(0,1fr)",
+            workspace.rightPanelOpen ? "277px" : `${RAIL_WIDTH}px`,
+          ].join(" "),
+        }}
+      >
         {/* Each column carries its own header row, all the same height, so the
             three line up where the full-width bar used to be. */}
         {/* The browser owns its own header row, so no wrapper here — it stays a
             direct grid item at exactly the column width, as it was before. */}
-        <RecipeBrowser onLoadDatasetVersion={loadDatasetVersion} />
+        {workspace.leftPanelOpen ? (
+          <RecipeBrowser onLoadDatasetVersion={loadDatasetVersion} />
+        ) : (
+          <PanelRail side="left" label="Items, blueprints and setups" />
+        )}
         {/*
           The tab strip belongs to the canvas, not the window: designs switch
           what is on the board, while the browser and inspector are fixed
@@ -212,12 +244,78 @@ export function FactoryPlannerApp() {
           <DesignTabs />
           <FactoryFlow />
         </div>
-        <InspectorPanel />
+        {workspace.rightPanelOpen ? (
+          <InspectorPanel />
+        ) : (
+          <PanelRail side="right" label="Resources" />
+        )}
       </main>
       {/* Every pocket-to-blueprint path (card save, share-a-pocket,
           overwrite) confirms through this one dialog. */}
       <BlueprintSaveDialog />
     </div>
+  );
+}
+
+/** Wide enough for one 24px button plus its border. */
+const RAIL_WIDTH = 26;
+
+/**
+ * What a closed side column leaves behind: a rail carrying the button that
+ * opens it again, plus the column's name set sideways.
+ *
+ * A rail rather than a hover-to-peek edge. Peeking hands the column back for
+ * as long as the pointer stays put, which makes it useless for anything you
+ * want to read while working on the board, and it fires by accident every time
+ * the mouse crosses the edge. A rail costs 26px and is never ambiguous.
+ */
+function PanelRail({ side, label }: { side: "left" | "right"; label: string }) {
+  const open = () =>
+    writeWorkspaceView(side === "left" ? { leftPanelOpen: true } : { rightPanelOpen: true });
+
+  return (
+    <div
+      className={[
+        "flex h-full flex-col items-center gap-2 bg-surface py-2",
+        side === "left" ? "border-r border-line" : "border-l border-line",
+      ].join(" ")}
+    >
+      <button
+        type="button"
+        onClick={open}
+        title={`Show ${label}`}
+        aria-label={`Show ${label}`}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-line-strong text-fg-muted hover:border-cyan-600 hover:text-cyan-400"
+      >
+        <ChevronIcon direction={side === "left" ? "right" : "left"} />
+      </button>
+      <button
+        type="button"
+        onClick={open}
+        tabIndex={-1}
+        aria-hidden
+        className="min-h-0 flex-1 cursor-pointer text-[10px] font-semibold uppercase tracking-widest text-fg-muted hover:text-fg"
+        style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+      >
+        <span className={side === "right" ? "rotate-180" : undefined}>{label}</span>
+      </button>
+    </div>
+  );
+}
+
+export function ChevronIcon({ direction }: { direction: "left" | "right" }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {direction === "right" ? <path d="M6 3l5 5-5 5" /> : <path d="M10 3L5 8l5 5" />}
+    </svg>
   );
 }
 

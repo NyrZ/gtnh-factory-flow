@@ -1,0 +1,143 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+
+/**
+ * Workspace preferences: which of the three columns are open, and how the
+ * resource panel is filtered.
+ *
+ * Same reasoning as `board-view.ts`, and the same mechanism. These are
+ * personal taste rather than part of a plan - a design shared with someone
+ * else must not arrive with your side panels shut or your hidden resources
+ * hidden - so they live in localStorage, outside any store, and are read
+ * through useSyncExternalStore so the server can render defaults without a
+ * hydration mismatch.
+ *
+ * Hidden and favourite resources are keyed by `ResourceKey` (`item:iron_ingot`)
+ * and kept across designs on purpose: someone who never wants to see Water
+ * never wants to see it on any board.
+ */
+export interface WorkspaceView {
+  /** The recipe browser / blueprints / setups column on the left. */
+  leftPanelOpen: boolean;
+  /** The resource flow panel on the right. */
+  rightPanelOpen: boolean;
+  /** Hidden resources stay listed, greyed out, instead of dropping away. */
+  showHiddenResources: boolean;
+  /** Only favourites are listed. */
+  favouritesOnly: boolean;
+  /** The trend graphs at the foot of the resource panel. */
+  trendsOpen: boolean;
+  /** Resources the user has hidden, by ResourceKey. */
+  hiddenResourceKeys: string[];
+  /** Resources the user has starred, by ResourceKey. */
+  favouriteResourceKeys: string[];
+}
+
+const WORKSPACE_VIEW_STORAGE_KEY = "gtnh-factory-flow-workspace-view";
+
+export const DEFAULT_WORKSPACE_VIEW: WorkspaceView = {
+  leftPanelOpen: true,
+  rightPanelOpen: true,
+  showHiddenResources: false,
+  favouritesOnly: false,
+  trendsOpen: true,
+  hiddenResourceKeys: [],
+  favouriteResourceKeys: [],
+};
+
+let workspaceViewState: WorkspaceView = DEFAULT_WORKSPACE_VIEW;
+let workspaceViewLoaded = false;
+const listeners = new Set<() => void>();
+
+function readWorkspaceView(): WorkspaceView {
+  try {
+    const raw = window.localStorage.getItem(WORKSPACE_VIEW_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_WORKSPACE_VIEW;
+    }
+    const parsed = JSON.parse(raw) as Partial<Record<keyof WorkspaceView, unknown>>;
+    // An ABSENT key takes the default; only an explicit `false` means off, so
+    // a blob saved before a setting existed cannot silently opt out of it.
+    const flag = (value: unknown, fallback: boolean) =>
+      typeof value === "boolean" ? value : fallback;
+    const keys = (value: unknown) =>
+      Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+
+    return {
+      leftPanelOpen: flag(parsed.leftPanelOpen, DEFAULT_WORKSPACE_VIEW.leftPanelOpen),
+      rightPanelOpen: flag(parsed.rightPanelOpen, DEFAULT_WORKSPACE_VIEW.rightPanelOpen),
+      showHiddenResources: flag(
+        parsed.showHiddenResources,
+        DEFAULT_WORKSPACE_VIEW.showHiddenResources,
+      ),
+      favouritesOnly: flag(parsed.favouritesOnly, DEFAULT_WORKSPACE_VIEW.favouritesOnly),
+      trendsOpen: flag(parsed.trendsOpen, DEFAULT_WORKSPACE_VIEW.trendsOpen),
+      hiddenResourceKeys: keys(parsed.hiddenResourceKeys),
+      favouriteResourceKeys: keys(parsed.favouriteResourceKeys),
+    };
+  } catch {
+    return DEFAULT_WORKSPACE_VIEW;
+  }
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+// Identity stays stable between writes, which is what useSyncExternalStore
+// needs to avoid an infinite render loop.
+function getSnapshot(): WorkspaceView {
+  if (!workspaceViewLoaded) {
+    workspaceViewLoaded = true;
+    workspaceViewState = readWorkspaceView();
+  }
+  return workspaceViewState;
+}
+
+function getServerSnapshot(): WorkspaceView {
+  return DEFAULT_WORKSPACE_VIEW;
+}
+
+export function writeWorkspaceView(patch: Partial<WorkspaceView>) {
+  workspaceViewState = { ...getSnapshot(), ...patch };
+  try {
+    window.localStorage.setItem(
+      WORKSPACE_VIEW_STORAGE_KEY,
+      JSON.stringify(workspaceViewState),
+    );
+  } catch {
+    // A full or blocked storage quota must never break the workspace.
+  }
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+export function useWorkspaceView(): WorkspaceView {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/** Flip one resource in or out of a saved key list. */
+function toggleKey(list: string[], resourceKey: string): string[] {
+  return list.includes(resourceKey)
+    ? list.filter((entry) => entry !== resourceKey)
+    : [...list, resourceKey];
+}
+
+export function toggleResourceHidden(resourceKey: string) {
+  const current = getSnapshot();
+  writeWorkspaceView({
+    hiddenResourceKeys: toggleKey(current.hiddenResourceKeys, resourceKey),
+  });
+}
+
+export function toggleResourceFavourite(resourceKey: string) {
+  const current = getSnapshot();
+  writeWorkspaceView({
+    favouriteResourceKeys: toggleKey(current.favouriteResourceKeys, resourceKey),
+  });
+}

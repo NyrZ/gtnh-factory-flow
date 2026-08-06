@@ -16,6 +16,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.15.0",
+    date: "2026-08-06",
+    headline: "Hide what you do not care about, watch what you do",
+    notes: [
+      "Hover any resource and two buttons appear: a star to watch it, an eye to hide it.",
+      "Hidden resources drop out of the list. The eye button at the top brings them back greyed out, so you can find one and unhide it.",
+      "Starred resources float to the top of their group and keep a star beside the name.",
+      "New Watching panel at the foot of the list: every starred resource gets its own chart.",
+      "The charts run along your edits, not along the clock. Each change that moves a number adds a point, so after an edit that shifted fifty things you can see which of them went up and which went down.",
+      "Each chart shows spare above the line and short below it, with the change since the chart started.",
+      "Both side columns fold away now. Use the arrow beside Game version on the left, or the one in the resources toolbar on the right, and a thin strip stays behind to bring them back.",
+      "Your stars, your hidden resources and your folded columns are remembered between visits.",
+    ],
+  },
+  {
     version: "1.14.0",
     date: "2026-08-06",
     headline: "Select part of your factory, see what just that part needs",

@@ -59,6 +59,47 @@ export function filterFlowBalances(items: ResourceBalance[], filter: string) {
   });
 }
 
+export interface ResourceMarks {
+  hidden: ReadonlySet<string>;
+  favourites: ReadonlySet<string>;
+  /** Hidden rows stay listed, greyed, instead of dropping out. */
+  showHidden: boolean;
+  /** Everything except favourites drops out. */
+  favouritesOnly: boolean;
+}
+
+/**
+ * Applies the user's own marks to one group: drops what they never want to
+ * see, then floats what they starred to the top.
+ *
+ * Order within each half is left alone - the solver already sorted by size,
+ * which is the ranking that matters once the starred rows are out of the way.
+ * Stable partition rather than a sort, so equal rows can never swap places
+ * between renders.
+ */
+export function applyResourceMarks(
+  items: ResourceBalance[],
+  marks: ResourceMarks,
+): ResourceBalance[] {
+  const starred: ResourceBalance[] = [];
+  const rest: ResourceBalance[] = [];
+
+  for (const balance of items) {
+    const isFavourite = marks.favourites.has(balance.key);
+    if (marks.favouritesOnly && !isFavourite) {
+      continue;
+    }
+    // A starred resource is never hidden out of the list: starring it says
+    // you want to watch it, which outranks a stale hide.
+    if (marks.hidden.has(balance.key) && !marks.showHidden && !isFavourite) {
+      continue;
+    }
+    (isFavourite ? starred : rest).push(balance);
+  }
+
+  return starred.length === 0 ? rest : [...starred, ...rest];
+}
+
 /**
  * Flattens the sections into the row list the virtualiser walks.
  *

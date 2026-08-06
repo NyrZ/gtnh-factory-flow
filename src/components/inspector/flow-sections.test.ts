@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ResourceBalance } from "@/lib/model/types";
 import {
+  applyResourceMarks,
   buildFlowRows,
   filterFlowBalances,
   findRowIndexAtOffset,
@@ -8,6 +9,7 @@ import {
   measureFlowRows,
   type FlowSection,
   type FlowSectionId,
+  type ResourceMarks,
 } from "./flow-sections";
 
 const HEIGHTS = { header: 30, item: 48, empty: 38 };
@@ -180,5 +182,76 @@ describe("filterFlowBalances", () => {
 
   it("returns nothing when there is no match", () => {
     expect(filterFlowBalances(items, "titanium")).toEqual([]);
+  });
+});
+
+describe("applyResourceMarks", () => {
+  const iron = makeBalance({ key: "item:iron", displayName: "Iron" });
+  const copper = makeBalance({ key: "item:copper", displayName: "Copper" });
+  const water = makeBalance({ key: "fluid:water", displayName: "Water" });
+  const items = [iron, copper, water];
+
+  const marks = (overrides: Partial<ResourceMarks> = {}): ResourceMarks => ({
+    hidden: new Set(),
+    favourites: new Set(),
+    showHidden: false,
+    favouritesOnly: false,
+    ...overrides,
+  });
+
+  it("leaves an unmarked list exactly as the solver ranked it", () => {
+    expect(applyResourceMarks(items, marks())).toEqual(items);
+  });
+
+  it("drops hidden resources", () => {
+    expect(applyResourceMarks(items, marks({ hidden: new Set(["fluid:water"]) }))).toEqual([
+      iron,
+      copper,
+    ]);
+  });
+
+  it("keeps hidden resources listed when showing them is on", () => {
+    const shown = applyResourceMarks(
+      items,
+      marks({ hidden: new Set(["fluid:water"]), showHidden: true }),
+    );
+
+    // Still in place, not moved to the end: the row greys out where it sits so
+    // it can be found and unhidden.
+    expect(shown).toEqual(items);
+  });
+
+  it("floats favourites to the top without reordering the rest", () => {
+    expect(applyResourceMarks(items, marks({ favourites: new Set(["fluid:water"]) }))).toEqual([
+      water,
+      iron,
+      copper,
+    ]);
+  });
+
+  it("keeps the solver's ranking among several favourites", () => {
+    const marked = applyResourceMarks(
+      items,
+      marks({ favourites: new Set(["fluid:water", "item:iron"]) }),
+    );
+
+    expect(marked).toEqual([iron, water, copper]);
+  });
+
+  it("lists only favourites when that filter is on", () => {
+    expect(
+      applyResourceMarks(items, marks({ favouritesOnly: true, favourites: new Set(["item:iron"]) })),
+    ).toEqual([iron]);
+  });
+
+  it("shows a favourite even when it is also hidden", () => {
+    // Starring something says "keep this in front of me", which has to outrank
+    // a hide set weeks ago, or the star would silently do nothing.
+    const marked = applyResourceMarks(
+      items,
+      marks({ hidden: new Set(["fluid:water"]), favourites: new Set(["fluid:water"]) }),
+    );
+
+    expect(marked).toEqual([water, iron, copper]);
   });
 });
