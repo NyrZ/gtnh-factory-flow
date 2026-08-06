@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.10.0",
+    date: "2026-08-05",
+    headline: "Wires live on the grid — and you can steer them",
+    notes: [
+      "Every wire now travels along the grid, keeps a clear gap off every card, and never draws on top of another wire. Wires heading the same way ride side by side like a cable run.",
+      "Double-click a wire to pin a dot on it. The wire must pass through the dot — drag it (it clicks along the grid) to steer the wire wherever you want, and double-click the dot to remove it. Dots save with your plan.",
+      "Wires attach wherever on a card routes cleanest. The anchor button switches back to classic port attachment; it asks first on big boards since rewiring everything can take a moment.",
+      "Direction cues got calmer: the marching dashes move slower, and when you turn them off, small arrows sit near each end of every wire instead.",
+      "Rate labels on wires are now behind the tag button, off by default — the ports carry the numbers.",
+      "Dragging feels honest now: the card in your hand rides above the wires, everything holds still while you drag, and the real wiring lands the moment you drop. Double-click no longer zooms the board.",
+    ],
+  },
+  {
     version: "1.9.0",
     date: "2026-08-05",
     headline: "The whole board is built on one grid now",

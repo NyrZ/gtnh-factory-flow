@@ -110,11 +110,11 @@ nodes. Everything below was validated with profiled stress tests (120 nodes /
      callbacks — FactoryFlow re-renders every drag frame and takes
      non-memoized children with it.
 
-5. **Drags are frozen, drops reconcile.** While a node is dragged
-   (`activelyDraggedNodeIds`), untouched edges keep their cached routes and do
-   not re-render; edges on the dragged node fall back to cheap estimated
-   endpoints and simple routing so they follow the pointer. The one full
-   precise reroute happens on drop, against freshly published geometry.
+5. **Drags are frozen, drops reconcile.** While a node (or an edge waypoint
+   dot) is dragged, EVERY wire keeps its last solved route - no pointer-
+   chasing approximation; a preview that guesses differently from the
+   drop's real solve reads as the board lying. The one full reroute
+   happens on drop, against freshly published geometry.
 
 6. **Route scoring is local.** Candidates are scored only against obstacles
    and edge segments inside the candidates' own reach envelope (padded by the
@@ -164,8 +164,19 @@ is no snap toggle any more.
    where the height is already deterministic.
 
 Anything that sets a width, height, or offset on the board should be a
-multiple of `BOARD_GRID` or built from the tokens in `board-grid.ts`. Edge
-routing does not yet run on the grid; that is the next step.
+multiple of `BOARD_GRID` or built from the tokens in `board-grid.ts`.
+
+Wires live on the grid too (`grid-edge-router.ts`): a pure, deterministic
+A* over the Hanan lines of the margin-inflated cards, solved for ALL edges
+at once so lanes can be shared. Each 20px line is a lane with 16 usable px;
+wire widths are lane fractions, side-by-side sharing is slightly cheaper
+than an empty lane (that is what forms ribbons), overflow is expensive
+(that is what prevents overlap), and only port stubs may stack. The host
+side (`ensureGridSolve` in FactoryFlow) publishes the edge list from the
+`flowEdges` memo, resolves measured port anchors, fingerprints everything
+(sweep hash + endpoints + widths — never hover state), and parks routes in
+`directRouteCache`; a stamp/epoch gate keeps the check O(1) per edge
+render. Mid-drag edges fall back to a simple L and the drop re-solves.
 
 ### Rules of thumb for new board code
 
@@ -179,7 +190,7 @@ routing does not yet run on the grid; that is the next step.
 - Anything O(nodes) per frame is suspect; anything O(nodes × edges) per frame
   is a bug.
 - After touching board internals, re-verify the behavioral contracts with
-  Playwright: edges follow a dragged node and reroute precisely on drop;
+  Playwright: edges hold their routes during a drag and reroute precisely on drop;
   untouched edges' paths do not change during someone else's drag; a node
   resize reroutes its edges; labels and arrowheads sit on their paths.
 

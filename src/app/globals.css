@@ -342,18 +342,20 @@ img {
   z-index: 30 !important;
 }
 
-.factory-flow-board--dragging .react-flow__edges {
-  z-index: 2000 !important;
-}
-
-.factory-flow-board--dragging .react-flow__edgelabel-renderer {
-  z-index: 2010 !important;
+/* While a drag is live the NODES layer rides above the wires: the card in
+   hand must visibly pass over them (wires hold still for the whole drag and
+   reroute on drop). This used to be the other way around — the edge layer
+   lifted to 2000 so pointer-chasing edges stayed visible — which buried the
+   dragged card under the entire wiring. Within the lifted layer the
+   .dragging rule above keeps the held card over its siblings. */
+.factory-flow-board--dragging .react-flow__nodes {
+  z-index: 2100 !important;
 }
 
 /* A node with an open picker popup must beat everything: the edge layer sits
-   above the nodes layer by design (80 vs 20, 2000 while dragging), so the
-   whole nodes layer lifts while any popup is open, and the owning node rises
-   above its selected (20) and dragging (30) siblings. */
+   above the nodes layer by design (80 vs 20), so the whole nodes layer lifts
+   while any popup is open, and the owning node rises above its selected (20)
+   and dragging (30) siblings. */
 .factory-flow-board .react-flow__nodes:has(.recipe-node-popup-open) {
   z-index: 2200 !important;
 }

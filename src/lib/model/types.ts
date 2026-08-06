@@ -326,6 +326,15 @@ export interface FactoryEdge {
     x: number;
     y: number;
   };
+  /**
+   * User-pinned stops, in order: the wire must pass through each on its way
+   * from source to target. Placed by double-clicking the wire, dragged to
+   * steer it, removed by double-clicking the dot. Always on grid corners.
+   */
+  waypoints?: Array<{
+    x: number;
+    y: number;
+  }>;
 }
 
 export interface FuelProfile {

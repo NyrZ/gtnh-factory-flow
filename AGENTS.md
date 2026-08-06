@@ -123,18 +123,30 @@ gh run watch <run-id> --exit-status
 
 ## Routing Links
 
-- Link routing must be deterministic for the same graph state, independent of zoom level.
-- Route candidates should be scored; avoid hardcoded special-case paths.
-- Score priorities:
-  - heavily penalize self-folding/backtracking routes
-  - minimize pixels crossing node/card rectangles
-  - avoid passing close to other links, with roughly an 8 px clearance target
-  - minimize intersections with other links
-  - minimize turn count
-  - minimize total path length
-- Tie-breaking must be stable. Sort/index links before solving so zoom/dezoom or render order does not change chosen paths.
-- Top vs bottom exits/entries should be chosen by scoring, not fixed to always top.
-- Drawers/storage nodes can enter/exit from top or bottom when that gives a better score.
+- Wires are routed by the grid router (`src/components/flow/grid-edge-router.ts`),
+  one A* solve over every edge at once. Do not reintroduce per-edge candidate
+  scoring or hardcoded special-case paths.
+- Routes travel on 20px grid lines and never come within one cell of any card.
+  The only exception is the port stub — the final hop across a card's margin
+  into the port itself.
+- A grid line is a lane with 16 usable px. Wire widths are fractions of a lane
+  (`LANE_FRACTIONS`); wires that fit side by side share a lane with a 2px gap,
+  packed around the line's centre. Riding a shared lane is slightly cheaper
+  than an empty one, so wires travel together and split near destinations.
+- Wires never overlap outside port stubs. Overfull lanes cost heavily, so a
+  latecomer takes the next line over; only at a port, where any number of
+  wires can converge on one row, may they stack — and only on the stub.
+- Docking is a VIEW toggle (the anchor button, on by default): free mode
+  attaches a wire wherever on the perimeter routes cheapest (any side,
+  corners and their two neighbouring cells excluded, centre-biased, dock
+  points claimed so no two wires share one); port mode pins wires to the
+  classic fixed ports - inputs left, outputs right, storage side centres.
+  Ports always remain where wires START (drag from a chip) and where the
+  numbers live.
+- Routing must stay deterministic for the same graph state, independent of
+  zoom and render order (edges are solved in routeIndex order).
+- Edge rate labels are a VIEW mode, off by default: the tag button in the
+  board toolbar shows lean rate pills on the lines. No dragging, no popover.
 
 ## Import/Export Plans
 
