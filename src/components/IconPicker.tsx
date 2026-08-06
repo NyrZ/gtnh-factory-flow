@@ -279,7 +279,7 @@ export function EntryIconSlot({
     return (
       <span
         className={[
-          "flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden",
+          "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden",
           className ?? "",
         ].join(" ")}
       >
@@ -294,7 +294,7 @@ export function EntryIconSlot({
       onClick={onEdit}
       aria-label={icon ? "Change the icon" : "Pick an icon"}
       className={[
-        "flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-[4px] border",
+        "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[4px] border",
         icon
           ? "border-transparent hover:border-cyan-600"
           : "border-dashed border-neutral-600 text-neutral-600 hover:border-cyan-600 hover:text-cyan-400",
