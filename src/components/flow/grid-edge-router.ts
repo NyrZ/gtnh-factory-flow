@@ -38,23 +38,34 @@ export const LANE_CAPACITY = 16;
 export const LANE_GAP = 2;
 
 /**
- * The widths wires are allowed to draw at: fractions of a lane. Dynamic
- * thickness picks from this menu, so any two wires either fit a lane
- * together or visibly do not — no in-between widths that almost fit.
- * The menu bottoms out at ⅛ (2px): the 1/16 sliver read as a hairline
- * scratch on the canvas, not as a wire.
+ * The widths wires are allowed to draw at: fractions of a lane, bottoming
+ * out at ¼ (4px) — anything thinner read as a scratch, not a wire. Eight
+ * steps rather than four: the heat scale already blends rank with log
+ * magnitude so 5k vs 10k stays distinguishable even with 100k on the
+ * board, and a coarse menu was throwing that resolution away at the last
+ * moment.
  */
-export const LANE_FRACTIONS = [1 / 8, 1 / 4, 1 / 3, 1 / 2, 1] as const;
+export const LANE_FRACTIONS = [
+  1 / 4,
+  5 / 16,
+  3 / 8,
+  7 / 16,
+  1 / 2,
+  5 / 8,
+  3 / 4,
+  1,
+] as const;
 
-/** Normalized flow heat (0..1) → the stroke width for dynamic-width mode. */
+/**
+ * Normalized flow heat (0..1) → the stroke width for dynamic-width mode.
+ * Heat maps onto the menu by INDEX, evenly, so every step gets an equal
+ * slice of the scale — thresholding by fraction value clustered most of
+ * the range onto the widest steps.
+ */
 export function laneWidthForHeat(heat: number): number {
   const clamped = Math.min(Math.max(heat, 0), 1);
-  for (const fraction of LANE_FRACTIONS) {
-    if (clamped <= fraction + 1e-6) {
-      return Math.round(fraction * LANE_CAPACITY * 100) / 100;
-    }
-  }
-  return LANE_CAPACITY;
+  const fraction = LANE_FRACTIONS[Math.round(clamped * (LANE_FRACTIONS.length - 1))];
+  return Math.round(fraction * LANE_CAPACITY * 100) / 100;
 }
 
 export interface GridPoint {

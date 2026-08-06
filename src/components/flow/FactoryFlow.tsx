@@ -252,7 +252,7 @@ const CANVAS_PATTERN_VARIANT: Record<
  * 20px grid cell, so two full pipes in neighbouring lanes keep daylight),
  * the narrowest a sliver. `laneWidthForHeat` does the mapping.
  */
-const FLOW_MODE_MIN_WIDTH = 1;
+const FLOW_MODE_MIN_WIDTH = 4;
 const FLOW_MODE_MAX_WIDTH = LANE_CAPACITY;
 /**
  * Dash travel in flow pixels per second: the quietest line on the board, and
@@ -1791,19 +1791,21 @@ export function FactoryFlow() {
                 : isStorageEdge
                   ? 0.86
                   : 0.92,
+          // Doubled across the board: ~3px wires read as scratches next to
+          // the 4-16px dynamic pipes and on dense displays.
           strokeWidth: lineThicknessMode
             ? laneWidthForHeat(flowHeat)
             : isFlowHighlighted
-              ? 5.5
+              ? 9
               : isStorageEdge
                 ? isStorageEdgeEmphasized
-                  ? 4
-                  : 3.1
+                  ? 7.5
+                  : 6.2
                 : isStarvedEdge
-                  ? 2.7
+                  ? 5.4
                   : edge.resourceKind === "fluid"
-                    ? 3.4
-                    : 2.9,
+                    ? 6.8
+                    : 5.8,
         },
       });
     });
@@ -3986,7 +3988,7 @@ function ResourceEdgeComponent({
     flowWidth !== undefined
       ? flowWidth + (isHighlighted ? 2 : 0)
       : isHighlighted
-        ? 6.5
+        ? 9
         : data?.bundle?.role === "primary"
           ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
           : Number(style?.strokeWidth ?? 3.1);
@@ -5026,7 +5028,7 @@ const EDGE_HOP_MAX_RADIUS = 44;
  * pimple under a fat pipe or a hoop over a hair.
  */
 const publishedEdgeStrokeWidths = new Map<string, number>();
-const DEFAULT_EDGE_STROKE_WIDTH = 3;
+const DEFAULT_EDGE_STROKE_WIDTH = 6;
 
 
 /**
