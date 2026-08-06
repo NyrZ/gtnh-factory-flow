@@ -31,6 +31,9 @@ export interface BlueprintSaveRequest {
   payload: BoardClipboardPayload;
   name: string;
   icon?: EntryIcon;
+  tags?: string[];
+  /** Overwrites only: whether the row is currently on the public shelf. */
+  isPublic?: boolean;
   /** Set when the save overwrites an existing shelf row instead of creating. */
   blueprintId?: string;
 }
@@ -82,7 +85,14 @@ interface BlueprintStore {
   refresh: () => Promise<void>;
   /** Forget the private shelf (sign-out); the public network stays browsable. */
   reset: () => void;
-  save: (name: string, payload: BoardClipboardPayload, icon?: EntryIcon) => Promise<boolean>;
+  /** Creates a shelf row; returns the created summary so callers can chain
+      (the save dialog publishes right after when asked to). */
+  save: (
+    name: string,
+    payload: BoardClipboardPayload,
+    icon?: EntryIcon,
+    tags?: string[],
+  ) => Promise<BlueprintSummary | undefined>;
   load: (blueprintId: string) => Promise<BoardClipboardPayload | undefined>;
   remove: (blueprintId: string) => Promise<void>;
   /**
@@ -152,15 +162,15 @@ export const useBlueprintStore = create<BlueprintStore>((set, get) => ({
   },
   reset: () =>
     set({ blueprints: [], hasLoaded: false, isLoading: false, error: undefined }),
-  save: async (name, payload, icon) => {
+  save: async (name, payload, icon, tags) => {
     set({ isSaving: true, error: undefined });
     try {
-      const created = await saveBlueprint(name, payload, computeBlueprintIo(payload), icon);
+      const created = await saveBlueprint(name, payload, computeBlueprintIo(payload), icon, tags);
       set((state) => ({ blueprints: [created, ...state.blueprints] }));
-      return true;
+      return created;
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "Blueprint could not be saved." });
-      return false;
+      return undefined;
     } finally {
       set({ isSaving: false });
     }

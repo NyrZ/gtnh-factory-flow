@@ -27,17 +27,36 @@ import {
   type BlueprintSummary,
   type PublicBlueprintSort,
 } from "@/lib/blueprints/types";
-import type { PlanResourceStat } from "@/lib/community/types";
 import { snapPositionToGrid } from "@/lib/board-grid";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useCommunityUser } from "@/components/community/auth";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
-import { ResourceIcon } from "@/components/nei/ResourceIcon";
-import { formatSlotRate } from "@/components/flow/flow-explainers";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
+import {
+  formatRelativeDate,
+  renderEntryHoverCard,
+  TagChips,
+  TierBadge,
+} from "@/components/shelf-cards";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import type { BoardClipboardPayload } from "@/store/factory-store";
+
+/** The whole story a hovered blueprint row tells. */
+function blueprintHoverCard(blueprint: BlueprintSummary): ReactNode {
+  return renderEntryHoverCard({
+    icon: blueprint.icon,
+    name: blueprint.name,
+    authorName: blueprint.authorName,
+    createdAt: blueprint.publishedAt ?? blueprint.createdAt,
+    cardCount: blueprint.nodeCount + blueprint.storageCount,
+    machineCount: blueprint.machineCount,
+    tier: blueprint.highestTier,
+    description: blueprint.description || undefined,
+    needs: blueprint.needs,
+    outputs: blueprint.outputs,
+  });
+}
 
 /**
  * The blueprint library, owning the whole left column while the sidebar's
@@ -119,6 +138,8 @@ export function BlueprintPanel() {
             payload,
             name: blueprint.name,
             icon: blueprint.icon,
+            tags: blueprint.tags,
+            isPublic: blueprint.isPublic,
             blueprintId: blueprint.id,
           });
         }
@@ -153,6 +174,8 @@ export function BlueprintPanel() {
           payload,
           name: blueprint.name,
           icon: blueprint.icon,
+          tags: blueprint.tags,
+          isPublic: blueprint.isPublic,
           blueprintId: blueprint.id,
         });
       }
@@ -317,94 +340,6 @@ function ControlsCard({ children }: { children: ReactNode }) {
   return (
     <div className="mx-2 mt-2 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
       {children}
-    </div>
-  );
-}
-
-/** A row's tags as small chips; clicking one searches for it (`#tag`).
-    Shared with the Setups shelf, whose tags follow the same rules. */
-export function TagChips({
-  tags,
-  onTag,
-  className,
-}: {
-  tags: string[];
-  onTag: (tag: string) => void;
-  className?: string;
-}) {
-  if (tags.length === 0) {
-    return null;
-  }
-  return (
-    <div className={["mt-0.5 flex flex-wrap gap-1", className ?? ""].join(" ")}>
-      {tags.map((tag) => (
-        <button
-          key={tag}
-          type="button"
-          onClick={() => onTag(tag)}
-          title={`Search #${tag}`}
-          className="rounded-[3px] border border-neutral-700 bg-[#17191d] px-1 py-px text-[9px] leading-3 text-neutral-400 hover:border-cyan-600 hover:text-cyan-300"
-        >
-          #{tag}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/**
- * The hover reveal: what this blueprint needs from outside and what it
- * makes, icons and rates — the same reading a hovered machine gives on the
- * zoomed-out board. Returns undefined for stat-less rows (older saves), so
- * the tooltip simply doesn't open.
- */
-function renderBlueprintIo(blueprint: BlueprintSummary): ReactNode {
-  return renderIoStats(blueprint.needs ?? [], blueprint.outputs ?? []);
-}
-
-/** The Needs/Makes stat sections, shared with the Setups shelf's tooltips. */
-export function renderIoStats(needs: PlanResourceStat[], outputs: PlanResourceStat[]): ReactNode {
-  if (needs.length === 0 && outputs.length === 0) {
-    return undefined;
-  }
-
-  const section = (label: string, stats: typeof needs) =>
-    stats.length > 0 ? (
-      <div className="mt-1.5 first:mt-0">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
-        {stats.slice(0, 8).map((stat) => (
-          <div
-            key={`${stat.kind}:${stat.resourceId}`}
-            className="flex items-center gap-1.5 py-0.5"
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden">
-              <ResourceIcon
-                resource={{ ...stat, id: stat.resourceId, amount: 1 }}
-                bare
-                tooltip={false}
-                showAmount={false}
-                iconPixelSize={stat.kind === "fluid" ? 36 : undefined}
-                className={stat.kind === "fluid" ? "!h-5 !w-5" : "!h-5 !w-5 origin-center scale-150"}
-              />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[12px] text-slate-200">
-              {stat.displayName ?? stat.resourceId}
-            </span>
-            <span className="shrink-0 tabular-nums text-[12px] text-slate-400">
-              {formatSlotRate(stat.ratePerSecond, stat.kind)}
-            </span>
-          </div>
-        ))}
-        {stats.length > 8 ? (
-          <div className="text-[10px] text-slate-500">+{stats.length - 8} more</div>
-        ) : null}
-      </div>
-    ) : null;
-
-  return (
-    <div className="w-64">
-      {section("Needs", needs)}
-      {section("Makes", outputs)}
     </div>
   );
 }
@@ -601,9 +536,10 @@ function MineShelf({
                     }
                   }}
                 >
-                  {/* Tooltips are per-element: every button explains ITSELF,
-                      and the I/O stat card opens from the name and the fact
-                      strip — never both at once. */}
+                  {/* The whole row reveals the blueprint's story; buttons
+                      that sit inside it explain THEMSELVES, winning the
+                      hover wherever they are (nearest tooltip owns it). */}
+                  <MinecraftTooltip content={blueprintHoverCard(blueprint)}>
                   <div className="flex items-center gap-1">
                     <EntryIconSlot
                       icon={blueprint.icon}
@@ -613,6 +549,7 @@ function MineShelf({
                     {renamingId === blueprint.id ? (
                       <input
                         autoFocus
+                        data-tooltip-stop=""
                         value={renameDraft}
                         maxLength={60}
                         onChange={(event) => setRenameDraft(event.target.value)}
@@ -628,14 +565,9 @@ function MineShelf({
                         className="h-6 min-w-0 flex-1 rounded-[4px] border border-cyan-600 bg-[#17191d] px-1.5 text-[13px] text-neutral-100 outline-none"
                       />
                     ) : (
-                      <MinecraftTooltip
-                        label={blueprint.name}
-                        content={renderBlueprintIo(blueprint)}
-                      >
-                        <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
-                          {blueprint.name}
-                        </span>
-                      </MinecraftTooltip>
+                      <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
+                        {blueprint.name}
+                      </span>
                     )}
                     <MinecraftTooltip
                       label={
@@ -770,7 +702,10 @@ function MineShelf({
                     </MinecraftTooltip>
                   </div>
                   {overwriteArmId === blueprint.id ? (
-                    <div className="mt-1 flex items-center gap-1.5 rounded-[4px] border border-amber-700 bg-amber-950/60 px-1.5 py-1">
+                    <div
+                      data-tooltip-stop=""
+                      className="mt-1 flex items-center gap-1.5 rounded-[4px] border border-amber-700 bg-amber-950/60 px-1.5 py-1"
+                    >
                       <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
                         Now click a pocket on the board. The save dialog opens with it.
                       </span>
@@ -786,7 +721,10 @@ function MineShelf({
                     </div>
                   ) : null}
                   {taggingId === blueprint.id ? (
-                    <div className="mt-1 flex flex-wrap items-center gap-1 rounded-[4px] border border-cyan-800 bg-[#17191d] px-1.5 py-1">
+                    <div
+                      data-tooltip-stop=""
+                      className="mt-1 flex flex-wrap items-center gap-1 rounded-[4px] border border-cyan-800 bg-[#17191d] px-1.5 py-1"
+                    >
                       {tagDraft.map((tag) => (
                         <span
                           key={tag}
@@ -847,32 +785,21 @@ function MineShelf({
                       className="pl-0.5"
                     />
                   )}
-                  {/* Facts as icon pairs, words in the hover — text rows kept
-                      truncating to three dots in a 300px column. */}
-                  <MinecraftTooltip content={renderBlueprintIo(blueprint)}>
-                  <div className="mt-0.5 flex items-center gap-2.5 pl-0.5 text-[10px] tabular-nums text-neutral-500">
-                    <span title={`Saved ${new Date(blueprint.createdAt).toLocaleString()}`}>
-                      {formatRelativeDate(blueprint.createdAt)}
-                    </span>
-                    <span
-                      className="flex shrink-0 items-center gap-0.5"
-                      title={`${blueprint.nodeCount + blueprint.storageCount} cards inside`}
-                    >
+                  {/* Facts as icon pairs, words in the row's hover card —
+                      text rows kept truncating in a narrow column. */}
+                  <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] tabular-nums text-neutral-500">
+                    <TierBadge tier={blueprint.highestTier} />
+                    <span>{formatRelativeDate(blueprint.createdAt)}</span>
+                    <span className="flex shrink-0 items-center gap-0.5">
                       <Boxes className="h-3 w-3" /> {blueprint.nodeCount + blueprint.storageCount}
                     </span>
                     {blueprint.machineCount > 0 ? (
-                      <span
-                        className="flex shrink-0 items-center gap-0.5"
-                        title={`${blueprint.machineCount} machines configured`}
-                      >
+                      <span className="flex shrink-0 items-center gap-0.5">
                         <Cog className="h-3 w-3" /> {blueprint.machineCount}
                       </span>
                     ) : null}
                     {blueprint.isPublic ? (
-                      <span
-                        className="ml-auto flex shrink-0 items-center gap-1.5 text-emerald-500"
-                        title={`On the network: ${blueprint.upvotes} upvotes, placed ${blueprint.downloads} times`}
-                      >
+                      <span className="ml-auto flex shrink-0 items-center gap-1.5 text-emerald-500">
                         <ArrowBigUp className="h-3 w-3" /> {blueprint.upvotes}
                         <Download className="h-3 w-3" /> {blueprint.downloads}
                       </span>
@@ -1090,8 +1017,9 @@ function PublicBlueprintRow({
         }
       }}
     >
-      {/* Tooltips are per-element: buttons explain themselves, the I/O stat
-          card opens from the name and the fact strip — never both at once. */}
+      {/* The whole row reveals the blueprint's story; the vote and place
+          buttons explain themselves, tag chips stay silent. */}
+      <MinecraftTooltip content={blueprintHoverCard(blueprint)}>
       <div className="flex items-center gap-1">
         <MinecraftTooltip
           label={
@@ -1116,11 +1044,9 @@ function PublicBlueprintRow({
           </button>
         </MinecraftTooltip>
         <EntryIconSlot icon={blueprint.icon} />
-        <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
-          <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
-            {blueprint.name}
-          </span>
-        </MinecraftTooltip>
+        <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
+          {blueprint.name}
+        </span>
         <MinecraftTooltip label={"Place on your board\nDouble-clicking the row works too"}>
           <button
             type="button"
@@ -1137,39 +1063,29 @@ function PublicBlueprintRow({
           </button>
         </MinecraftTooltip>
       </div>
-      {/* Facts as icon pairs, words in the hover — text rows kept truncating
-          to three dots in a 300px column. */}
-      <MinecraftTooltip content={renderBlueprintIo(blueprint)}>
-      <div className="mt-0.5 flex items-center gap-2.5 pl-0.5 text-[10px] tabular-nums text-neutral-500">
+      {/* Facts as icon pairs, words in the row's hover card. */}
+      <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] tabular-nums text-neutral-500">
+        <TierBadge tier={blueprint.highestTier} />
         {blueprint.authorName ? (
           <span className="truncate text-neutral-400">{blueprint.authorName}</span>
         ) : null}
         <span className="shrink-0">
           {formatRelativeDate(blueprint.publishedAt ?? blueprint.createdAt)}
         </span>
-        <span
-          className="flex shrink-0 items-center gap-0.5"
-          title={`${blueprint.nodeCount + blueprint.storageCount} cards inside`}
-        >
+        <span className="flex shrink-0 items-center gap-0.5">
           <Boxes className="h-3 w-3" /> {blueprint.nodeCount + blueprint.storageCount}
         </span>
         {blueprint.machineCount > 0 ? (
-          <span
-            className="flex shrink-0 items-center gap-0.5"
-            title={`${blueprint.machineCount} machines configured`}
-          >
+          <span className="flex shrink-0 items-center gap-0.5">
             <Cog className="h-3 w-3" /> {blueprint.machineCount}
           </span>
         ) : null}
-        <span
-          className="ml-auto flex shrink-0 items-center gap-0.5"
-          title={`Placed ${blueprint.downloads} time${blueprint.downloads === 1 ? "" : "s"}`}
-        >
+        <span className="ml-auto flex shrink-0 items-center gap-0.5">
           <Download className="h-3 w-3" /> {blueprint.downloads}
         </span>
       </div>
-      </MinecraftTooltip>
       <TagChips tags={blueprint.tags ?? []} onTag={onTag} className="pl-0.5" />
+      </MinecraftTooltip>
     </li>
   );
 }
@@ -1200,23 +1116,3 @@ function payloadCentre(payload: BoardClipboardPayload): { x: number; y: number }
   };
 }
 
-export function formatRelativeDate(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) {
-    return "";
-  }
-  const seconds = Math.max(0, (Date.now() - then) / 1000);
-  if (seconds < 60) {
-    return "just now";
-  }
-  if (seconds < 3600) {
-    return `${Math.floor(seconds / 60)}m ago`;
-  }
-  if (seconds < 86400) {
-    return `${Math.floor(seconds / 3600)}h ago`;
-  }
-  if (seconds < 86400 * 30) {
-    return `${Math.floor(seconds / 86400)}d ago`;
-  }
-  return new Date(iso).toLocaleDateString();
-}

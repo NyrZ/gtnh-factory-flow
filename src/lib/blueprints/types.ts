@@ -1,5 +1,6 @@
 import type { BoardClipboardPayload } from "@/store/factory-store";
 import type { EntryIcon, PlanResourceStat } from "@/lib/community/types";
+import type { MachineTier } from "@/lib/model/types";
 
 /** One line of a blueprint's stat card — same shape community plans use. */
 export type BlueprintResourceStat = PlanResourceStat;
@@ -103,6 +104,9 @@ export interface BlueprintSummary {
   tags: string[];
   /** The item face the author picked for list rows, if any. */
   icon?: EntryIcon;
+  /** Top voltage tier inside, derived at save time like the stat card. */
+  highestTier?: Exclude<MachineTier, "DEMO">;
+  highestTierIndex?: number;
 }
 
 export interface BlueprintDetail extends BlueprintSummary {

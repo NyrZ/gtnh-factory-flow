@@ -31,17 +31,21 @@ import {
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
-import { formatRate } from "@/lib/model";
 import { OPEN_SETUPS_EVENT, takePendingSetupsScope, type SetupsScope } from "@/lib/setups-tab";
 import { useCommunityUser } from "@/components/community/auth";
 import { SharePlanDialog } from "@/components/community/SharePlanDialog";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
-import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { useDesignStore } from "@/store/design-store";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import type { FactoryProject } from "@/lib/model/types";
-import { formatRelativeDate, placePayload, renderIoStats, TagChips } from "./BlueprintPanel";
+import { placePayload } from "./BlueprintPanel";
+import {
+  formatRelativeDate,
+  renderEntryHoverCard,
+  TagChips,
+  TierBadge,
+} from "./shelf-cards";
 
 const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "new", label: "Newest" },
@@ -546,30 +550,21 @@ export function SetupsPanel() {
   );
 }
 
-/**
- * The hover reveal: the post's description and headline numbers, then the
- * same Needs/Makes reading blueprint rows give.
- */
-function renderSetupDetails(plan: CommunityPlanSummary): ReactNode {
-  const facts = [
-    `${plan.nodeCount + plan.storageCount} cards`,
-    `${plan.machineCount} machines`,
-    ...(plan.highestTier ? [`up to ${plan.highestTier}`] : []),
-    ...(plan.totalEuT ? [`${formatRate(Math.abs(plan.totalEuT), 3)} EU/t`] : []),
-    ...(plan.gameVersion ? [`GTNH ${plan.gameVersion}`] : []),
-  ];
-
-  return (
-    <div className="w-64">
-      {plan.description ? (
-        <p className="mb-1.5 max-h-28 overflow-hidden whitespace-pre-wrap text-[11px] leading-4 text-slate-300">
-          {plan.description}
-        </p>
-      ) : null}
-      <div className="text-[10px] text-slate-400">{facts.join(" · ")}</div>
-      {renderIoStats(plan.needs ?? [], plan.outputs ?? [])}
-    </div>
-  );
+/** The whole story a hovered setup row tells. */
+function setupHoverCard(plan: CommunityPlanSummary): ReactNode {
+  return renderEntryHoverCard({
+    icon: plan.icon,
+    name: plan.name,
+    authorName: plan.authorName,
+    createdAt: plan.createdAt,
+    cardCount: plan.nodeCount + plan.storageCount,
+    machineCount: plan.machineCount,
+    tier: plan.highestTier,
+    gameVersion: plan.gameVersion,
+    description: plan.description || undefined,
+    needs: plan.needs,
+    outputs: plan.outputs,
+  });
 }
 
 /** Everything living at a project's top level — what a full-plan capture takes. */
@@ -586,33 +581,6 @@ function rootBoardIds(project: FactoryProject): string[] {
       .filter((pocket) => !pocket.parentPocketId)
       .map((pocket) => pocket.id),
   ];
-}
-
-/**
- * The GT voltage badge, worn exactly like the tier button on a card — and a
- * fixed column: every badge is as wide as the widest tier label, so the
- * author names after them all start on the same line.
- */
-const TIER_BADGE_WIDTH = "w-8";
-
-function TierBadge({ tier }: { tier?: CommunityPlanSummary["highestTier"] }) {
-  const color = tier ? GT_TIER_COLORS[tier] : undefined;
-  if (!tier || !color) {
-    return <span className={`${TIER_BADGE_WIDTH} shrink-0`} aria-hidden />;
-  }
-  return (
-    <span
-      className={`${TIER_BADGE_WIDTH} shrink-0 border text-center text-[9px] font-bold leading-[14px] shadow-[inset_1px_1px_0_rgba(255,255,255,0.55),inset_-1px_-1px_0_rgba(0,0,0,0.45)]`}
-      style={{
-        backgroundColor: color.background,
-        borderColor: color.border,
-        color: color.text,
-        textShadow: `1px 1px 0 ${color.shadow}`,
-      }}
-    >
-      {tier}
-    </span>
-  );
 }
 
 function SetupRow({
@@ -684,9 +652,10 @@ function SetupRow({
         }
       }}
     >
-      {/* Tooltips are per-element: every button explains ITSELF on hover
-          (what it is, what pressing it does), and the setup's stat card
-          only opens from the name and the fact strip — never both at once. */}
+      {/* The whole row reveals the setup's story; the buttons inside it
+          explain THEMSELVES (nearest tooltip owns the hover), and tag
+          chips stay silent so clicking one reads as its own action. */}
+      <MinecraftTooltip content={setupHoverCard(plan)}>
       <div className="flex items-center gap-1">
         <MinecraftTooltip
           label={
@@ -711,11 +680,9 @@ function SetupRow({
           </button>
         </MinecraftTooltip>
         <EntryIconSlot icon={plan.icon} editable={canManage} onEdit={onEditIcon} />
-        <MinecraftTooltip label={plan.name} content={renderSetupDetails(plan)}>
-          <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
-            {plan.name}
-          </span>
-        </MinecraftTooltip>
+        <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
+          {plan.name}
+        </span>
         <MinecraftTooltip label={"Copy link\nOpens this setup in a friend's planner"}>
           <button
             type="button"
@@ -837,7 +804,10 @@ function SetupRow({
         </MinecraftTooltip>
       </div>
       {isConfirmingOverwrite ? (
-        <div className="mt-1 flex items-center gap-1.5 rounded-[4px] border border-amber-700 bg-amber-950/60 px-1.5 py-1">
+        <div
+          data-tooltip-stop=""
+          className="mt-1 flex items-center gap-1.5 rounded-[4px] border border-amber-700 bg-amber-950/60 px-1.5 py-1"
+        >
           <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
             Overwrite &ldquo;{plan.name}&rdquo; with the open tab &ldquo;{activeTabName}&rdquo;?
             Votes and downloads stay.
@@ -864,66 +834,62 @@ function SetupRow({
         </div>
       ) : null}
       <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] tabular-nums text-neutral-500">
-        {plan.highestTier ? (
-          <MinecraftTooltip label={`Machines up to ${plan.highestTier}`}>
-            <TierBadge tier={plan.highestTier} />
-          </MinecraftTooltip>
-        ) : (
-          <TierBadge />
-        )}
-        <MinecraftTooltip content={renderSetupDetails(plan)}>
-          {plan.authorName ? (
-            <span className="truncate text-neutral-400">{plan.authorName}</span>
-          ) : null}
-          <span className="shrink-0">{formatRelativeDate(plan.createdAt)}</span>
-          {plan.machineCount > 0 ? (
-            <span className="flex shrink-0 items-center gap-0.5">
-              <Cog className="h-3 w-3" /> {plan.machineCount}
-            </span>
-          ) : null}
-          <span className="ml-auto flex shrink-0 items-center gap-0.5">
-            <Download className="h-3 w-3" /> {plan.downloads}
+        <TierBadge tier={plan.highestTier} />
+        {plan.authorName ? (
+          <span className="truncate text-neutral-400">{plan.authorName}</span>
+        ) : null}
+        <span className="shrink-0">{formatRelativeDate(plan.createdAt)}</span>
+        {plan.machineCount > 0 ? (
+          <span className="flex shrink-0 items-center gap-0.5">
+            <Cog className="h-3 w-3" /> {plan.machineCount}
           </span>
-        </MinecraftTooltip>
+        ) : null}
+        <span className="ml-auto flex shrink-0 items-center gap-0.5">
+          <Download className="h-3 w-3" /> {plan.downloads}
+        </span>
       </div>
-        {tagEditor ? (
-          <div className="mt-1 flex flex-wrap items-center gap-1 rounded-[4px] border border-cyan-700 bg-[#17191d] p-1.5">
-            {tagEditor.draft.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() =>
-                  setTagEditor({
-                    draft: tagEditor.draft.filter((entry) => entry !== tag),
-                    input: tagEditor.input,
-                  })
-                }
-                title={`Remove #${tag}`}
-                className="rounded-[3px] border border-neutral-700 bg-[#25272c] px-1 py-px text-[9px] leading-3 text-neutral-300 hover:border-red-500 hover:text-red-400"
-              >
-                #{tag} ×
-              </button>
-            ))}
-            <input
-              autoFocus
-              value={tagEditor.input}
-              placeholder={tagEditor.draft.length === 0 ? "add tags..." : ""}
-              onChange={(event) => setTagEditor({ ...tagEditor, input: event.target.value })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === ",") {
-                  event.preventDefault();
-                  addDraftTag(tagEditor);
-                }
-                if (event.key === "Escape") {
-                  setTagEditor(undefined);
-                }
-              }}
-              className="h-5 min-w-16 flex-1 bg-transparent text-[11px] text-neutral-100 outline-none"
-            />
-          </div>
-        ) : (
-          <TagChips tags={plan.tags ?? []} onTag={onTag} className="pl-0.5" />
-        )}
+      {tagEditor ? (
+        <div
+          data-tooltip-stop=""
+          className="mt-1 flex flex-wrap items-center gap-1 rounded-[4px] border border-cyan-700 bg-[#17191d] p-1.5"
+        >
+          {tagEditor.draft.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() =>
+                setTagEditor({
+                  draft: tagEditor.draft.filter((entry) => entry !== tag),
+                  input: tagEditor.input,
+                })
+              }
+              title={`Remove #${tag}`}
+              className="rounded-[3px] border border-neutral-700 bg-[#25272c] px-1 py-px text-[9px] leading-3 text-neutral-300 hover:border-red-500 hover:text-red-400"
+            >
+              #{tag} ×
+            </button>
+          ))}
+          <input
+            autoFocus
+            value={tagEditor.input}
+            placeholder={tagEditor.draft.length === 0 ? "add tags..." : ""}
+            onChange={(event) => setTagEditor({ ...tagEditor, input: event.target.value })}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === ",") {
+                event.preventDefault();
+                addDraftTag(tagEditor);
+              }
+              if (event.key === "Escape") {
+                setTagEditor(undefined);
+              }
+            }}
+            className="h-5 min-w-16 flex-1 bg-transparent text-[11px] text-neutral-100 outline-none"
+          />
+        </div>
+      ) : (
+        <TagChips tags={plan.tags ?? []} onTag={onTag} className="pl-0.5" />
+      )}
+      </MinecraftTooltip>
     </li>
   );
 }

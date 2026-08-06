@@ -10,12 +10,12 @@ import {
 } from "@/lib/community/client";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import type { CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
-import { formatRate } from "@/lib/model";
 import { serializeFactoryProject } from "@/lib/import-export";
 import { openSetupsTab } from "@/lib/setups-tab";
 import { useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
+import { renderIoStats, TierBadge } from "@/components/shelf-cards";
 import { AuthForm, useCommunityUser } from "./auth";
 
 /**
@@ -210,21 +210,29 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="space-y-3">
-            {/* WHAT is being posted, before anything else. */}
-            <div className="rounded border border-line bg-surface-raised p-2 text-xs">
-              <p className="text-fg">
+            {/* WHAT is being posted, before anything else — the tab, its
+                headline numbers with the tier in its GT colour, and the
+                real resource lists rather than counts of them. */}
+            <div className="rounded border border-line bg-surface-raised p-2.5">
+              <p className="text-xs text-fg">
                 You are posting the open tab:{" "}
                 <span className="font-semibold">{activeTabName}</span>
               </p>
-              <p className="mt-1 text-fg-subtle">
-                {stats.nodeCount} cards, {stats.machineCount} machines
-                {stats.highestTier ? `, up to ${stats.highestTier}` : ""},{" "}
-                {formatRate(Math.abs(stats.totalEuT), 3)} EU/t.
-              </p>
-              <p className="text-fg-muted">
-                Needs {stats.needs.length} resources, makes {stats.outputs.length}.
-                {datasetVersion?.gtnhVersion ? ` GTNH ${datasetVersion.gtnhVersion}.` : ""}
-              </p>
+              <div className="mt-1.5 flex items-center gap-2 text-[11px] tabular-nums text-fg-subtle">
+                <span>{stats.nodeCount} cards</span>
+                <span>{stats.machineCount} machines</span>
+                {stats.highestTier ? <TierBadge tier={stats.highestTier} /> : null}
+                {datasetVersion?.gtnhVersion ? (
+                  <span className="truncate">GTNH {datasetVersion.gtnhVersion}</span>
+                ) : null}
+              </div>
+              <div className="mt-1.5 max-h-40 overflow-y-auto">
+                {renderIoStats(stats.needs, stats.outputs) ?? (
+                  <p className="text-[11px] text-fg-muted">
+                    Nothing comes in or leaves: this plan feeds itself.
+                  </p>
+                )}
+              </div>
             </div>
 
             {linkedPost ? (

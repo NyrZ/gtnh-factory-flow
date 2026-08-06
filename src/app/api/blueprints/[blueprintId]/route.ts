@@ -16,6 +16,7 @@ import {
 import {
   BLUEPRINT_SUMMARY_COLUMNS,
   blueprintStorageErrorMessage,
+  parseHighestTier,
   parseResourceStats,
   rowToBlueprintSummary,
   type BlueprintRow,
@@ -93,14 +94,17 @@ export async function PUT(request: Request, context: RouteContext) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  const { name, payload, needs, outputs, tags, icon } = (body ?? {}) as {
-    name?: unknown;
-    payload?: unknown;
-    needs?: unknown;
-    outputs?: unknown;
-    tags?: unknown;
-    icon?: unknown;
-  };
+  const { name, payload, needs, outputs, tags, icon, highestTier, highestTierIndex } =
+    (body ?? {}) as {
+      name?: unknown;
+      payload?: unknown;
+      needs?: unknown;
+      outputs?: unknown;
+      tags?: unknown;
+      icon?: unknown;
+      highestTier?: unknown;
+      highestTierIndex?: unknown;
+    };
 
   const patch: Record<string, unknown> = {};
   if (tags !== undefined) {
@@ -146,6 +150,8 @@ export async function PUT(request: Request, context: RouteContext) {
     );
     patch.needs = parseResourceStats(needs);
     patch.outputs = parseResourceStats(outputs);
+    patch.highest_tier = parseHighestTier(highestTier);
+    patch.highest_tier_index = Number.isInteger(highestTierIndex) ? highestTierIndex : -1;
   }
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "Nothing to change." }, { status: 400 });

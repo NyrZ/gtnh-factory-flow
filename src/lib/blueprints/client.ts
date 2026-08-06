@@ -32,8 +32,14 @@ export async function listBlueprints(): Promise<BlueprintSummary[]> {
 export async function saveBlueprint(
   name: string,
   payload: BoardClipboardPayload,
-  io?: { needs: BlueprintResourceStat[]; outputs: BlueprintResourceStat[] },
+  io?: {
+    needs: BlueprintResourceStat[];
+    outputs: BlueprintResourceStat[];
+    highestTier?: string;
+    highestTierIndex?: number;
+  },
   icon?: EntryIcon,
+  tags?: string[],
 ): Promise<BlueprintSummary> {
   const response = await fetch("/api/blueprints", {
     method: "POST",
@@ -43,7 +49,10 @@ export async function saveBlueprint(
       payload,
       needs: io?.needs ?? [],
       outputs: io?.outputs ?? [],
+      highestTier: io?.highestTier,
+      highestTierIndex: io?.highestTierIndex,
       icon,
+      tags,
     }),
   });
   const body = await parseJsonOrThrow<{ blueprint: BlueprintSummary }>(response);
@@ -65,7 +74,12 @@ export async function updateBlueprint(
   patch: {
     name?: string;
     payload?: BoardClipboardPayload;
-    io?: { needs: BlueprintResourceStat[]; outputs: BlueprintResourceStat[] };
+    io?: {
+      needs: BlueprintResourceStat[];
+      outputs: BlueprintResourceStat[];
+      highestTier?: string;
+      highestTierIndex?: number;
+    };
     tags?: string[];
     icon?: EntryIcon | null;
   },
@@ -78,6 +92,8 @@ export async function updateBlueprint(
       payload: patch.payload,
       needs: patch.io?.needs,
       outputs: patch.io?.outputs,
+      highestTier: patch.io?.highestTier,
+      highestTierIndex: patch.io?.highestTierIndex,
       tags: patch.tags,
       icon: patch.icon,
     }),

@@ -146,6 +146,9 @@ alter table blueprints add column if not exists tags jsonb not null default '[]'
 alter table blueprints add column if not exists tags_text text not null default '';
 -- The item face the author picked for list rows: {kind, resourceId, icon refs}.
 alter table blueprints add column if not exists icon jsonb;
+-- Top voltage tier inside, derived at save time alongside the stat card.
+alter table blueprints add column if not exists highest_tier text;
+alter table blueprints add column if not exists highest_tier_index integer not null default -1;
 
 -- One vote per anonymous actor per blueprint, exactly like community_votes.
 create table if not exists blueprint_votes (

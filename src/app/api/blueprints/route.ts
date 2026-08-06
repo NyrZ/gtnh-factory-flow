@@ -21,6 +21,7 @@ import {
   attachMyBlueprintVotes,
   BLUEPRINT_SUMMARY_COLUMNS,
   blueprintStorageErrorMessage,
+  parseHighestTier,
   parseResourceStats,
   rowToBlueprintSummary,
   type BlueprintRow,
@@ -160,14 +161,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { name, payload, needs, outputs, tags, icon } = (body ?? {}) as {
-    name?: unknown;
-    payload?: unknown;
-    needs?: unknown;
-    outputs?: unknown;
-    tags?: unknown;
-    icon?: unknown;
-  };
+  const { name, payload, needs, outputs, tags, icon, highestTier, highestTierIndex } =
+    (body ?? {}) as {
+      name?: unknown;
+      payload?: unknown;
+      needs?: unknown;
+      outputs?: unknown;
+      tags?: unknown;
+      icon?: unknown;
+      highestTier?: unknown;
+      highestTierIndex?: unknown;
+    };
   const normalizedTags = normalizeBlueprintTags(tags);
   const trimmedName = typeof name === "string" ? name.trim() : "";
   if (!trimmedName || trimmedName.length > BLUEPRINT_NAME_MAX_LENGTH) {
@@ -221,6 +225,8 @@ export async function POST(request: Request) {
       tags: normalizedTags,
       tags_text: normalizedTags.join(" "),
       icon: parseEntryIcon(icon),
+      highest_tier: parseHighestTier(highestTier),
+      highest_tier_index: Number.isInteger(highestTierIndex) ? highestTierIndex : -1,
     })
     .select(BLUEPRINT_SUMMARY_COLUMNS)
     .single();

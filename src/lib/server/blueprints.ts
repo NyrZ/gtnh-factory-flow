@@ -29,7 +29,7 @@ export function parseResourceStats(value: unknown) {
 }
 
 export const BLUEPRINT_SUMMARY_COLUMNS =
-  "id,user_id,name,node_count,storage_count,edge_count,pocket_count,machine_count,is_public,description,author_name,published_at,upvotes,downvotes,score,downloads,needs,outputs,tags,icon,created_at";
+  "id,user_id,name,node_count,storage_count,edge_count,pocket_count,machine_count,is_public,description,author_name,published_at,upvotes,downvotes,score,downloads,needs,outputs,tags,icon,highest_tier,highest_tier_index,created_at";
 
 export interface BlueprintRow {
   id: string;
@@ -52,7 +52,19 @@ export interface BlueprintRow {
   outputs: BlueprintResourceStat[];
   tags: string[];
   icon: EntryIcon | null;
+  highest_tier: string | null;
+  highest_tier_index: number | null;
   created_at: string;
+}
+
+/** GT tier labels a blueprint may report; anything else stores as none. */
+const KNOWN_TIERS = new Set([
+  "ULV", "LV", "MV", "HV", "EV", "IV", "LuV", "ZPM", "UV",
+  "UHV", "UEV", "UIV", "UXV", "OpV", "MAX",
+]);
+
+export function parseHighestTier(value: unknown): string | null {
+  return typeof value === "string" && KNOWN_TIERS.has(value) ? value : null;
 }
 
 export function rowToBlueprintSummary(
@@ -81,6 +93,8 @@ export function rowToBlueprintSummary(
     outputs: row.outputs ?? [],
     tags: row.tags ?? [],
     icon: row.icon ?? undefined,
+    highestTier: (row.highest_tier ?? undefined) as BlueprintSummary["highestTier"],
+    highestTierIndex: row.highest_tier_index ?? -1,
   };
 }
 

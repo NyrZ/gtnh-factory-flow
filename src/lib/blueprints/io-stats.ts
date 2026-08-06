@@ -1,21 +1,26 @@
 import { calculateThroughput } from "@/lib/solver";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import type { PlanResourceStat } from "@/lib/community/types";
-import type { FactoryProject } from "@/lib/model/types";
+import type { FactoryProject, MachineTier } from "@/lib/model/types";
 import type { BoardClipboardPayload } from "@/store/factory-store";
 import { createEmptyProject } from "@/examples";
 
-/**
- * What a blueprint eats and makes, computed the way a pocket card computes
- * its ports: solve the captured payload as its own little plan and read the
- * external inputs and unconsumed outputs. Runs client-side at save time —
- * the same trust model as community plan stats — and rides along to the
- * server so listings can show I/O without ever fetching payloads.
- */
-export function computeBlueprintIo(payload: BoardClipboardPayload): {
+export interface BlueprintIo {
   needs: PlanResourceStat[];
   outputs: PlanResourceStat[];
-} {
+  highestTier?: Exclude<MachineTier, "DEMO">;
+  highestTierIndex: number;
+}
+
+/**
+ * What a blueprint eats, makes and runs at, computed the way a pocket card
+ * computes its ports: solve the captured payload as its own little plan and
+ * read the external inputs, unconsumed outputs and top voltage tier. Runs
+ * client-side at save time — the same trust model as community plan stats —
+ * and rides along to the server so listings can show it without ever
+ * fetching payloads.
+ */
+export function computeBlueprintIo(payload: BoardClipboardPayload): BlueprintIo {
   try {
     const project: FactoryProject = {
       ...createEmptyProject(),
@@ -27,10 +32,15 @@ export function computeBlueprintIo(payload: BoardClipboardPayload): {
       recipes: payload.recipes,
     };
     const stats = computeCommunityPlanStats(project, calculateThroughput(project));
-    return { needs: stats.needs, outputs: stats.outputs };
+    return {
+      needs: stats.needs,
+      outputs: stats.outputs,
+      highestTier: stats.highestTier,
+      highestTierIndex: stats.highestTierIndex,
+    };
   } catch {
     // A payload the solver chokes on still deserves saving; it just gets a
     // blank stat card.
-    return { needs: [], outputs: [] };
+    return { needs: [], outputs: [], highestTierIndex: -1 };
   }
 }

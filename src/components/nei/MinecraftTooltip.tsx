@@ -30,6 +30,7 @@ export function MinecraftTooltip({
   const frameRef = useRef<number | undefined>(undefined);
   const pendingPositionRef = useRef<{ x: number; y: number } | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(
     () => () => {
@@ -42,6 +43,18 @@ export function MinecraftTooltip({
 
   const handleMouseMove = (event: MouseEvent) => {
     if (lines.length === 0 && !hasContent) {
+      return;
+    }
+
+    // Tooltips nest: a row-wide reveal can hold buttons with their own
+    // tips. Whoever is CLOSEST to the pointer owns it — an outer tooltip
+    // yields (and hides) over any inner tooltip region or anything marked
+    // data-tooltip-stop (tag chips, editors).
+    const owner = (event.target as HTMLElement | null)?.closest(
+      "[data-tooltip-root], [data-tooltip-stop]",
+    );
+    if (owner && owner !== rootRef.current) {
+      clearTooltip();
       return;
     }
 
@@ -118,6 +131,8 @@ export function MinecraftTooltip({
 
   return (
     <span
+      ref={rootRef}
+      data-tooltip-root=""
       className="contents"
       onMouseEnter={handleMouseMove}
       onMouseMove={handleMouseMove}
