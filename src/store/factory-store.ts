@@ -1749,6 +1749,24 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           item.pocketId === pocketId ? { ...item, pocketId: pocket.parentPocketId } : item,
         );
 
+      // Everything the unpack just spilled onto the parent board — direct
+      // member cards plus nested pockets, which surface as their own cards.
+      // They arrive selected, so the pile can be dragged somewhere in one go.
+      const surfacedIds = [
+        ...state.project.nodes
+          .filter((node) => node.pocketId === pocketId)
+          .map((node) => node.id),
+        ...(state.project.storages ?? [])
+          .filter((storage) => storage.pocketId === pocketId)
+          .map((storage) => storage.id),
+        ...(state.project.annotations ?? [])
+          .filter((annotation) => annotation.pocketId === pocketId)
+          .map((annotation) => annotation.id),
+        ...(state.project.pockets ?? [])
+          .filter((entry) => entry.parentPocketId === pocketId)
+          .map((entry) => entry.id),
+      ];
+
       const project = touchProject({
         ...state.project,
         nodes: surface(state.project.nodes),
@@ -1766,6 +1784,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         project,
         activePocketId:
           state.activePocketId === pocketId ? pocket.parentPocketId : state.activePocketId,
+        pendingBoardSelectionIds: surfacedIds.length > 0 ? surfacedIds : undefined,
       });
     });
   },
