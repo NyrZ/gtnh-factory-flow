@@ -64,7 +64,7 @@ import {
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { BOARD_GRID, CONFIG_PANEL_ROW_HEIGHT, RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { CropPickerMenu } from "./CropPickerMenu";
-import { MachineCompareTable, MachineTabStrip } from "./MachinePicker";
+import { MachineCompareTable, MachineIconTab, MachineTabStrip } from "./MachinePicker";
 import { NodeGlanceText } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
 import { useMachineHandlerIcons } from "./machine-icons";
@@ -425,6 +425,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
 
   const hasMachinePicker = machineHandlers.length > 1 && !isCropFarmNode;
   const machineIcons = useMachineHandlerIcons();
+  // Presentation mode's tab zone: the selected machine's icon, big, and
+  // nothing else. Crop farms and custom rate nodes have no machine to show.
+  const machineTabIcon =
+    calmMode && !isCropFarmNode && !isCustomRateNode
+      ? machineIcons.get(selectedMachineHandler.id)
+      : undefined;
   const previewHandler = hasMachinePicker
     ? (machineHandlers.find((handler) => handler.id === previewHandlerId) ?? selectedMachineHandler)
     : selectedMachineHandler;
@@ -447,13 +453,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // recipe-node-shell scopes the strip↔row hover link (globals.css):
         // hovering the verdict lights the input it blames, in pure CSS, so a
         // hover never re-renders a node.
-        // The 2px frame is an INSET shadow, not a border. A real border sits
-        // outside the content box and would push every row 2px off the grid;
-        // painted inside, the card's box and its content box are the same
-        // rectangle, so a head of 40 and rows of 40 land exactly on cell
-        // lines. The bevel is drawn at 4px and the frame covers its outer
-        // half, which reproduces the old 2px-inside-2px look exactly.
-        "recipe-node-shell group relative bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]",
+        // The shell is the node's whole BOX — tab zone plus window — and is
+        // deliberately unpainted: the frame and background live on the window
+        // div below, so the tabs protrude over bare canvas. The router still
+        // measures the shell, which is what keeps wires out of the tab zone.
+        "recipe-node-shell group relative font-mono text-[var(--mc-ink)]",
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
         isCompareOpen ? "recipe-node-popup-open" : "",
@@ -471,8 +475,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         width: RECIPE_NODE_WIDTH,
         ...(nodeColor
           ? ({
-              backgroundColor: nodeColor.panel,
-              boxShadow: `inset 0 0 0 2px ${nodeColor.border}, inset 4px 4px 0 var(--mc-100), inset -4px -4px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
               // The paint decides the ink. Everything inside the card reads
               // its text colour from these two variables, so one assignment
               // here keeps names, rates and stats legible on black and on
@@ -496,6 +498,43 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         }
         className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
       />
+      {/* The tab zone: rows of whole cells ABOVE the window, over bare
+          canvas — tabs, not a toolbar band inside the card. It is part of
+          the shell's box, so the router keeps wires out of the space the
+          tabs claim. Normal mode gets the picker strip; presentation mode
+          gets the selected machine's icon, big, and nothing to click. */}
+      {!calmMode && hasMachinePicker ? (
+        <MachineTabStrip
+          handlers={machineHandlers}
+          selectedId={selectedMachineHandler.id}
+          previewId={previewHandlerId}
+          iconsById={machineIcons}
+          onHover={setPreviewHandlerId}
+          onSelect={updateMachineHandler}
+          onToggleCompare={() => setCompareOpen((open) => !open)}
+          isCompareOpen={isCompareOpen}
+        />
+      ) : machineTabIcon ? (
+        <MachineIconTab icon={machineTabIcon} label={selectedMachineHandler.label} />
+      ) : null}
+      {/* The window: the painted card. The 2px frame is an INSET shadow, not
+          a border — a real border sits outside the content box and would push
+          every row 2px off the grid; painted inside, the window's box and its
+          content box are the same rectangle, so a head of 40 and rows of 40
+          land exactly on cell lines. The bevel is drawn at 4px and the frame
+          covers its outer half, which reproduces the old 2px-inside-2px look
+          exactly. */}
+      <div
+        className="relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]"
+        style={
+          nodeColor
+            ? {
+                backgroundColor: nodeColor.panel,
+                boxShadow: `inset 0 0 0 2px ${nodeColor.border}, inset 4px 4px 0 var(--mc-100), inset -4px -4px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
+              }
+            : undefined
+        }
+      >
       {exceedsMaxTier ? (
         <div
           className={[
@@ -525,18 +564,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             width the recipe card sets and can never widen the node itself,
             no matter how long a machine name or tab strip gets. */}
         <div className="w-0 min-w-full">
-        {hasMachinePicker ? (
-          <MachineTabStrip
-            handlers={machineHandlers}
-            selectedId={selectedMachineHandler.id}
-            previewId={previewHandlerId}
-            iconsById={machineIcons}
-            onHover={setPreviewHandlerId}
-            onSelect={updateMachineHandler}
-            onToggleCompare={() => setCompareOpen((open) => !open)}
-            isCompareOpen={isCompareOpen}
-          />
-        ) : null}
         <div
           className={[
             // One head row, exactly two cells tall. The title bar inside it
@@ -654,7 +681,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 onClose={() => setCropMenuOpen(false)}
               />
             ) : null}
-            {hasMachinePicker && isCompareOpen ? (
+            {hasMachinePicker && isCompareOpen && !calmMode ? (
               <MachineCompareTable
                 recipe={recipe}
                 handlers={machineHandlers}
@@ -849,6 +876,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
              from its bottom inset instead. */
           <div aria-hidden className="h-[20px]" />
         ) : null}
+      </div>
       </div>
     </div>
   );
