@@ -4023,8 +4023,9 @@ function ResourceEdgeComponent({
           off: the source's says "flow leaves here", the target's "flow lands
           here". Both are pulled back off the cards — the last stretch of a
           wire sits in the margin or under the card, where an arrow drowns.
-          White over a dark halo so they read on every wire colour, sized to
-          the stroke: a regular little arrow on a thin wire, fitting INSIDE
+          The wire's own colour, lifted a step brighter over a dark halo —
+          tinted like the line it rides but never lost inside it — sized to
+          the stroke: a regular little arrow on a thin wire, sitting INSIDE
           the stroke on a fat pipe. */}
       {showArrowHead
         ? getRouteChevrons(routedEdge.points, coreStrokeWidth).map((chevron, index) => (
@@ -4040,7 +4041,7 @@ function ResourceEdgeComponent({
               />
               <polyline
                 points={chevron}
-                stroke="#f8fafc"
+                stroke={brightenHexColor(edgeColor, 0.35)}
                 strokeWidth={Math.min(2 + coreStrokeWidth * 0.12, 4)}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -6224,11 +6225,11 @@ function getInitialResourceColor(resource: ResourceEdgeData["resource"]) {
 
 /**
  * How far a chevron sits back from a wire's endpoint. The final stretch of a
- * wire is the margin crossing and the bit tucked at the card border — under
- * the card in thickness mode — so an arrow at the anchor was half-buried.
- * One cell of margin plus half a cell of air puts it in clear canvas.
+ * wire is tucked at the card border — under the card in thickness mode — so
+ * an arrow at the anchor was half-buried. Half a cell of air is enough to
+ * clear the frame while staying snug against the card.
  */
-const ARROW_SETBACK = 30;
+const ARROW_SETBACK = 10;
 
 /**
  * Direction chevrons along a routed wire, as SVG polyline point strings.
@@ -6246,7 +6247,11 @@ function getRouteChevrons(
     return [];
   }
 
-  const halfWidth = Math.max(3.5, Math.min(strokeWidth * 0.42, 7));
+  // Two regimes: a thin wire wears a regular little arrow wider than
+  // itself; a pipe wide enough to hold one gets a chevron sized to sit
+  // INSIDE with clear water on both sides — not rubbing the pipe walls.
+  const halfWidth =
+    strokeWidth >= 7 ? Math.max(2.8, Math.min(strokeWidth * 0.3, 5)) : 3.5;
   const length = halfWidth * 1.6;
 
   // The point and travel direction at `distance` along the polyline.
