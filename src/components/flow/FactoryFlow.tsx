@@ -101,6 +101,7 @@ import {
   useFactoryStore,
   type BoardClipboardPayload,
 } from "@/store/factory-store";
+import { useBlueprintStore } from "@/store/blueprint-store";
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
   ANNOTATION_DEFAULT_ARROW,
@@ -1215,6 +1216,9 @@ export function FactoryFlow() {
   const pasteBoardItems = useFactoryStore((state) => state.pasteBoardItems);
   const activePocketId = useFactoryStore((state) => state.activePocketId);
   const enterPocket = useFactoryStore((state) => state.enterPocket);
+  // Blueprint overwrite picker mode: a shelf row is waiting for the user to
+  // click a pocket. The board wears it — banner up top, pockets ringed.
+  const overwritePicking = useBlueprintStore((state) => state.overwritePicking);
   const compactSelectionIntoPocket = useFactoryStore(
     (state) => state.compactSelectionIntoPocket,
   );
@@ -3304,6 +3308,7 @@ export function FactoryFlow() {
         // Inside a pocket dimension the room itself says where you are:
         // purple canvas, purple dots, purple window frame (globals.css).
         activePocketId ? "factory-flow-board--pocket-view" : "",
+        overwritePicking ? "factory-flow-board--blueprint-picking" : "",
       ].join(" ")}
       style={
         {
@@ -3414,6 +3419,18 @@ export function FactoryFlow() {
         dockToggleWarning={dockToggleWarning}
       />
       <SourceToolbar />
+      {overwritePicking ? (
+        <div
+          className={[
+            "pointer-events-none absolute left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 border-2 border-amber-500 bg-[#2a1e07]/95 px-3 py-1.5 font-mono text-[12px] text-amber-200 shadow-[4px_4px_0_rgba(0,0,0,0.45)]",
+            // Below the breadcrumbs when a pocket dimension is open.
+            activePocketId ? "top-14" : "top-3",
+          ].join(" ")}
+        >
+          Pick a pocket on the board — it becomes &ldquo;{overwritePicking.name}&rdquo;. Esc
+          cancels.
+        </div>
+      ) : null}
       <PocketBreadcrumbs />
       <SelectionActionsBar
         selectionCount={selectedNodeIds.length}

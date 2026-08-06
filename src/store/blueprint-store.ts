@@ -46,6 +46,14 @@ interface BlueprintStore {
   isPublicLoading: boolean;
   publicError?: string;
 
+  /**
+   * Pocket-picker mode: an owned blueprint is waiting for the user to click
+   * a pocket on the board to overwrite it with. The board reads this to
+   * wear the mode — banner up top, every pocket card ringed as a target.
+   */
+  overwritePicking?: { blueprintId: string; name: string };
+  setOverwritePicking: (picking?: { blueprintId: string; name: string }) => void;
+
   setSort: (sort: BlueprintSort) => void;
   refresh: () => Promise<void>;
   /** Forget the private shelf (sign-out); the public network stays browsable. */
@@ -91,6 +99,9 @@ export const useBlueprintStore = create<BlueprintStore>((set, get) => ({
   hasLoadedPublic: false,
   isPublicLoading: false,
   publicError: undefined,
+
+  overwritePicking: undefined,
+  setOverwritePicking: (overwritePicking) => set({ overwritePicking }),
 
   setSort: (sort) => set({ sort }),
   refresh: async () => {

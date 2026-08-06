@@ -3,12 +3,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowBigUp,
-  ArrowDownToLine,
   Download,
   Globe,
   LoaderCircle,
   MapPinPlus,
   Pencil,
+  Save,
   Search,
   Trash2,
   User,
@@ -204,10 +204,49 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
   });
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | undefined>(undefined);
-  const [confirmOverwriteId, setConfirmOverwriteId] = useState<string | undefined>(undefined);
+  // The overwrite flow is a little conversation under the row: armed, it
+  // asks you to pick a pocket on the board (the board wears the mode too —
+  // banner and ringed pocket cards); once one is picked it warns before
+  // committing. A pocket already selected when arming counts as picked.
+  const [overwriteArmId, setOverwriteArmId] = useState<string | undefined>(undefined);
   const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
   const [renameDraft, setRenameDraft] = useState("");
   const [query, setQuery] = useState("");
+  const overwriteSourceName = overwriteSourceId
+    ? useFactoryStore
+        .getState()
+        .project.pockets?.find((pocket) => pocket.id === overwriteSourceId)?.name
+    : undefined;
+
+  // The board wears picker mode while a row waits for its pocket: publish
+  // it whenever armed-without-a-pick, clear it the moment either changes —
+  // and always on unmount, so the board can never be left stuck in a mode.
+  useEffect(() => {
+    const setOverwritePicking = useBlueprintStore.getState().setOverwritePicking;
+    if (overwriteArmId && !overwriteSourceId) {
+      const blueprint = useBlueprintStore
+        .getState()
+        .blueprints.find((entry) => entry.id === overwriteArmId);
+      setOverwritePicking({ blueprintId: overwriteArmId, name: blueprint?.name ?? "" });
+    } else {
+      setOverwritePicking(undefined);
+    }
+    return () => setOverwritePicking(undefined);
+  }, [overwriteArmId, overwriteSourceId]);
+
+  // Esc backs out of the whole flow, wherever the pointer happens to be.
+  useEffect(() => {
+    if (!overwriteArmId) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOverwriteArmId(undefined);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [overwriteArmId]);
 
   const place = async (blueprintId: string) => {
     const payload = await load(blueprintId);
@@ -216,7 +255,8 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
     }
   };
 
-  const overwriteFromBoard = (blueprintId: string) => {
+  const commitOverwrite = (blueprintId: string) => {
+    setOverwriteArmId(undefined);
     if (!overwriteSourceId) {
       return;
     }
@@ -359,39 +399,25 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         </button>
                       </MinecraftTooltip>
                     )}
-                    {confirmOverwriteId === blueprint.id ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirmOverwriteId(undefined);
-                          overwriteFromBoard(blueprint.id);
-                        }}
-                        onBlur={() => setConfirmOverwriteId(undefined)}
-                        className="shrink-0 rounded-[4px] border border-amber-700 bg-amber-950 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-900"
-                      >
-                        Overwrite?
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={isBusy || !overwriteSourceId}
-                        onClick={() => setConfirmOverwriteId(blueprint.id)}
-                        title={
-                          overwriteSourceId
-                            ? "Overwrite this blueprint with the selected pocket (votes and downloads survive)"
-                            : "Select one pocket on the board to overwrite this blueprint with it"
-                        }
-                        aria-label={`Overwrite blueprint ${blueprint.name} from the board`}
-                        className={[
-                          "shrink-0 rounded-[4px] p-0.5",
-                          overwriteSourceId
-                            ? "text-amber-400 hover:text-amber-300"
-                            : "text-neutral-600 opacity-0 focus:opacity-100 group-hover:opacity-100",
-                        ].join(" ")}
-                      >
-                        <ArrowDownToLine className="h-3.5 w-3.5" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() =>
+                        setOverwriteArmId(
+                          overwriteArmId === blueprint.id ? undefined : blueprint.id,
+                        )
+                      }
+                      title="Save a pocket from the board over this blueprint (votes and downloads survive)"
+                      aria-label={`Overwrite blueprint ${blueprint.name} from the board`}
+                      className={[
+                        "shrink-0 rounded-[4px] p-0.5",
+                        overwriteArmId === blueprint.id
+                          ? "text-amber-300"
+                          : "text-neutral-600 opacity-0 hover:text-amber-300 focus:opacity-100 group-hover:opacity-100",
+                      ].join(" ")}
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                    </button>
                     <button
                       type="button"
                       disabled={isBusy}
@@ -452,6 +478,39 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                       </button>
                     )}
                   </div>
+                  {overwriteArmId === blueprint.id ? (
+                    <div className="mt-1 flex items-center gap-1.5 rounded-[4px] border border-amber-700 bg-amber-950/60 px-1.5 py-1">
+                      {overwriteSourceId ? (
+                        <>
+                          <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
+                            Overwrite &ldquo;{blueprint.name}&rdquo; with &ldquo;
+                            {overwriteSourceName ?? "the selected pocket"}&rdquo;? Votes and
+                            downloads stay.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => commitOverwrite(blueprint.id)}
+                            className="shrink-0 rounded-[4px] border border-amber-600 bg-amber-900 px-1.5 py-0.5 text-[10px] font-medium text-amber-100 hover:bg-amber-800"
+                          >
+                            Overwrite
+                          </button>
+                        </>
+                      ) : (
+                        <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
+                          Now click a pocket on the board — it becomes this blueprint.
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setOverwriteArmId(undefined)}
+                        title="Cancel"
+                        aria-label="Cancel overwriting"
+                        className="shrink-0 rounded-[4px] p-0.5 text-amber-400 hover:text-amber-200"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="mt-0.5 flex items-center gap-2 pl-5 text-[10px] text-neutral-500">
                     <span title={new Date(blueprint.createdAt).toLocaleString()}>
                       {formatRelativeDate(blueprint.createdAt)}

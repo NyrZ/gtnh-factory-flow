@@ -668,6 +668,23 @@ img {
   background-color: #261d38;
 }
 
+/* Blueprint overwrite picker: every pocket card is a target. Amber dashed
+   ring on all of them, solid and brighter under the pointer — hover answers
+   "what happens if I click": THIS pocket becomes the waiting blueprint. */
+.factory-flow-board--blueprint-picking .react-flow__node-pocketNode {
+  cursor: pointer;
+}
+
+.factory-flow-board--blueprint-picking .react-flow__node-pocketNode > div {
+  outline: 3px dashed #f59e0b;
+  outline-offset: 3px;
+}
+
+.factory-flow-board--blueprint-picking .react-flow__node-pocketNode:hover > div {
+  outline-style: solid;
+  filter: brightness(1.18);
+}
+
 .factory-flow-board--pocket-view::after {
   content: "";
   position: absolute;
