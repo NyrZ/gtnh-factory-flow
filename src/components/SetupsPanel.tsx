@@ -467,20 +467,22 @@ function SetupRow({
       }}
     >
       <MinecraftTooltip label={plan.name} content={renderSetupDetails(plan)}>
-        <div className="flex items-center gap-1.5">
+        {/* The name owns the row: vote and action hardware run one size
+            smaller than blueprints' so titles stop truncating at 300px. */}
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={onVote}
             title={plan.myVote === 1 ? "Upvoted. Click to retract" : "Upvote"}
             aria-label={`Upvote ${plan.name}`}
             className={[
-              "flex shrink-0 items-center gap-0.5 rounded-[4px] border px-1 py-0.5 text-[11px] font-bold tabular-nums",
+              "flex h-5 shrink-0 items-center gap-0.5 rounded-[4px] border px-1 text-[10px] font-bold tabular-nums",
               plan.myVote === 1
                 ? "border-emerald-600 bg-emerald-500/15 text-emerald-300"
                 : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-emerald-600 hover:text-emerald-300",
             ].join(" ")}
           >
-            <ArrowBigUp className="h-3.5 w-3.5" />
+            <ArrowBigUp className="h-3 w-3" />
             {plan.score}
           </button>
           <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
@@ -491,12 +493,12 @@ function SetupRow({
             onClick={onCopyLink}
             title="Copy a link that opens this setup in a friend's planner"
             aria-label={`Copy a link to ${plan.name}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
           >
             {isCopied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-300" />
+              <Check className="h-3 w-3 text-emerald-300" />
             ) : (
-              <Link2 className="h-3.5 w-3.5" />
+              <Link2 className="h-3 w-3" />
             )}
           </button>
           {canManage ? (
@@ -511,22 +513,22 @@ function SetupRow({
                 title={tagEditor ? "Save tags" : "Edit tags"}
                 aria-label={`Edit tags for ${plan.name}`}
                 className={[
-                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border",
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
                   tagEditor
                     ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
                     : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-cyan-600 hover:text-cyan-300",
                 ].join(" ")}
               >
-                <Tags className="h-3.5 w-3.5" />
+                <Tags className="h-3 w-3" />
               </button>
               <button
                 type="button"
                 onClick={onDelete}
                 title="Take this post down"
                 aria-label={`Take down ${plan.name}`}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-red-500 hover:text-red-400"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-red-500 hover:text-red-400"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="h-3 w-3" />
               </button>
             </>
           ) : null}
@@ -536,12 +538,12 @@ function SetupRow({
             onClick={onOpen}
             title="Open as its own design tab"
             aria-label={`Open setup ${plan.name}`}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
           >
             {isBusy ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin text-emerald-300" />
+              <LoaderCircle className="h-3 w-3 animate-spin text-emerald-300" />
             ) : (
-              <FolderOpen className="h-3.5 w-3.5" />
+              <FolderOpen className="h-3 w-3" />
             )}
           </button>
         </div>
