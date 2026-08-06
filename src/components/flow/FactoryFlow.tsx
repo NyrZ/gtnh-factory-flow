@@ -31,6 +31,7 @@ import {
   Ban,
   Cable,
   Ellipsis,
+  Anchor,
   Tag,
   Flame,
   Gauge,
@@ -125,6 +126,7 @@ import {
   laneWidthForHeat,
   solveGridRoutes,
   type GridEndpoint,
+  type GridSide,
   type GridRouteRequest,
 } from "./grid-edge-router";
 import {
@@ -686,6 +688,8 @@ type GridRouteEdgeInput = {
 };
 
 let publishedGridRouteEdges: GridRouteEdgeInput[] = [];
+/** Free docking (anywhere on the perimeter) vs fixed ports — see the toggle. */
+let publishedGridFreeDock = true;
 let gridSolveSignature = "";
 /**
  * Fast-path gate. Building the full signature walks every edge's endpoints,
@@ -700,8 +704,9 @@ let gridSolveInputsStamp = 0;
 let gridSolveCheckedStamp = -1;
 let gridSolveCheckedEpoch = -1;
 
-function publishGridRouteEdges(edges: GridRouteEdgeInput[]) {
+function publishGridRouteEdges(edges: GridRouteEdgeInput[], freeDock: boolean) {
   publishedGridRouteEdges = edges;
+  publishedGridFreeDock = freeDock;
   gridSolveInputsStamp += 1;
 }
 
@@ -725,6 +730,41 @@ function resolveGridRouteEndpoints(
     return [];
   }
   const snap = (value: number) => Math.round(value / BOARD_GRID) * BOARD_GRID;
+
+  // Fixed-port mode (the anchor toggle, off): wires attach the classic way —
+  // machine inputs on the left at their port row, outputs on the right, and
+  // storage/trash cards on whichever side centre routes best.
+  if (!publishedGridFreeDock) {
+    const isSlot = end === "source" ? input.sourceSlotEndpoint : input.targetSlotEndpoint;
+    if (isSlot) {
+      const handleId = end === "source" ? input.sourceHandleId : input.targetHandleId;
+      const handle = parseResourceHandleId(handleId);
+      const edgeSide = handle?.side === "input" ? Position.Left : Position.Right;
+      const side: GridSide = edgeSide === Position.Left ? "left" : "right";
+      const measured = getMeasuredSlotEndpoint({ nodeId, handleId, edgeSide });
+      if (measured) {
+        return [{ x: measured.x, y: measured.y, side }];
+      }
+      // Unmeasured (first paint of a culled node): the card edge at a
+      // plausible port height until the real measurement lands.
+      return [
+        {
+          x: side === "left" ? rect.left : rect.right,
+          y: Math.min(rect.top + 60, (rect.top + rect.bottom) / 2),
+          side,
+        },
+      ];
+    }
+    const fixedCenterX = snap((rect.left + rect.right) / 2);
+    const fixedCenterY = snap((rect.top + rect.bottom) / 2);
+    return [
+      { x: rect.left, y: fixedCenterY, side: "left" },
+      { x: rect.right, y: fixedCenterY, side: "right" },
+      { x: fixedCenterX, y: rect.top, side: "top" },
+      { x: fixedCenterX, y: rect.bottom, side: "bottom" },
+    ];
+  }
+
   const left = snap(rect.left);
   const right = snap(rect.right);
   const top = snap(rect.top);
@@ -805,14 +845,22 @@ function ensureGridSolve() {
       strokeWidth: Math.min(input.routingWidth, LANE_CAPACITY),
     });
     orderByEdge.set(input.edgeId, input.order);
-    // Dock candidates are derived purely from the card rects, and the sweep
-    // hash already covers those — the per-edge part only needs identity.
+    // Free-dock candidates derive purely from the card rects, and the sweep
+    // hash already covers those — identity suffices. Fixed-port anchors also
+    // depend on lazily-arriving slot measurements, so their coords go in.
+    const describe = publishedGridFreeDock
+      ? ""
+      : `|${sources
+          .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
+          .join("+")}|${targets
+          .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
+          .join("+")}`;
     parts.push(
-      `${input.edgeId}|${input.order}|${input.routingWidth}|${input.sourceNodeId}|${input.targetNodeId}`,
+      `${input.edgeId}|${input.order}|${input.routingWidth}|${input.sourceNodeId}|${input.targetNodeId}${describe}`,
     );
   }
 
-  const signature = `${sweep.hash}::${parts.join(";")}`;
+  const signature = `${publishedGridFreeDock ? "free" : "ports"}::${sweep.hash}::${parts.join(";")}`;
   if (signature === gridSolveSignature) {
     return;
   }
@@ -1106,7 +1154,7 @@ export function FactoryFlow() {
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const setNodeColorPaintMode = useFactoryStore((state) => state.setNodeColorPaintMode);
   const boardView = useBoardView();
-  const { lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode } = boardView;
+  const { freeDockMode, lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode } = boardView;
   const anyLineMode = lineHeatMode || lineThicknessMode || linePulseMode;
   const setFlowViewportCenter = useFactoryStore((state) => state.setFlowViewportCenter);
   const hoveredStorageResourceKey = useFactoryStore((state) => state.hoveredStorageResourceKey);
@@ -1746,7 +1794,7 @@ export function FactoryFlow() {
       });
     });
 
-    publishGridRouteEdges(gridRouteInputs);
+    publishGridRouteEdges(gridRouteInputs, freeDockMode);
 
     // Paint order IS depth, and it has to be the SAME order hop rendering
     // uses — otherwise a line hops over something that is drawn on top of it
@@ -1778,6 +1826,7 @@ export function FactoryFlow() {
   }, [
     activeFlowResourceKey,
     anyLineMode,
+    freeDockMode,
     hoveredStorageResourceKey,
     lineHeatMode,
     lineLabelsMode,
@@ -3482,8 +3531,15 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
   /** Heatmap also drops the paint brush, which lives in the Zustand store. */
   onHeatmapChange: (enabled: boolean) => void;
 }) {
-  const { canvasPattern, heatmapMode, lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode } =
-    view;
+  const {
+    canvasPattern,
+    freeDockMode,
+    heatmapMode,
+    lineHeatMode,
+    lineLabelsMode,
+    lineThicknessMode,
+    linePulseMode,
+  } = view;
   const PatternIcon =
     canvasPattern === "lines"
       ? Grid3x3
@@ -3595,6 +3651,20 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         aria-pressed={lineLabelsMode}
       >
         <Tag className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange({ freeDockMode: !freeDockMode })}
+        className={buttonClass(freeDockMode)}
+        title={
+          freeDockMode
+            ? "Free docking: wires attach wherever routes best. Click to pin them to their ports."
+            : "Port docking: wires attach at their ports. Click to let them attach anywhere."
+        }
+        aria-label={freeDockMode ? "Pin wires to their ports" : "Let wires attach anywhere"}
+        aria-pressed={freeDockMode}
+      >
+        <Anchor className="h-4 w-4" />
       </button>
     </div>
   );

@@ -31,6 +31,8 @@ export interface BoardView {
   lineHeatMode: boolean;
   /** Lines take their thickness from how much moves through them. */
   lineThicknessMode: boolean;
+  /** Wires attach anywhere on a card (on) or at their fixed ports (off). */
+  freeDockMode: boolean;
   /** Rate pills on the lines. Off by default; the ports carry the numbers. */
   lineLabelsMode: boolean;
   /** Dashes march along each line in the direction of flow. */
@@ -47,6 +49,7 @@ export const DEFAULT_BOARD_VIEW: BoardView = {
   // and which lines carry the load, which is most of what a first look at a
   // plan is for. Colour modes stay off — those override what the board is
   // already telling you with resource colours and paint tags.
+  freeDockMode: true,
   lineLabelsMode: false,
   lineThicknessMode: true,
   linePulseMode: true,
@@ -75,6 +78,7 @@ function readBoardView(): BoardView {
         : DEFAULT_BOARD_VIEW.canvasPattern,
       heatmapMode: flag(parsed.heatmapMode, DEFAULT_BOARD_VIEW.heatmapMode),
       lineHeatMode: flag(parsed.lineHeatMode, DEFAULT_BOARD_VIEW.lineHeatMode),
+      freeDockMode: flag(parsed.freeDockMode, DEFAULT_BOARD_VIEW.freeDockMode),
       lineLabelsMode: flag(parsed.lineLabelsMode, DEFAULT_BOARD_VIEW.lineLabelsMode),
       lineThicknessMode: flag(parsed.lineThicknessMode, DEFAULT_BOARD_VIEW.lineThicknessMode),
       linePulseMode: flag(parsed.linePulseMode, DEFAULT_BOARD_VIEW.linePulseMode),

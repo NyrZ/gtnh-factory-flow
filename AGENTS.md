@@ -136,11 +136,13 @@ gh run watch <run-id> --exit-status
 - Wires never overlap outside port stubs. Overfull lanes cost heavily, so a
   latecomer takes the next line over; only at a port, where any number of
   wires can converge on one row, may they stack — and only on the stub.
-- Docking is fully dynamic for every card: a wire attaches wherever on the
-  perimeter routes cheapest, on any side, and the router claims dock points
-  so no two wires attach at the same spot. Ports are where wires START (drag
-  from a chip) and where the numbers live; where the drawn wire meets the
-  card is the router's call.
+- Docking is a VIEW toggle (the anchor button, on by default): free mode
+  attaches a wire wherever on the perimeter routes cheapest (any side,
+  corners and their two neighbouring cells excluded, centre-biased, dock
+  points claimed so no two wires share one); port mode pins wires to the
+  classic fixed ports - inputs left, outputs right, storage side centres.
+  Ports always remain where wires START (drag from a chip) and where the
+  numbers live.
 - Routing must stay deterministic for the same graph state, independent of
   zoom and render order (edges are solved in routeIndex order).
 - Edge rate labels are a VIEW mode, off by default: the tag button in the
