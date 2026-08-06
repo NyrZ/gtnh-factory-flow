@@ -47,7 +47,9 @@ const ARROW_HEAD = 12;
 /** Long enough to cross the gap from the button to the tips card. */
 const HIDE_GRACE_MS = 160;
 
-const CYAN = "#67e8f9";
+// The app's tooltip purple (NEI tooltips, pocket chrome): reads as "guide"
+// here without the neon glare an accent like cyan brings at this size.
+const ACCENT = "#8d6fd1";
 
 const CALLOUTS: Array<{
   anchor: string;
@@ -144,9 +146,9 @@ const TIPS: Array<{ chip: string; result: string }> = [
 ];
 
 const CARD_CLASS =
-  "absolute border-2 border-cyan-300 bg-[#10141b] font-mono text-neutral-100 shadow-[6px_6px_0_rgba(0,0,0,0.6)]";
+  "absolute border-2 border-[#8d6fd1] bg-[#171021] font-mono text-neutral-100 shadow-[6px_6px_0_rgba(0,0,0,0.6)]";
 const TITLE_CLASS =
-  "bg-cyan-300 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#0b1015]";
+  "bg-[#3b2d52] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#e6dcff]";
 
 function toHelpRect(rect: DOMRect): HelpRect {
   return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
@@ -262,12 +264,12 @@ function CalloutArrow({
   // The head aims at the anchor, so it leads on the anchor-facing end.
   const head: CSSProperties =
     side === "below"
-      ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `${ARROW_HEAD}px solid ${CYAN}` }
+      ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `${ARROW_HEAD}px solid ${ACCENT}` }
       : side === "above"
-        ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderTop: `${ARROW_HEAD}px solid ${CYAN}` }
+        ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderTop: `${ARROW_HEAD}px solid ${ACCENT}` }
         : side === "right"
-          ? { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderRight: `${ARROW_HEAD}px solid ${CYAN}` }
-          : { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderLeft: `${ARROW_HEAD}px solid ${CYAN}` };
+          ? { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderRight: `${ARROW_HEAD}px solid ${ACCENT}` }
+          : { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderLeft: `${ARROW_HEAD}px solid ${ACCENT}` };
   const headFirst = side === "below" || side === "right";
   return (
     <span
@@ -275,7 +277,7 @@ function CalloutArrow({
       style={wrapper}
     >
       {headFirst ? <span className="h-0 w-0" style={head} /> : null}
-      <span className={vertical ? "w-[3px] flex-1 bg-cyan-300" : "h-[3px] flex-1 bg-cyan-300"} />
+      <span className={vertical ? "w-[3px] flex-1 bg-[#8d6fd1]" : "h-[3px] flex-1 bg-[#8d6fd1]"} />
       {headFirst ? null : <span className="h-0 w-0" style={head} />}
     </span>
   );
@@ -306,7 +308,7 @@ function HelpGlanceSheet({
         return (
           <Fragment key={callout.anchor}>
             <div
-              className="absolute border-2 border-dashed border-cyan-300/90"
+              className="absolute border-2 border-dashed border-[#8d6fd1]/90"
               style={{
                 left: rect.left - RING_PAD,
                 top: rect.top - RING_PAD,
@@ -324,7 +326,7 @@ function HelpGlanceSheet({
               <ul className="flex flex-col gap-1 p-2.5 pt-2 text-[12px] leading-snug">
                 {callout.rows.map((row) => (
                   <li key={row} className="flex gap-1.5">
-                    <span className="shrink-0 text-cyan-300">▸</span>
+                    <span className="shrink-0 text-[#c9b8ec]">▸</span>
                     <span className="whitespace-nowrap">{row}</span>
                   </li>
                 ))}
@@ -339,7 +341,7 @@ function HelpGlanceSheet({
               the sheet grew from stays readable. Hover still lands on the
               real button underneath. */}
           <div
-            className="absolute flex items-center justify-center border-2 border-cyan-300 bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
+            className="absolute flex items-center justify-center border-2 border-[#8d6fd1] bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
             style={{
               left: button.left,
               top: button.top,
@@ -357,7 +359,7 @@ function HelpGlanceSheet({
             <div className="grid grid-cols-[auto_1fr] items-center gap-x-2.5 gap-y-1.5 p-2.5 pt-2">
               {TIPS.map((tip) => (
                 <Fragment key={tip.chip}>
-                  <span className="justify-self-start border border-cyan-300/70 bg-[#152030] px-1.5 py-[1px] text-[10px] font-bold leading-[14px] text-cyan-200">
+                  <span className="justify-self-start border border-[#8d6fd1]/70 bg-[#241b33] px-1.5 py-[1px] text-[10px] font-bold leading-[14px] text-[#d9c8f5]">
                     {tip.chip}
                   </span>
                   <span className="whitespace-nowrap text-[12px] leading-snug">{tip.result}</span>
