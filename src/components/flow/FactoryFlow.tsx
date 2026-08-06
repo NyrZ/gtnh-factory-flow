@@ -3162,16 +3162,50 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
         bottom: (-translateY + height) / zoom,
       };
       drawEdgePulses(context, visible, timeMs / 1000);
-      // Punch back out what the dashes are supposed to be behind. `publishedBoardBounds`
-      // is the card set already — it excludes annotations, which wires (and so
-      // their dashes) legitimately pass straight over.
-      eraseEdgePulseOcclusion(
-        context,
-        visible,
-        edgesUnderNodesRef.current
-          ? (publishedBoardBounds ?? []).map((entry) => entry.bounds)
-          : [],
-      );
+      // Punch back out what the dashes are supposed to be behind.
+      // `publishedBoardBounds` is the card set already — it excludes
+      // annotations, which wires (and so their dashes) legitimately pass
+      // straight over. During a drag the whole nodes layer rides above the
+      // wires, so EVERY card occludes — and the held cards' rects come from
+      // React Flow live (published geometry is deliberately frozen mid-drag,
+      // so their published entries point at where the drag started).
+      const dragging = activelyDraggedNodeIds.size > 0;
+      let occlusionBounds: Array<{
+        left: number;
+        top: number;
+        right: number;
+        bottom: number;
+      }> = [];
+      if (edgesUnderNodesRef.current || dragging) {
+        for (const entry of publishedBoardBounds ?? []) {
+          if (dragging && activelyDraggedNodeIds.has(entry.id)) {
+            continue;
+          }
+          occlusionBounds.push(entry.bounds);
+        }
+        if (dragging) {
+          const nodeLookup = flowStore.getState().nodeLookup;
+          for (const draggedId of activelyDraggedNodeIds) {
+            const draggedNode = nodeLookup?.get(draggedId);
+            if (!draggedNode) {
+              continue;
+            }
+            const position =
+              draggedNode.internals?.positionAbsolute ?? draggedNode.position;
+            const nodeWidth = draggedNode.measured?.width ?? 0;
+            const nodeHeight = draggedNode.measured?.height ?? 0;
+            if (nodeWidth > 0 && nodeHeight > 0) {
+              occlusionBounds.push({
+                left: position.x,
+                top: position.y,
+                right: position.x + nodeWidth,
+                bottom: position.y + nodeHeight,
+              });
+            }
+          }
+        }
+      }
+      eraseEdgePulseOcclusion(context, visible, occlusionBounds);
     };
 
     frame = window.requestAnimationFrame(draw);

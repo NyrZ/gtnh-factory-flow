@@ -162,8 +162,11 @@ class LaneOccupancy {
   }
 
   claimsFor(axis: "h" | "v", line: number, from: number, to: number): LaneClaim[] {
+    // Inclusive at aligned ends (floor, not ceil-1): two runs that MEET at a
+    // grid vertex share that boundary cell, so a run rejoining a line right
+    // where another ends packs beside it instead of re-centring onto it.
     const lo = Math.floor(Math.min(from, to) / BOARD_GRID);
-    const hi = Math.ceil(Math.max(from, to) / BOARD_GRID) - 1;
+    const hi = Math.floor(Math.max(from, to) / BOARD_GRID);
     const merged: LaneClaim[] = [];
     for (let cell = lo; cell <= hi; cell += 1) {
       const claims = this.cells.get(this.key(axis, line, cell));
@@ -177,7 +180,7 @@ class LaneOccupancy {
   /** Total stroke already claimed on the busiest cell of the stretch. */
   usedWidth(axis: "h" | "v", line: number, from: number, to: number): number {
     const lo = Math.floor(Math.min(from, to) / BOARD_GRID);
-    const hi = Math.ceil(Math.max(from, to) / BOARD_GRID) - 1;
+    const hi = Math.floor(Math.max(from, to) / BOARD_GRID);
     let worst = 0;
     for (let cell = lo; cell <= hi; cell += 1) {
       const claims = this.cells.get(this.key(axis, line, cell));
@@ -197,7 +200,7 @@ class LaneOccupancy {
 
   claim(axis: "h" | "v", line: number, from: number, to: number, claimInterval: LaneClaim) {
     const lo = Math.floor(Math.min(from, to) / BOARD_GRID);
-    const hi = Math.ceil(Math.max(from, to) / BOARD_GRID) - 1;
+    const hi = Math.floor(Math.max(from, to) / BOARD_GRID);
     for (let cell = lo; cell <= hi; cell += 1) {
       const key = this.key(axis, line, cell);
       const claims = this.cells.get(key);
@@ -248,6 +251,28 @@ function packIntoLane(existing: LaneClaim[], width: number, prefer: number): Lan
   );
   for (const center of candidates) {
     const slot = tryAt(center);
+    if (slot) {
+      return slot;
+    }
+  }
+  // Nothing fits inside the band — a fat pipe beside a fat pipe, or a
+  // stroke doubling back on itself. Spill past the band edge rather than
+  // returning centre: centre meant drawing EXACTLY on top of whatever is
+  // already there, which is the one thing a wire must never do to itself.
+  // The spill leans on the lane's daylight (and a sliver of the neighbour
+  // lane at worst), which still reads as two lines.
+  const trySpill = (center: number): LaneClaim | undefined => {
+    const lo = center - width / 2;
+    const hi = center + width / 2;
+    for (const claim of existing) {
+      if (lo < claim.hi + LANE_GAP - 1e-6 && hi > claim.lo - LANE_GAP + 1e-6) {
+        return undefined;
+      }
+    }
+    return { lo, hi };
+  };
+  for (const center of candidates) {
+    const slot = trySpill(center);
     if (slot) {
       return slot;
     }
