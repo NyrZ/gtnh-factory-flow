@@ -177,8 +177,10 @@ import {
   drawEdgePulses,
   edgePulseCount,
   eraseEdgePulseOcclusion,
+  publishEdgeLabelBox,
   publishEdgePulse,
   publishEdgeWaypointDots,
+  retractEdgeLabelBox,
   retractEdgePulse,
   retractEdgeWaypointDots,
 } from "./edge-pulse";
@@ -4217,6 +4219,53 @@ function ResourceEdgeComponent({
       : trimPolylineEnds(routedEdge.points, 26);
   const hoverPathD = hoverTrimmedPoints ? pointsToSvgPath(hoverTrimmedPoints) : undefined;
 
+  // The rate pill: on only in label mode, and never parked on a card — a
+  // pill with no clear stretch of wire to sit on goes away entirely.
+  const showRateLabel = Boolean(
+    data?.showLabel &&
+      data.resource &&
+      !routedEdge.labelHidden &&
+      hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS),
+  );
+  // The pulse canvas paints over the whole board and punches back out what
+  // the dashes must stay under (see edge-pulse.ts). The pill publishes its
+  // box for that punch-out: measured once per mount/text change through a
+  // ResizeObserver — never per frame — and centred on the label anchor.
+  const labelBoxRef = useRef<HTMLDivElement>(null);
+  const labelBoxX = routedEdge.labelX;
+  const labelBoxY = routedEdge.labelY;
+  useLayoutEffect(() => {
+    if (!showRateLabel) {
+      retractEdgeLabelBox(id);
+      return;
+    }
+    const element = labelBoxRef.current;
+    const publish = () => {
+      const pill = labelBoxRef.current;
+      if (!pill) {
+        return;
+      }
+      // offsetWidth/Height are pre-transform layout px, which are flow px:
+      // zoom is a transform on the viewport, not a layout input.
+      publishEdgeLabelBox(id, {
+        left: labelBoxX - pill.offsetWidth / 2,
+        top: labelBoxY - pill.offsetHeight / 2,
+        width: pill.offsetWidth,
+        height: pill.offsetHeight,
+      });
+    };
+    publish();
+    if (!element || typeof ResizeObserver === "undefined") {
+      return () => retractEdgeLabelBox(id);
+    }
+    const observer = new ResizeObserver(publish);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      retractEdgeLabelBox(id);
+    };
+  }, [id, labelBoxX, labelBoxY, showRateLabel]);
+
   // Hand this line's dashes to the board's pulse canvas (see edge-pulse.ts).
   // Published after commit rather than during render because it is a
   // side-effecting registration, and dropped on unmount so a culled or deleted
@@ -4516,13 +4565,14 @@ function ResourceEdgeComponent({
             </circle>
           ))
         : null}
-      {data?.showLabel && data.resource && hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS) ? (
+      {showRateLabel && data?.resource ? (
         // The rate pill, back by request as a VIEW mode (the tag button in
         // the board toolbar), and deliberately lean this time: what flows
         // and how fast, at the route's midpoint. No dragging, no popover —
         // the port chips carry the full story.
         <EdgeLabelRenderer>
           <div
+            ref={labelBoxRef}
             className="nodrag nopan absolute flex cursor-pointer items-center gap-1.5 border border-[var(--mc-15)] bg-[#2b2d32] px-1.5 py-0.5 text-[12px] font-medium text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.55)]"
             style={{
               transform: `translate(-50%, -50%) translate(${routedEdge.labelX}px, ${routedEdge.labelY}px)`,
@@ -4911,8 +4961,8 @@ function getDirectEdgePath({
       targetPosition,
     });
 
-  // Labels are gone from the lines; the midpoint anchor sticks around for
-  // the hover story and anything else that wants "somewhere on this wire".
+  // The midpoint anchor: where the rate pill sits when labels are on, and
+  // "somewhere on this wire" for the hover story either way.
   const labelPoint = getPointAtPolylineRatio(points, 0.5) ?? {
     x: (sourceX + targetX) / 2,
     y: (sourceY + targetY) / 2,
@@ -4930,6 +4980,9 @@ function getDirectEdgePath({
     ),
     labelX: labelPoint.x,
     labelY: labelPoint.y,
+    // A pill with no room is a pill not shown: anchored over (or hard
+    // against) a card, it would sit on the card instead of the wire.
+    labelHidden: isPointInsideAnyMeasuredNode(labelPoint),
     points,
   };
 }
@@ -5564,7 +5617,9 @@ function getMeasuredNodeBoundsById(nodeId: string | undefined) {
  */
 function isPointInsideAnyMeasuredNode(
   point: { x: number; y: number },
-  marginX = 60,
+  // Half the label box. 80, not 60: the pill grew a supply percent
+  // ("100 L/s · 100%") and the old half-width let its ends rest on cards.
+  marginX = 80,
   marginY = 16,
 ) {
   // Only nodes whose cell covers the point (plus the label's own half-box) can
