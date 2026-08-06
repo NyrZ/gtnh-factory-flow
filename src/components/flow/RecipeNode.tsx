@@ -437,9 +437,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     !isCropFarmNode && !isCustomRateNode
       ? machineIcons.get(selectedMachineHandler.id)
       : undefined;
-  // Presentation mode's tab zone: the selected machine's icon, big, and
-  // nothing else.
-  const machineTabIcon = calmMode ? machineGlanceIcon : undefined;
+  // The single big icon tab: what this card IS, worn on top like a real tab.
+  // Presentation mode always wears it (the picker is hidden there); normal
+  // mode wears it whenever there is nothing to pick — a one-machine recipe
+  // deserves its identity as much as a five-machine one.
+  const machineTabIcon = calmMode || !hasMachinePicker ? machineGlanceIcon : undefined;
   // The tab zone's height IS the dock inset: wires must not dock on the
   // zone's phantom top edge (dock-insets.ts). Observed rather than derived,
   // because the picker strip wraps and its row count is a layout fact.
