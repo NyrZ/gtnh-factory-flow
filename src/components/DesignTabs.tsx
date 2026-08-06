@@ -99,7 +99,10 @@ export function DesignTabs() {
         `overflow` container clips absolutely-positioned children, which is what
         was hiding the export menu when this bar was one scrolling row.
       */}
-      <div className="flex h-11 min-w-0 shrink-0 items-center gap-1 border-b border-line bg-surface px-2">
+      <div
+        data-help-anchor="tabs"
+        className="flex h-11 min-w-0 shrink-0 items-center gap-1 border-b border-line bg-surface px-2"
+      >
         {overflow.left ? <ScrollArrow direction={-1} onClick={() => scrollTabs(-1)} /> : null}
 
         {/*

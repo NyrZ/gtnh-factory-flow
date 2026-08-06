@@ -5,7 +5,6 @@ import {
   BackgroundVariant,
   BaseEdge,
   EdgeLabelRenderer,
-  Controls,
   ConnectionMode,
   Position,
   ReactFlow,
@@ -35,7 +34,6 @@ import {
   Ellipsis,
   Anchor,
   Tag,
-  Flame,
   Gauge,
   Grid3x3,
   Grip,
@@ -105,6 +103,7 @@ import {
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { isEditableKeyboardTarget } from "./keyboard";
+import { BoardHelp } from "./BoardHelp";
 import {
   ANNOTATION_DEFAULT_ARROW,
   ANNOTATION_DEFAULT_BOX,
@@ -124,6 +123,7 @@ import {
   writeBoardView,
   type BoardView,
   type CanvasPattern,
+  type GlanceMode,
 } from "./board-view";
 import { getDeleteCursor, getPaintBrushCursor } from "./paint-cursor";
 import {
@@ -3186,10 +3186,12 @@ export function FactoryFlow() {
     (tag: FactoryNodeColorTag | null | undefined) => {
       setAnnotationTool(undefined);
       setDeleteMode(false);
-      // Picking up the brush drops the heatmap: painting under it would look
-      // like nothing happened, because the heat is covering every colour.
+      // Picking up the brush drops the status view and its heatmap: painting
+      // under heat would look like nothing happened, because the heat is
+      // covering every colour. Both together — the heat rides the status
+      // view, and a split state would resurrect it on the next reload.
       if (tag !== undefined) {
-        writeBoardView({ heatmapMode: false });
+        writeBoardView({ heatmapMode: false, glanceMode: "identity" });
       }
       setNodeColorPaintMode(tag);
     },
@@ -3398,14 +3400,16 @@ export function FactoryFlow() {
 
   const fitViewOptions = useMemo(() => ({ padding: 0.18 }), []);
 
-  // Turning the heat on drops the brush: painting while every node is showing
-  // heat would have you picking colours you cannot see land.
-  const handleHeatmapChange = useCallback(
-    (enabled: boolean) => {
-      if (enabled) {
+  // The status smart view brings the heatmap with it: "show me usage" is one
+  // mode at every zoom. Turning the heat on drops the brush — painting while
+  // every node is showing heat would have you picking colours you cannot see
+  // land.
+  const handleGlanceModeChange = useCallback(
+    (mode: GlanceMode) => {
+      if (mode === "status") {
         setNodeColorPaintMode(undefined);
       }
-      writeBoardView({ heatmapMode: enabled });
+      writeBoardView({ glanceMode: mode, heatmapMode: mode === "status" });
     },
     [setNodeColorPaintMode],
   );
@@ -3538,7 +3542,6 @@ export function FactoryFlow() {
             color={activePocketId ? POCKET_CANVAS_DOT_COLOR : CANVAS_DOT_COLOR}
           />
         )}
-        <Controls position="bottom-left" />
         {annotationDraft && annotationTool ? (
           <AnnotationDraftPreview
             tool={annotationTool}
@@ -3560,10 +3563,10 @@ export function FactoryFlow() {
       <BoardViewToolbar
         view={boardView}
         onChange={writeBoardView}
-        onHeatmapChange={handleHeatmapChange}
         dockToggleWarning={dockToggleWarning}
       />
       <SourceToolbar />
+      <BoardHelp />
       {overwritePicking ? (
         <div
           className={[
@@ -3625,7 +3628,7 @@ export function FactoryFlow() {
         selectionCount={selectedNodeIds.length}
         onCompact={compactSelectedBoardItems}
       />
-      <SmartViewToolbar glanceMode={boardView.glanceMode} />
+      <SmartViewToolbar glanceMode={boardView.glanceMode} onModeChange={handleGlanceModeChange} />
       <HopMapLegend />
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
     </div>
@@ -3765,8 +3768,11 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
 
 const SmartViewToolbar = memo(function SmartViewToolbar({
   glanceMode,
+  onModeChange,
 }: {
   glanceMode: BoardView["glanceMode"];
+  /** Status brings the heatmap with it and drops the paint brush. */
+  onModeChange: (mode: GlanceMode) => void;
 }) {
   const buttonClass = (active: boolean) =>
     [
@@ -3776,23 +3782,26 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
 
   return (
     // bottom-8, not bottom-3: the React Flow attribution keeps its corner.
-    <div className="nodrag pointer-events-none absolute bottom-8 right-3 z-20 flex items-start gap-1">
+    <div
+      data-help-anchor="glance"
+      className="nodrag pointer-events-none absolute bottom-8 right-3 z-20 flex items-start gap-1"
+    >
       <button
         type="button"
-        onClick={() => writeBoardView({ glanceMode: "identity" })}
+        onClick={() => onModeChange("identity")}
         className={buttonClass(glanceMode === "identity")}
-        title="Zoomed out, cards show WHAT they are: the machine icon, count and name. Hover a card for its rates."
-        aria-label="Show machines when zoomed out"
+        title="Cards show WHAT they are: their own colours up close, the machine icon zoomed out. Hover a card for its rates."
+        aria-label="Show machines"
         aria-pressed={glanceMode === "identity"}
       >
         <Box className="h-4 w-4" />
       </button>
       <button
         type="button"
-        onClick={() => writeBoardView({ glanceMode: "status" })}
+        onClick={() => onModeChange("status")}
         className={buttonClass(glanceMode === "status")}
-        title="Zoomed out, cards show how hard they run, and hovering one maps the board by wire distance."
-        aria-label="Show usage when zoomed out"
+        title="Cards show how hard they run: heat colours up close (red = idle, green = full), percentages zoomed out, and hovering one maps the board by wire distance."
+        aria-label="Show usage"
         aria-pressed={glanceMode === "status"}
       >
         <Gauge className="h-4 w-4" />
@@ -3832,6 +3841,7 @@ const SourceToolbar = memo(function SourceToolbar() {
   return (
     <div
       data-board-toolbar
+      data-help-anchor="build"
       className="nodrag pointer-events-none absolute left-3 top-3 z-20 flex items-start gap-2"
     >
       {/* History first, and set apart: it undoes everything the rest of the
@@ -4448,20 +4458,16 @@ const ANNOTATION_TOOLS: Array<{
 const BoardViewToolbar = memo(function BoardViewToolbar({
   view,
   onChange,
-  onHeatmapChange,
   dockToggleWarning,
 }: {
   view: BoardView;
   onChange: (patch: Partial<BoardView>) => void;
-  /** Heatmap also drops the paint brush, which lives in the Zustand store. */
-  onHeatmapChange: (enabled: boolean) => void;
   /** One-line caution before the dock flip rewires a big or dotted board. */
   dockToggleWarning?: string;
 }) {
   const {
     canvasPattern,
     freeDockMode,
-    heatmapMode,
     lineHeatMode,
     lineLabelsMode,
     lineThicknessMode,
@@ -4487,6 +4493,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       data-board-toolbar
       // top-16, not top-3: a clear gap below the editing tools is the whole
       // point of the grouping.
+      data-help-anchor="view"
       className="nodrag pointer-events-none absolute right-3 top-16 z-20 flex items-start gap-1"
     >
       <button
@@ -4508,20 +4515,9 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       {/* No grid-lock button any more. The grid is not a mode: every card is
           built out of whole cells and every position is a cell corner, so
           there is nothing left for a toggle to mean. */}
-      <button
-        type="button"
-        onClick={() => onHeatmapChange(!heatmapMode)}
-        className={buttonClass(heatmapMode)}
-        title={
-          heatmapMode
-            ? "Heatmap on — colours show how hard each machine runs. Click to restore your colours."
-            : "Heatmap: colour every machine by how hard it runs (red = idle, green = full)"
-        }
-        aria-label={heatmapMode ? "Turn heatmap off" : "Turn heatmap on"}
-        aria-pressed={heatmapMode}
-      >
-        <Flame className="h-4 w-4" />
-      </button>
+      {/* No heatmap button either: the heat rides the status smart view (the
+          gauge button, bottom right), so "show me usage" is one mode at
+          every zoom rather than two toggles to keep in sync. */}
       {/* The three line modes, independent and mixable. Volume is always
           ranked within a kind, items against items and fluids against fluids. */}
       <button
@@ -4700,6 +4696,10 @@ const PaintToolbar = memo(function PaintToolbar({
       <button
         type="button"
         onClick={() => setPaletteOpen((open) => !open)}
+        // Help rings this row from the colour button to the bin: the anchor
+        // sits on the visible ends, not the wrapper, so the folded-away
+        // palette's empty layout box stays out of the ring.
+        data-help-anchor="paint"
         className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
         title={`Color: ${activeColorTag}`}
         aria-label="Pick color"
@@ -4746,6 +4746,7 @@ const PaintToolbar = memo(function PaintToolbar({
       <button
         type="button"
         onClick={() => onDeleteModeChange(!isDeleteMode)}
+        data-help-anchor="paint"
         className={[
           "pointer-events-auto relative z-10 ml-1 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
           isDeleteMode ? "ring-2 ring-red-400" : "",

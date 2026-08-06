@@ -32,7 +32,7 @@ const ROW_OVERSCAN = 6;
 
 export function InspectorPanel() {
   return (
-    <aside className="flex h-full min-h-[360px] flex-col bg-surface">
+    <aside data-help-anchor="inspector" className="flex h-full min-h-[360px] flex-col bg-surface">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2">
         <FlowIOPanel />
       </div>

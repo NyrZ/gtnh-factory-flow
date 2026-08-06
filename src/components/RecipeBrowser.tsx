@@ -564,7 +564,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   ]);
   return (
     <>
-      <aside className="relative z-40 flex h-full min-h-[360px] flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100">
+      <aside
+        data-help-anchor="browser"
+        className="relative z-40 flex h-full min-h-[360px] flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100"
+      >
         <AppIdentity onLoadDatasetVersion={onLoadDatasetVersion} />
         {/* The master switch: item search or the blueprint library, whole
             column each. Flat tabs, not buttons — the controls below live on
