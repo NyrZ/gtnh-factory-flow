@@ -350,13 +350,28 @@ const DIRECTIONS = [
 interface SolveContext {
   obstacles: GridObstacle[];
   occupancy: LaneOccupancy;
+  /**
+   * Dock points already taken, as "x,y". With whole-perimeter docking every
+   * wire can have its own attachment point, so no two wires should ever
+   * share one while free points remain — the claim is what spreads a fan of
+   * wires around the card instead of piling them onto one spot.
+   */
+  usedDocks: Set<string>;
+}
+
+function dockKey(endpoint: GridEndpoint): string {
+  return `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`;
 }
 
 export function solveGridRoutes(
   obstacles: GridObstacle[],
   requests: GridRouteRequest[],
 ): Map<string, GridRoutedEdge> {
-  const context: SolveContext = { obstacles, occupancy: new LaneOccupancy() };
+  const context: SolveContext = {
+    obstacles,
+    occupancy: new LaneOccupancy(),
+    usedDocks: new Set(),
+  };
   const results = new Map<string, GridRoutedEdge>();
   const sorted = [...requests].sort(
     (left, right) => left.order - right.order || (left.edgeId < right.edgeId ? -1 : 1),
@@ -368,11 +383,17 @@ export function solveGridRoutes(
 }
 
 function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedEdge {
-  const sources = request.sources.filter(isFiniteEndpoint);
-  const targets = request.targets.filter(isFiniteEndpoint);
-  if (sources.length === 0 || targets.length === 0) {
+  const allSources = request.sources.filter(isFiniteEndpoint);
+  const allTargets = request.targets.filter(isFiniteEndpoint);
+  if (allSources.length === 0 || allTargets.length === 0) {
     return { edgeId: request.edgeId, points: [] };
   }
+  // A taken dock is off the menu — until the card is out of free ones, when
+  // sharing beats failing.
+  const freeSources = allSources.filter((e) => !context.usedDocks.has(dockKey(e)));
+  const freeTargets = allTargets.filter((e) => !context.usedDocks.has(dockKey(e)));
+  const sources = freeSources.length > 0 ? freeSources : allSources;
+  const targets = freeTargets.length > 0 ? freeTargets : allTargets;
 
   let pad = WINDOW_PAD;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -387,6 +408,8 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
   // exists. It may cross things; there was no legal grid path to take.
   const source = sources[0];
   const target = targets[0];
+  context.usedDocks.add(dockKey(source));
+  context.usedDocks.add(dockKey(target));
   const sourceApron = apronPoint(source);
   const targetApron = apronPoint(target);
   return {
@@ -515,18 +538,27 @@ function routeWithinWindow(
     return undefined;
   }
 
+  // Distance to the goal set's bounding box: with whole-perimeter docking
+  // there can be dozens of goal aprons, and a per-apron loop per pop is the
+  // difference between a solve and a stall. Box distance is a lower bound on
+  // the distance to any goal, so admissibility holds.
+  let goalLeft = Infinity;
+  let goalRight = -Infinity;
+  let goalTop = Infinity;
+  let goalBottom = -Infinity;
+  for (const apron of targetAprons) {
+    if (apron.x < goalLeft) goalLeft = apron.x;
+    if (apron.x > goalRight) goalRight = apron.x;
+    if (apron.y < goalTop) goalTop = apron.y;
+    if (apron.y > goalBottom) goalBottom = apron.y;
+  }
   const heuristic = (vertex: number): number => {
     const x = xAxis.coords[Math.floor(vertex / yCount)];
     const y = yAxis.coords[vertex % yCount];
-    let best = Infinity;
-    for (const apron of targetAprons) {
-      const manhattan = Math.abs(apron.x - x) + Math.abs(apron.y - y);
-      if (manhattan < best) {
-        best = manhattan;
-      }
-    }
+    const dx = x < goalLeft ? goalLeft - x : x > goalRight ? x - goalRight : 0;
+    const dy = y < goalTop ? goalTop - y : y > goalBottom ? y - goalBottom : 0;
     // Admissible: no move costs less than COST_EMPTY per pixel.
-    return best * COST_EMPTY;
+    return (dx + dy) * COST_EMPTY;
   };
 
   // g-scores per (vertex, incoming direction); direction 0..3, plus the
@@ -688,6 +720,8 @@ function routeWithinWindow(
 
   const source = sources[startOf[goalState]] ?? sources[0];
   const target = targets[goals.get(Math.floor(goalState / 4)) ?? 0] ?? targets[0];
+  context.usedDocks.add(dockKey(source));
+  context.usedDocks.add(dockKey(target));
 
   return {
     edgeId: request.edgeId,

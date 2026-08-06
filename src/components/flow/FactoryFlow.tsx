@@ -4,6 +4,7 @@ import {
   Background,
   BackgroundVariant,
   BaseEdge,
+  EdgeLabelRenderer,
   Controls,
   ConnectionMode,
   Position,
@@ -30,6 +31,7 @@ import {
   Ban,
   Cable,
   Ellipsis,
+  Tag,
   Flame,
   Gauge,
   Grid3x3,
@@ -116,14 +118,14 @@ import {
   parseResourceHandleId,
   type ResourceHandleSide,
 } from "./resource-handles";
-import { isEdgeStarved } from "./edge-labels";
+import { formatEdgeRateLabel, isEdgeStarved } from "./edge-labels";
+import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import {
   LANE_CAPACITY,
   laneWidthForHeat,
   solveGridRoutes,
   type GridEndpoint,
   type GridRouteRequest,
-  type GridSide,
 } from "./grid-edge-router";
 import {
   CUSTOM_RATE_ANY_RESOURCE_ID,
@@ -704,57 +706,41 @@ function publishGridRouteEdges(edges: GridRouteEdgeInput[]) {
 }
 
 /**
- * The dock candidates for one end of one edge, in flow space.
+ * The dock candidates for one end of one edge: the ENTIRE perimeter of the
+ * card, one candidate per grid line crossing the border.
  *
- * Machine ports are strict — inputs on the left, outputs on the right, at the
- * measured port row (whose centre the card grid guarantees sits on a grid
- * line). Storage and trash cards offer all four side centres and the router
- * picks whichever routes best.
+ * Docking is fully dynamic — a wire attaches wherever routes cheapest and
+ * least cluttered, on any side, and the router's dock claiming plus lane
+ * capacity spread multiple wires apart around the card. Ports stay the
+ * places you START a wire and read the numbers; where the drawn wire meets
+ * the card is the router's call.
  */
 function resolveGridRouteEndpoints(
   input: GridRouteEdgeInput,
   end: "source" | "target",
 ): GridEndpoint[] {
   const nodeId = end === "source" ? input.sourceNodeId : input.targetNodeId;
-  const handleId = end === "source" ? input.sourceHandleId : input.targetHandleId;
-  const isSlot = end === "source" ? input.sourceSlotEndpoint : input.targetSlotEndpoint;
   const rect = getMeasuredNodeBoundsById(nodeId);
-
-  if (isSlot) {
-    const handle = parseResourceHandleId(handleId);
-    const edgeSide = handle?.side === "input" ? Position.Left : Position.Right;
-    const side: GridSide = edgeSide === Position.Left ? "left" : "right";
-    const measured = getMeasuredSlotEndpoint({ nodeId, handleId, edgeSide });
-    if (measured) {
-      return [{ x: measured.x, y: measured.y, side }];
-    }
-    if (rect) {
-      // Unmeasured (first paint of a culled node): the card edge at a
-      // plausible port height. The settle pass replaces it with the real
-      // port as soon as the measurement lands.
-      return [
-        {
-          x: side === "left" ? rect.left : rect.right,
-          y: Math.min(rect.top + 60, (rect.top + rect.bottom) / 2),
-          side,
-        },
-      ];
-    }
-    return [];
-  }
-
   if (!rect) {
     return [];
   }
   const snap = (value: number) => Math.round(value / BOARD_GRID) * BOARD_GRID;
-  const centerX = snap((rect.left + rect.right) / 2);
-  const centerY = snap((rect.top + rect.bottom) / 2);
-  return [
-    { x: rect.left, y: centerY, side: "left" },
-    { x: rect.right, y: centerY, side: "right" },
-    { x: centerX, y: rect.top, side: "top" },
-    { x: centerX, y: rect.bottom, side: "bottom" },
-  ];
+  const left = snap(rect.left);
+  const right = snap(rect.right);
+  const top = snap(rect.top);
+  const bottom = snap(rect.bottom);
+  // Every grid line crossing the border is a candidate; huge multiblock
+  // cards coarsen to every other line so the candidate set stays bounded.
+  const perimeterCells = (right - left + (bottom - top)) / BOARD_GRID;
+  const step = perimeterCells > 60 ? 2 * BOARD_GRID : BOARD_GRID;
+  const candidates: GridEndpoint[] = [];
+  for (let x = left; x <= right; x += step) {
+    candidates.push({ x, y: top, side: "top" }, { x, y: bottom, side: "bottom" });
+  }
+  for (let y = top; y <= bottom; y += step) {
+    candidates.push({ x: left, y, side: "left" }, { x: right, y, side: "right" });
+  }
+  return candidates;
 }
 
 /**
@@ -793,12 +779,10 @@ function ensureGridSolve() {
       strokeWidth: Math.min(input.routingWidth, LANE_CAPACITY),
     });
     orderByEdge.set(input.edgeId, input.order);
-    const describe = (endpoint: GridEndpoint) =>
-      `${Math.round(endpoint.x)},${Math.round(endpoint.y)},${endpoint.side}`;
+    // Dock candidates are derived purely from the card rects, and the sweep
+    // hash already covers those — the per-edge part only needs identity.
     parts.push(
-      `${input.edgeId}|${input.order}|${input.routingWidth}|${sources
-        .map(describe)
-        .join("+")}|${targets.map(describe).join("+")}`,
+      `${input.edgeId}|${input.order}|${input.routingWidth}|${input.sourceNodeId}|${input.targetNodeId}`,
     );
   }
 
@@ -1096,7 +1080,7 @@ export function FactoryFlow() {
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const setNodeColorPaintMode = useFactoryStore((state) => state.setNodeColorPaintMode);
   const boardView = useBoardView();
-  const { lineHeatMode, lineThicknessMode, linePulseMode } = boardView;
+  const { lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode } = boardView;
   const anyLineMode = lineHeatMode || lineThicknessMode || linePulseMode;
   const setFlowViewportCenter = useFactoryStore((state) => state.setFlowViewportCenter);
   const hoveredStorageResourceKey = useFactoryStore((state) => state.hoveredStorageResourceKey);
@@ -1678,7 +1662,7 @@ export function FactoryFlow() {
           isSupplyCapped,
           isStorageTarget: Boolean(targetStorage),
           isStorageEdge,
-          showLabel: true,
+          showLabel: lineLabelsMode,
           labelOffset: edge.labelOffset,
           sourceHandleId: canonicalSourceHandle,
           targetHandleId: canonicalTargetHandle,
@@ -1770,6 +1754,7 @@ export function FactoryFlow() {
     anyLineMode,
     hoveredStorageResourceKey,
     lineHeatMode,
+    lineLabelsMode,
     linePulseMode,
     lineThicknessMode,
     isNodeDragging,
@@ -3471,7 +3456,8 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
   /** Heatmap also drops the paint brush, which lives in the Zustand store. */
   onHeatmapChange: (enabled: boolean) => void;
 }) {
-  const { canvasPattern, heatmapMode, lineHeatMode, lineThicknessMode, linePulseMode } = view;
+  const { canvasPattern, heatmapMode, lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode } =
+    view;
   const PatternIcon =
     canvasPattern === "lines"
       ? Grid3x3
@@ -3569,6 +3555,20 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         aria-pressed={linePulseMode}
       >
         <Ellipsis className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange({ lineLabelsMode: !lineLabelsMode })}
+        className={buttonClass(lineLabelsMode)}
+        title={
+          lineLabelsMode
+            ? "Line labels: on. Click to hide the rate pills."
+            : "Show what each line carries and how fast, as a pill on the line"
+        }
+        aria-label={lineLabelsMode ? "Hide line labels" : "Show line labels"}
+        aria-pressed={lineLabelsMode}
+      >
+        <Tag className="h-4 w-4" />
       </button>
     </div>
   );
@@ -4057,6 +4057,43 @@ function ResourceEdgeComponent({
             );
           }}
         />
+      ) : null}
+      {data?.showLabel && data.resource && hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS) ? (
+        // The rate pill, back by request as a VIEW mode (the tag button in
+        // the board toolbar), and deliberately lean this time: what flows
+        // and how fast, at the route's midpoint. No dragging, no popover —
+        // the port chips carry the full story.
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan absolute flex cursor-pointer items-center gap-1.5 border border-[var(--mc-15)] bg-[#2b2d32] px-1.5 py-0.5 text-[12px] font-medium text-white shadow-[inset_1px_1px_0_rgba(255,255,255,0.18),inset_-1px_-1px_0_rgba(0,0,0,0.55)]"
+            style={{
+              transform: `translate(-50%, -50%) translate(${routedEdge.labelX}px, ${routedEdge.labelY}px)`,
+              pointerEvents: "all",
+              borderColor: isHighlighted ? "#22d3ee" : edgeColor,
+            }}
+            onMouseEnter={applyEdgeFlowScope}
+            onMouseLeave={() => setHoveredFlowScope(undefined)}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              window.dispatchEvent(
+                new CustomEvent(FLOW_EDGE_LABEL_SELECT_EVENT, {
+                  detail: { edgeIds: data.bundle?.edgeIds ?? [id] },
+                }),
+              );
+            }}
+          >
+            <ResourceIcon
+              resource={data.resource}
+              size="sm"
+              showAmount={false}
+              bare
+              className="!h-[18px] !w-[18px]"
+            />
+            <span className="leading-none tracking-tight tabular-nums">
+              {formatEdgeRateLabel(data)}
+            </span>
+          </div>
+        </EdgeLabelRenderer>
       ) : null}
     </>
   );

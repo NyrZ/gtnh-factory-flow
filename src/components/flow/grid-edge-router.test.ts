@@ -229,6 +229,35 @@ describe("solveGridRoutes", () => {
     }
   });
 
+  it("claims docks so parallel wires attach at different points", () => {
+    const a = card("a", 0, 0);
+    const b = card("b", 800, 0);
+    // Both cards offer a few perimeter docks (the host offers the whole
+    // ring); two wires between the same pair must not share an attachment.
+    const ring = (rect: GridObstacle): GridRouteRequest["sources"] => {
+      const docks: GridRouteRequest["sources"] = [];
+      for (let y = rect.top; y <= rect.bottom; y += 40) {
+        docks.push({ x: rect.left, y, side: "left" }, { x: rect.right, y, side: "right" });
+      }
+      for (let x = rect.left; x <= rect.right; x += 40) {
+        docks.push({ x, y: rect.top, side: "top" }, { x, y: rect.bottom, side: "bottom" });
+      }
+      return docks;
+    };
+    const routes = solveGridRoutes(
+      [a, b],
+      [
+        request({ edgeId: "e1", order: 0, sources: ring(a), targets: ring(b) }),
+        request({ edgeId: "e2", order: 1, sources: ring(a), targets: ring(b) }),
+      ],
+    );
+    const first = routes.get("e1")!.points;
+    const second = routes.get("e2")!.points;
+    const key = (p: GridPoint) => `${Math.round(p.x)},${Math.round(p.y)}`;
+    expect(key(first[0])).not.toBe(key(second[0]));
+    expect(key(first[first.length - 1])).not.toBe(key(second[second.length - 1]));
+  });
+
   it("is deterministic", () => {
     const obstacles = [card("a", 0, 0), card("b", 700, 300), card("c", 200, 400)];
     const requests = [

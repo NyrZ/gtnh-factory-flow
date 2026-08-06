@@ -136,20 +136,15 @@ gh run watch <run-id> --exit-status
 - Wires never overlap outside port stubs. Overfull lanes cost heavily, so a
   latecomer takes the next line over; only at a port, where any number of
   wires can converge on one row, may they stack — and only on the stub.
-- Wires going the same way form MEGALANES (shared corridors, possibly
-  spanning adjacent grid lines), and hops work at that level: close
-  crossings merge into one flat-topped long jump over the whole crossed
-  bundle, bundle-mates whose arcs would collide nest inside each other with
-  cascading heights computed from the shared segment index (never from
-  paint order), and a stack whose outer arc would exceed the hop radius cap
-  crosses flat as a group. Keep every hop decision derivable by each edge
-  independently from shared data.
-- Machine inputs enter on the left, outputs leave on the right, always at the
-  port row. Storage/trash cards dock on whichever side routes best.
+- Docking is fully dynamic for every card: a wire attaches wherever on the
+  perimeter routes cheapest, on any side, and the router claims dock points
+  so no two wires attach at the same spot. Ports are where wires START (drag
+  from a chip) and where the numbers live; where the drawn wire meets the
+  card is the router's call.
 - Routing must stay deterministic for the same graph state, independent of
   zoom and render order (edges are solved in routeIndex order).
-- Edge rate labels are removed (pinned); port chips and couplings carry the
-  numbers. Do not re-add label pills without being asked.
+- Edge rate labels are a VIEW mode, off by default: the tag button in the
+  board toolbar shows lean rate pills on the lines. No dragging, no popover.
 
 ## Import/Export Plans
 
