@@ -1,6 +1,8 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { CommunityPlanSummary, PlanResourceStat } from "@/lib/community/types";
+import { z } from "zod";
+import { resourceIconAtlasRefSchema } from "@/lib/model/schemas";
+import type { CommunityPlanSummary, EntryIcon, PlanResourceStat } from "@/lib/community/types";
 
 /**
  * Server-only Supabase access for the community hub. Uses the service-role
@@ -159,9 +161,28 @@ export async function checkRateLimit(
   return true;
 }
 
+/**
+ * The one item face an author picks for a shared entry. Client-supplied but
+ * harmless: it only ever renders as an icon. Anything that doesn't parse
+ * becomes "no icon", never a rejection.
+ */
+const entryIconSchema = z.object({
+  kind: z.enum(["item", "fluid"]),
+  resourceId: z.string().min(1).max(200),
+  displayName: z.string().max(200).optional(),
+  iconPath: z.string().max(500).optional(),
+  iconAtlas: resourceIconAtlasRefSchema.optional(),
+  dominantColor: z.string().max(32).optional(),
+});
+
+export function parseEntryIcon(value: unknown): EntryIcon | null {
+  const parsed = entryIconSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 /** Columns returned for plan listings (everything except the plan JSON). */
 export const PLAN_SUMMARY_COLUMNS =
-  "id,name,description,game_version,dataset_version,tags,is_public,needs,outputs," +
+  "id,name,description,game_version,dataset_version,tags,is_public,icon,needs,outputs," +
   "total_eu_t,machine_count,node_count,storage_count,edge_count,highest_tier," +
   "highest_tier_index,upvotes,downvotes,score,downloads,views,created_at,user_id,author_name";
 
@@ -173,6 +194,7 @@ export interface PlanRow {
   dataset_version: string;
   tags: string[] | null;
   is_public: boolean | null;
+  icon: EntryIcon | null;
   needs: PlanResourceStat[];
   outputs: PlanResourceStat[];
   total_eu_t: number;
@@ -203,6 +225,7 @@ export function rowToPlanSummary(row: PlanRow, sessionUserId?: string): Communit
     datasetVersionId: row.dataset_version,
     tags: row.tags ?? [],
     isPublic: row.is_public ?? true,
+    icon: row.icon ?? undefined,
     needs: row.needs ?? [],
     outputs: row.outputs ?? [],
     totalEuT: row.total_eu_t,

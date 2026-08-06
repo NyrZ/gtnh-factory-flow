@@ -2,6 +2,7 @@
 
 import type { BoardClipboardPayload } from "@/store/factory-store";
 import { getDeviceId } from "@/lib/community/client";
+import type { EntryIcon } from "@/lib/community/types";
 import type {
   BlueprintDetail,
   BlueprintListResponse,
@@ -32,11 +33,18 @@ export async function saveBlueprint(
   name: string,
   payload: BoardClipboardPayload,
   io?: { needs: BlueprintResourceStat[]; outputs: BlueprintResourceStat[] },
+  icon?: EntryIcon,
 ): Promise<BlueprintSummary> {
   const response = await fetch("/api/blueprints", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, payload, needs: io?.needs ?? [], outputs: io?.outputs ?? [] }),
+    body: JSON.stringify({
+      name,
+      payload,
+      needs: io?.needs ?? [],
+      outputs: io?.outputs ?? [],
+      icon,
+    }),
   });
   const body = await parseJsonOrThrow<{ blueprint: BlueprintSummary }>(response);
   return body.blueprint;
@@ -59,6 +67,7 @@ export async function updateBlueprint(
     payload?: BoardClipboardPayload;
     io?: { needs: BlueprintResourceStat[]; outputs: BlueprintResourceStat[] };
     tags?: string[];
+    icon?: EntryIcon | null;
   },
 ): Promise<BlueprintSummary> {
   const response = await fetch(`/api/blueprints/${encodeURIComponent(blueprintId)}`, {
@@ -70,6 +79,7 @@ export async function updateBlueprint(
       needs: patch.io?.needs,
       outputs: patch.io?.outputs,
       tags: patch.tags,
+      icon: patch.icon,
     }),
   });
   const body = await parseJsonOrThrow<{ blueprint: BlueprintSummary }>(response);

@@ -11,6 +11,7 @@ import {
   Link2,
   LoaderCircle,
   Package,
+  Save,
   Search,
   Share2,
   Tags,
@@ -27,13 +28,14 @@ import {
   tagPlanWithCommunityId,
   voteCommunityPlan,
 } from "@/lib/community/client";
-import type { CommunityPlanSort, CommunityPlanSummary } from "@/lib/community/types";
+import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import { parseFactoryProjectJson } from "@/lib/import-export";
+import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
 import { formatRate } from "@/lib/model";
 import { OPEN_SETUPS_EVENT, takePendingSetupsScope, type SetupsScope } from "@/lib/setups-tab";
 import { useCommunityUser } from "@/components/community/auth";
 import { SharePlanDialog } from "@/components/community/SharePlanDialog";
+import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { useDesignStore } from "@/store/design-store";
@@ -80,10 +82,16 @@ export function SetupsPanel() {
   const [busy, setBusy] = useState<{ id: string; kind: "open" | "pocket" }>();
   const [copiedId, setCopiedId] = useState<string>();
   const [isShareOpen, setShareOpen] = useState(false);
+  // The row whose icon is being picked; the picker itself is one modal.
+  const [iconEditId, setIconEditId] = useState<string>();
   // Bumped when the share dialog closes, so a fresh post shows up without
   // a manual refresh.
   const [refreshTick, setRefreshTick] = useState(0);
   const hasBoardContent = useFactoryStore((state) => state.project.nodes.length > 0);
+  const activeTabName = useDesignStore(
+    (state) =>
+      state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "this board",
+  );
 
   // "My setups" in the account menu can retarget an already-open panel.
   useEffect(() => {
@@ -259,6 +267,33 @@ export function SetupsPanel() {
       patchPlan(plan.id, (entry) => ({ ...entry, tags }));
     } catch (tagError) {
       setError(tagError instanceof Error ? tagError.message : "Saving tags failed.");
+    }
+  };
+
+  const saveIcon = async (planId: string, icon: EntryIcon | null) => {
+    try {
+      await patchCommunityPlan(planId, { icon });
+      patchPlan(planId, (entry) => ({ ...entry, icon: icon ?? undefined }));
+    } catch (iconError) {
+      setError(iconError instanceof Error ? iconError.message : "Saving the icon failed.");
+    }
+  };
+
+  // The row's save button: the OPEN TAB becomes this post's new content.
+  // The server re-derives every stat from the fresh plan; the refetch shows
+  // the new numbers.
+  const overwriteWithBoard = async (plan: CommunityPlanSummary) => {
+    try {
+      const project = useFactoryStore.getState().project;
+      await patchCommunityPlan(plan.id, {
+        plan: JSON.parse(serializeFactoryProject(project)) as unknown,
+      });
+      setError(undefined);
+      setRefreshTick((tick) => tick + 1);
+    } catch (overwriteError) {
+      setError(
+        overwriteError instanceof Error ? overwriteError.message : "Overwriting the post failed.",
+      );
     }
   };
 
@@ -449,12 +484,15 @@ export function SetupsPanel() {
                   // Owner tools are for OWNERS: other people's rows stay
                   // lean (link, pocket, open), even for the site admin.
                   canManage={plan.isMine === true}
+                  activeTabName={activeTabName}
                   onVote={() => void vote(plan)}
                   onOpen={() => void open(plan)}
                   onOpenAsPocket={() => void openAsPocket(plan)}
                   onCopyLink={() => void copyLink(plan)}
                   onDelete={() => void remove(plan)}
                   onToggleVisibility={() => void setVisibility(plan)}
+                  onOverwriteWithBoard={() => void overwriteWithBoard(plan)}
+                  onEditIcon={() => setIconEditId(plan.id)}
                   onSaveTags={(tags) => void saveTags(plan, tags)}
                   onTag={(tag) => setQuery(`#${tag}`)}
                 />
@@ -480,6 +518,28 @@ export function SetupsPanel() {
             setShareOpen(false);
             setRefreshTick((tick) => tick + 1);
           }}
+        />
+      ) : null}
+      {iconEditId ? (
+        <IconPicker
+          title="Pick this setup's icon"
+          suggestions={iconSuggestionsFromStats(
+            plans.find((entry) => entry.id === iconEditId)?.needs,
+            plans.find((entry) => entry.id === iconEditId)?.outputs,
+          )}
+          onPick={(icon) => {
+            setIconEditId(undefined);
+            void saveIcon(iconEditId, icon);
+          }}
+          onClear={
+            plans.find((entry) => entry.id === iconEditId)?.icon
+              ? () => {
+                  setIconEditId(undefined);
+                  void saveIcon(iconEditId, null);
+                }
+              : undefined
+          }
+          onClose={() => setIconEditId(undefined)}
         />
       ) : null}
     </>
@@ -560,12 +620,15 @@ function SetupRow({
   busy,
   isCopied,
   canManage,
+  activeTabName,
   onVote,
   onOpen,
   onOpenAsPocket,
   onCopyLink,
   onDelete,
   onToggleVisibility,
+  onOverwriteWithBoard,
+  onEditIcon,
   onSaveTags,
   onTag,
 }: {
@@ -573,16 +636,21 @@ function SetupRow({
   busy?: "open" | "pocket";
   isCopied: boolean;
   canManage: boolean;
+  activeTabName: string;
   onVote: () => void;
   onOpen: () => void;
   onOpenAsPocket: () => void;
   onCopyLink: () => void;
   onDelete: () => void;
   onToggleVisibility: () => void;
+  onOverwriteWithBoard: () => void;
+  onEditIcon: () => void;
   onSaveTags: (tags: string[]) => void;
   onTag: (tag: string) => void;
 }) {
   const isBusy = busy !== undefined;
+  // The overwrite asks first: it names the tab that would replace the post.
+  const [isConfirmingOverwrite, setConfirmingOverwrite] = useState(false);
   // The tag editor lives in the row: edits stay local as chips and save
   // once, on close — one PUT per session, same manners as blueprints.
   const [tagEditor, setTagEditor] = useState<{ draft: string[]; input: string }>();
@@ -642,6 +710,7 @@ function SetupRow({
             {plan.score}
           </button>
         </MinecraftTooltip>
+        <EntryIconSlot icon={plan.icon} editable={canManage} onEdit={onEditIcon} />
         <MinecraftTooltip label={plan.name} content={renderSetupDetails(plan)}>
           <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
             {plan.name}
@@ -663,6 +732,23 @@ function SetupRow({
         </MinecraftTooltip>
         {canManage ? (
           <>
+            <MinecraftTooltip
+              label={"Overwrite from the board\nThe tab you have open becomes this post"}
+            >
+              <button
+                type="button"
+                onClick={() => setConfirmingOverwrite((confirming) => !confirming)}
+                aria-label={`Overwrite ${plan.name} with the open tab`}
+                className={[
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
+                  isConfirmingOverwrite
+                    ? "border-amber-500 bg-amber-500/15 text-amber-300"
+                    : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-amber-600 hover:text-amber-300",
+                ].join(" ")}
+              >
+                <Save className="h-3 w-3" />
+              </button>
+            </MinecraftTooltip>
             <MinecraftTooltip
               label={
                 plan.isPublic
@@ -750,6 +836,33 @@ function SetupRow({
           </button>
         </MinecraftTooltip>
       </div>
+      {isConfirmingOverwrite ? (
+        <div className="mt-1 flex items-center gap-1.5 rounded-[4px] border border-amber-700 bg-amber-950/60 px-1.5 py-1">
+          <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
+            Overwrite &ldquo;{plan.name}&rdquo; with the open tab &ldquo;{activeTabName}&rdquo;?
+            Votes and downloads stay.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmingOverwrite(false);
+              onOverwriteWithBoard();
+            }}
+            className="shrink-0 rounded-[4px] border border-amber-600 bg-amber-900 px-1.5 py-0.5 text-[10px] font-medium text-amber-100 hover:bg-amber-800"
+          >
+            Overwrite
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmingOverwrite(false)}
+            title="Cancel"
+            aria-label="Cancel overwriting"
+            className="shrink-0 rounded-[4px] p-0.5 text-amber-400 hover:text-amber-200"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : null}
       <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] tabular-nums text-neutral-500">
         {plan.highestTier ? (
           <MinecraftTooltip label={`Machines up to ${plan.highestTier}`}>

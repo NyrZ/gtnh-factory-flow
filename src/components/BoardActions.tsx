@@ -1,15 +1,12 @@
 ﻿"use client";
 
 import {
-  Check,
   ChevronDown,
   Download,
   FileImage,
   ImageDown,
-  Link2,
   LoaderCircle,
   Redo2,
-  Share2,
   Trash2,
   Undo2,
   Upload,
@@ -45,7 +42,6 @@ import {
   extractProjectJsonFromSvg,
 } from "@/lib/import-export/plan-image";
 import { useFactoryStore } from "@/store/factory-store";
-import { SharePlanDialog } from "./community/SharePlanDialog";
 
 /**
  * Board actions - undo/redo, clean, import/export, theme.
@@ -60,8 +56,6 @@ export function BoardActions() {
   const [pendingExport, setPendingExport] = useState<
     { format: "json" | "svg" | "png"; requestId: string } | undefined
   >();
-  const [isShareOpen, setShareOpen] = useState(false);
-  const [isLinkCopied, setLinkCopied] = useState(false);
   const project = useFactoryStore((state) => state.project);
   const manifest = useFactoryStore((state) => state.datasetManifest);
   const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
@@ -164,27 +158,6 @@ export function BoardActions() {
     window.addEventListener("mousedown", closeMenus);
     return () => window.removeEventListener("mousedown", closeMenus);
   }, []);
-
-  // The design remembers which community post it belongs to (set by Share and
-  // by opening a shared setup); the link button targets exactly that.
-  const linkedPlanId = project.metadata?.communityPlanId;
-
-  const copyPostLink = async () => {
-    if (!linkedPlanId) {
-      return;
-    }
-
-    const url = `${window.location.origin}/?plan=${linkedPlanId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      window.prompt("Copy this link:", url);
-      return;
-    }
-
-    setLinkCopied(true);
-    window.setTimeout(() => setLinkCopied(false), 1500);
-  };
 
   useEffect(() => {
     const handleImageExportComplete = (event: Event) => {
@@ -306,32 +279,7 @@ export function BoardActions() {
             </div>
           ) : null}
         </div>
-        <ToolbarButton
-          icon={Share2}
-          label="Share this setup"
-          disabled={project.nodes.length === 0}
-          onClick={() => setShareOpen(true)}
-        />
-        <button
-          type="button"
-          onClick={() => void copyPostLink()}
-          disabled={!linkedPlanId}
-          title={
-            linkedPlanId
-              ? "Copy a link that opens this setup in a friend's planner"
-              : "Share this setup first to get a link"
-          }
-          aria-label="Copy a link to this setup"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-fg-muted"
-        >
-          {isLinkCopied ? (
-            <Check className="h-3.5 w-3.5 text-emerald-500" />
-          ) : (
-            <Link2 className="h-3.5 w-3.5" />
-          )}
-        </button>
       </div>
-      {isShareOpen ? <SharePlanDialog onClose={() => setShareOpen(false)} /> : null}
 
       <input
         ref={projectInputRef}

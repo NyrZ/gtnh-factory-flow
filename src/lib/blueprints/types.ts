@@ -1,5 +1,5 @@
 import type { BoardClipboardPayload } from "@/store/factory-store";
-import type { PlanResourceStat } from "@/lib/community/types";
+import type { EntryIcon, PlanResourceStat } from "@/lib/community/types";
 
 /** One line of a blueprint's stat card — same shape community plans use. */
 export type BlueprintResourceStat = PlanResourceStat;
@@ -101,6 +101,8 @@ export interface BlueprintSummary {
   outputs: BlueprintResourceStat[];
   /** Author-curated tags, normalized lowercase. */
   tags: string[];
+  /** The item face the author picked for list rows, if any. */
+  icon?: EntryIcon;
 }
 
 export interface BlueprintDetail extends BlueprintSummary {

@@ -15,6 +15,7 @@ import { useDesignStore } from "@/store/design-store";
 import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { AppHeader } from "./AppHeader";
+import { BlueprintSaveDialog } from "./BlueprintSaveDialog";
 import { DesignTabs } from "./DesignTabs";
 import { FactoryFlow } from "./flow/FactoryFlow";
 import { InspectorPanel } from "./InspectorPanel";
@@ -213,6 +214,9 @@ export function FactoryPlannerApp() {
         </div>
         <InspectorPanel />
       </main>
+      {/* Every pocket-to-blueprint path (card save, share-a-pocket,
+          overwrite) confirms through this one dialog. */}
+      <BlueprintSaveDialog />
     </div>
   );
 }

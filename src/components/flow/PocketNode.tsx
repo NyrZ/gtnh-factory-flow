@@ -70,13 +70,12 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
     }
   };
 
-  // Shelve the whole dimension as a blueprint, no questions asked: the
-  // pocket's own name IS the blueprint's name (rename the pocket to rename
-  // the next save). The blueprint panel's Mine shelf shows the result.
+  // Shelve the whole dimension as a blueprint: the save dialog opens
+  // prefilled with the pocket's name and stat card, plus an icon to pick.
   const saveAsBlueprint = () => {
     const payload = captureBoardSelection(useFactoryStore.getState().project, [pocket.id]);
     if (payload) {
-      void useBlueprintStore.getState().save(pocket.name, payload);
+      useBlueprintStore.getState().setSaveRequest({ payload, name: pocket.name });
     }
   };
 

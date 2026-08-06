@@ -9,6 +9,7 @@ import type {
   CommunityUploadResponse,
   CommunityUser,
   CommunityVoteResponse,
+  EntryIcon,
 } from "./types";
 
 const DEVICE_ID_STORAGE_KEY = "gtnh-factory-flow.device-id.v1";
@@ -108,10 +109,14 @@ export async function updateCommunityPlan(
   return parseJsonOrThrow<{ id: string }>(response);
 }
 
-/** Light in-place edits (tags, publish state); the plan JSON never moves. */
+/**
+ * In-place edits of an owned post. Light fields (tags, publish state, icon)
+ * travel alone; `plan` overwrites the content with a fresh board and the
+ * server re-derives every stat.
+ */
 export async function patchCommunityPlan(
   planId: string,
-  fields: { tags?: string[]; isPublic?: boolean },
+  fields: { tags?: string[]; isPublic?: boolean; icon?: EntryIcon | null; plan?: unknown },
 ): Promise<{ id: string }> {
   const response = await fetch(`/api/community/plans/${encodeURIComponent(planId)}`, {
     method: "PUT",

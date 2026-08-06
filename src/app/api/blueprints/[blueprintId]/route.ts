@@ -11,6 +11,7 @@ import {
   getCommunityDb,
   getSessionUser,
   isCommunityConfigured,
+  parseEntryIcon,
 } from "@/lib/server/community";
 import {
   BLUEPRINT_SUMMARY_COLUMNS,
@@ -92,12 +93,13 @@ export async function PUT(request: Request, context: RouteContext) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  const { name, payload, needs, outputs, tags } = (body ?? {}) as {
+  const { name, payload, needs, outputs, tags, icon } = (body ?? {}) as {
     name?: unknown;
     payload?: unknown;
     needs?: unknown;
     outputs?: unknown;
     tags?: unknown;
+    icon?: unknown;
   };
 
   const patch: Record<string, unknown> = {};
@@ -105,6 +107,10 @@ export async function PUT(request: Request, context: RouteContext) {
     const normalizedTags = normalizeBlueprintTags(tags);
     patch.tags = normalizedTags;
     patch.tags_text = normalizedTags.join(" ");
+  }
+  if (icon !== undefined) {
+    // A valid icon sets it; null (or junk) clears it.
+    patch.icon = parseEntryIcon(icon);
   }
   if (name !== undefined) {
     const trimmedName = typeof name === "string" ? name.trim() : "";

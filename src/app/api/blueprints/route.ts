@@ -15,6 +15,7 @@ import {
   getSessionUser,
   isCommunityConfigured,
   makeActorKey,
+  parseEntryIcon,
 } from "@/lib/server/community";
 import {
   attachMyBlueprintVotes,
@@ -159,12 +160,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { name, payload, needs, outputs, tags } = (body ?? {}) as {
+  const { name, payload, needs, outputs, tags, icon } = (body ?? {}) as {
     name?: unknown;
     payload?: unknown;
     needs?: unknown;
     outputs?: unknown;
     tags?: unknown;
+    icon?: unknown;
   };
   const normalizedTags = normalizeBlueprintTags(tags);
   const trimmedName = typeof name === "string" ? name.trim() : "";
@@ -218,6 +220,7 @@ export async function POST(request: Request) {
       outputs: parseResourceStats(outputs),
       tags: normalizedTags,
       tags_text: normalizedTags.join(" "),
+      icon: parseEntryIcon(icon),
     })
     .select(BLUEPRINT_SUMMARY_COLUMNS)
     .single();

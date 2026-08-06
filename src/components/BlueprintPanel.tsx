@@ -34,6 +34,7 @@ import { useCommunityUser } from "@/components/community/auth";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { formatSlotRate } from "@/components/flow/flow-explainers";
+import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import type { BoardClipboardPayload } from "@/store/factory-store";
@@ -53,7 +54,6 @@ export function BlueprintPanel() {
   const { user } = useCommunityUser();
   const refresh = useBlueprintStore((state) => state.refresh);
   const reset = useBlueprintStore((state) => state.reset);
-  const save = useBlueprintStore((state) => state.save);
   const [scope, setScope] = useState<"mine" | "public">("mine");
 
   // Exactly one pocket selected on the board arms the pocket flows: the
@@ -70,10 +70,6 @@ export function BlueprintPanel() {
   const [overwriteArmId, setOverwriteArmId] = useState<string | undefined>(undefined);
   // The share flow: pick a pocket, it uploads as a brand-new blueprint.
   const [isShareArmed, setShareArmed] = useState(false);
-  const pickedPocketName = pickedPocketId
-    ? useFactoryStore.getState().project.pockets?.find((pocket) => pocket.id === pickedPocketId)
-        ?.name
-    : undefined;
 
   useEffect(() => {
     if (!user) {
@@ -88,18 +84,81 @@ export function BlueprintPanel() {
     setShareArmed(false);
   }
 
-  /** The picked pocket uploads under its own name, onto the Mine shelf. */
-  const commitShare = useCallback(
-    (pocketId: string) => {
-      const project = useFactoryStore.getState().project;
-      const pocket = project.pockets?.find((entry) => entry.id === pocketId);
-      const payload = captureBoardSelection(project, [pocketId]);
-      if (payload) {
-        void save(pocket?.name || "Pocket blueprint", payload);
+  /**
+   * The picked pocket heads into the save dialog, prefilled with its own
+   * name and stat card; the upload happens when the dialog confirms.
+   */
+  const commitShare = useCallback((pocketId: string) => {
+    const project = useFactoryStore.getState().project;
+    const pocket = project.pockets?.find((entry) => entry.id === pocketId);
+    const payload = captureBoardSelection(project, [pocketId]);
+    if (payload) {
+      useBlueprintStore
+        .getState()
+        .setSaveRequest({ payload, name: pocket?.name || "Pocket blueprint" });
+    }
+  }, []);
+
+  /**
+   * Overwriting: same dialog, aimed at an existing row. A pocket already
+   * selected counts as picked; otherwise the button arms the board picker.
+   */
+  const startOverwrite = useCallback(
+    (blueprint: BlueprintSummary) => {
+      setShareArmed(false);
+      if (overwriteArmId === blueprint.id) {
+        setOverwriteArmId(undefined);
+        return;
       }
+      if (pickedPocketId) {
+        const payload = captureBoardSelection(useFactoryStore.getState().project, [
+          pickedPocketId,
+        ]);
+        if (payload) {
+          useBlueprintStore.getState().setSaveRequest({
+            payload,
+            name: blueprint.name,
+            icon: blueprint.icon,
+            blueprintId: blueprint.id,
+          });
+        }
+        return;
+      }
+      setOverwriteArmId(blueprint.id);
     },
-    [save],
+    [overwriteArmId, pickedPocketId],
   );
+
+  // While overwrite is armed, watch the board for the pocket pick and open
+  // the dialog the moment one lands.
+  useEffect(() => {
+    if (!overwriteArmId) {
+      return;
+    }
+    const unsubscribe = useFactoryStore.subscribe((state) => {
+      const pockets = state.project.pockets ?? [];
+      const selected = state.selectedBoardIds.filter((id) =>
+        pockets.some((pocket) => pocket.id === id),
+      );
+      if (selected.length !== 1) {
+        return;
+      }
+      const payload = captureBoardSelection(state.project, [selected[0]]);
+      const blueprint = useBlueprintStore
+        .getState()
+        .blueprints.find((entry) => entry.id === overwriteArmId);
+      setOverwriteArmId(undefined);
+      if (payload && blueprint) {
+        useBlueprintStore.getState().setSaveRequest({
+          payload,
+          name: blueprint.name,
+          icon: blueprint.icon,
+          blueprintId: blueprint.id,
+        });
+      }
+    });
+    return unsubscribe;
+  }, [overwriteArmId]);
 
   // The board wears picker mode while either flow waits for its pocket —
   // banner and ringed pocket cards; cleared the moment anything changes,
@@ -224,9 +283,8 @@ export function BlueprintPanel() {
     <MineShelf
       scopeTabs={scopeTabs}
       overwriteArmId={overwriteArmId}
-      setOverwriteArmId={setOverwriteArmId}
-      overwriteSourceId={pickedPocketId}
-      overwriteSourceName={pickedPocketName}
+      onOverwrite={startOverwrite}
+      onCancelOverwrite={() => setOverwriteArmId(undefined)}
     />
   ) : (
     <PublicShelf scopeTabs={scopeTabs} />
@@ -358,15 +416,13 @@ export function renderIoStats(needs: PlanResourceStat[], outputs: PlanResourceSt
 function MineShelf({
   scopeTabs,
   overwriteArmId,
-  setOverwriteArmId,
-  overwriteSourceId,
-  overwriteSourceName,
+  onOverwrite,
+  onCancelOverwrite,
 }: {
   scopeTabs: ReactNode;
   overwriteArmId?: string;
-  setOverwriteArmId: (blueprintId?: string) => void;
-  overwriteSourceId?: string;
-  overwriteSourceName?: string;
+  onOverwrite: (blueprint: BlueprintSummary) => void;
+  onCancelOverwrite: () => void;
 }) {
   const { user, isLoading: isAuthLoading } = useCommunityUser();
   const blueprints = useBlueprintStore((state) => state.blueprints);
@@ -391,22 +447,13 @@ function MineShelf({
   const [tagDraft, setTagDraft] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [query, setQuery] = useState("");
+  // The row whose icon is being picked; the picker itself is one modal.
+  const [iconEditId, setIconEditId] = useState<string | undefined>(undefined);
 
   const place = async (blueprintId: string) => {
     const payload = await load(blueprintId);
     if (payload) {
       placePayload(payload);
-    }
-  };
-
-  const commitOverwrite = (blueprintId: string) => {
-    setOverwriteArmId(undefined);
-    if (!overwriteSourceId) {
-      return;
-    }
-    const payload = captureBoardSelection(useFactoryStore.getState().project, [overwriteSourceId]);
-    if (payload) {
-      void update(blueprintId, { payload });
     }
   };
 
@@ -558,6 +605,11 @@ function MineShelf({
                       and the I/O stat card opens from the name and the fact
                       strip — never both at once. */}
                   <div className="flex items-center gap-1">
+                    <EntryIconSlot
+                      icon={blueprint.icon}
+                      editable
+                      onEdit={() => setIconEditId(blueprint.id)}
+                    />
                     {renamingId === blueprint.id ? (
                       <input
                         autoFocus
@@ -595,11 +647,7 @@ function MineShelf({
                       <button
                         type="button"
                         disabled={isBusy}
-                        onClick={() =>
-                          setOverwriteArmId(
-                            overwriteArmId === blueprint.id ? undefined : blueprint.id,
-                          )
-                        }
+                        onClick={() => onOverwrite(blueprint)}
                         aria-label={`Overwrite blueprint ${blueprint.name} from the board`}
                         className={[
                           "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
@@ -723,29 +771,12 @@ function MineShelf({
                   </div>
                   {overwriteArmId === blueprint.id ? (
                     <div className="mt-1 flex items-center gap-1.5 rounded-[4px] border border-amber-700 bg-amber-950/60 px-1.5 py-1">
-                      {overwriteSourceId ? (
-                        <>
-                          <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
-                            Overwrite &ldquo;{blueprint.name}&rdquo; with &ldquo;
-                            {overwriteSourceName ?? "the selected pocket"}&rdquo;? Votes and
-                            downloads stay.
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => commitOverwrite(blueprint.id)}
-                            className="shrink-0 rounded-[4px] border border-amber-600 bg-amber-900 px-1.5 py-0.5 text-[10px] font-medium text-amber-100 hover:bg-amber-800"
-                          >
-                            Overwrite
-                          </button>
-                        </>
-                      ) : (
-                        <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
-                          Now click a pocket on the board. It becomes this blueprint.
-                        </span>
-                      )}
+                      <span className="min-w-0 flex-1 text-[11px] leading-tight text-amber-200">
+                        Now click a pocket on the board. The save dialog opens with it.
+                      </span>
                       <button
                         type="button"
-                        onClick={() => setOverwriteArmId(undefined)}
+                        onClick={onCancelOverwrite}
                         title="Cancel"
                         aria-label="Cancel overwriting"
                         className="shrink-0 rounded-[4px] p-0.5 text-amber-400 hover:text-amber-200"
@@ -854,6 +885,28 @@ function MineShelf({
           </ul>
         )}
       </div>
+      {iconEditId ? (
+        <IconPicker
+          title="Pick this blueprint's icon"
+          suggestions={iconSuggestionsFromStats(
+            blueprints.find((entry) => entry.id === iconEditId)?.needs,
+            blueprints.find((entry) => entry.id === iconEditId)?.outputs,
+          )}
+          onPick={(icon) => {
+            setIconEditId(undefined);
+            void update(iconEditId, { icon });
+          }}
+          onClear={
+            blueprints.find((entry) => entry.id === iconEditId)?.icon
+              ? () => {
+                  setIconEditId(undefined);
+                  void update(iconEditId, { icon: null });
+                }
+              : undefined
+          }
+          onClose={() => setIconEditId(undefined)}
+        />
+      ) : null}
     </>
   );
 }
@@ -1062,6 +1115,7 @@ function PublicBlueprintRow({
             {blueprint.upvotes}
           </button>
         </MinecraftTooltip>
+        <EntryIconSlot icon={blueprint.icon} />
         <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
           <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
             {blueprint.name}

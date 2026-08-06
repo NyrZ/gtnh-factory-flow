@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Check, Link2, LoaderCircle, Share2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -9,23 +9,38 @@ import {
   uploadCommunityPlan,
 } from "@/lib/community/client";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
-import type { CommunityPlanSummary } from "@/lib/community/types";
+import type { CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { formatRate } from "@/lib/model";
 import { serializeFactoryProject } from "@/lib/import-export";
 import { openSetupsTab } from "@/lib/setups-tab";
 import { useFactoryStore } from "@/store/factory-store";
+import { useDesignStore } from "@/store/design-store";
+import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import { AuthForm, useCommunityUser } from "./auth";
 
+/**
+ * Posting the open tab to the network. The dialog leads with WHAT is being
+ * posted (the tab, its headline numbers), then the post's face: icon, name,
+ * description, tags. Updating a linked post keeps its votes and downloads.
+ */
 export function SharePlanDialog({ onClose }: { onClose: () => void }) {
   const project = useFactoryStore((state) => state.project);
   const result = useFactoryStore((state) => state.lastResult);
   const manifest = useFactoryStore((state) => state.datasetManifest);
   const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
   const setProjectCommunityLink = useFactoryStore((state) => state.setProjectCommunityLink);
+  const activeTabName = useDesignStore(
+    (state) =>
+      state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "Untitled",
+  );
   const { user, isLoading: isUserLoading, setUser } = useCommunityUser();
 
-  const [name, setName] = useState(project.name || "My factory");
+  const [name, setName] = useState(project.name || activeTabName || "My factory");
   const [description, setDescription] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [icon, setIcon] = useState<EntryIcon>();
+  const [isPickingIcon, setPickingIcon] = useState(false);
   const [myPostsFor, setMyPostsFor] = useState<{
     username: string;
     posts: CommunityPlanSummary[];
@@ -36,8 +51,6 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
   // only ever targets that one post (or creates a new one).
   const linkedPost = myPosts.find((post) => post.id === project.metadata?.communityPlanId);
   const updateTargetId = linkedPost && !postAsNew ? linkedPost.id : "";
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
   const [isUploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
   const [shared, setShared] = useState<{ kind: "created" | "updated"; planId: string }>();
@@ -68,13 +81,14 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
     };
   }, [user]);
 
-  // Updating an existing post starts from its current tags; a fresh post
-  // starts blank. Seeded the moment the linked post arrives (adjust-during-
-  // render, so the user's later edits are never overwritten).
+  // Updating an existing post starts from its current face (tags, icon).
+  // Seeded the moment the linked post arrives (adjust-during-render, so the
+  // user's later edits are never overwritten).
   const [seededPostId, setSeededPostId] = useState<string>();
   if (linkedPost && seededPostId !== linkedPost.id) {
     setSeededPostId(linkedPost.id);
     setTags(linkedPost.tags ?? []);
+    setIcon(linkedPost.icon);
   }
 
   const addTagFromInput = () => {
@@ -97,6 +111,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
         datasetVersionId: selectedDatasetVersionId ?? "",
         plan: JSON.parse(serializeFactoryProject(project)) as unknown,
         tags: finalTags,
+        icon,
       };
 
       if (updateTargetId) {
@@ -154,7 +169,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
             <p className="text-sm">
               {shared.kind === "updated"
                 ? "Your post has been updated."
-                : "Your plan is live. Thanks for sharing!"}
+                : "Your setup is live. Thanks for sharing!"}
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -189,64 +204,78 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
         ) : !user ? (
           <div className="space-y-3">
             <p className="text-sm text-fg-subtle">
-              Sharing needs an account so your posts stay yours â€” just a username and password.
+              Sharing needs an account so your posts stay yours: just a username and password.
             </p>
             <AuthForm onSignedIn={setUser} />
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-fg-muted">
-              Posting as <span className="font-semibold text-fg">{user.username}</span>
-            </p>
-
-            {linkedPost ? (
-              <div className="flex gap-3 rounded border border-line bg-surface-raised p-2 text-sm">
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="share-target"
-                    checked={!postAsNew}
-                    onChange={() => setPostAsNew(false)}
-                  />
-                  Update â€œ{linkedPost.name}â€
-                </label>
-                <label className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name="share-target"
-                    checked={postAsNew}
-                    onChange={() => setPostAsNew(true)}
-                  />
-                  Post as new
-                </label>
-              </div>
-            ) : null}
-
-            <div className="rounded border border-line bg-surface-raised p-2 text-xs text-fg-subtle">
-              <p>
-                {stats.nodeCount} nodes Â· {stats.machineCount} machines
-                {stats.highestTier ? ` Â· up to ${stats.highestTier}` : ""}
-                {` Â· ${formatRate(Math.abs(stats.totalEuT), 3)} EU/t`}
+            {/* WHAT is being posted, before anything else. */}
+            <div className="rounded border border-line bg-surface-raised p-2 text-xs">
+              <p className="text-fg">
+                You are posting the open tab:{" "}
+                <span className="font-semibold">{activeTabName}</span>
               </p>
-              <p className="truncate">
-                {datasetVersion?.gtnhVersion
-                  ? `GTNH ${datasetVersion.gtnhVersion}`
-                  : (selectedDatasetVersionId ?? "no dataset")}
+              <p className="mt-1 text-fg-subtle">
+                {stats.nodeCount} cards, {stats.machineCount} machines
+                {stats.highestTier ? `, up to ${stats.highestTier}` : ""},{" "}
+                {formatRate(Math.abs(stats.totalEuT), 3)} EU/t.
               </p>
-              <p className="mt-1 text-fg-muted">
-                Needs {stats.needs.length} resources, produces {stats.outputs.length}.
+              <p className="text-fg-muted">
+                Needs {stats.needs.length} resources, makes {stats.outputs.length}.
+                {datasetVersion?.gtnhVersion ? ` GTNH ${datasetVersion.gtnhVersion}.` : ""}
               </p>
             </div>
 
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium">Name</span>
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                maxLength={80}
-                className="w-full rounded border border-line-strong bg-surface-sunken px-2 py-1.5"
-              />
-            </label>
+            {linkedPost ? (
+              <div className="rounded border border-line bg-surface-raised p-2 text-sm">
+                <p className="mb-1.5 text-xs text-fg-subtle">
+                  This tab is linked to your post &quot;{linkedPost.name}&quot;.
+                </p>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="share-target"
+                      checked={!postAsNew}
+                      onChange={() => setPostAsNew(false)}
+                    />
+                    Update that post
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="share-target"
+                      checked={postAsNew}
+                      onChange={() => setPostAsNew(true)}
+                    />
+                    Post as new
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-fg-muted">
+                Posting as <span className="font-semibold text-fg">{user.username}</span>
+              </p>
+            )}
+
+            <div className="block text-sm">
+              <span className="mb-1 block font-medium">Icon and name</span>
+              <div className="flex items-center gap-2">
+                <EntryIconSlot
+                  icon={icon}
+                  editable
+                  onEdit={() => setPickingIcon(true)}
+                  className="!h-9 !w-9 shrink-0 border border-line-strong bg-surface-sunken"
+                />
+                <input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  maxLength={80}
+                  className="w-full min-w-0 rounded border border-line-strong bg-surface-sunken px-2 py-1.5"
+                />
+              </div>
+            </div>
             <label className="block text-sm">
               <span className="mb-1 block font-medium">Description (optional)</span>
               <textarea
@@ -304,12 +333,31 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
                 className="inline-flex items-center gap-2 rounded border border-cyan-700 bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isUploading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                {updateTargetId ? "Update post" : "Share plan"}
+                {updateTargetId ? `Update "${linkedPost?.name}"` : "Post this setup"}
               </button>
             </div>
           </div>
         )}
       </div>
+      {isPickingIcon ? (
+        <IconPicker
+          title="Pick this setup's icon"
+          suggestions={iconSuggestionsFromStats(stats.needs, stats.outputs)}
+          onPick={(picked) => {
+            setIcon(picked);
+            setPickingIcon(false);
+          }}
+          onClear={
+            icon
+              ? () => {
+                  setIcon(undefined);
+                  setPickingIcon(false);
+                }
+              : undefined
+          }
+          onClose={() => setPickingIcon(false)}
+        />
+      ) : null}
     </div>
   );
 }

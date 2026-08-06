@@ -1,5 +1,19 @@
 import type { MachineTier, ResourceIconAtlasRef, ResourceKind } from "@/lib/model/types";
 
+/**
+ * The face an entry wears in a list: one item or fluid the author picked.
+ * Same icon plumbing as stat lines, minus the rate — setups, blueprints
+ * and the dialogs all share it.
+ */
+export interface EntryIcon {
+  kind: ResourceKind;
+  resourceId: string;
+  displayName?: string;
+  iconPath?: string;
+  iconAtlas?: ResourceIconAtlasRef;
+  dominantColor?: string;
+}
+
 /** One line of a plan's stat card: an external need or an unconsumed output. */
 export interface PlanResourceStat {
   kind: ResourceKind;
@@ -37,6 +51,8 @@ export interface CommunityPlanSummary extends CommunityPlanStats {
   tags: string[];
   /** On the network. Private posts live only on the owner's Mine shelf. */
   isPublic: boolean;
+  /** The item face the author picked for list rows, if any. */
+  icon?: EntryIcon;
   upvotes: number;
   downvotes: number;
   score: number;
@@ -90,6 +106,7 @@ export interface CommunityUploadRequest {
   /** Full FactoryProject JSON; the server re-validates and re-derives stats. */
   plan: unknown;
   tags?: string[];
+  icon?: EntryIcon;
 }
 
 export interface CommunityUploadResponse {

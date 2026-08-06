@@ -5,6 +5,7 @@ import {
   type BlueprintResourceStat,
   type BlueprintSummary,
 } from "@/lib/blueprints/types";
+import type { EntryIcon } from "@/lib/community/types";
 import { getCommunityDb } from "@/lib/server/community";
 
 /**
@@ -28,7 +29,7 @@ export function parseResourceStats(value: unknown) {
 }
 
 export const BLUEPRINT_SUMMARY_COLUMNS =
-  "id,user_id,name,node_count,storage_count,edge_count,pocket_count,machine_count,is_public,description,author_name,published_at,upvotes,downvotes,score,downloads,needs,outputs,tags,created_at";
+  "id,user_id,name,node_count,storage_count,edge_count,pocket_count,machine_count,is_public,description,author_name,published_at,upvotes,downvotes,score,downloads,needs,outputs,tags,icon,created_at";
 
 export interface BlueprintRow {
   id: string;
@@ -50,6 +51,7 @@ export interface BlueprintRow {
   needs: BlueprintResourceStat[];
   outputs: BlueprintResourceStat[];
   tags: string[];
+  icon: EntryIcon | null;
   created_at: string;
 }
 
@@ -78,6 +80,7 @@ export function rowToBlueprintSummary(
     needs: row.needs ?? [],
     outputs: row.outputs ?? [],
     tags: row.tags ?? [],
+    icon: row.icon ?? undefined,
   };
 }
 

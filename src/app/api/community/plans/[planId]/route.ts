@@ -16,6 +16,7 @@ import {
   isAdminRequest,
   isCommunityConfigured,
   makeActorKey,
+  parseEntryIcon,
   PLAN_SUMMARY_COLUMNS,
   rowToPlanSummary,
   type PlanRow,
@@ -96,6 +97,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
       plan?: unknown;
       tags?: unknown;
       isPublic?: unknown;
+      icon?: unknown;
     };
 
     const sessionUser = await getSessionUser(request);
@@ -158,6 +160,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
 
     if (typeof body.isPublic === "boolean") {
       update.is_public = body.isPublic;
+    }
+
+    if (body.icon !== undefined) {
+      // A valid icon sets it; null (or junk) clears it.
+      update.icon = parseEntryIcon(body.icon);
     }
 
     if (body.plan !== undefined) {

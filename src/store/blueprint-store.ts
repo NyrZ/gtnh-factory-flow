@@ -18,7 +18,22 @@ import type {
   BlueprintSummary,
   PublicBlueprintSort,
 } from "@/lib/blueprints/types";
+import type { EntryIcon } from "@/lib/community/types";
 import type { BoardClipboardPayload } from "@/store/factory-store";
+
+/**
+ * One dialog for every way a pocket becomes a blueprint: the pocket card's
+ * save button, the shelf's share-a-pocket flow (create), and the shelf's
+ * overwrite flow (blueprintId set). Opened from the board or the panel,
+ * rendered once at app level.
+ */
+export interface BlueprintSaveRequest {
+  payload: BoardClipboardPayload;
+  name: string;
+  icon?: EntryIcon;
+  /** Set when the save overwrites an existing shelf row instead of creating. */
+  blueprintId?: string;
+}
 
 /**
  * The blueprint library, both shelves: the user's own cloud-stored
@@ -59,11 +74,15 @@ interface BlueprintStore {
     create?: boolean;
   }) => void;
 
+  /** The pocket-save dialog's pending request, rendered once at app level. */
+  saveRequest?: BlueprintSaveRequest;
+  setSaveRequest: (request?: BlueprintSaveRequest) => void;
+
   setSort: (sort: BlueprintSort) => void;
   refresh: () => Promise<void>;
   /** Forget the private shelf (sign-out); the public network stays browsable. */
   reset: () => void;
-  save: (name: string, payload: BoardClipboardPayload) => Promise<boolean>;
+  save: (name: string, payload: BoardClipboardPayload, icon?: EntryIcon) => Promise<boolean>;
   load: (blueprintId: string) => Promise<BoardClipboardPayload | undefined>;
   remove: (blueprintId: string) => Promise<void>;
   /**
@@ -72,7 +91,12 @@ interface BlueprintStore {
    */
   update: (
     blueprintId: string,
-    patch: { name?: string; payload?: BoardClipboardPayload; tags?: string[] },
+    patch: {
+      name?: string;
+      payload?: BoardClipboardPayload;
+      tags?: string[];
+      icon?: EntryIcon | null;
+    },
   ) => Promise<boolean>;
 
   setPublicSort: (sort: PublicBlueprintSort) => void;
@@ -108,6 +132,9 @@ export const useBlueprintStore = create<BlueprintStore>((set, get) => ({
   overwritePicking: undefined,
   setOverwritePicking: (overwritePicking) => set({ overwritePicking }),
 
+  saveRequest: undefined,
+  setSaveRequest: (saveRequest) => set({ saveRequest }),
+
   setSort: (sort) => set({ sort }),
   refresh: async () => {
     if (get().isLoading) {
@@ -125,10 +152,10 @@ export const useBlueprintStore = create<BlueprintStore>((set, get) => ({
   },
   reset: () =>
     set({ blueprints: [], hasLoaded: false, isLoading: false, error: undefined }),
-  save: async (name, payload) => {
+  save: async (name, payload, icon) => {
     set({ isSaving: true, error: undefined });
     try {
-      const created = await saveBlueprint(name, payload, computeBlueprintIo(payload));
+      const created = await saveBlueprint(name, payload, computeBlueprintIo(payload), icon);
       set((state) => ({ blueprints: [created, ...state.blueprints] }));
       return true;
     } catch (error) {
@@ -158,6 +185,7 @@ export const useBlueprintStore = create<BlueprintStore>((set, get) => ({
         payload: patch.payload,
         io: patch.payload ? computeBlueprintIo(patch.payload) : undefined,
         tags: patch.tags,
+        icon: patch.icon,
       });
       const apply = (list: BlueprintSummary[]) =>
         list.map((blueprint) =>

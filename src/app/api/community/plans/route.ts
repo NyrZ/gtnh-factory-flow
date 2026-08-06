@@ -18,6 +18,7 @@ import {
   getSessionUser,
   isCommunityConfigured,
   makeActorKey,
+  parseEntryIcon,
   PLAN_SUMMARY_COLUMNS,
   rowToPlanSummary,
   type PlanRow,
@@ -155,6 +156,7 @@ export async function POST(request: Request) {
       deviceId?: unknown;
       plan?: unknown;
       tags?: unknown;
+      icon?: unknown;
     };
 
     const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -218,6 +220,7 @@ export async function POST(request: Request) {
         plan: project,
         tags,
         tags_text: tags.join(" "),
+        icon: parseEntryIcon(body.icon),
         needs: stats.needs,
         outputs: stats.outputs,
         total_eu_t: stats.totalEuT,

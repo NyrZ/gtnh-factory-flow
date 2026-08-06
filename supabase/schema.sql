@@ -61,6 +61,8 @@ alter table community_plans add column if not exists tags_text text not null def
 -- Unpublish without deleting: private posts stay on the owner's Mine shelf,
 -- keeping votes and downloads. Defaults true so existing posts stay visible.
 alter table community_plans add column if not exists is_public boolean not null default true;
+-- The item face the author picked for list rows: {kind, resourceId, icon refs}.
+alter table community_plans add column if not exists icon jsonb;
 
 create index if not exists community_plans_public_idx
   on community_plans (is_public, created_at desc);
@@ -142,6 +144,8 @@ alter table blueprints add column if not exists needs jsonb not null default '[]
 alter table blueprints add column if not exists outputs jsonb not null default '[]'::jsonb;
 alter table blueprints add column if not exists tags jsonb not null default '[]'::jsonb;
 alter table blueprints add column if not exists tags_text text not null default '';
+-- The item face the author picked for list rows: {kind, resourceId, icon refs}.
+alter table blueprints add column if not exists icon jsonb;
 
 -- One vote per anonymous actor per blueprint, exactly like community_votes.
 create table if not exists blueprint_votes (
