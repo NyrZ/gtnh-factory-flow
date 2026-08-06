@@ -16,6 +16,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.11.1",
+    date: "2026-08-05",
+    headline: "One click rewires the whole board",
+    notes: [
+      "Flipping the anchor between free docking and classic ports now redraws every wire at once — no more waving the mouse over each machine to wake its wires up.",
+    ],
+  },
+  {
     version: "1.11.0",
     date: "2026-08-05",
     headline: "A show-off mode, and machines you can recognise from orbit",
