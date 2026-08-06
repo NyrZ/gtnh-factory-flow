@@ -189,8 +189,51 @@ textarea {
   visibility: hidden;
 }
 
+/* The machine tab zone protrudes ABOVE the recipe card's window, outside its
+   glance root, so the rule above cannot reach it — hide it here. Zoomed out
+   the tabs are a few pixels of noise over the glance figure. */
+.factory-flow-board[data-detail-level="glance"] .machine-tab-zone {
+  visibility: hidden;
+}
+
 .factory-flow-board[data-detail-level="glance"] [data-node-detail="glance"] {
   display: flex;
+}
+
+/* The identity glance's hover reveal: name, count and I/O rates in a panel
+   below the card. Pure CSS — hover must never rebuild the board — and only at
+   the glance step, where the reveal replaces the hop map's job of answering
+   "what is this card doing".
+
+   The scale is the point: the viewer is way zoomed out, so a panel sized in
+   flow pixels would be a postage stamp. Dividing by the live zoom
+   (NodeDetailController publishes --board-zoom) renders it at constant SCREEN
+   size; translateX centres it under the card and survives the scale because
+   the transform origin is the panel's own top centre. */
+.glance-io {
+  display: none;
+}
+
+.factory-flow-board[data-detail-level="glance"] .react-flow__node:hover .glance-io {
+  display: flex;
+  transform: translateX(-50%) scale(calc(1 / var(--board-zoom, 1)));
+}
+
+/* While a reveal is up it must beat EVERYTHING — wires, rate pills, sibling
+   cards, and the annotation notes and arrows that ride in the same nodes
+   layer at zIndex 1000 (hovered-usage cards go to 1500). The reveal is the
+   final destination: the layer lifts over the other layers the way the
+   picker popups do, and the hovered node outranks every inline zIndex a
+   sibling can carry. Scoped to identity mode; the status view's hover paints
+   the hop map instead. */
+.factory-flow-board[data-detail-level="glance"][data-glance-mode="identity"]:has(.react-flow__node:hover)
+  .react-flow__nodes {
+  z-index: 2200 !important;
+}
+
+.factory-flow-board[data-detail-level="glance"][data-glance-mode="identity"]
+  .react-flow__node:hover {
+  z-index: 3000 !important;
 }
 
 /* The hop map: hovering a card zoomed out colours every other card by how many
@@ -875,4 +918,87 @@ img {
     0 0 0 5px #22d3ee,
     0 0 14px 3px rgba(34, 211, 238, 0.95);
   filter: brightness(1.22);
+}
+
+/* ===== Calm colours (the presentation toggle) ============================
+   One class on the board root and every status colour steps down to steel:
+   the words, bars, chips and badges still say bottleneck / over-asked / fed,
+   they just stop shouting it in red, amber and green. Interaction colours —
+   selection rings, flow-scope highlights, the drag drop wash — are left
+   alone; they answer to the pointer, not to the solver.
+
+   The indicator variables can be overridden at the board root because they
+   resolve to :root palette constants; only the verdict inks are re-pointed
+   on the card shell, where the per-card --mc-ink (set inline by paint and
+   heatmap) is in scope. */
+.factory-flow-board--calm {
+  --rail-bar-ok: #7b8b9c;
+  --rail-bar-bad: #7b8b9c;
+  --rail-bar-hot: #7b8b9c;
+  --port-bind-bg: var(--mc-71);
+  --port-bind-edge: var(--mc-47);
+  --port-hot-bg: var(--mc-71);
+  --port-hot-edge: var(--mc-47);
+  --port-fed-bg: var(--mc-71);
+  --port-fed-edge: var(--mc-47);
+}
+
+/* The REASON word and the zoomed-out percent keep their card's own ink. */
+.factory-flow-board--calm .recipe-node-shell {
+  --verdict-short-ink: var(--mc-ink);
+  --verdict-over-ink: var(--mc-ink);
+}
+
+/* The hardcoded accents: want carets, ×N bursts, SHORT/ASKED badges. */
+.factory-flow-board--calm .flow-port-caret,
+.factory-flow-board--calm .flow-port--bind .flow-port-caret {
+  border-bottom-color: #cfd6e0;
+}
+
+.factory-flow-board--calm .flow-port-burst,
+.factory-flow-board--calm .flow-port--bind .flow-port-burst,
+.factory-flow-board--calm .flow-port--slowed .flow-port-burst {
+  border-color: #8b95a3;
+  background: rgba(90, 102, 118, 0.35);
+  color: #dfe5ee;
+}
+
+.factory-flow-board--calm .flow-port--bind .flow-port-badge,
+.factory-flow-board--calm .flow-port--hot .flow-port-badge {
+  background: #4a5a6c;
+}
+
+/* Calmed bind/hot chips on a painted card take the paint like every other
+   panel — without this they'd sit grey on a tinted face. */
+.factory-flow-board--calm .recipe-node-tinted-area .flow-port--bind,
+.factory-flow-board--calm .recipe-node-tinted-area .flow-port--hot {
+  background: color-mix(in srgb, var(--recipe-node-tint) 86%, var(--mc-71));
+  border-color: color-mix(in srgb, var(--recipe-node-tint-border) 62%, var(--mc-47));
+}
+
+/* The usage-hover teaching link stays, in steel: with the port edge vars
+   calmed to near-black the outline would all but vanish. */
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
+  outline-color: #9db0c4;
+}
+
+/* Storage cards: INFINITE SUPPLY drops its green for the buffer steel, and
+   the net line stops signing its number in red and green. */
+.factory-flow-board--calm [data-storage-mode="supply"] {
+  background-color: #5f7f9c;
+}
+
+.factory-flow-board--calm .storage-net-line {
+  color: #42424b;
+}
+
+/* Editing chrome — the delete/clone buttons on drawer, tank and trash
+   headers — has no place in a presentation. The recipe card's head buttons,
+   footer and config dials are gated in JSX instead, because their grid
+   columns and cell heights leave with them. */
+.factory-flow-board--calm .board-edit-chrome {
+  display: none;
 }

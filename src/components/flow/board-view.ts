@@ -21,6 +21,14 @@ export type CanvasPattern = "dots" | "lines" | "cross" | "none";
 
 export const CANVAS_PATTERNS: CanvasPattern[] = ["dots", "lines", "cross", "none"];
 
+/**
+ * What a zoomed-out card leads with. `identity` is the big machine icon with
+ * the count and name, and hovering reveals the I/O rates; `status` is the
+ * utilisation percentage with the hop-distance map on hover. Always exactly
+ * one of these — the smart-view buttons in the board's bottom right switch.
+ */
+export type GlanceMode = "identity" | "status";
+
 export interface BoardView {
   // No `snapToGrid`. Snapping was a preference back when cards were sized by
   // their contents; now they are sized in grid cells, so it is a fact.
@@ -37,6 +45,14 @@ export interface BoardView {
   lineLabelsMode: boolean;
   /** Dashes march along each line in the direction of flow. */
   linePulseMode: boolean;
+  /**
+   * Every status colour steps down to neutral steel: the words, bars and
+   * badges still say bottleneck / over-asked / fed, they just stop shouting
+   * it in red, amber and green. For showing a plan off, not fixing it.
+   */
+  calmMode: boolean;
+  /** What the glance (zoomed-out) view shows. See GlanceMode. */
+  glanceMode: GlanceMode;
 }
 
 const BOARD_VIEW_STORAGE_KEY = "gtnh-factory-flow-board-view";
@@ -53,6 +69,8 @@ export const DEFAULT_BOARD_VIEW: BoardView = {
   lineLabelsMode: false,
   lineThicknessMode: true,
   linePulseMode: true,
+  calmMode: false,
+  glanceMode: "identity",
 };
 
 let boardViewState: BoardView = DEFAULT_BOARD_VIEW;
@@ -82,6 +100,11 @@ function readBoardView(): BoardView {
       lineLabelsMode: flag(parsed.lineLabelsMode, DEFAULT_BOARD_VIEW.lineLabelsMode),
       lineThicknessMode: flag(parsed.lineThicknessMode, DEFAULT_BOARD_VIEW.lineThicknessMode),
       linePulseMode: flag(parsed.linePulseMode, DEFAULT_BOARD_VIEW.linePulseMode),
+      calmMode: flag(parsed.calmMode, DEFAULT_BOARD_VIEW.calmMode),
+      glanceMode:
+        parsed.glanceMode === "status" || parsed.glanceMode === "identity"
+          ? parsed.glanceMode
+          : DEFAULT_BOARD_VIEW.glanceMode,
     };
   } catch {
     // Corrupt or unreadable storage is not worth breaking the board over.

@@ -98,6 +98,16 @@ export interface GridEndpoint {
    * that costs less than the penalty, including taking a turn to do it.
    */
   penalty?: number;
+  /**
+   * How much further INTO the card the drawn wire continues past the
+   * routing anchor, along the side's inward normal. The recipe card's
+   * machine tab zone is part of the routed box (wires keep their one-cell
+   * clearance over the tabs) but its top edge is phantom — the painted
+   * window starts lower. Routing math (aprons, lane graph, dock claims)
+   * stays on the anchor; only the final drawn stub crosses the zone and
+   * lands on the card's true edge.
+   */
+  stubDepth?: number;
 }
 
 export interface GridRouteRequest {
@@ -924,6 +934,11 @@ function claimAndAssemble(
     source.side === "left" || source.side === "right" ? "h" : "v";
   const targetStubAxis: "h" | "v" =
     target.side === "left" || target.side === "right" ? "h" : "v";
+  // The visible ends. Deepened anchors stay collinear with their stub: the
+  // segment adjacent to an anchor always runs along the side's normal, and
+  // the tip only moves along that same normal.
+  const sourceTip = stubTip(source);
+  const targetTip = stubTip(target);
 
   // No moves at all: the two aprons share a vertex (adjacent ports). Pure
   // stub work, nothing claims a lane.
@@ -932,11 +947,11 @@ function claimAndAssemble(
     const stubCorner = (endpoint: GridEndpoint, stubAxis: "h" | "v"): GridPoint =>
       stubAxis === "h" ? { x: apron.x, y: endpoint.y } : { x: endpoint.x, y: apron.y };
     return compactPoints([
-      { x: source.x, y: source.y },
+      sourceTip,
       stubCorner(source, sourceStubAxis),
       apron,
       stubCorner(target, targetStubAxis),
-      { x: target.x, y: target.y },
+      targetTip,
     ]);
   }
 
@@ -980,7 +995,7 @@ function claimAndAssemble(
     context.occupancy.claim(run.axis, run.line, run.from, run.to, slot);
   });
 
-  const points: GridPoint[] = [{ x: source.x, y: source.y }];
+  const points: GridPoint[] = [sourceTip];
 
   // Source stub onto the first run. When the run is PARALLEL to the stub
   // (the wire sets off along its own port line), it goes straight only as
@@ -1040,9 +1055,30 @@ function claimAndAssemble(
       targetStubAxis === "h" ? { x: last.drawn, y: target.y } : { x: target.x, y: last.drawn },
     );
   }
-  points.push({ x: target.x, y: target.y });
+  points.push(targetTip);
 
   return compactPoints(points);
+}
+
+/**
+ * The drawn anchor: the endpoint pushed `stubDepth` further into the card,
+ * along the side's inward normal. See GridEndpoint.stubDepth.
+ */
+function stubTip(endpoint: GridEndpoint): GridPoint {
+  const depth = endpoint.stubDepth ?? 0;
+  if (depth <= 0) {
+    return { x: endpoint.x, y: endpoint.y };
+  }
+  switch (endpoint.side) {
+    case "left":
+      return { x: endpoint.x + depth, y: endpoint.y };
+    case "right":
+      return { x: endpoint.x - depth, y: endpoint.y };
+    case "top":
+      return { x: endpoint.x, y: endpoint.y + depth };
+    case "bottom":
+      return { x: endpoint.x, y: endpoint.y - depth };
+  }
 }
 
 /**

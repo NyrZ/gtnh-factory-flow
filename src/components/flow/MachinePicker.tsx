@@ -269,7 +269,10 @@ export function MachineTabStrip({
       // rows tall — one, two, however many the tabs wrap onto. That is what
       // lets the port rows below it stay on the board grid no matter how many
       // machines a recipe offers.
-      className="relative flex flex-wrap content-start items-end gap-x-[3px] px-1"
+      // machine-tab-zone: hidden at the glance zoom step (globals.css). The
+      // zone lives OUTSIDE the card's glance root, so the root's own rule
+      // cannot reach it.
+      className="machine-tab-zone relative flex flex-wrap content-start items-end gap-x-[3px] px-1"
       onMouseLeave={() => onHover(undefined)}
     >
       <span
@@ -354,6 +357,48 @@ export function MachineTabStrip({
       >
         ⋯
       </button>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Presentation mode's tab: the selected machine only, filling the whole
+ * two-cell tab zone, purely for the icon. Not a control — it does not stop
+ * pointerdown, so grabbing it drags the node like any card surface.
+ */
+export function MachineIconTab({
+  icon,
+  label,
+}: {
+  icon?: MachineHandlerIcon;
+  label: string;
+}) {
+  return (
+    <div className="machine-tab-zone relative flex items-end px-1">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[2px] bg-[var(--mc-15)]"
+      />
+      <span
+        title={label}
+        className="relative z-10 flex h-[40px] w-[56px] items-center justify-center border-2 border-b-0 border-[var(--mc-15)] bg-[var(--mc-78)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+      >
+        {icon ? (
+          <ResourceIcon
+            resource={{ ...icon, amount: 1 }}
+            size="sm"
+            bare
+            showAmount={false}
+            tooltip={false}
+            className="!h-[38px] !w-[38px]"
+            iconPixelSize={machineArtPixels(38)}
+          />
+        ) : (
+          <span className="text-[20px] font-bold text-[var(--mc-ink)]">
+            {label.slice(0, 1).toUpperCase()}
+          </span>
+        )}
       </span>
     </div>
   );
