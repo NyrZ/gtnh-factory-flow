@@ -64,10 +64,16 @@ import {
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { BOARD_GRID, CONFIG_PANEL_ROW_HEIGHT, RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { CropPickerMenu } from "./CropPickerMenu";
-import { MachineCompareTable, MachineIconTab, MachineTabStrip } from "./MachinePicker";
+import {
+  MachineCompareTable,
+  MachineIconTab,
+  MachineTabStrip,
+  machineArtPixels,
+} from "./MachinePicker";
 import { NodeGlanceText } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
-import { useMachineHandlerIcons } from "./machine-icons";
+import { useMachineHandlerIcons, type MachineHandlerIcon } from "./machine-icons";
+import { publishDockTopInset } from "./dock-insets";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { MachineStatsContent } from "./MachineStatsContent";
@@ -149,7 +155,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     isFlowResourceHighlighted || isNodeBottleneckHighlighted || isUsageHighlighted;
   // Heatmap wins over the paint tag while it is on, and gives it straight back
   // when it goes off — the tag is never written to or lost.
-  const { heatmapMode, calmMode } = useBoardView();
+  const { heatmapMode, calmMode, glanceMode } = useBoardView();
   const paintColor = projectNode.colorTag ? GT_NODE_COLORS[projectNode.colorTag] : undefined;
   const heatColor = heatmapMode
     ? heatmapColorFor(result?.utilization, projectNode.enabled !== false)
@@ -425,12 +431,30 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
 
   const hasMachinePicker = machineHandlers.length > 1 && !isCropFarmNode;
   const machineIcons = useMachineHandlerIcons();
-  // Presentation mode's tab zone: the selected machine's icon, big, and
-  // nothing else. Crop farms and custom rate nodes have no machine to show.
-  const machineTabIcon =
-    calmMode && !isCropFarmNode && !isCustomRateNode
+  // The machine's own art, when the dataset ships it. Crop farms and custom
+  // rate nodes have no machine to show.
+  const machineGlanceIcon =
+    !isCropFarmNode && !isCustomRateNode
       ? machineIcons.get(selectedMachineHandler.id)
       : undefined;
+  // Presentation mode's tab zone: the selected machine's icon, big, and
+  // nothing else.
+  const machineTabIcon = calmMode ? machineGlanceIcon : undefined;
+  // The tab zone's height IS the dock inset: wires must not dock on the
+  // zone's phantom top edge (dock-insets.ts). Observed rather than derived,
+  // because the picker strip wraps and its row count is a layout fact.
+  const tabZoneRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = tabZoneRef.current;
+    const publish = () => publishDockTopInset(projectNode.id, element?.offsetHeight ?? 0);
+    publish();
+    if (!element || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(publish);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [projectNode.id]);
   const previewHandler = hasMachinePicker
     ? (machineHandlers.find((handler) => handler.id === previewHandlerId) ?? selectedMachineHandler)
     : selectedMachineHandler;
@@ -485,22 +509,26 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       {/* The tab zone: rows of whole cells ABOVE the window, over bare
           canvas — tabs, not a toolbar band inside the card. It is part of
           the shell's box, so the router keeps wires out of the space the
-          tabs claim. Normal mode gets the picker strip; presentation mode
-          gets the selected machine's icon, big, and nothing to click. */}
-      {!calmMode && hasMachinePicker ? (
-        <MachineTabStrip
-          handlers={machineHandlers}
-          selectedId={selectedMachineHandler.id}
-          previewId={previewHandlerId}
-          iconsById={machineIcons}
-          onHover={setPreviewHandlerId}
-          onSelect={updateMachineHandler}
-          onToggleCompare={() => setCompareOpen((open) => !open)}
-          isCompareOpen={isCompareOpen}
-        />
-      ) : machineTabIcon ? (
-        <MachineIconTab icon={machineTabIcon} label={selectedMachineHandler.label} />
-      ) : null}
+          tabs claim; its measured height is published as the dock inset so
+          wires never DOCK on its phantom edge (see dock-insets.ts). Normal
+          mode gets the picker strip; presentation mode gets the selected
+          machine's icon, big, and nothing to click. */}
+      <div ref={tabZoneRef}>
+        {!calmMode && hasMachinePicker ? (
+          <MachineTabStrip
+            handlers={machineHandlers}
+            selectedId={selectedMachineHandler.id}
+            previewId={previewHandlerId}
+            iconsById={machineIcons}
+            onHover={setPreviewHandlerId}
+            onSelect={updateMachineHandler}
+            onToggleCompare={() => setCompareOpen((open) => !open)}
+            isCompareOpen={isCompareOpen}
+          />
+        ) : machineTabIcon ? (
+          <MachineIconTab icon={machineTabIcon} label={selectedMachineHandler.label} />
+        ) : null}
+      </div>
       {/* The window: the painted card. The 2px frame is an INSET shadow, not
           a border — a real border sits outside the content box and would push
           every row 2px off the grid; painted inside, the window's box and its
@@ -524,18 +552,32 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             : undefined
         }
       >
-      {/* Zoomed out the card carries one fact: how hard this machine is
-          running. Coloured by the same verdict tone the footer's state word
-          uses, so a board full of these reads as a health map — red starved,
-          amber over-asked, plain fine. */}
-      <NodeGlanceText
-        text={
-          verdict.kind === "off" || verdict.kind === "no-recipe"
-            ? "—"
-            : `${verdict.pct > 0 && verdict.pct < 0.5 ? formatRate(verdict.pct, 1) : formatPct(verdict.pct)}%`
-        }
-        className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
-      />
+      {/* The smart view: what this card leads with zoomed out. Identity mode
+          (the default) is WHAT it is — machine icon, count and name, with the
+          I/O rates revealed on hover by pure CSS. Status mode is the old
+          reading: how hard it runs, with the hop map on hover. */}
+      {glanceMode === "identity" ? (
+        <GlanceIdentityLayer
+          machineIcon={machineGlanceIcon}
+          fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
+          label={
+            isCustomRateNode
+              ? (effectiveRecipe.name ?? "Custom rate")
+              : `${projectNode.machineCount}× ${selectedMachineHandler.label ?? effectiveRecipe.machineType ?? effectiveRecipe.name}`
+          }
+          inputs={rails.inputs}
+          outputs={rails.outputs}
+        />
+      ) : (
+        <NodeGlanceText
+          text={
+            verdict.kind === "off" || verdict.kind === "no-recipe"
+              ? "—"
+              : `${verdict.pct > 0 && verdict.pct < 0.5 ? formatRate(verdict.pct, 1) : formatPct(verdict.pct)}%`
+          }
+          className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
+        />
+      )}
       {exceedsMaxTier ? (
         <div
           className={[
@@ -892,6 +934,131 @@ export const RecipeNode = memo(
   RecipeNodeComponent,
   (previous, next) => previous.data === next.data && previous.selected === next.selected,
 );
+
+/**
+ * The identity glance: zoomed out the card is ONE BIG ICON on its own
+ * background — no name, no figures; at that size text is unreadable anyway.
+ * Hovering the card opens the big reveal: name, count and the I/O rates, in
+ * a panel that renders at SCREEN size — globals.css scales it by
+ * 1/var(--board-zoom), because a viewer parked way out still has to read it.
+ *
+ * The panel is in the DOM from the start and pure CSS reveals it
+ * (globals.css, `.glance-io`): hover must never rebuild the board, and a
+ * hover feature is exactly where that rule bites. Everything here is
+ * `absolute inset-0` like the other glance layers, so it has no say in the
+ * card's size and the router never sees it.
+ */
+function GlanceIdentityLayer({
+  machineIcon,
+  fallbackResource,
+  label,
+  inputs,
+  outputs,
+}: {
+  machineIcon?: MachineHandlerIcon;
+  fallbackResource?: ResourceAmount;
+  label: string;
+  inputs: RailPort[];
+  outputs: RailPort[];
+}) {
+  return (
+    <div
+      data-node-detail="glance"
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center"
+    >
+      {machineIcon ? (
+        <ResourceIcon
+          resource={{ ...machineIcon, amount: 1 }}
+          size="sm"
+          bare
+          showAmount={false}
+          tooltip={false}
+          className="!h-[192px] !w-[192px]"
+          iconPixelSize={machineArtPixels(192)}
+        />
+      ) : fallbackResource ? (
+        <span className="flex h-[192px] w-[192px] items-center justify-center overflow-hidden">
+          <ResourceIcon
+            resource={{ ...fallbackResource, amount: 1, chance: undefined }}
+            size="sm"
+            bare
+            showAmount={false}
+            tooltip={false}
+            iconPixelSize={fallbackResource.kind === "fluid" ? 192 : undefined}
+            className={
+              fallbackResource.kind === "fluid"
+                ? "!h-[192px] !w-[192px]"
+                : "!h-[192px] !w-[192px] origin-center scale-150"
+            }
+          />
+        </span>
+      ) : null}
+      {/* The reveal. Fixed 560px wide and scaled to screen size by the CSS;
+          left-1/2 + origin-top keep its top edge pinned to the card's centre
+          at every zoom. Inputs left, arrow, outputs right — the same reading
+          order as the card itself zoomed in. */}
+      <span className="glance-io absolute left-1/2 top-full z-30 w-[560px] origin-top flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-82)] p-3 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
+        {/* The same name bar the card wears zoomed in, at popup scale. */}
+        <span className="minecraft-title flex h-8 min-w-0 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-[16px] leading-[22px] shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)]">
+          <span className="mx-auto min-w-0 truncate">{label}</span>
+        </span>
+        {inputs.length > 0 || outputs.length > 0 ? (
+          /* Two fixed halves with the arrow between, exactly like the rails:
+             an outputs-only card keeps its chips on the RIGHT over an empty
+             left half rather than stretching across the whole panel. */
+          <span className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-start gap-x-1">
+            <span className="flex min-w-0 flex-col gap-1">
+              {inputs.map((port) => (
+                <GlanceIoRow key={port.key} port={port} />
+              ))}
+            </span>
+            <span className="flex items-start justify-center pt-2 text-[20px] font-black leading-6 text-[var(--mc-ink-muted)]">
+              →
+            </span>
+            <span className="flex min-w-0 flex-col gap-1">
+              {outputs.map((port) => (
+                <GlanceIoRow key={port.key} port={port} />
+              ))}
+            </span>
+          </span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+/** One chip of the hover reveal, in the card's own chip clothes. */
+function GlanceIoRow({ port }: { port: RailPort }) {
+  return (
+    <span className="flex items-center gap-1.5 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 py-0.5 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+      {/* Same crop treatment as a port chip: items ship transparent padding
+          in the sprite, so they zoom 1.5× inside an overflow-hidden box;
+          fluids are a solid square with nothing to crop. */}
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
+        {port.resource ? (
+          <ResourceIcon
+            resource={{ ...port.resource, amount: 1, chance: undefined }}
+            size="sm"
+            bare
+            showAmount={false}
+            tooltip={false}
+            iconPixelSize={port.kind === "fluid" ? 50 : undefined}
+            className={port.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 origin-center scale-150"}
+          />
+        ) : null}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-[14px] font-bold leading-[17px] text-[var(--mc-ink)]">
+          {port.displayName}
+        </span>
+        <span className="truncate text-[13px] leading-4 tabular-nums text-[var(--mc-ink-muted)]">
+          {formatSlotRate(port.currentPerSecond, port.kind)}
+        </span>
+      </span>
+    </span>
+  );
+}
 
 /** One word for the node's state, and where the fix lives. */
 interface VerdictWord {

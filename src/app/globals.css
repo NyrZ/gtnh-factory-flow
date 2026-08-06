@@ -200,6 +200,42 @@ textarea {
   display: flex;
 }
 
+/* The identity glance's hover reveal: name, count and I/O rates in a panel
+   below the card. Pure CSS — hover must never rebuild the board — and only at
+   the glance step, where the reveal replaces the hop map's job of answering
+   "what is this card doing".
+
+   The scale is the point: the viewer is way zoomed out, so a panel sized in
+   flow pixels would be a postage stamp. Dividing by the live zoom
+   (NodeDetailController publishes --board-zoom) renders it at constant SCREEN
+   size; translateX centres it under the card and survives the scale because
+   the transform origin is the panel's own top centre. */
+.glance-io {
+  display: none;
+}
+
+.factory-flow-board[data-detail-level="glance"] .react-flow__node:hover .glance-io {
+  display: flex;
+  transform: translateX(-50%) scale(calc(1 / var(--board-zoom, 1)));
+}
+
+/* While a reveal is up it must beat EVERYTHING — wires, rate pills, sibling
+   cards, and the annotation notes and arrows that ride in the same nodes
+   layer at zIndex 1000 (hovered-usage cards go to 1500). The reveal is the
+   final destination: the layer lifts over the other layers the way the
+   picker popups do, and the hovered node outranks every inline zIndex a
+   sibling can carry. Scoped to identity mode; the status view's hover paints
+   the hop map instead. */
+.factory-flow-board[data-detail-level="glance"][data-glance-mode="identity"]:has(.react-flow__node:hover)
+  .react-flow__nodes {
+  z-index: 2200 !important;
+}
+
+.factory-flow-board[data-detail-level="glance"][data-glance-mode="identity"]
+  .react-flow__node:hover {
+  z-index: 3000 !important;
+}
+
 /* The hop map: hovering a card zoomed out colours every other card by how many
    wires away it is. See hop-map.ts for the whole design, and in particular for
    why the colours arrive as two custom properties written onto the node

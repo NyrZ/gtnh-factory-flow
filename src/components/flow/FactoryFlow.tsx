@@ -29,6 +29,7 @@ import {
 import { toBlob, toSvg } from "html-to-image";
 import {
   Ban,
+  Box,
   Cable,
   Ellipsis,
   Anchor,
@@ -149,6 +150,7 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
+import { getDockTopInset } from "./dock-insets";
 import { isWiringConnection, setWiringConnection, WIRING_BOARD_CLASS } from "./connection-drag";
 import {
   clearHopMap,
@@ -739,6 +741,11 @@ function resolveGridRouteEndpoints(
     return [];
   }
   const snap = (value: number) => Math.round(value / BOARD_GRID) * BOARD_GRID;
+  // The machine tab zone: routed as card (the rect includes it, so wires
+  // keep their clearance over the tabs) but not a real edge. Top docks stay
+  // on the routed box and extend their drawn stub down through the zone to
+  // the window's true edge; side docks simply start below it.
+  const topInset = snap(getDockTopInset(nodeId));
 
   // Fixed-port mode (the anchor toggle, off): wires attach the classic way —
   // machine inputs on the left at their port row, outputs on the right, and
@@ -765,11 +772,11 @@ function resolveGridRouteEndpoints(
       ];
     }
     const fixedCenterX = snap((rect.left + rect.right) / 2);
-    const fixedCenterY = snap((rect.top + rect.bottom) / 2);
+    const fixedCenterY = snap((rect.top + topInset + rect.bottom) / 2);
     return [
       { x: rect.left, y: fixedCenterY, side: "left" },
       { x: rect.right, y: fixedCenterY, side: "right" },
-      { x: fixedCenterX, y: rect.top, side: "top" },
+      { x: fixedCenterX, y: rect.top, side: "top", stubDepth: topInset || undefined },
       { x: fixedCenterX, y: rect.bottom, side: "bottom" },
     ];
   }
@@ -786,14 +793,20 @@ function resolveGridRouteEndpoints(
   // very corner of a card reads as clipped through it. Docks start two
   // cells in from each corner — close is fine, corner is not.
   const cornerKeepOut = 2 * BOARD_GRID;
+  // The window's true top: side docks exist only below it, and the corner
+  // keep-out measures from IT — the window's corner, not the phantom box's.
+  const dockTop = top + topInset;
   const centerX = (left + right) / 2;
-  const centerY = (top + bottom) / 2;
+  const centerY = (dockTop + bottom) / 2;
   const candidates: GridEndpoint[] = [];
   for (let x = left + cornerKeepOut; x <= right - cornerKeepOut; x += step) {
     const penalty = Math.abs(x - centerX) * DOCK_CENTER_BIAS;
-    candidates.push({ x, y: top, side: "top", penalty }, { x, y: bottom, side: "bottom", penalty });
+    candidates.push(
+      { x, y: top, side: "top", penalty, stubDepth: topInset || undefined },
+      { x, y: bottom, side: "bottom", penalty },
+    );
   }
-  for (let y = top + cornerKeepOut; y <= bottom - cornerKeepOut; y += step) {
+  for (let y = dockTop + cornerKeepOut; y <= bottom - cornerKeepOut; y += step) {
     const penalty = Math.abs(y - centerY) * DOCK_CENTER_BIAS;
     candidates.push({ x: left, y, side: "left", penalty }, { x: right, y, side: "right", penalty });
   }
@@ -803,7 +816,7 @@ function resolveGridRouteEndpoints(
     candidates.push(
       { x: left, y: snap(centerY), side: "left" },
       { x: right, y: snap(centerY), side: "right" },
-      { x: snap(centerX), y: top, side: "top" },
+      { x: snap(centerX), y: top, side: "top", stubDepth: topInset || undefined },
       { x: snap(centerX), y: bottom, side: "bottom" },
     );
   }
@@ -2878,6 +2891,10 @@ export function FactoryFlow() {
   return (
     <div
       ref={boardRef}
+      // The smart-view mode rides as a data attribute so the hop-map
+      // controller and the glance CSS can read the mode in force without any
+      // React subscription.
+      data-glance-mode={boardView.glanceMode}
       className={[
         "factory-flow-board relative h-full min-h-[520px] overflow-hidden border-x border-line bg-canvas",
         isNodeDragging ? "factory-flow-board--dragging" : "",
@@ -2984,11 +3001,56 @@ export function FactoryFlow() {
         dockToggleWarning={dockToggleWarning}
       />
       <SourceToolbar />
+      <SmartViewToolbar glanceMode={boardView.glanceMode} />
       <HopMapLegend />
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
     </div>
   );
 }
+
+/**
+ * The smart-view switch, bottom right: what a zoomed-out card leads with.
+ * Exactly one mode is always in force — identity (big machine icon, count and
+ * name, I/O rates on hover) or status (utilisation percentage, hop-distance
+ * map on hover).
+ */
+const SmartViewToolbar = memo(function SmartViewToolbar({
+  glanceMode,
+}: {
+  glanceMode: BoardView["glanceMode"];
+}) {
+  const buttonClass = (active: boolean) =>
+    [
+      "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+      active ? "ring-2 ring-cyan-300" : "",
+    ].join(" ");
+
+  return (
+    // bottom-8, not bottom-3: the React Flow attribution keeps its corner.
+    <div className="nodrag pointer-events-none absolute bottom-8 right-3 z-20 flex items-start gap-1">
+      <button
+        type="button"
+        onClick={() => writeBoardView({ glanceMode: "identity" })}
+        className={buttonClass(glanceMode === "identity")}
+        title="Zoomed out, cards show WHAT they are: the machine icon, count and name. Hover a card for its rates."
+        aria-label="Show machines when zoomed out"
+        aria-pressed={glanceMode === "identity"}
+      >
+        <Box className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => writeBoardView({ glanceMode: "status" })}
+        className={buttonClass(glanceMode === "status")}
+        title="Zoomed out, cards show how hard they run, and hovering one maps the board by wire distance."
+        aria-label="Show usage when zoomed out"
+        aria-pressed={glanceMode === "status"}
+      >
+        <Gauge className="h-4 w-4" />
+      </button>
+    </div>
+  );
+});
 
 /**
  * Board tools that drop in source-style nodes (things that produce without
@@ -3285,8 +3347,27 @@ const NodeDetailController = memo(function NodeDetailController({
 
   useEffect(() => {
     let level: NodeDetailLevel = NODE_DETAIL_FULL;
+    let publishedZoom = 0;
+
+    // The live zoom, as a custom property on the board. The identity glance's
+    // hover popup divides by it to render at SCREEN size regardless of how
+    // far out the board is — the one place flow-space sizing is wrong, because
+    // the popup is read, not routed. Rounded so pinch jitter does not spam
+    // style invalidations.
+    const publishZoom = (zoom: number) => {
+      if (!Number.isFinite(zoom) || zoom <= 0) {
+        return;
+      }
+      const rounded = Math.round(zoom * 500) / 500;
+      if (rounded === publishedZoom) {
+        return;
+      }
+      publishedZoom = rounded;
+      boardRef.current?.style.setProperty("--board-zoom", String(rounded));
+    };
 
     const apply = (zoom: number) => {
+      publishZoom(zoom);
       const next = getNodeDetailLevel(zoom, level);
       if (next === level) {
         return;
@@ -3380,6 +3461,13 @@ const HopMapController = memo(function HopMapController({
         return;
       }
       if (!nodeId || board.getAttribute(NODE_DETAIL_ATTRIBUTE) !== "glance") {
+        cancel();
+        return;
+      }
+      // The distance map belongs to the STATUS smart view; in identity mode
+      // hover means "show me this card's rates" and the map would paint over
+      // the answer. Read live off the board attribute, like the glance state.
+      if (board.getAttribute("data-glance-mode") !== "status") {
         cancel();
         return;
       }
