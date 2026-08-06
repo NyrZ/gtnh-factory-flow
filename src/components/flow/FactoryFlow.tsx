@@ -134,7 +134,6 @@ import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
 import { rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
 import { getSupplyCeiling } from "@/components/inspector/usage-limits";
 import {
-  EDGE_DETAIL_ARROWS,
   EDGE_DETAIL_GLOBAL,
   EDGE_DETAIL_LABELS,
   EDGE_DETAIL_PULSE,
@@ -749,13 +748,20 @@ function resolveGridRouteEndpoints(
   const snap = (value: number) => Math.round(value / BOARD_GRID) * BOARD_GRID;
   const centerX = snap((rect.left + rect.right) / 2);
   const centerY = snap((rect.top + rect.bottom) / 2);
+  // Wires slide UNDER the card by two cells instead of stopping dead at its
+  // border — the same tucked-in dock the drawers always had. With arrowheads
+  // gone the tuck is also what says "this line ends here on purpose".
+  const inset = STORAGE_DOCK_INSET;
   return [
-    { x: rect.left, y: centerY, side: "left" },
-    { x: rect.right, y: centerY, side: "right" },
-    { x: centerX, y: rect.top, side: "top" },
-    { x: centerX, y: rect.bottom, side: "bottom" },
+    { x: rect.left, y: centerY, side: "left", inset },
+    { x: rect.right, y: centerY, side: "right", inset },
+    { x: centerX, y: rect.top, side: "top", inset },
+    { x: centerX, y: rect.bottom, side: "bottom", inset },
   ];
 }
+
+/** How far a wire tucks in under a drawer/tank/trash card at its dock. */
+const STORAGE_DOCK_INSET = 40;
 
 /**
  * Runs the grid solve if anything it depends on changed, and parks every
@@ -1719,19 +1725,19 @@ export function FactoryFlow() {
                 : isStorageEdge
                   ? 0.86
                   : 0.92,
+          // A quarter lane as the everyday width — the sub-3px menu the board
+          // used before the grid read as threads between 360px cards.
           strokeWidth: lineThicknessMode
             ? laneWidthForHeat(flowHeat)
             : isFlowHighlighted
               ? 5.5
               : isStorageEdge
                 ? isStorageEdgeEmphasized
-                  ? 4
-                  : 3.1
+                  ? 4.5
+                  : 4
                 : isStarvedEdge
-                  ? 2.7
-                  : edge.resourceKind === "fluid"
-                    ? 3.4
-                    : 2.9,
+                  ? 3.2
+                  : 4,
         },
       });
     });
@@ -3833,7 +3839,9 @@ function ResourceEdgeComponent({
   });
   const visualSource = visualSourceCandidates[0];
   const visualTarget = visualTargetCandidates[0];
-  const showArrowHead = isHighlighted || hasEdgeDetail(detailLevel, EDGE_DETAIL_ARROWS);
+  // No arrowheads on placed wires any more: the pulse dashes already carry
+  // direction, and an arrow at a dock either floated in space or vanished
+  // under the card depending on layer mode.
   // Every wire routes individually through the board-wide grid solve — the
   // solve's lane sharing is what makes a fan-out ride as one ribbon, which
   // is the look the bundle machinery used to fake by hiding members. The
@@ -3989,46 +3997,6 @@ function ResourceEdgeComponent({
               so one per edge repainted the entire board every frame. */}
         </>
       )}
-      {showArrowHead ? (
-        <polyline
-          points={getArrowHeadPointsForRoute({
-            points: routedEdge.points,
-            estimatedTargetX: visualTarget.x,
-            estimatedTargetY: visualTarget.y,
-            estimatedTargetPosition: visualTarget.side,
-          })}
-          stroke="var(--mc-15)"
-          strokeWidth={isHighlighted ? 4 : 3.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-          style={{
-            opacity: isEdgeStarved(data) ? 0.72 : 0.95,
-            filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
-            pointerEvents: "none",
-          }}
-        />
-      ) : null}
-      {showArrowHead ? (
-        <polyline
-          points={getArrowHeadPointsForRoute({
-            points: routedEdge.points,
-            estimatedTargetX: visualTarget.x,
-            estimatedTargetY: visualTarget.y,
-            estimatedTargetPosition: visualTarget.side,
-          })}
-          stroke={edgeColor}
-          strokeWidth={isHighlighted ? 2.2 : 1.8}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-          style={{
-            opacity: isEdgeStarved(data) ? 0.78 : 1,
-            filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
-            pointerEvents: "none",
-          }}
-        />
-      ) : null}
       {hoverPathD ? (
         <path
           d={hoverPathD}
@@ -4646,7 +4614,8 @@ const EDGE_HOP_MAX_RADIUS = 44;
  * pimple under a fat pipe or a hoop over a hair.
  */
 const publishedEdgeStrokeWidths = new Map<string, number>();
-const DEFAULT_EDGE_STROKE_WIDTH = 3;
+// A quarter lane. The old 3px default read as thread next to the grid cards.
+const DEFAULT_EDGE_STROKE_WIDTH = 4;
 
 
 /**
@@ -4780,7 +4749,7 @@ function pointsToHoppedSvgPath(
     // segment that merely ends a pixel or two past the line (T-junctions at
     // docks, lane-adjacent turns) reads as a touch, not a crossing, and a
     // hump there looks like it sits over nothing.
-    const OVERSHOOT = 4;
+    const OVERSHOOT = 2;
     for (const segment of otherSegments) {
       const segmentHorizontal = Math.abs(segment.start.y - segment.end.y) < 0.01;
       const segmentVertical = Math.abs(segment.start.x - segment.end.x) < 0.01;
@@ -4789,7 +4758,7 @@ function pointsToHoppedSvgPath(
         const otherLow = Math.min(segment.start.y, segment.end.y);
         const otherHigh = Math.max(segment.start.y, segment.end.y);
         const radius = radiusFor(crossAt, segment.width);
-        if (radius >= 2.5 && from.y > otherLow + OVERSHOOT && from.y < otherHigh - OVERSHOOT) {
+        if (radius >= 2 && from.y > otherLow + OVERSHOOT && from.y < otherHigh - OVERSHOOT) {
           crossings.push({ at: crossAt, radius });
         }
       } else if (vertical && segmentHorizontal) {
@@ -4797,7 +4766,7 @@ function pointsToHoppedSvgPath(
         const otherLow = Math.min(segment.start.x, segment.end.x);
         const otherHigh = Math.max(segment.start.x, segment.end.x);
         const radius = radiusFor(crossAt, segment.width);
-        if (radius >= 2.5 && from.x > otherLow + OVERSHOOT && from.x < otherHigh - OVERSHOOT) {
+        if (radius >= 2 && from.x > otherLow + OVERSHOOT && from.x < otherHigh - OVERSHOOT) {
           crossings.push({ at: crossAt, radius });
         }
       }
@@ -6146,54 +6115,6 @@ function getInitialResourceColor(resource: ResourceEdgeData["resource"]) {
     resource.iconAtlas?.dominantColor ??
     (resource.kind === "fluid" ? DEFAULT_FLUID_EDGE_COLOR : DEFAULT_ITEM_EDGE_COLOR)
   );
-}
-
-function getArrowHeadPoints(targetX: number, targetY: number, targetPosition: unknown) {
-  const length = 8;
-  const width = 5;
-
-  switch (String(targetPosition)) {
-    case "right":
-      return `${targetX + length},${targetY - width} ${targetX},${targetY} ${targetX + length},${targetY + width}`;
-    case "top":
-      return `${targetX - width},${targetY - length} ${targetX},${targetY} ${targetX + width},${targetY - length}`;
-    case "bottom":
-      return `${targetX - width},${targetY + length} ${targetX},${targetY} ${targetX + width},${targetY + length}`;
-    case "left":
-    default:
-      return `${targetX - length},${targetY - width} ${targetX},${targetY} ${targetX - length},${targetY + width}`;
-  }
-}
-
-function getArrowHeadPointsForRoute({
-  points,
-  estimatedTargetX,
-  estimatedTargetY,
-  estimatedTargetPosition,
-}: {
-  points: Array<{ x: number; y: number }>;
-  estimatedTargetX: number;
-  estimatedTargetY: number;
-  estimatedTargetPosition: unknown;
-}) {
-  const routeTarget = points[points.length - 1];
-  const routePrevious = points[points.length - 2];
-  if (!routeTarget || !routePrevious) {
-    return getArrowHeadPoints(estimatedTargetX, estimatedTargetY, estimatedTargetPosition);
-  }
-
-  const distanceX = routeTarget.x - routePrevious.x;
-  const distanceY = routeTarget.y - routePrevious.y;
-  const isVertical = Math.abs(distanceY) > Math.abs(distanceX);
-  const targetPosition = isVertical
-    ? distanceY >= 0
-      ? Position.Top
-      : Position.Bottom
-    : distanceX >= 0
-      ? Position.Left
-      : Position.Right;
-
-  return getArrowHeadPoints(routeTarget.x, routeTarget.y, targetPosition);
 }
 
 function isCompatibleResourceConnection(

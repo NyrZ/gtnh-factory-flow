@@ -41,8 +41,10 @@ export const LANE_GAP = 2;
  * The widths wires are allowed to draw at: fractions of a lane. Dynamic
  * thickness picks from this menu, so any two wires either fit a lane
  * together or visibly do not — no in-between widths that almost fit.
+ * The floor is an EIGHTH, not a sixteenth: a 1px hairline read as a scratch
+ * on the canvas, not a wire.
  */
-export const LANE_FRACTIONS = [1 / 16, 1 / 8, 1 / 4, 1 / 3, 1 / 2, 1] as const;
+export const LANE_FRACTIONS = [1 / 8, 1 / 4, 1 / 3, 1 / 2, 1] as const;
 
 /** Normalized flow heat (0..1) → the stroke width for dynamic-width mode. */
 export function laneWidthForHeat(heat: number): number {
@@ -78,6 +80,12 @@ export interface GridEndpoint {
   x: number;
   y: number;
   side: GridSide;
+  /**
+   * How far past the anchor the wire tucks INTO the card, along the side's
+   * normal. Storage and trash docks use this so a wire visibly slides under
+   * the card instead of stopping dead at its border; ports leave it 0.
+   */
+  inset?: number;
 }
 
 export interface GridRouteRequest {
@@ -124,53 +132,31 @@ const WINDOW_PAD = 400;
 const WINDOW_GROWTH = 4;
 
 /* ------------------------------------------------------------------ */
-/* Occupancy: who is already riding which stretch of which line        */
+/* Lane load: how much stroke already rides each stretch of each line  */
 /* ------------------------------------------------------------------ */
 
-interface LaneClaim {
-  lo: number;
-  hi: number;
-}
-
 /**
- * Claims are tracked per CELL of a line (each 20px stretch), because two
- * wires can share a line for part of its length and part company later —
- * capacity is a property of a stretch, not of the whole line.
+ * Load is tracked per CELL of a line (each 20px stretch), because two wires
+ * can share a line for part of its length and part company later — capacity
+ * is a property of a stretch, not of the whole line. Only WIDTH totals live
+ * here: where in the lane each wire actually sits is decided later, in one
+ * pass over every routed wire, so the ordering can be chosen to avoid
+ * crossings instead of by whoever happened to route first.
  */
-class LaneOccupancy {
-  private cells = new Map<string, LaneClaim[]>();
+class LaneLoad {
+  private cells = new Map<string, number>();
 
   private key(axis: "h" | "v", line: number, cell: number): string {
     return `${axis}:${line}:${cell}`;
   }
 
-  claimsFor(axis: "h" | "v", line: number, from: number, to: number): LaneClaim[] {
-    const lo = Math.floor(Math.min(from, to) / BOARD_GRID);
-    const hi = Math.ceil(Math.max(from, to) / BOARD_GRID) - 1;
-    const merged: LaneClaim[] = [];
-    for (let cell = lo; cell <= hi; cell += 1) {
-      const claims = this.cells.get(this.key(axis, line, cell));
-      if (claims) {
-        merged.push(...claims);
-      }
-    }
-    return merged;
-  }
-
-  /** Total stroke already claimed on the busiest cell of the stretch. */
+  /** Heaviest cell of the stretch, in stroke px. */
   usedWidth(axis: "h" | "v", line: number, from: number, to: number): number {
     const lo = Math.floor(Math.min(from, to) / BOARD_GRID);
     const hi = Math.ceil(Math.max(from, to) / BOARD_GRID) - 1;
     let worst = 0;
     for (let cell = lo; cell <= hi; cell += 1) {
-      const claims = this.cells.get(this.key(axis, line, cell));
-      if (!claims) {
-        continue;
-      }
-      let total = 0;
-      for (const claim of claims) {
-        total += claim.hi - claim.lo;
-      }
+      const total = this.cells.get(this.key(axis, line, cell)) ?? 0;
       if (total > worst) {
         worst = total;
       }
@@ -178,57 +164,14 @@ class LaneOccupancy {
     return worst;
   }
 
-  claim(axis: "h" | "v", line: number, from: number, to: number, claimInterval: LaneClaim) {
+  add(axis: "h" | "v", line: number, from: number, to: number, width: number) {
     const lo = Math.floor(Math.min(from, to) / BOARD_GRID);
     const hi = Math.ceil(Math.max(from, to) / BOARD_GRID) - 1;
     for (let cell = lo; cell <= hi; cell += 1) {
       const key = this.key(axis, line, cell);
-      const claims = this.cells.get(key);
-      if (claims) {
-        claims.push(claimInterval);
-      } else {
-        this.cells.set(key, [claimInterval]);
-      }
+      this.cells.set(key, (this.cells.get(key) ?? 0) + width);
     }
   }
-}
-
-/**
- * Where in the lane a new wire of `width` sits, given what is already there:
- * the free interval closest to the line's centre. First wire rides dead
- * centre; the next slots beside it; a wire that fits nowhere returns centre
- * again — that is the sanctioned port-stub overlap, and the A* cost has
- * already made sure it only happens where there was no alternative.
- */
-function packIntoLane(existing: LaneClaim[], width: number): LaneClaim {
-  const half = LANE_CAPACITY / 2;
-  const tryAt = (center: number): LaneClaim | undefined => {
-    const lo = center - width / 2;
-    const hi = center + width / 2;
-    if (lo < -half - 1e-6 || hi > half + 1e-6) {
-      return undefined;
-    }
-    for (const claim of existing) {
-      if (lo < claim.hi + LANE_GAP - 1e-6 && hi > claim.lo - LANE_GAP + 1e-6) {
-        return undefined;
-      }
-    }
-    return { lo, hi };
-  };
-
-  const candidates: number[] = [0];
-  for (const claim of existing) {
-    candidates.push(claim.hi + LANE_GAP + width / 2);
-    candidates.push(claim.lo - LANE_GAP - width / 2);
-  }
-  candidates.sort((left, right) => Math.abs(left) - Math.abs(right) || left - right);
-  for (const center of candidates) {
-    const slot = tryAt(center);
-    if (slot) {
-      return slot;
-    }
-  }
-  return { lo: -width / 2, hi: width / 2 };
 }
 
 /* ------------------------------------------------------------------ */
@@ -338,35 +281,91 @@ const DIRECTIONS = [
 
 interface SolveContext {
   obstacles: GridObstacle[];
-  occupancy: LaneOccupancy;
+  load: LaneLoad;
+}
+
+/** One straight run of one wire, waiting for its lane slot. */
+interface PendingRun {
+  axis: "h" | "v";
+  line: number;
+  from: number;
+  to: number;
+  width: number;
+  order: number;
+  /**
+   * Which side of the lane the wire leaves toward at this run's end:
+   * -1 = toward the negative perpendicular axis, +1 = positive, 0 = straight.
+   */
+  exitSide: -1 | 0 | 1;
+  /** Ascending = exits earlier along this run's own direction of travel. */
+  exitRank: number;
+  /** Assigned by the lane pass. */
+  offset: number;
+}
+
+/** A routed wire between A* and final assembly. */
+interface PendingEdge {
+  request: GridRouteRequest;
+  source: GridEndpoint;
+  target: GridEndpoint;
+  vertices: GridPoint[];
+  runs: PendingRun[];
+  /** Boxed-in fallback: already-final points, no lanes involved. */
+  fallbackPoints?: GridPoint[];
 }
 
 export function solveGridRoutes(
   obstacles: GridObstacle[],
   requests: GridRouteRequest[],
 ): Map<string, GridRoutedEdge> {
-  const context: SolveContext = { obstacles, occupancy: new LaneOccupancy() };
-  const results = new Map<string, GridRoutedEdge>();
+  const context: SolveContext = { obstacles, load: new LaneLoad() };
   const sorted = [...requests].sort(
     (left, right) => left.order - right.order || (left.edgeId < right.edgeId ? -1 : 1),
   );
+
+  // Pass 1: route every wire (earlier wires' lane LOAD steers later ones),
+  // but decide nothing about where in each lane anybody sits.
+  const pending: PendingEdge[] = [];
   for (const request of sorted) {
-    results.set(request.edgeId, routeOne(context, request));
+    const routed = routeOne(context, request);
+    if (routed) {
+      pending.push(routed);
+    }
+  }
+
+  // Pass 2: with every wire known, hand out lane slots ordered so wires that
+  // peel off earlier sit on the side they peel toward — the assignment that
+  // avoids two wires swapping sides at their turns.
+  assignLaneSlots(pending);
+
+  // Pass 3: geometry.
+  const results = new Map<string, GridRoutedEdge>();
+  for (const entry of pending) {
+    results.set(entry.request.edgeId, {
+      edgeId: entry.request.edgeId,
+      points: entry.fallbackPoints ?? assemblePendingEdge(entry),
+    });
+  }
+  for (const request of sorted) {
+    if (!results.has(request.edgeId)) {
+      results.set(request.edgeId, { edgeId: request.edgeId, points: [] });
+    }
   }
   return results;
 }
 
-function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedEdge {
+function routeOne(context: SolveContext, request: GridRouteRequest): PendingEdge | undefined {
   const sources = request.sources.filter(isFiniteEndpoint);
   const targets = request.targets.filter(isFiniteEndpoint);
   if (sources.length === 0 || targets.length === 0) {
-    return { edgeId: request.edgeId, points: [] };
+    return undefined;
   }
 
   let pad = WINDOW_PAD;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const routed = routeWithinWindow(context, request, sources, targets, pad);
     if (routed) {
+      registerPendingRuns(context, routed);
       return routed;
     }
     pad *= WINDOW_GROWTH;
@@ -379,15 +378,157 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
   const sourceApron = apronPoint(source);
   const targetApron = apronPoint(target);
   return {
-    edgeId: request.edgeId,
-    points: compactPoints([
-      { x: source.x, y: source.y },
+    request,
+    source,
+    target,
+    vertices: [],
+    runs: [],
+    fallbackPoints: compactPoints([
+      endpointAnchor(source),
       sourceApron,
       { x: sourceApron.x, y: targetApron.y },
       targetApron,
-      { x: target.x, y: target.y },
+      endpointAnchor(target),
     ]),
   };
+}
+
+/**
+ * Splits the vertex chain into runs, computes each run's exit side and rank
+ * for the lane pass, and adds this wire's width to the lane load so later
+ * A* searches see the corridor filling up.
+ */
+function registerPendingRuns(context: SolveContext, entry: PendingEdge) {
+  const { vertices, target } = entry;
+  for (let i = 0; i + 1 < vertices.length; i += 1) {
+    const a = vertices[i];
+    const b = vertices[i + 1];
+    const run: PendingRun =
+      a.y === b.y
+        ? { axis: "h", line: a.y, from: a.x, to: b.x, width: entry.request.strokeWidth, order: entry.request.order, exitSide: 0, exitRank: 0, offset: 0 }
+        : { axis: "v", line: a.x, from: a.y, to: b.y, width: entry.request.strokeWidth, order: entry.request.order, exitSide: 0, exitRank: 0, offset: 0 };
+    const next = vertices[i + 2];
+    if (next) {
+      // The next run is perpendicular; its direction of travel IS this run's
+      // exit side in the lane's cross-axis.
+      const perpDelta = run.axis === "v" ? next.x - b.x : next.y - b.y;
+      run.exitSide = perpDelta > 0.01 ? 1 : perpDelta < -0.01 ? -1 : 0;
+    } else {
+      // Last run: the stub leaves toward the anchor.
+      const perpDelta = run.axis === "v" ? target.x - run.line : target.y - run.line;
+      run.exitSide = perpDelta > 0.01 ? 1 : perpDelta < -0.01 ? -1 : 0;
+    }
+    // dir * to: ascending compares as "exits earlier along its own travel",
+    // for either direction of travel.
+    const dir = Math.sign(run.to - run.from) || 1;
+    run.exitRank = dir * run.to;
+    entry.runs.push(run);
+    context.load.add(run.axis, run.line, run.from, run.to, run.width);
+  }
+}
+
+/**
+ * The lane pass: every run of every wire, grouped by line and overlapping
+ * span, spread across the lane's 16px band.
+ *
+ * Two rules, both about reading clearly:
+ *
+ * ORDER — wires exiting toward the lane's negative side sit on that side,
+ * positives on theirs, and within a side the wire that peels off EARLIEST
+ * sits outermost. Two wires out of one output that both turn left used to
+ * get arbitrary slots, and half the time the inner one turned first and
+ * crossed its neighbour right at the corner. Sorted this way the corridor
+ * unzips: each wire leaves from the edge of the bundle, crossing nobody.
+ *
+ * SPREAD — slots are distributed evenly across the whole band rather than
+ * packed shoulder-to-shoulder at the centre. Wires travel together because
+ * their corridors coincide, but they only get CLOSE when the lane is
+ * genuinely crowded.
+ */
+function assignLaneSlots(pending: PendingEdge[]) {
+  const byLine = new Map<string, PendingRun[]>();
+  for (const entry of pending) {
+    for (const run of entry.runs) {
+      const key = `${run.axis}:${run.line}`;
+      const list = byLine.get(key);
+      if (list) {
+        list.push(run);
+      } else {
+        byLine.set(key, [run]);
+      }
+    }
+  }
+
+  for (const runs of byLine.values()) {
+    // Cluster strictly-overlapping spans; runs merely meeting end-to-end are
+    // independent stretches and each gets the full band.
+    runs.sort(
+      (left, right) =>
+        Math.min(left.from, left.to) - Math.min(right.from, right.to) ||
+        left.order - right.order,
+    );
+    let cluster: PendingRun[] = [];
+    let clusterHi = -Infinity;
+    const flush = () => {
+      if (cluster.length > 0) {
+        spreadCluster(cluster);
+      }
+      cluster = [];
+      clusterHi = -Infinity;
+    };
+    for (const run of runs) {
+      const lo = Math.min(run.from, run.to);
+      const hi = Math.max(run.from, run.to);
+      if (cluster.length > 0 && lo >= clusterHi - 0.5) {
+        flush();
+      }
+      cluster.push(run);
+      clusterHi = Math.max(clusterHi, hi);
+    }
+    flush();
+  }
+}
+
+function spreadCluster(cluster: PendingRun[]) {
+  cluster.sort((left, right) => {
+    if (left.exitSide !== right.exitSide) {
+      return left.exitSide - right.exitSide;
+    }
+    if (left.exitSide === -1 && left.exitRank !== right.exitRank) {
+      // Negative side, outermost (most negative offset) first: earliest exit.
+      return left.exitRank - right.exitRank;
+    }
+    if (left.exitSide === 1 && left.exitRank !== right.exitRank) {
+      // Positive side, outermost LAST in left-to-right order: latest first.
+      return right.exitRank - left.exitRank;
+    }
+    return left.order - right.order;
+  });
+
+  const totalWidth = cluster.reduce((sum, run) => sum + run.width, 0);
+  const slack = Math.max(0, LANE_CAPACITY - totalWidth);
+  const gap = slack / (cluster.length + 1);
+  // Full band when there is slack; an overfull cluster (port aprons) just
+  // centres its total width and spills the band symmetrically.
+  let cursor = -(totalWidth + slack) / 2 + gap;
+  for (const run of cluster) {
+    run.offset = cursor + run.width / 2;
+    cursor += run.width + gap;
+  }
+}
+
+function endpointAnchor(endpoint: GridEndpoint): GridPoint {
+  const inset = endpoint.inset ?? 0;
+  switch (endpoint.side) {
+    case "left":
+      return { x: endpoint.x + inset, y: endpoint.y };
+    case "right":
+      return { x: endpoint.x - inset, y: endpoint.y };
+    case "top":
+      return { x: endpoint.x, y: endpoint.y + inset };
+    case "bottom":
+      return { x: endpoint.x, y: endpoint.y - inset };
+  }
 }
 
 function isFiniteEndpoint(endpoint: GridEndpoint): boolean {
@@ -400,7 +541,7 @@ function routeWithinWindow(
   sources: GridEndpoint[],
   targets: GridEndpoint[],
   pad: number,
-): GridRoutedEdge | undefined {
+): PendingEdge | undefined {
   const sourceAprons = sources.map(apronPoint);
   const targetAprons = targets.map(apronPoint);
 
@@ -639,7 +780,7 @@ function routeWithinWindow(
       }
 
       const distance = Math.abs(to - from);
-      const used = context.occupancy.usedWidth(laneAxis, laneLine, from, to);
+      const used = context.load.usedWidth(laneAxis, laneLine, from, to);
       const fits = used === 0 || used + LANE_GAP + request.strokeWidth <= LANE_CAPACITY;
       const factor = used === 0 ? COST_EMPTY : fits ? COST_SHARED : COST_OVERFLOW;
       const stepCost = distance * factor + (dir === currentDir ? 0 : TURN_COST);
@@ -678,120 +819,101 @@ function routeWithinWindow(
   const target = targets[goals.get(Math.floor(goalState / 4)) ?? 0] ?? targets[0];
 
   return {
-    edgeId: request.edgeId,
-    points: claimAndAssemble(context, request, source, target, compactPoints(vertices)),
+    request,
+    source,
+    target,
+    vertices: compactPoints(vertices),
+    runs: [],
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Lane claiming and the final polyline                                */
+/* The final polyline                                                  */
 /* ------------------------------------------------------------------ */
 
 /**
  * Turns the on-line vertex chain into the drawn polyline: every straight run
- * claims its slice of its lane and shifts sideways to it, corners re-join at
- * the offset intersections, and the true anchors go on the ends. The stubs —
- * anchor to first/last corner — stay at the anchor's exact coordinate, so a
- * wire always leaves a port dead straight.
+ * shifts sideways to its assigned lane slot, corners re-join at the offset
+ * intersections, and the true anchors (plus any tuck-under inset) go on the
+ * ends. The stubs — anchor to first/last corner — stay at the anchor's exact
+ * coordinate, so a wire always leaves a port dead straight.
  */
-function claimAndAssemble(
-  context: SolveContext,
-  request: GridRouteRequest,
-  source: GridEndpoint,
-  target: GridEndpoint,
-  vertices: GridPoint[],
-): GridPoint[] {
+function assemblePendingEdge(entry: PendingEdge): GridPoint[] {
+  const { source, target, vertices, runs } = entry;
   if (vertices.length === 0) {
     return [];
   }
 
+  const sourceAnchor = endpointAnchor(source);
+  const targetAnchor = endpointAnchor(target);
   const sourceStubAxis: "h" | "v" =
     source.side === "left" || source.side === "right" ? "h" : "v";
   const targetStubAxis: "h" | "v" =
     target.side === "left" || target.side === "right" ? "h" : "v";
 
   // No moves at all: the two aprons share a vertex (adjacent ports). Pure
-  // stub work, nothing claims a lane.
+  // stub work, no lanes involved.
   if (vertices.length === 1) {
     const apron = vertices[0];
     const stubCorner = (endpoint: GridEndpoint, stubAxis: "h" | "v"): GridPoint =>
       stubAxis === "h" ? { x: apron.x, y: endpoint.y } : { x: endpoint.x, y: apron.y };
     return compactPoints([
-      { x: source.x, y: source.y },
+      sourceAnchor,
       stubCorner(source, sourceStubAxis),
       apron,
       stubCorner(target, targetStubAxis),
-      { x: target.x, y: target.y },
+      targetAnchor,
     ]);
   }
 
-  interface Run {
-    axis: "h" | "v";
-    line: number;
-    from: number;
-    to: number;
-    /** The coordinate this run actually draws at (line + lane offset). */
-    drawn: number;
-  }
-  const runs: Run[] = [];
-  for (let i = 0; i + 1 < vertices.length; i += 1) {
-    const a = vertices[i];
-    const b = vertices[i + 1];
-    const run: Run =
-      a.y === b.y
-        ? { axis: "h", line: a.y, from: a.x, to: b.x, drawn: a.y }
-        : { axis: "v", line: a.x, from: a.y, to: b.y, drawn: a.x };
-    const existing = context.occupancy.claimsFor(run.axis, run.line, run.from, run.to);
-    const slot = packIntoLane(existing, request.strokeWidth);
-    run.drawn = run.line + (slot.lo + slot.hi) / 2;
-    context.occupancy.claim(run.axis, run.line, run.from, run.to, slot);
-    runs.push(run);
-  }
+  // The coordinate each run actually draws at: its line plus its lane slot —
+  // except that a first/last run riding the port's own line keeps the
+  // anchor's exact coordinate, so the wire leaves and enters dead straight
+  // rather than jogging a few pixels at the coupling.
+  const drawnOf = (index: number): number => {
+    const run = runs[index];
+    if (index === 0 && run.axis === sourceStubAxis) {
+      return sourceStubAxis === "h" ? source.y : source.x;
+    }
+    if (index === runs.length - 1 && run.axis === targetStubAxis) {
+      return targetStubAxis === "h" ? target.y : target.x;
+    }
+    return run.line + run.offset;
+  };
 
-  // A first/last run that rides the port's own line keeps the anchor's exact
-  // coordinate instead of its lane offset, so the wire leaves and enters a
-  // port dead straight — the offset would be a pointless few-pixel jog right
-  // at the coupling. Its lane claim stands either way.
-  if (runs[0].axis === sourceStubAxis) {
-    runs[0].drawn = sourceStubAxis === "h" ? source.y : source.x;
-  }
-  if (runs[runs.length - 1].axis === targetStubAxis) {
-    const last = runs[runs.length - 1];
-    last.drawn = targetStubAxis === "h" ? target.y : target.x;
-  }
-
-  const points: GridPoint[] = [{ x: source.x, y: source.y }];
+  const points: GridPoint[] = [sourceAnchor];
 
   // Source stub onto the first run.
   const first = runs[0];
   if (first.axis !== sourceStubAxis) {
-    // The run is perpendicular to the way the wire leaves the port: travel
-    // straight out at the anchor's coordinate until the run's drawn line.
     points.push(
-      sourceStubAxis === "h" ? { x: first.drawn, y: source.y } : { x: source.x, y: first.drawn },
+      sourceStubAxis === "h" ? { x: drawnOf(0), y: source.y } : { x: source.x, y: drawnOf(0) },
     );
   }
 
   // Interior corners: intersection of neighbouring drawn lines.
   for (let i = 0; i + 1 < runs.length; i += 1) {
-    const runA = runs[i];
-    const runB = runs[i + 1];
+    const drawnA = drawnOf(i);
+    const drawnB = drawnOf(i + 1);
     points.push({
-      x: runA.axis === "v" ? runA.drawn : runB.drawn,
-      y: runA.axis === "h" ? runA.drawn : runB.drawn,
+      x: runs[i].axis === "v" ? drawnA : drawnB,
+      y: runs[i].axis === "h" ? drawnA : drawnB,
     });
   }
 
   // Target stub off the last run.
-  const last = runs[runs.length - 1];
+  const lastIndex = runs.length - 1;
+  const last = runs[lastIndex];
   if (last.axis !== targetStubAxis) {
     points.push(
-      targetStubAxis === "h" ? { x: last.drawn, y: target.y } : { x: target.x, y: last.drawn },
+      targetStubAxis === "h"
+        ? { x: drawnOf(lastIndex), y: target.y }
+        : { x: target.x, y: drawnOf(lastIndex) },
     );
   } else if (runs.length === 1 && first.axis === sourceStubAxis) {
-    // One run shared by both stubs (straight shot port to port): the run was
-    // pinned to the SOURCE anchor above, so jog across to the target's
-    // coordinate at the run's midpoint if the two anchors disagree.
+    // One run shared by both stubs (straight shot port to port): the run is
+    // pinned to the SOURCE anchor, so jog across to the target's coordinate
+    // at the run's midpoint if the two anchors disagree.
     const sourceCoord = sourceStubAxis === "h" ? source.y : source.x;
     const targetCoord = targetStubAxis === "h" ? target.y : target.x;
     if (Math.abs(sourceCoord - targetCoord) > 0.5) {
@@ -803,7 +925,7 @@ function claimAndAssemble(
       }
     }
   }
-  points.push({ x: target.x, y: target.y });
+  points.push(targetAnchor);
 
   return compactPoints(points);
 }

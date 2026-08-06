@@ -57,8 +57,8 @@ function isOrthogonal(points: GridPoint[]): boolean {
 }
 
 describe("laneWidthForHeat", () => {
-  it("quantizes to lane fractions and never exceeds the lane", () => {
-    expect(laneWidthForHeat(0)).toBe(1);
+  it("quantizes to lane fractions, floors at an eighth, and never exceeds the lane", () => {
+    expect(laneWidthForHeat(0)).toBe(2);
     expect(laneWidthForHeat(0.1)).toBe(2);
     expect(laneWidthForHeat(0.25)).toBe(4);
     expect(laneWidthForHeat(0.3)).toBeCloseTo(16 / 3, 1);
@@ -67,6 +67,33 @@ describe("laneWidthForHeat", () => {
     expect(laneWidthForHeat(2)).toBe(LANE_CAPACITY);
   });
 });
+
+/** Do any two segments of the two polylines properly cross? */
+function polylinesCross(first: GridPoint[], second: GridPoint[]): boolean {
+  const firstSegments = segments(first);
+  const secondSegments = segments(second);
+  for (const a of firstSegments) {
+    for (const b of secondSegments) {
+      const aH = Math.abs(a.a.y - a.b.y) < 0.01;
+      const bH = Math.abs(b.a.y - b.b.y) < 0.01;
+      if (aH === bH) {
+        continue;
+      }
+      const h = aH ? a : b;
+      const v = aH ? b : a;
+      const crossX = v.a.x;
+      const crossY = h.a.y;
+      const hLo = Math.min(h.a.x, h.b.x);
+      const hHi = Math.max(h.a.x, h.b.x);
+      const vLo = Math.min(v.a.y, v.b.y);
+      const vHi = Math.max(v.a.y, v.b.y);
+      if (crossX > hLo + 0.5 && crossX < hHi - 0.5 && crossY > vLo + 0.5 && crossY < vHi - 0.5) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 describe("solveGridRoutes", () => {
   it("routes a facing pair straight across", () => {
@@ -183,6 +210,78 @@ describe("solveGridRoutes", () => {
         }
       }
     }
+  });
+
+  it("keeps a same-corridor fan-out from crossing itself", () => {
+    // Two wires out of the same output, riding the same column, both turning
+    // left toward two inputs at different heights — the reported bug had the
+    // slot order arbitrary, so one wire crossed the other right at its turn.
+    const a = card("a", 0, 400);
+    const b = card("b", -600, 0);
+    const c = card("c", -600, 800);
+    const routes = solveGridRoutes(
+      [a, b, c],
+      [
+        request({
+          edgeId: "up",
+          order: 0,
+          sources: [{ x: 360, y: 460, side: "right" }],
+          targets: [{ x: -240, y: 60, side: "right" }],
+        }),
+        request({
+          edgeId: "down",
+          order: 1,
+          sources: [{ x: 360, y: 460, side: "right" }],
+          targets: [{ x: -240, y: 860, side: "right" }],
+        }),
+      ],
+    );
+    const up = routes.get("up")!.points;
+    const down = routes.get("down")!.points;
+    expect(isOrthogonal(up)).toBe(true);
+    expect(isOrthogonal(down)).toBe(true);
+    expect(polylinesCross(up, down)).toBe(false);
+  });
+
+  it("spreads lane-mates across the band instead of packing them tight", () => {
+    const a = card("a", 0, 0);
+    const b = card("b", 1000, 600);
+    const routes = solveGridRoutes(
+      [a, b],
+      [
+        request({
+          edgeId: "e1",
+          order: 0,
+          strokeWidth: 2,
+          sources: [{ x: 360, y: 60, side: "right" }],
+          targets: [{ x: 1000, y: 660, side: "left" }],
+        }),
+        request({
+          edgeId: "e2",
+          order: 1,
+          strokeWidth: 2,
+          sources: [{ x: 360, y: 100, side: "right" }],
+          targets: [{ x: 1000, y: 700, side: "left" }],
+        }),
+      ],
+    );
+    const first = routes.get("e1")!.points;
+    const second = routes.get("e2")!.points;
+    // Find a pair of co-lane vertical runs and check their daylight: two 2px
+    // wires evenly spread over a 16px band sit ~6.7px apart, never 2.
+    let checked = false;
+    for (const p of segments(first)) {
+      if (Math.abs(p.a.x - p.b.x) > 0.01) continue;
+      for (const q of segments(second)) {
+        if (Math.abs(q.a.x - q.b.x) > 0.01) continue;
+        const gap = Math.abs(p.a.x - q.a.x);
+        if (gap < 16) {
+          expect(gap).toBeGreaterThanOrEqual(5);
+          checked = true;
+        }
+      }
+    }
+    expect(checked).toBe(true);
   });
 
   it("is deterministic", () => {
