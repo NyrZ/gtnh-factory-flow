@@ -8,8 +8,7 @@ import {
 } from "@/lib/server/community";
 import {
   BLUEPRINT_SUMMARY_COLUMNS,
-  BLUEPRINT_TABLE_MISSING_MESSAGE,
-  isMissingBlueprintTable,
+  blueprintStorageErrorMessage,
   rowToBlueprintSummary,
   type BlueprintRow,
 } from "@/lib/server/blueprints";
@@ -80,11 +79,7 @@ export async function POST(
     .maybeSingle();
   if (error) {
     return NextResponse.json(
-      {
-        error: isMissingBlueprintTable(error)
-          ? BLUEPRINT_TABLE_MISSING_MESSAGE
-          : "Publishing failed.",
-      },
+      { error: blueprintStorageErrorMessage(error, "Publishing failed.") },
       { status: 500 },
     );
   }

@@ -20,8 +20,7 @@ import {
 import {
   attachMyBlueprintVotes,
   BLUEPRINT_SUMMARY_COLUMNS,
-  BLUEPRINT_TABLE_MISSING_MESSAGE,
-  isMissingBlueprintTable,
+  blueprintStorageErrorMessage,
   rowToBlueprintSummary,
   type BlueprintRow,
 } from "@/lib/server/blueprints";
@@ -73,11 +72,7 @@ export async function GET(request: Request) {
     .limit(BLUEPRINT_MAX_PER_USER);
   if (error) {
     return NextResponse.json(
-      {
-        error: isMissingBlueprintTable(error)
-          ? BLUEPRINT_TABLE_MISSING_MESSAGE
-          : "Blueprints could not be loaded.",
-      },
+      { error: blueprintStorageErrorMessage(error, "Blueprints could not be loaded.") },
       { status: 500 },
     );
   }
@@ -132,11 +127,7 @@ async function listPublicBlueprints(request: Request, url: URL) {
   const { data, error } = await query.range(from, from + PUBLIC_BLUEPRINT_PAGE_SIZE);
   if (error) {
     return NextResponse.json(
-      {
-        error: isMissingBlueprintTable(error)
-          ? BLUEPRINT_TABLE_MISSING_MESSAGE
-          : "Public blueprints could not be loaded.",
-      },
+      { error: blueprintStorageErrorMessage(error, "Public blueprints could not be loaded.") },
       { status: 500 },
     );
   }
@@ -239,11 +230,7 @@ export async function POST(request: Request) {
     .single();
   if (error || !data) {
     return NextResponse.json(
-      {
-        error: isMissingBlueprintTable(error)
-          ? BLUEPRINT_TABLE_MISSING_MESSAGE
-          : "Blueprint could not be saved.",
-      },
+      { error: blueprintStorageErrorMessage(error, "Blueprint could not be saved.") },
       { status: 500 },
     );
   }

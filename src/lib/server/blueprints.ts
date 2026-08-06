@@ -82,14 +82,21 @@ export async function attachMyBlueprintVotes(
 }
 
 /**
- * PostgREST's "table not in schema cache" — the blueprints table has never
- * been created in this Supabase project. Every blueprint route hits this
- * until `supabase/schema.sql` is run, so the routes turn it into a message
- * that says what to actually do instead of a generic 500.
+ * Turns the two schema-drift Postgres errors into messages that say what to
+ * actually do, instead of a generic 500: PGRST205 means the blueprints table
+ * has never been created; PGRST204/42703 mean the table predates a column
+ * this build reads or writes (schema.sql converges when re-run — its later
+ * additions are idempotent ALTERs). Anything else keeps the caller's word.
  */
-export function isMissingBlueprintTable(error: { code?: string } | null): boolean {
-  return error?.code === "PGRST205";
+export function blueprintStorageErrorMessage(
+  error: { code?: string } | null,
+  fallback: string,
+): string {
+  if (error?.code === "PGRST205") {
+    return "Blueprint storage is not set up yet — run supabase/schema.sql in the Supabase SQL editor.";
+  }
+  if (error?.code === "PGRST204" || error?.code === "42703") {
+    return "Blueprint storage is out of date — re-run the latest supabase/schema.sql in the Supabase SQL editor.";
+  }
+  return fallback;
 }
-
-export const BLUEPRINT_TABLE_MISSING_MESSAGE =
-  "Blueprint storage is not set up yet — run supabase/schema.sql in the Supabase SQL editor.";

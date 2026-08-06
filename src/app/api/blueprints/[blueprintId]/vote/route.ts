@@ -7,8 +7,7 @@ import {
   makeActorKey,
 } from "@/lib/server/community";
 import {
-  BLUEPRINT_TABLE_MISSING_MESSAGE,
-  isMissingBlueprintTable,
+  blueprintStorageErrorMessage,
 } from "@/lib/server/blueprints";
 
 export const runtime = "nodejs";
@@ -48,8 +47,11 @@ export async function POST(
       .select("id,is_public")
       .eq("id", blueprintId)
       .maybeSingle();
-    if (targetError && isMissingBlueprintTable(targetError)) {
-      return NextResponse.json({ error: BLUEPRINT_TABLE_MISSING_MESSAGE }, { status: 500 });
+    if (targetError) {
+      return NextResponse.json(
+        { error: blueprintStorageErrorMessage(targetError, "Voting failed.") },
+        { status: 500 },
+      );
     }
     if (!target || !target.is_public) {
       return NextResponse.json({ error: "Blueprint not found." }, { status: 404 });

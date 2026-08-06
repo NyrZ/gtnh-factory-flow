@@ -3,8 +3,7 @@ import type { BoardClipboardPayload } from "@/store/factory-store";
 import { getCommunityDb, getSessionUser, isCommunityConfigured } from "@/lib/server/community";
 import {
   BLUEPRINT_SUMMARY_COLUMNS,
-  BLUEPRINT_TABLE_MISSING_MESSAGE,
-  isMissingBlueprintTable,
+  blueprintStorageErrorMessage,
   rowToBlueprintSummary,
   type BlueprintRow,
 } from "@/lib/server/blueprints";
@@ -37,11 +36,7 @@ export async function POST(
       .maybeSingle();
     if (error) {
       return NextResponse.json(
-        {
-          error: isMissingBlueprintTable(error)
-            ? BLUEPRINT_TABLE_MISSING_MESSAGE
-            : "Blueprint could not be loaded.",
-        },
+        { error: blueprintStorageErrorMessage(error, "Blueprint could not be loaded.") },
         { status: 500 },
       );
     }

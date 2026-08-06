@@ -116,6 +116,12 @@ create index if not exists blueprints_public_downloads_idx on blueprints (is_pub
 
 alter table blueprints enable row level security;
 
+-- Columns added after the blueprints table first shipped. `create table if
+-- not exists` never alters an existing table, so re-running this file must
+-- converge through idempotent ALTERs — keep every later addition here.
+alter table blueprints add column if not exists needs jsonb not null default '[]'::jsonb;
+alter table blueprints add column if not exists outputs jsonb not null default '[]'::jsonb;
+
 -- One vote per anonymous actor per blueprint, exactly like community_votes.
 create table if not exists blueprint_votes (
   blueprint_id uuid not null references blueprints (id) on delete cascade,
