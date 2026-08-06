@@ -24,4 +24,20 @@ export function setWiringConnection(active: boolean): void {
   wiringConnection = active;
 }
 
+/**
+ * When the last wire gesture ended. A drop on a pocket card is a mouseup,
+ * and mouseups pair into double-clicks: without this, wiring a pocket could
+ * count as "open the pocket" and yank the viewer inside mid-thought. Both
+ * double-click paths (the card's own and React Flow's) check this window.
+ */
+let lastWireDropAt = 0;
+
+export function markWireDrop(): void {
+  lastWireDropAt = Date.now();
+}
+
+export function wasRecentWireDrop(withinMs = 500): boolean {
+  return Date.now() - lastWireDropAt < withinMs;
+}
+
 export const WIRING_BOARD_CLASS = "factory-flow-board--wiring";

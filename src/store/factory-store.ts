@@ -211,7 +211,8 @@ interface FactoryStore {
       "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor"
     > &
       Partial<Pick<ResourceAmount, "tooltip" | "amount" | "alternatives">>,
-    nodeId: string,
+    /** One card, or every member behind a pocket port — all wired to the ONE new drawer/tank. */
+    nodeId: string | string[],
     side: "input" | "output",
     position: FactoryStorage["position"],
     handleId: string,
@@ -284,6 +285,25 @@ interface FactoryStore {
       sourceHandle?: string;
       targetHandle?: string;
     },
+  ) => void;
+  /**
+   * Several source→target wires as ONE undo entry with one solve — how a
+   * wire dropped on a pocket card fans out to every member that takes the
+   * resource. Each pair keeps connectNodes' semantics: an identical existing
+   * wire toggles off, storage conflicts are skipped.
+   */
+  connectNodesBatch: (
+    connections: Array<{
+      sourceNodeId: string;
+      targetNodeId: string;
+      resource?: Pick<
+        ResourceAmount,
+        "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor" | "tooltip"
+      > & {
+        sourceHandle?: string;
+        targetHandle?: string;
+      };
+    }>,
   ) => void;
   reconnectEdge: (
     edgeId: string,
@@ -1119,6 +1139,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   },
   addStorageForConnection: (resource, nodeId, side, position, handleId) => {
     set((state) => {
+      const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
       const storageResource = getStorageResourceForConnection(resource);
       const storage: FactoryStorage = {
         id: createId("storage"),
@@ -1130,7 +1151,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         dominantColor: storageResource.dominantColor ?? storageResource.iconAtlas?.dominantColor,
         position: snapPositionToGrid(position),
       };
-      const projectWithStorage: FactoryProject = {
+      let project: FactoryProject = {
         ...state.project,
         storages: [...(state.project.storages ?? []), storage],
       };
@@ -1152,49 +1173,45 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
             ? handleId
             : makeResourceHandleId("input", { kind: storageResource.kind, id: storageResource.id }),
       };
-      const edge =
-        side === "output"
-          ? buildEdgeBetweenNodes(projectWithStorage, nodeId, storage.id, selectedResource)
-          : buildEdgeBetweenNodes(projectWithStorage, storage.id, nodeId, selectedResource);
 
-      if (!edge) {
-        const project = touchProject(projectWithStorage);
-        return withProjectHistory(state, {
-          project,
-          selectedNodeId: undefined,
-          hoveredStorageResourceKey: getResourceKey(storageResource),
-          lastResult: calculateThroughput(project),
-        });
+      // One drawer, one edge per anchor card. A pocket port hands over every
+      // member behind it; the drawer must buffer them all, not just one.
+      let wired = 0;
+      let conflicted = false;
+      for (const anchorId of nodeIds) {
+        const edge =
+          side === "output"
+            ? buildEdgeBetweenNodes(project, anchorId, storage.id, selectedResource)
+            : buildEdgeBetweenNodes(project, storage.id, anchorId, selectedResource);
+        if (!edge) {
+          continue;
+        }
+        if (findDuplicateEdge(project.edges, edge)) {
+          continue;
+        }
+        if (hasStorageEndpointConflict(project, edge)) {
+          conflicted = true;
+          continue;
+        }
+        project = applyEdgeInputOverride(
+          { ...project, edges: [...project.edges, edge] },
+          edge,
+          selectedResource,
+        );
+        wired += 1;
       }
 
-      const duplicateEdge = findDuplicateEdge(projectWithStorage.edges, edge);
-      if (!duplicateEdge && hasStorageEndpointConflict(projectWithStorage, edge)) {
-        const project = touchProject(pruneOrphanStorages(projectWithStorage));
-        return withProjectHistory(state, {
-          project,
-          selectedNodeId: undefined,
-          hoveredStorageResourceKey: getResourceKey(storageResource),
-          lastResult: calculateThroughput(project),
-        });
-      }
-
-      const projectWithEdge = {
-        ...projectWithStorage,
-        edges: duplicateEdge
-          ? projectWithStorage.edges.filter((entry) => entry.id !== duplicateEdge.id)
-          : [...projectWithStorage.edges, edge],
-      };
-      const project = touchProject(
-        pruneOrphanStorages(
-          duplicateEdge ? projectWithEdge : applyEdgeInputOverride(projectWithEdge, edge, selectedResource),
-        ),
+      // Wired (or refused over a conflict): sweep orphans, which drops the
+      // fresh storage if nothing reached it. A build failure alone keeps the
+      // unwired storage, exactly as the single-node path always has.
+      const finalProject = touchProject(
+        wired > 0 || conflicted ? pruneOrphanStorages(project) : project,
       );
-
       return withProjectHistory(state, {
-        project,
+        project: finalProject,
         selectedNodeId: undefined,
         hoveredStorageResourceKey: getResourceKey(storageResource),
-        lastResult: calculateThroughput(project),
+        lastResult: calculateThroughput(finalProject),
       });
     });
   },
@@ -1787,43 +1804,53 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     });
   },
   connectNodes: (sourceNodeId, targetNodeId, resource) => {
+    get().connectNodesBatch([{ sourceNodeId, targetNodeId, resource }]);
+  },
+  connectNodesBatch: (connections) => {
     set((state) => {
-      const edge = buildEdgeBetweenNodes(state.project, sourceNodeId, targetNodeId, resource);
-      if (!edge) {
-        return state;
-      }
+      let project = state.project;
+      let changed = false;
+      let removedAny = false;
+      for (const { sourceNodeId, targetNodeId, resource } of connections) {
+        const edge = buildEdgeBetweenNodes(project, sourceNodeId, targetNodeId, resource);
+        if (!edge) {
+          continue;
+        }
 
-      const duplicateEdge = findDuplicateEdge(state.project.edges, edge);
-      if (duplicateEdge) {
-        const project = touchProject(
-          pruneOrphanStorages({
-            ...state.project,
-            edges: state.project.edges.filter((entry) => entry.id !== duplicateEdge.id),
-          }),
-        );
-        return withProjectHistory(state, {
-          project,
-          lastResult: calculateThroughput(project),
-        });
-      }
+        const duplicateEdge = findDuplicateEdge(project.edges, edge);
+        if (duplicateEdge) {
+          project = {
+            ...project,
+            edges: project.edges.filter((entry) => entry.id !== duplicateEdge.id),
+          };
+          changed = true;
+          removedAny = true;
+          continue;
+        }
 
-      if (hasStorageEndpointConflict(state.project, edge)) {
-        return state;
-      }
+        if (hasStorageEndpointConflict(project, edge)) {
+          continue;
+        }
 
-      const project = touchProject(
-        applyEdgeInputOverride(
+        project = applyEdgeInputOverride(
           {
-            ...state.project,
-            edges: [...state.project.edges, edge],
+            ...project,
+            edges: [...project.edges, edge],
           },
           edge,
           resource,
-        ),
-      );
+        );
+        changed = true;
+      }
+
+      if (!changed) {
+        return state;
+      }
+
+      const finalProject = touchProject(removedAny ? pruneOrphanStorages(project) : project);
       return withProjectHistory(state, {
-        project,
-        lastResult: calculateThroughput(project),
+        project: finalProject,
+        lastResult: calculateThroughput(finalProject),
       });
     });
   },

@@ -1,10 +1,12 @@
 import { calculateThroughput } from "@/lib/solver";
 import type {
+  FactoryEdge,
   FactoryPocket,
   FactoryProject,
   ResourceAmount,
   ResourceBalance,
 } from "@/lib/model/types";
+import { parseResourceHandleId } from "./resource-handles";
 
 /**
  * One port row on a collapsed pocket card: a resource the dimension needs
@@ -106,13 +108,60 @@ export function computePocketSummaries(
       };
     };
 
+    const inputs = scoped.externalInputs.map((balance) =>
+      toPort(balance, balance.deficitPerSecond),
+    );
+    const outputs = scoped.unconsumedOutputs.map((balance) =>
+      toPort(balance, balance.surplusPerSecond),
+    );
+
+    // Every wire crossing the boundary gets a port even when the members-only
+    // solve reports nothing for its resource (an internally covered input
+    // also fed from outside, a fully consumed output also exported). Port
+    // identity derives exactly as the board's edge remap does — the stored
+    // handle first, the wire's resource as fallback — so a crossing wire
+    // always finds its rendered port and can never turn invisible.
+    const portFromEdge = (
+      edge: FactoryEdge,
+      side: "input" | "output",
+    ): PocketPortSummary => {
+      const parsed = parseResourceHandleId(
+        side === "input" ? edge.targetHandle : edge.sourceHandle,
+      );
+      const kind = parsed?.kind ?? edge.resourceKind;
+      const resourceId = parsed?.resourceId ?? edge.resourceId;
+      const icon = icons.get(`${kind}:${resourceId}`);
+      return {
+        kind,
+        resourceId,
+        displayName: icon?.displayName ?? edge.label,
+        iconPath: icon?.iconPath,
+        iconAtlas: icon?.iconAtlas,
+        dominantColor: icon?.dominantColor,
+        ratePerSecond: 0,
+      };
+    };
+    const seenInputs = new Set(inputs.map((port) => `${port.kind}:${port.resourceId}`));
+    const seenOutputs = new Set(outputs.map((port) => `${port.kind}:${port.resourceId}`));
+    for (const edge of project.edges) {
+      const sourceInside = memberIds.has(edge.source);
+      const targetInside = memberIds.has(edge.target);
+      if (sourceInside === targetInside) {
+        continue;
+      }
+      const side = targetInside ? "input" : "output";
+      const port = portFromEdge(edge, side);
+      const key = `${port.kind}:${port.resourceId}`;
+      const seen = targetInside ? seenInputs : seenOutputs;
+      if (!seen.has(key)) {
+        seen.add(key);
+        (targetInside ? inputs : outputs).push(port);
+      }
+    }
+
     summaries.set(pocket.id, {
-      inputs: scoped.externalInputs.map((balance) =>
-        toPort(balance, balance.deficitPerSecond),
-      ),
-      outputs: scoped.unconsumedOutputs.map((balance) =>
-        toPort(balance, balance.surplusPerSecond),
-      ),
+      inputs,
+      outputs,
       machineCount: nodes.reduce((sum, node) => sum + Math.max(0, node.machineCount), 0),
       memberCount: memberIds.size,
     });

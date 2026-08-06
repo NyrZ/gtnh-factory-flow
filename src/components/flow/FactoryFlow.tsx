@@ -75,15 +75,17 @@ import {
   embedProjectJsonInSvg,
 } from "@/lib/import-export/plan-image";
 import {
-  applyRecipeInputOverrides,
-  restoreCrossKindInputOverrideVisuals,
-  applyMachineHandlerToRecipe,
   isRecipeInputConsumed,
   makeResourceKey,
   resourceMatchesInput,
 } from "@/lib/model";
-import { applyMachineOutputMultipliers } from "@/lib/solver/machine-effects";
-import { getOverclockedRecipeStats } from "@/lib/solver/overclock";
+import {
+  getEffectiveNodeRecipe,
+  getPocketResourceForHandle,
+  isPocketId,
+  listPocketPortResources,
+  resolvePocketMemberIds,
+} from "@/lib/model/pocket-connections";
 import type {
   EdgeThroughput,
   FactoryAnnotationKind,
@@ -157,7 +159,13 @@ import {
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
-import { isWiringConnection, setWiringConnection, WIRING_BOARD_CLASS } from "./connection-drag";
+import {
+  isWiringConnection,
+  markWireDrop,
+  setWiringConnection,
+  wasRecentWireDrop,
+  WIRING_BOARD_CLASS,
+} from "./connection-drag";
 import {
   clearHopMap,
   getHopMapHubId,
@@ -1212,7 +1220,7 @@ export function FactoryFlow() {
   const setSelectedBoardIds = useFactoryStore((state) => state.setSelectedBoardIds);
   const updateNode = useFactoryStore((state) => state.updateNode);
   const updateStorage = useFactoryStore((state) => state.updateStorage);
-  const connectNodes = useFactoryStore((state) => state.connectNodes);
+  const connectNodesBatch = useFactoryStore((state) => state.connectNodesBatch);
   const connectCustomRate = useFactoryStore((state) => state.connectCustomRate);
   const connectTrash = useFactoryStore((state) => state.connectTrash);
   const addStorageForConnection = useFactoryStore((state) => state.addStorageForConnection);
@@ -1847,14 +1855,19 @@ export function FactoryFlow() {
       // Rails render one canonical (index-less) handle per resource; stored
       // edges may carry legacy per-slot ids. Collapse them here or React Flow
       // refuses to draw the edge and the anchor lookup misses the port.
-      // A pocket end docks on the card's canonical port for this resource —
-      // whatever slot the wire fed inside, out here there is one port per
-      // resource.
+      // A pocket end docks on the card's canonical port for this wire. The
+      // stored handle names the exact port (an oredict input keeps its
+      // oredict id even when the wire carries a concrete log); edges of
+      // older vintage carry no handle and fall back to the wire's resource.
+      // pocket-summary derives its port rows the SAME way, which is what
+      // guarantees every crossing wire has a rendered port to dock on.
       const canonicalSourceHandle = sourceIsPocket
-        ? makeResourceHandleId("output", { kind: edge.resourceKind, id: edge.resourceId })
+        ? (canonicalizeResourceHandleId(edge.sourceHandle) ??
+          makeResourceHandleId("output", { kind: edge.resourceKind, id: edge.resourceId }))
         : canonicalizeResourceHandleId(edge.sourceHandle);
       const canonicalTargetHandle = targetIsPocket
-        ? makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId })
+        ? (canonicalizeResourceHandleId(edge.targetHandle) ??
+          makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId }))
         : canonicalizeResourceHandleId(edge.targetHandle);
       const isStorageEdgeActive =
         !isStorageEdge || hoveredStorageResourceKey === storageResourceKey;
@@ -2050,54 +2063,109 @@ export function FactoryFlow() {
         targetHandle?: string;
       },
     ) => {
-      const sourceHandleIds =
-        resource?.sourceHandle && resource.kind && resource.id
-          ? getRepeatedOutputHandleIds(project, sourceNodeId, resource)
-          : [];
-      const shouldBatchRepeatedOutputs =
-        resource?.sourceHandle &&
-        sourceHandleIds.length > 1 &&
-        sourceHandleIds.includes(resource.sourceHandle);
-
-      if (!resource || !shouldBatchRepeatedOutputs) {
-        connectNodes(sourceNodeId, targetNodeId, resource);
+      // A pocket card is a view: the flat graph only holds member edges, so
+      // an end that names a pocket fans out to EVERY member exposing that
+      // exact resource on that side — two redstone drinkers inside means two
+      // wires, landed together as one undo entry.
+      const sourceIsPocket = isPocketId(project, sourceNodeId);
+      const targetIsPocket = isPocketId(project, targetNodeId);
+      if ((sourceIsPocket || targetIsPocket) && !resource) {
+        // A bare node-to-node connect names no resource to fan out on.
         return;
       }
+      const sourceIdentity = resource
+        ? (parseResourceHandleId(resource.sourceHandle) ?? {
+            kind: resource.kind,
+            resourceId: resource.id,
+          })
+        : undefined;
+      const targetIdentity = resource
+        ? (parseResourceHandleId(resource.targetHandle) ?? {
+            kind: resource.kind,
+            resourceId: resource.id,
+          })
+        : undefined;
+      const sourceIds =
+        sourceIsPocket && sourceIdentity
+          ? resolvePocketMemberIds(project, sourceNodeId, "output", {
+              kind: sourceIdentity.kind,
+              id: sourceIdentity.resourceId,
+            })
+          : [sourceNodeId];
+      const targetIds =
+        targetIsPocket && targetIdentity
+          ? resolvePocketMemberIds(project, targetNodeId, "input", {
+              kind: targetIdentity.kind,
+              id: targetIdentity.resourceId,
+            })
+          : [targetNodeId];
 
-      const allRepeatedEdgesExist = sourceHandleIds.every((sourceHandle) =>
-        project.edges.some(
-          (edge) =>
-            edge.source === sourceNodeId &&
-            edge.target === targetNodeId &&
-            edge.resourceKind === resource.kind &&
-            edge.resourceId === resource.id &&
-            edge.sourceHandle === sourceHandle &&
-            edge.targetHandle === resource.targetHandle,
-        ),
-      );
+      const pairs: Array<{
+        sourceNodeId: string;
+        targetNodeId: string;
+        resource?: typeof resource;
+      }> = [];
+      for (const source of sourceIds) {
+        for (const target of targetIds) {
+          if (source === target) {
+            continue;
+          }
 
-      for (const sourceHandle of sourceHandleIds) {
-        const alreadyExists = project.edges.some(
-          (edge) =>
-            edge.source === sourceNodeId &&
-            edge.target === targetNodeId &&
-            edge.resourceKind === resource.kind &&
-            edge.resourceId === resource.id &&
-            edge.sourceHandle === sourceHandle &&
-            edge.targetHandle === resource.targetHandle,
-        );
+          const sourceHandleIds =
+            resource?.sourceHandle && resource.kind && resource.id
+              ? getRepeatedOutputHandleIds(project, source, resource)
+              : [];
+          const shouldBatchRepeatedOutputs =
+            resource?.sourceHandle &&
+            sourceHandleIds.length > 1 &&
+            sourceHandleIds.includes(resource.sourceHandle);
 
-        if (!allRepeatedEdgesExist && alreadyExists) {
-          continue;
+          if (!resource || !shouldBatchRepeatedOutputs) {
+            pairs.push({ sourceNodeId: source, targetNodeId: target, resource });
+            continue;
+          }
+
+          const allRepeatedEdgesExist = sourceHandleIds.every((sourceHandle) =>
+            project.edges.some(
+              (edge) =>
+                edge.source === source &&
+                edge.target === target &&
+                edge.resourceKind === resource.kind &&
+                edge.resourceId === resource.id &&
+                edge.sourceHandle === sourceHandle &&
+                edge.targetHandle === resource.targetHandle,
+            ),
+          );
+
+          for (const sourceHandle of sourceHandleIds) {
+            const alreadyExists = project.edges.some(
+              (edge) =>
+                edge.source === source &&
+                edge.target === target &&
+                edge.resourceKind === resource.kind &&
+                edge.resourceId === resource.id &&
+                edge.sourceHandle === sourceHandle &&
+                edge.targetHandle === resource.targetHandle,
+            );
+
+            if (!allRepeatedEdgesExist && alreadyExists) {
+              continue;
+            }
+
+            pairs.push({
+              sourceNodeId: source,
+              targetNodeId: target,
+              resource: { ...resource, sourceHandle },
+            });
+          }
         }
+      }
 
-        connectNodes(sourceNodeId, targetNodeId, {
-          ...resource,
-          sourceHandle,
-        });
+      if (pairs.length > 0) {
+        connectNodesBatch(pairs);
       }
     },
-    [connectNodes, project],
+    [connectNodesBatch, project],
   );
 
   const handleConnect = useCallback(
@@ -2307,6 +2375,11 @@ export function FactoryFlow() {
       const draggedResource = draggedResourceRef.current;
       draggedResourceRef.current = undefined;
       stopDropFitPainting();
+      if (draggedResource) {
+        // The mouseup that ends a wire must not pair into a double-click
+        // that dives into a pocket card.
+        markWireDrop();
+      }
       const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
       lastConnectionPointerRef.current = undefined;
       const targetHandle =
@@ -2430,10 +2503,22 @@ export function FactoryFlow() {
         return;
       }
 
+      // Dragging out of a pocket port: the one new drawer buffers every
+      // member behind the port, not the pocket card (which is no node).
+      const storageAnchorIds = isPocketId(project, draggedResource.nodeId)
+        ? resolvePocketMemberIds(project, draggedResource.nodeId, draggedResource.side, {
+            kind: draggedResource.kind,
+            id: draggedResource.id,
+          })
+        : draggedResource.nodeId;
+      if (Array.isArray(storageAnchorIds) && storageAnchorIds.length === 0) {
+        return;
+      }
+
       const position = flowInstance.screenToFlowPosition(clientPosition);
       addStorageForConnection(
         draggedResource,
-        draggedResource.nodeId,
+        storageAnchorIds,
         draggedResource.side,
         // Centre the new drawer on the pointer; the store snaps it to a cell.
         { x: position.x - STORAGE_NODE_WIDTH / 2, y: position.y - STORAGE_NODE_HEIGHT / 2 },
@@ -2910,7 +2995,7 @@ export function FactoryFlow() {
   // double-click stops propagation before this fires.
   const handleNodeDoubleClick = useCallback(
     (_: unknown, node: Node) => {
-      if (node.type === "pocketNode") {
+      if (node.type === "pocketNode" && !isWiringConnection() && !wasRecentWireDrop()) {
         enterPocket(node.id);
       }
     },
@@ -7014,6 +7099,22 @@ function findNodeDropTarget(
     return accepts(held) ? port(held) : undefined;
   }
 
+  // The whole pocket card is the port, same as a machine card: if any member
+  // inside takes the resource, the drop lands on that resource's pocket port
+  // and fans out to every member behind it.
+  if (isPocketId(project, nodeId)) {
+    if (
+      draggedResource.id === TRASH_ANY_RESOURCE_ID ||
+      draggedResource.id === CUSTOM_RATE_ANY_RESOURCE_ID
+    ) {
+      return undefined;
+    }
+    const match = listPocketPortResources(project, nodeId, side).find((candidate) =>
+      accepts(candidate),
+    );
+    return match ? port(match) : undefined;
+  }
+
   const node = project.nodes.find((entry) => entry.id === nodeId);
   const recipe = project.recipes.find((entry) => entry.id === node?.recipeId);
   if (!node || !recipe) {
@@ -7040,7 +7141,7 @@ function findNodeDropTarget(
       : undefined;
   }
 
-  const contextualRecipe = getNodeRecipeForHandles(recipe, node);
+  const contextualRecipe = getEffectiveNodeRecipe(recipe, node);
 
   // An unset custom rate node shows universal ports and adopts whatever lands.
   if (isCustomRateRecipe(recipe) && !getCustomRateSlot(contextualRecipe)) {
@@ -7395,6 +7496,32 @@ function getDraggedResourceForHandle(
     return undefined;
   }
 
+  // A pocket port drags like a machine port. The card keeps its own id as
+  // the drag origin — the fan-out onto the members behind the port happens
+  // when the wire lands, in connectResourceEdges.
+  if (isPocketId(project, nodeId)) {
+    const resource = getPocketResourceForHandle(project, nodeId, handle.side, {
+      kind: handle.kind,
+      id: handle.resourceId,
+    });
+    if (!resource) {
+      return undefined;
+    }
+    return {
+      nodeId,
+      side: handle.side,
+      handleId,
+      kind: resource.kind,
+      id: resource.id,
+      displayName: resource.displayName,
+      iconPath: resource.iconPath,
+      iconAtlas: resource.iconAtlas,
+      dominantColor: resource.dominantColor ?? resource.iconAtlas?.dominantColor,
+      tooltip: resource.tooltip,
+      alternatives: resource.alternatives,
+    };
+  }
+
   const storage = (project.storages ?? []).find((entry) => entry.id === nodeId);
   if (storage) {
     return {
@@ -7416,7 +7543,7 @@ function getDraggedResourceForHandle(
     return undefined;
   }
 
-  const contextualRecipe = getNodeRecipeForHandles(recipe, node);
+  const contextualRecipe = getEffectiveNodeRecipe(recipe, node);
   const resources = handle.side === "input" ? contextualRecipe.inputs : contextualRecipe.outputs;
   const resource = resources.find(
     (entry) => entry.kind === handle.kind && entry.id === handle.resourceId,
@@ -7450,6 +7577,13 @@ function getResourceForHandle(
     return undefined;
   }
 
+  if (isPocketId(project, nodeId)) {
+    return getPocketResourceForHandle(project, nodeId, handle.side, {
+      kind: handle.kind,
+      id: handle.resourceId,
+    });
+  }
+
   const storage = (project.storages ?? []).find((entry) => entry.id === nodeId);
   if (storage) {
     return {
@@ -7469,29 +7603,10 @@ function getResourceForHandle(
     return undefined;
   }
 
-  const contextualRecipe = getNodeRecipeForHandles(recipe, node);
+  const contextualRecipe = getEffectiveNodeRecipe(recipe, node);
   const resources = handle.side === "input" ? contextualRecipe.inputs : contextualRecipe.outputs;
 
   return resources?.find((entry) => entry.kind === handle.kind && entry.id === handle.resourceId);
-}
-
-function getNodeRecipeForHandles(recipe: Recipe, node: FactoryProject["nodes"][number]): Recipe {
-  const nodeRecipe = applyRecipeInputOverrides(recipe, node);
-  const effectiveRecipe = applyMachineHandlerToRecipe(nodeRecipe, node);
-  const overclockedStats = getOverclockedRecipeStats(nodeRecipe, node);
-  const adjustedRecipe = applyMachineOutputMultipliers(
-    effectiveRecipe,
-    node,
-    overclockedStats.tier,
-  );
-  return restoreCrossKindInputOverrideVisuals(
-    {
-      ...effectiveRecipe,
-      ...adjustedRecipe,
-    },
-    recipe,
-    node,
-  );
 }
 
 function getClientPosition(event: MouseEvent | TouchEvent) {
