@@ -5,14 +5,15 @@ import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import {
   COMMUNITY_DESCRIPTION_MAX_LENGTH,
   COMMUNITY_NAME_MAX_LENGTH,
-  COMMUNITY_THUMBNAIL_MAX_BYTES,
   COMMUNITY_UPLOAD_MAX_BYTES,
   type CommunityPlanListResponse,
   type CommunityPlanSort,
 } from "@/lib/community/types";
+import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import {
   attachMyVotes,
   checkRateLimit,
+  communityStorageErrorMessage,
   getCommunityDb,
   getSessionUser,
   isCommunityConfigured,
@@ -44,7 +45,12 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const sortParam = url.searchParams.get("sort") ?? "new";
     const sort = SORT_COLUMNS[sortParam as CommunityPlanSort] ? (sortParam as CommunityPlanSort) : "new";
-    const search = url.searchParams.get("search")?.trim() ?? "";
+    // ilike patterns and PostgREST's or() syntax both have magic characters;
+    // stripping them beats escaping them for a search box.
+    const search = (url.searchParams.get("search") ?? "")
+      .replace(/[,()%_\\]/g, " ")
+      .trim()
+      .slice(0, 80);
     const maxTierIndex = Number.parseInt(url.searchParams.get("maxTierIndex") ?? "", 10);
     const page = Math.max(1, Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
     const pageSize = Math.min(
@@ -58,8 +64,17 @@ export async function GET(request: Request) {
 
     const db = getCommunityDb();
     let query = db.from("community_plans").select(PLAN_SUMMARY_COLUMNS, { count: "exact" });
-    if (search) {
-      query = query.ilike("name", `%${search.replaceAll("%", "\\%")}%`);
+    // Tag-aware search, same contract as blueprints: a plain term matches
+    // names, descriptions and tags; a leading # narrows to tags alone.
+    if (search.startsWith("#")) {
+      const tagTerm = search.slice(1).trim();
+      if (tagTerm) {
+        query = query.ilike("tags_text", `%${tagTerm}%`);
+      }
+    } else if (search) {
+      query = query.or(
+        `name.ilike.%${search}%,description.ilike.%${search}%,tags_text.ilike.%${search}%`,
+      );
     }
     if (Number.isFinite(maxTierIndex) && maxTierIndex >= 0) {
       query = query.lte("highest_tier_index", maxTierIndex);
@@ -83,7 +98,7 @@ export async function GET(request: Request) {
       .returns<PlanRow[]>();
 
     if (error) {
-      throw new Error(error.message);
+      throw new Error(communityStorageErrorMessage(error, "Listing community plans failed."));
     }
 
     const plans = (data ?? []).map((row) => rowToPlanSummary(row, sessionUser?.id));
@@ -135,7 +150,7 @@ export async function POST(request: Request) {
       datasetVersionId?: unknown;
       deviceId?: unknown;
       plan?: unknown;
-      thumbnailDataUrl?: unknown;
+      tags?: unknown;
     };
 
     const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -163,12 +178,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const thumbnailDataUrl =
-      typeof body.thumbnailDataUrl === "string" &&
-      body.thumbnailDataUrl.startsWith("data:image/") &&
-      body.thumbnailDataUrl.length <= COMMUNITY_THUMBNAIL_MAX_BYTES
-        ? body.thumbnailDataUrl
-        : undefined;
+    const tags = normalizeBlueprintTags(body.tags);
 
     const parsedPlan = factoryProjectSchema.safeParse(body.plan);
     if (!parsedPlan.success) {
@@ -202,7 +212,8 @@ export async function POST(request: Request) {
         game_version: gameVersion,
         dataset_version: datasetVersionId,
         plan: project,
-        thumbnail_data_url: thumbnailDataUrl ?? null,
+        tags,
+        tags_text: tags.join(" "),
         needs: stats.needs,
         outputs: stats.outputs,
         total_eu_t: stats.totalEuT,
@@ -218,7 +229,7 @@ export async function POST(request: Request) {
       .single();
 
     if (error || !data) {
-      throw new Error(error?.message ?? "Insert failed");
+      throw new Error(communityStorageErrorMessage(error, "Insert failed"));
     }
 
     return NextResponse.json({ id: data.id }, { status: 201 });

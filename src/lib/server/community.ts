@@ -161,7 +161,7 @@ export async function checkRateLimit(
 
 /** Columns returned for plan listings (everything except the plan JSON). */
 export const PLAN_SUMMARY_COLUMNS =
-  "id,name,description,game_version,dataset_version,thumbnail_data_url,needs,outputs," +
+  "id,name,description,game_version,dataset_version,tags,needs,outputs," +
   "total_eu_t,machine_count,node_count,storage_count,edge_count,highest_tier," +
   "highest_tier_index,upvotes,downvotes,score,downloads,views,created_at,user_id,author_name";
 
@@ -171,7 +171,7 @@ export interface PlanRow {
   description: string;
   game_version: string;
   dataset_version: string;
-  thumbnail_data_url: string | null;
+  tags: string[] | null;
   needs: PlanResourceStat[];
   outputs: PlanResourceStat[];
   total_eu_t: number;
@@ -200,7 +200,7 @@ export function rowToPlanSummary(row: PlanRow, sessionUserId?: string): Communit
     description: row.description,
     gameVersion: row.game_version,
     datasetVersionId: row.dataset_version,
-    thumbnailDataUrl: row.thumbnail_data_url ?? undefined,
+    tags: row.tags ?? [],
     needs: row.needs ?? [],
     outputs: row.outputs ?? [],
     totalEuT: row.total_eu_t,
@@ -217,6 +217,21 @@ export function rowToPlanSummary(row: PlanRow, sessionUserId?: string): Communit
     views: row.views,
     createdAt: row.created_at,
   };
+}
+
+/**
+ * Same convergence contract as the blueprint tables: PGRST204/42703 mean the
+ * community_plans table predates a column this build reads or writes, and
+ * re-running supabase/schema.sql (idempotent ALTERs) fixes it.
+ */
+export function communityStorageErrorMessage(
+  error: { code?: string; message?: string } | null,
+  fallback: string,
+): string {
+  if (error?.code === "PGRST204" || error?.code === "42703") {
+    return "Community storage is out of date: re-run the latest supabase/schema.sql in the Supabase SQL editor.";
+  }
+  return error?.message ?? fallback;
 }
 
 export async function attachMyVotes(

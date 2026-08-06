@@ -5,11 +5,12 @@ import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import {
   COMMUNITY_DESCRIPTION_MAX_LENGTH,
   COMMUNITY_NAME_MAX_LENGTH,
-  COMMUNITY_THUMBNAIL_MAX_BYTES,
   COMMUNITY_UPLOAD_MAX_BYTES,
 } from "@/lib/community/types";
+import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import {
   attachMyVotes,
+  communityStorageErrorMessage,
   getCommunityDb,
   getSessionUser,
   isAdminRequest,
@@ -84,7 +85,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
       gameVersion?: unknown;
       datasetVersionId?: unknown;
       plan?: unknown;
-      thumbnailDataUrl?: unknown;
+      tags?: unknown;
     };
 
     const sessionUser = await getSessionUser(request);
@@ -107,42 +108,58 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
       return NextResponse.json({ error: "You don't own this post." }, { status: 403 });
     }
 
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name || name.length > COMMUNITY_NAME_MAX_LENGTH) {
-      return NextResponse.json({ error: "Plan name is required (max 80 chars)." }, { status: 400 });
+    // Field-wise update: the share dialog re-sends everything, while the
+    // shelf's tag editor sends tags alone — no need to round-trip the plan
+    // JSON just to relabel a post.
+    const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+    if (body.name !== undefined) {
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      if (!name || name.length > COMMUNITY_NAME_MAX_LENGTH) {
+        return NextResponse.json(
+          { error: "Plan name is required (max 80 chars)." },
+          { status: 400 },
+        );
+      }
+      update.name = name;
     }
 
-    const parsedPlan = factoryProjectSchema.safeParse(body.plan);
-    if (!parsedPlan.success) {
-      return NextResponse.json({ error: "Plan JSON is not a valid project." }, { status: 400 });
+    if (body.description !== undefined) {
+      update.description =
+        typeof body.description === "string"
+          ? body.description.trim().slice(0, COMMUNITY_DESCRIPTION_MAX_LENGTH)
+          : "";
     }
 
-    const project = parsedPlan.data;
-    if (project.nodes.length === 0) {
-      return NextResponse.json({ error: "Refusing to share an empty plan." }, { status: 400 });
+    if (body.gameVersion !== undefined) {
+      update.game_version = typeof body.gameVersion === "string" ? body.gameVersion.slice(0, 60) : "";
     }
 
-    const stats = computeCommunityPlanStats(project, calculateThroughput(project));
-    const thumbnailDataUrl =
-      typeof body.thumbnailDataUrl === "string" &&
-      body.thumbnailDataUrl.startsWith("data:image/") &&
-      body.thumbnailDataUrl.length <= COMMUNITY_THUMBNAIL_MAX_BYTES
-        ? body.thumbnailDataUrl
-        : undefined;
+    if (body.datasetVersionId !== undefined) {
+      update.dataset_version =
+        typeof body.datasetVersionId === "string" ? body.datasetVersionId.slice(0, 120) : "";
+    }
 
-    const { error } = await db
-      .from("community_plans")
-      .update({
-        name,
-        description:
-          typeof body.description === "string"
-            ? body.description.trim().slice(0, COMMUNITY_DESCRIPTION_MAX_LENGTH)
-            : "",
-        game_version: typeof body.gameVersion === "string" ? body.gameVersion.slice(0, 60) : "",
-        dataset_version:
-          typeof body.datasetVersionId === "string" ? body.datasetVersionId.slice(0, 120) : "",
+    if (body.tags !== undefined) {
+      const tags = normalizeBlueprintTags(body.tags);
+      update.tags = tags;
+      update.tags_text = tags.join(" ");
+    }
+
+    if (body.plan !== undefined) {
+      const parsedPlan = factoryProjectSchema.safeParse(body.plan);
+      if (!parsedPlan.success) {
+        return NextResponse.json({ error: "Plan JSON is not a valid project." }, { status: 400 });
+      }
+
+      const project = parsedPlan.data;
+      if (project.nodes.length === 0) {
+        return NextResponse.json({ error: "Refusing to share an empty plan." }, { status: 400 });
+      }
+
+      const stats = computeCommunityPlanStats(project, calculateThroughput(project));
+      Object.assign(update, {
         plan: project,
-        ...(thumbnailDataUrl ? { thumbnail_data_url: thumbnailDataUrl } : {}),
         needs: stats.needs,
         outputs: stats.outputs,
         total_eu_t: stats.totalEuT,
@@ -152,12 +169,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
         edge_count: stats.edgeCount,
         highest_tier: stats.highestTier ?? null,
         highest_tier_index: stats.highestTierIndex,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", planId);
+      });
+    }
+
+    const { error } = await db.from("community_plans").update(update).eq("id", planId);
 
     if (error) {
-      throw new Error(error.message);
+      throw new Error(communityStorageErrorMessage(error, "Updating the plan failed."));
     }
 
     return NextResponse.json({ id: planId });

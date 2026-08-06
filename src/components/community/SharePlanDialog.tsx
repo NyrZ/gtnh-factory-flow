@@ -1,7 +1,8 @@
 ﻿"use client";
 
-import { Check, ImageOff, Link2, LoaderCircle, Share2, X } from "lucide-react";
+import { Check, Link2, LoaderCircle, Share2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import {
   listCommunityPlans,
   updateCommunityPlan,
@@ -9,21 +10,11 @@ import {
 } from "@/lib/community/client";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import type { CommunityPlanSummary } from "@/lib/community/types";
-import { randomUUID } from "@/lib/random-id";
 import { formatRate } from "@/lib/model";
-import {
-  FLOW_IMAGE_EXPORT_COMPLETE_EVENT,
-  FLOW_IMAGE_EXPORT_EVENT,
-} from "@/lib/import-export/plan-image";
 import { serializeFactoryProject } from "@/lib/import-export";
 import { openSetupsTab } from "@/lib/setups-tab";
 import { useFactoryStore } from "@/store/factory-store";
 import { AuthForm, useCommunityUser } from "./auth";
-
-type ThumbnailState =
-  | { status: "capturing" }
-  | { status: "ready"; dataUrl: string }
-  | { status: "failed" };
 
 export function SharePlanDialog({ onClose }: { onClose: () => void }) {
   const project = useFactoryStore((state) => state.project);
@@ -45,7 +36,8 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
   // only ever targets that one post (or creates a new one).
   const linkedPost = myPosts.find((post) => post.id === project.metadata?.communityPlanId);
   const updateTargetId = linkedPost && !postAsNew ? linkedPost.id : "";
-  const [thumbnail, setThumbnail] = useState<ThumbnailState>({ status: "capturing" });
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [isUploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
   const [shared, setShared] = useState<{ kind: "created" | "updated"; planId: string }>();
@@ -76,59 +68,35 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
     };
   }, [user]);
 
-  // Ask the canvas for a thumbnail capture as soon as the dialog opens; if
-  // nothing comes back we fall back to a no-image share instead of hanging.
-  useEffect(() => {
-    const requestId = randomUUID();
-    const timeout = window.setTimeout(() => {
-      setThumbnail((current) => (current.status === "capturing" ? { status: "failed" } : current));
-    }, 10_000);
+  // Updating an existing post starts from its current tags; a fresh post
+  // starts blank. Seeded the moment the linked post arrives (adjust-during-
+  // render, so the user's later edits are never overwritten).
+  const [seededPostId, setSeededPostId] = useState<string>();
+  if (linkedPost && seededPostId !== linkedPost.id) {
+    setSeededPostId(linkedPost.id);
+    setTags(linkedPost.tags ?? []);
+  }
 
-    const handleComplete = (event: Event) => {
-      const detail = (event as CustomEvent).detail as
-        | { requestId?: unknown; dataUrl?: unknown }
-        | undefined;
-      if (detail?.requestId !== requestId) {
-        return;
-      }
-
-      window.clearTimeout(timeout);
-      setThumbnail(
-        typeof detail.dataUrl === "string" && detail.dataUrl.startsWith("data:image/")
-          ? { status: "ready", dataUrl: detail.dataUrl }
-          : { status: "failed" },
-      );
-    };
-
-    window.addEventListener(FLOW_IMAGE_EXPORT_COMPLETE_EVENT, handleComplete);
-    window.dispatchEvent(
-      new CustomEvent(FLOW_IMAGE_EXPORT_EVENT, {
-        detail: {
-          format: "png",
-          requestId,
-          fileName: "thumbnail",
-          projectJson: "",
-          capture: true,
-        },
-      }),
-    );
-    return () => {
-      window.clearTimeout(timeout);
-      window.removeEventListener(FLOW_IMAGE_EXPORT_COMPLETE_EVENT, handleComplete);
-    };
-  }, []);
+  const addTagFromInput = () => {
+    const next = normalizeBlueprintTags([...tags, tagInput]);
+    setTags(next);
+    setTagInput("");
+    return next;
+  };
 
   const share = async () => {
     setUploading(true);
     setError(undefined);
     try {
+      // Whatever is still sitting in the tag input counts as one last tag.
+      const finalTags = tagInput.trim() ? addTagFromInput() : tags;
       const payload = {
         name,
         description,
         gameVersion: datasetVersion?.gtnhVersion ?? "",
         datasetVersionId: selectedDatasetVersionId ?? "",
         plan: JSON.parse(serializeFactoryProject(project)) as unknown,
-        thumbnailDataUrl: thumbnail.status === "ready" ? thumbnail.dataUrl : undefined,
+        tags: finalTags,
       };
 
       if (updateTargetId) {
@@ -254,42 +222,20 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
               </div>
             ) : null}
 
-            <div className="flex gap-3">
-              <div className="h-24 w-36 shrink-0 overflow-hidden rounded border border-line bg-surface-sunken">
-                {thumbnail.status === "ready" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={thumbnail.dataUrl}
-                    alt="Plan preview"
-                    className="h-full w-full object-cover"
-                  />
-                ) : thumbnail.status === "failed" ? (
-                  <div className="grid h-full w-full place-items-center text-fg-muted">
-                    <span className="flex flex-col items-center gap-1 text-[11px]">
-                      <ImageOff className="h-4 w-4" /> No preview image
-                    </span>
-                  </div>
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-xs text-fg-muted">
-                    Capturingâ€¦
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1 text-xs text-fg-subtle">
-                <p>
-                  {stats.nodeCount} nodes Â· {stats.machineCount} machines
-                  {stats.highestTier ? ` Â· up to ${stats.highestTier}` : ""}
-                </p>
-                <p>{formatRate(Math.abs(stats.totalEuT), 3)} EU/t</p>
-                <p className="truncate">
-                  {datasetVersion?.gtnhVersion
-                    ? `GTNH ${datasetVersion.gtnhVersion}`
-                    : (selectedDatasetVersionId ?? "no dataset")}
-                </p>
-                <p className="mt-1 text-fg-muted">
-                  Needs {stats.needs.length} resources, produces {stats.outputs.length}.
-                </p>
-              </div>
+            <div className="rounded border border-line bg-surface-raised p-2 text-xs text-fg-subtle">
+              <p>
+                {stats.nodeCount} nodes Â· {stats.machineCount} machines
+                {stats.highestTier ? ` Â· up to ${stats.highestTier}` : ""}
+                {` Â· ${formatRate(Math.abs(stats.totalEuT), 3)} EU/t`}
+              </p>
+              <p className="truncate">
+                {datasetVersion?.gtnhVersion
+                  ? `GTNH ${datasetVersion.gtnhVersion}`
+                  : (selectedDatasetVersionId ?? "no dataset")}
+              </p>
+              <p className="mt-1 text-fg-muted">
+                Needs {stats.needs.length} resources, produces {stats.outputs.length}.
+              </p>
             </div>
 
             <label className="block text-sm">
@@ -312,6 +258,34 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
                 className="w-full resize-y rounded border border-line-strong bg-surface-sunken px-2 py-1.5"
               />
             </label>
+            <div className="block text-sm">
+              <span className="mb-1 block font-medium">Tags (optional)</span>
+              <div className="flex flex-wrap items-center gap-1 rounded border border-line-strong bg-surface-sunken px-2 py-1.5">
+                {tags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setTags(tags.filter((entry) => entry !== tag))}
+                    title={`Remove #${tag}`}
+                    className="rounded border border-line px-1.5 py-0.5 text-xs text-fg-subtle hover:border-red-500 hover:text-red-500"
+                  >
+                    #{tag} ×
+                  </button>
+                ))}
+                <input
+                  value={tagInput}
+                  onChange={(event) => setTagInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === ",") {
+                      event.preventDefault();
+                      addTagFromInput();
+                    }
+                  }}
+                  placeholder={tags.length === 0 ? "platline, oil, early game..." : ""}
+                  className="min-w-24 flex-1 bg-transparent text-sm outline-none"
+                />
+              </div>
+            </div>
 
             {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
@@ -326,12 +300,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 onClick={() => void share()}
-                disabled={
-                  isUploading ||
-                  !name.trim() ||
-                  project.nodes.length === 0 ||
-                  thumbnail.status === "capturing"
-                }
+                disabled={isUploading || !name.trim() || project.nodes.length === 0}
                 className="inline-flex items-center gap-2 rounded border border-cyan-700 bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isUploading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}

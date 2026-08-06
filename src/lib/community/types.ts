@@ -33,7 +33,8 @@ export interface CommunityPlanSummary extends CommunityPlanStats {
   description: string;
   gameVersion: string;
   datasetVersionId: string;
-  thumbnailDataUrl?: string;
+  /** Author-curated tags, normalized lowercase — same rules as blueprints. */
+  tags: string[];
   upvotes: number;
   downvotes: number;
   score: number;
@@ -86,7 +87,7 @@ export interface CommunityUploadRequest {
   deviceId: string;
   /** Full FactoryProject JSON; the server re-validates and re-derives stats. */
   plan: unknown;
-  thumbnailDataUrl?: string;
+  tags?: string[];
 }
 
 export interface CommunityUploadResponse {
@@ -111,7 +112,6 @@ export interface CommunityVoteResponse {
 }
 
 export const COMMUNITY_UPLOAD_MAX_BYTES = 3 * 1024 * 1024;
-export const COMMUNITY_THUMBNAIL_MAX_BYTES = 400 * 1024;
 export const COMMUNITY_NAME_MAX_LENGTH = 80;
 export const COMMUNITY_DESCRIPTION_MAX_LENGTH = 2000;
 export const COMMUNITY_RESOURCE_STAT_LIMIT = 40;

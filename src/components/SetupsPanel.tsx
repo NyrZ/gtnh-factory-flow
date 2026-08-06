@@ -6,21 +6,23 @@ import {
   Check,
   Cog,
   Download,
-  Factory,
   FolderOpen,
   Globe,
   Link2,
   LoaderCircle,
   Search,
+  Tags,
   Trash2,
   User,
   X,
 } from "lucide-react";
+import { normalizeBlueprintTags } from "@/lib/blueprints/types";
 import {
   deleteCommunityPlan,
   downloadCommunityPlan,
   listCommunityPlans,
   tagPlanWithCommunityId,
+  updateCommunityPlanTags,
   voteCommunityPlan,
 } from "@/lib/community/client";
 import type { CommunityPlanSort, CommunityPlanSummary } from "@/lib/community/types";
@@ -30,8 +32,9 @@ import { formatRate } from "@/lib/model";
 import { OPEN_SETUPS_EVENT, takePendingSetupsScope, type SetupsScope } from "@/lib/setups-tab";
 import { useCommunityUser } from "@/components/community/auth";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
+import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { useDesignStore } from "@/store/design-store";
-import { formatRelativeDate, renderIoStats } from "./BlueprintPanel";
+import { formatRelativeDate, renderIoStats, TagChips } from "./BlueprintPanel";
 
 const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "new", label: "Newest" },
@@ -201,6 +204,15 @@ export function SetupsPanel() {
     );
   };
 
+  const saveTags = async (plan: CommunityPlanSummary, tags: string[]) => {
+    try {
+      await updateCommunityPlanTags(plan.id, tags);
+      patchPlan(plan.id, (entry) => ({ ...entry, tags }));
+    } catch (tagError) {
+      setError(tagError instanceof Error ? tagError.message : "Saving tags failed.");
+    }
+  };
+
   const remove = async (plan: CommunityPlanSummary) => {
     if (!window.confirm(`Take down "${plan.name}" from the network?`)) {
       return;
@@ -260,7 +272,9 @@ export function SetupsPanel() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={scope === "mine" ? "Search my setups..." : "Search the network..."}
+            placeholder={
+              scope === "mine" ? "Search my setups... (#tag)" : "Search the network... (#tag)"
+            }
             className="min-w-0 flex-1 bg-transparent outline-none"
           />
           {query ? (
@@ -325,6 +339,8 @@ export function SetupsPanel() {
                   onOpen={() => void open(plan)}
                   onCopyLink={() => void copyLink(plan)}
                   onDelete={() => void remove(plan)}
+                  onSaveTags={(tags) => void saveTags(plan, tags)}
+                  onTag={(tag) => setQuery(`#${tag}`)}
                 />
               ))}
             </ul>
@@ -372,6 +388,28 @@ function renderSetupDetails(plan: CommunityPlanSummary): ReactNode {
   );
 }
 
+/** The GT voltage badge, worn exactly like the tier button on a card. */
+function TierBadge({ tier }: { tier: NonNullable<CommunityPlanSummary["highestTier"]> }) {
+  const color = GT_TIER_COLORS[tier];
+  if (!color) {
+    return null;
+  }
+  return (
+    <span
+      className="shrink-0 border px-1 text-[9px] font-bold leading-[14px] shadow-[inset_1px_1px_0_rgba(255,255,255,0.55),inset_-1px_-1px_0_rgba(0,0,0,0.45)]"
+      style={{
+        backgroundColor: color.background,
+        borderColor: color.border,
+        color: color.text,
+        textShadow: `1px 1px 0 ${color.shadow}`,
+      }}
+      title={`Machines up to ${tier}`}
+    >
+      {tier}
+    </span>
+  );
+}
+
 function SetupRow({
   plan,
   isBusy,
@@ -381,6 +419,8 @@ function SetupRow({
   onOpen,
   onCopyLink,
   onDelete,
+  onSaveTags,
+  onTag,
 }: {
   plan: CommunityPlanSummary;
   isBusy: boolean;
@@ -390,133 +430,184 @@ function SetupRow({
   onOpen: () => void;
   onCopyLink: () => void;
   onDelete: () => void;
+  onSaveTags: (tags: string[]) => void;
+  onTag: (tag: string) => void;
 }) {
+  // The tag editor lives in the row: edits stay local as chips and save
+  // once, on close — one PUT per session, same manners as blueprints.
+  const [tagEditor, setTagEditor] = useState<{ draft: string[]; input: string }>();
+
+  const addDraftTag = (editor: { draft: string[]; input: string }) => {
+    const draft = normalizeBlueprintTags([...editor.draft, editor.input]);
+    setTagEditor({ draft, input: "" });
+    return draft;
+  };
+
+  // Closing saves — whatever is still in the input counts as one last tag.
+  const closeTagEditor = () => {
+    if (!tagEditor) {
+      return;
+    }
+    const finalTags = tagEditor.input.trim() ? addDraftTag(tagEditor) : tagEditor.draft;
+    setTagEditor(undefined);
+    if (JSON.stringify(finalTags) !== JSON.stringify(plan.tags ?? [])) {
+      onSaveTags(finalTags);
+    }
+  };
+
   return (
     <li
-      className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1.5 hover:border-neutral-500"
+      className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500"
       // Double-click anywhere that isn't a button opens the setup — the
       // folder button stays as the single-click way.
       onDoubleClick={(event) => {
-        if (!isBusy && !(event.target as HTMLElement).closest("button")) {
+        if (!isBusy && !(event.target as HTMLElement).closest("button, input")) {
           onOpen();
         }
       }}
     >
       <MinecraftTooltip label={plan.name} content={renderSetupDetails(plan)}>
-        <div className="flex items-stretch gap-1.5">
-          <span className="w-16 shrink-0 self-stretch overflow-hidden rounded-[3px] border border-neutral-700 bg-[#17191d]">
-            {plan.thumbnailDataUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={plan.thumbnailDataUrl}
-                alt=""
-                className="h-full w-full object-cover"
-                draggable={false}
-              />
-            ) : (
-              <span className="grid h-full w-full place-items-center text-neutral-600">
-                <Factory className="h-5 w-5" />
-              </span>
-            )}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onVote}
+            title={plan.myVote === 1 ? "Upvoted. Click to retract" : "Upvote"}
+            aria-label={`Upvote ${plan.name}`}
+            className={[
+              "flex shrink-0 items-center gap-0.5 rounded-[4px] border px-1 py-0.5 text-[11px] font-bold tabular-nums",
+              plan.myVote === 1
+                ? "border-emerald-600 bg-emerald-500/15 text-emerald-300"
+                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-emerald-600 hover:text-emerald-300",
+            ].join(" ")}
+          >
+            <ArrowBigUp className="h-3.5 w-3.5" />
+            {plan.score}
+          </button>
+          <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
+            {plan.name}
           </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
-                {plan.name}
-              </span>
+          <button
+            type="button"
+            onClick={onCopyLink}
+            title="Copy a link that opens this setup in a friend's planner"
+            aria-label={`Copy a link to ${plan.name}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
+          >
+            {isCopied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-300" />
+            ) : (
+              <Link2 className="h-3.5 w-3.5" />
+            )}
+          </button>
+          {canManage ? (
+            <>
               <button
                 type="button"
-                onClick={onVote}
-                title={plan.myVote === 1 ? "Upvoted. Click to retract" : "Upvote"}
-                aria-label={`Upvote ${plan.name}`}
+                onClick={() =>
+                  tagEditor
+                    ? closeTagEditor()
+                    : setTagEditor({ draft: plan.tags ?? [], input: "" })
+                }
+                title={tagEditor ? "Save tags" : "Edit tags"}
+                aria-label={`Edit tags for ${plan.name}`}
                 className={[
-                  "flex shrink-0 items-center gap-0.5 rounded-[4px] border px-1 py-0.5 text-[11px] font-bold tabular-nums",
-                  plan.myVote === 1
-                    ? "border-emerald-600 bg-emerald-500/15 text-emerald-300"
-                    : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-emerald-600 hover:text-emerald-300",
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border",
+                  tagEditor
+                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
+                    : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-cyan-600 hover:text-cyan-300",
                 ].join(" ")}
               >
-                <ArrowBigUp className="h-3.5 w-3.5" />
-                {plan.score}
+                <Tags className="h-3.5 w-3.5" />
               </button>
-            </div>
-            <div className="mt-0.5 flex items-center gap-2 text-[10px] tabular-nums text-neutral-500">
-              {plan.authorName ? (
-                <span className="truncate text-neutral-400" title={`By ${plan.authorName}`}>
-                  {plan.authorName}
-                </span>
-              ) : null}
-              <span
-                className="shrink-0"
-                title={`Shared ${new Date(plan.createdAt).toLocaleString()}`}
-              >
-                {formatRelativeDate(plan.createdAt)}
-              </span>
-              {plan.machineCount > 0 ? (
-                <span
-                  className="flex shrink-0 items-center gap-0.5"
-                  title={`${plan.machineCount} machines configured`}
-                >
-                  <Cog className="h-3 w-3" /> {plan.machineCount}
-                </span>
-              ) : null}
-              <span
-                className="ml-auto flex shrink-0 items-center gap-0.5"
-                title={`Opened ${plan.downloads} time${plan.downloads === 1 ? "" : "s"}`}
-              >
-                <Download className="h-3 w-3" /> {plan.downloads}
-              </span>
-            </div>
-            <div className="mt-1 flex items-center gap-1">
-              {plan.highestTier ? (
-                <span
-                  className="rounded-[3px] border border-neutral-700 bg-[#17191d] px-1 py-px text-[9px] font-bold leading-3 text-amber-300"
-                  title={`Machines up to ${plan.highestTier}`}
-                >
-                  {plan.highestTier}
-                </span>
-              ) : null}
               <button
                 type="button"
-                onClick={onCopyLink}
-                title="Copy a link that opens this setup in a friend's planner"
-                aria-label={`Copy a link to ${plan.name}`}
-                className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
+                onClick={onDelete}
+                title="Take this post down"
+                aria-label={`Take down ${plan.name}`}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-red-500 hover:text-red-400"
               >
-                {isCopied ? (
-                  <Check className="h-3.5 w-3.5 text-emerald-300" />
-                ) : (
-                  <Link2 className="h-3.5 w-3.5" />
-                )}
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
-              {canManage ? (
-                <button
-                  type="button"
-                  onClick={onDelete}
-                  title="Take this post down"
-                  aria-label={`Take down ${plan.name}`}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-red-500 hover:text-red-400"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={onOpen}
-                title="Open as its own design tab"
-                aria-label={`Open setup ${plan.name}`}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
-              >
-                {isBusy ? (
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin text-emerald-300" />
-                ) : (
-                  <FolderOpen className="h-3.5 w-3.5" />
-                )}
-              </button>
-            </div>
-          </div>
+            </>
+          ) : null}
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={onOpen}
+            title="Open as its own design tab"
+            aria-label={`Open setup ${plan.name}`}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
+          >
+            {isBusy ? (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin text-emerald-300" />
+            ) : (
+              <FolderOpen className="h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
+        <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] tabular-nums text-neutral-500">
+          {plan.highestTier ? <TierBadge tier={plan.highestTier} /> : null}
+          {plan.authorName ? (
+            <span className="truncate text-neutral-400" title={`By ${plan.authorName}`}>
+              {plan.authorName}
+            </span>
+          ) : null}
+          <span className="shrink-0" title={`Shared ${new Date(plan.createdAt).toLocaleString()}`}>
+            {formatRelativeDate(plan.createdAt)}
+          </span>
+          {plan.machineCount > 0 ? (
+            <span
+              className="flex shrink-0 items-center gap-0.5"
+              title={`${plan.machineCount} machines configured`}
+            >
+              <Cog className="h-3 w-3" /> {plan.machineCount}
+            </span>
+          ) : null}
+          <span
+            className="ml-auto flex shrink-0 items-center gap-0.5"
+            title={`Opened ${plan.downloads} time${plan.downloads === 1 ? "" : "s"}`}
+          >
+            <Download className="h-3 w-3" /> {plan.downloads}
+          </span>
+        </div>
+        {tagEditor ? (
+          <div className="mt-1 flex flex-wrap items-center gap-1 rounded-[4px] border border-cyan-700 bg-[#17191d] p-1.5">
+            {tagEditor.draft.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() =>
+                  setTagEditor({
+                    draft: tagEditor.draft.filter((entry) => entry !== tag),
+                    input: tagEditor.input,
+                  })
+                }
+                title={`Remove #${tag}`}
+                className="rounded-[3px] border border-neutral-700 bg-[#25272c] px-1 py-px text-[9px] leading-3 text-neutral-300 hover:border-red-500 hover:text-red-400"
+              >
+                #{tag} ×
+              </button>
+            ))}
+            <input
+              autoFocus
+              value={tagEditor.input}
+              placeholder={tagEditor.draft.length === 0 ? "add tags..." : ""}
+              onChange={(event) => setTagEditor({ ...tagEditor, input: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === ",") {
+                  event.preventDefault();
+                  addDraftTag(tagEditor);
+                }
+                if (event.key === "Escape") {
+                  setTagEditor(undefined);
+                }
+              }}
+              className="h-5 min-w-16 flex-1 bg-transparent text-[11px] text-neutral-100 outline-none"
+            />
+          </div>
+        ) : (
+          <TagChips tags={plan.tags ?? []} onTag={onTag} className="pl-0.5" />
+        )}
       </MinecraftTooltip>
     </li>
   );

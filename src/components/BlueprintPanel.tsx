@@ -126,8 +126,9 @@ function ControlsCard({ children }: { children: ReactNode }) {
   );
 }
 
-/** A row's tags as small chips; clicking one searches for it (`#tag`). */
-function TagChips({
+/** A row's tags as small chips; clicking one searches for it (`#tag`).
+    Shared with the Setups shelf, whose tags follow the same rules. */
+export function TagChips({
   tags,
   onTag,
   className,

@@ -52,6 +52,13 @@ create index if not exists community_plans_machine_count_idx on community_plans 
 create index if not exists community_plans_node_count_idx on community_plans (node_count desc);
 create index if not exists community_plans_tier_idx on community_plans (highest_tier_index);
 
+-- Columns added after the community_plans table first shipped; same
+-- convergence rule as the blueprint ALTERs at the bottom of this file.
+-- Author-curated tags, normalized lowercase; tags_text is the space-joined
+-- copy the app maintains so ilike search reaches into tags.
+alter table community_plans add column if not exists tags jsonb not null default '[]'::jsonb;
+alter table community_plans add column if not exists tags_text text not null default '';
+
 create table if not exists community_votes (
   plan_id uuid not null references community_plans (id) on delete cascade,
   voter_key text not null,
