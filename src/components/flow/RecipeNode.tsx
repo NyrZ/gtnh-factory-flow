@@ -503,9 +503,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         isCompareOpen ? "recipe-node-popup-open" : "",
         selected ? "ring-2 ring-cyan-300" : "",
         isSearchHighlighted ? "ring-4 ring-sky-300" : "",
-        isInspectorHighlighted
-          ? "outline outline-4 outline-offset-4 outline-yellow-300 ring-8 ring-cyan-300 [filter:drop-shadow(0_0_16px_rgba(34,211,238,0.95))]"
-          : "",
+        isInspectorHighlighted ? "resource-glow" : "",
         exceedsMaxTier && !calmMode ? "ring-4 ring-red-500" : "",
       ].join(" ")}
       style={{
@@ -1576,7 +1574,7 @@ const PLUG_DUMP_WORD: Record<"trash" | "tank" | "store", string> = {
 };
 
 const PLUG_GLOW_STYLE: CSSProperties = {
-  boxShadow: "0 0 0 2px #fde047, 0 0 0 5px #22d3ee, 0 0 14px 3px rgba(34,211,238,0.95)",
+  boxShadow: "0 0 0 2px var(--glow-line), 0 0 10px 2px var(--glow-halo)",
   filter: "brightness(1.22)",
   zIndex: 15,
 };
@@ -1766,8 +1764,7 @@ function PortChip({
       style={
         isFlowScopeLit
           ? {
-              boxShadow:
-                "0 0 0 2px #fde047, 0 0 0 5px #22d3ee, 0 0 14px 3px rgba(34,211,238,0.95)",
+              boxShadow: "0 0 0 2px var(--glow-line), 0 0 10px 2px var(--glow-halo)",
               filter: "brightness(1.22)",
               zIndex: 15,
             }

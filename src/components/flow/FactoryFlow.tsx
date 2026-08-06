@@ -5111,7 +5111,7 @@ function ResourceEdgeComponent({
               // washing out for no reason the user did anything to cause.
               strokeOpacity: isHighlighted ? 1 : style?.strokeOpacity,
               strokeWidth: coreStrokeWidth,
-              filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
+              filter: isHighlighted ? "drop-shadow(0 0 4px var(--glow-halo))" : undefined,
               // Edges select/hover through their label, never the stroke:
               // edges render above nodes (zIndex 20) so their slot-anchored
               // stubs stay visible, and an interactive stroke there swallows
@@ -5155,7 +5155,7 @@ function ResourceEdgeComponent({
                 fill="none"
                 opacity={isEdgeStarved(data) ? 0.8 : 1}
                 style={{
-                  filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
+                  filter: isHighlighted ? "drop-shadow(0 0 4px var(--glow-halo))" : undefined,
                 }}
               />
             </g>
@@ -5320,7 +5320,7 @@ function ResourceEdgeComponent({
             style={{
               transform: `translate(-50%, -50%) translate(${routedEdge.labelX}px, ${routedEdge.labelY}px)`,
               pointerEvents: "all",
-              borderColor: isHighlighted ? "#22d3ee" : edgeColor,
+              borderColor: isHighlighted ? "var(--glow-line)" : edgeColor,
             }}
             onMouseEnter={applyEdgeFlowScope}
             onMouseLeave={() => setHoveredFlowScope(undefined)}

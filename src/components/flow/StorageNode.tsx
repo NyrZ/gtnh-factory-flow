@@ -166,18 +166,11 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
       data-storage-node-id={storage.id}
       data-storage-kind={storage.kind}
       data-storage-resource-id={storage.resourceId}
-      // Wiring is a mode; a held wire must not also be lighting up cards.
-      onMouseEnter={() =>
-        isWiringConnection() ? undefined : setHoveredStorageResourceKey(resourceKey)
-      }
-      onMouseLeave={() => setHoveredStorageResourceKey(undefined)}
       className={[
         "group relative text-[#e8e9ee]",
         selected ? "ring-2 ring-cyan-300" : "",
-        isFlowScopeLit && !isHighlighted ? "ring-4 ring-cyan-300" : "",
-        isHighlighted
-          ? "outline outline-4 outline-offset-4 outline-yellow-300 ring-8 ring-cyan-300 [filter:drop-shadow(0_0_16px_rgba(34,211,238,0.95))]"
-          : "",
+        isFlowScopeLit && !isHighlighted ? "flow-scope-glow" : "",
+        isHighlighted ? "resource-glow" : "",
       ].join(" ")}
       style={paintCursor ? { cursor: paintCursor } : undefined}
     >
@@ -266,8 +259,17 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               net line - is plain card, so grabbing the border moves the
               node. The handles carry inline styles pinned to the well box;
               stylesheet !important wars once let them blanket the whole
-              card and swallow the header buttons. */}
-          <div className="relative mx-auto h-[94px] w-[120px]">
+              card and swallow the header buttons.
+              The well is also the resource-hover trigger — the ITEM lights
+              the flow, not the card around it. Wiring is a mode; a held
+              wire must not also be lighting up cards. */}
+          <div
+            className="relative mx-auto h-[94px] w-[120px]"
+            onMouseEnter={() =>
+              isWiringConnection() ? undefined : setHoveredStorageResourceKey(resourceKey)
+            }
+            onMouseLeave={() => setHoveredStorageResourceKey(undefined)}
+          >
             <Handle
               id={inputHandleId}
               type="target"

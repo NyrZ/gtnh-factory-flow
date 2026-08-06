@@ -86,6 +86,35 @@
   --mc-good: #4ade80;
   --mc-bad: #f87171;
   --mc-info: #22d3ee;
+
+  /* The glow: one warm colour for "this carries the hovered resource" —
+     cards outline in it, wires halo in it. The old look stacked a yellow
+     outline on a cyan ring on a cyan blur; three colours said less than
+     one. Selection stays cyan: a glow answers "where is this item", a
+     ring answers "what did I click". */
+  --glow-line: #ffd257;
+  --glow-halo: rgba(255, 202, 84, 0.8);
+}
+
+.resource-glow {
+  outline: 3px solid var(--glow-line);
+  outline-offset: 3px;
+  filter: drop-shadow(0 0 10px var(--glow-halo));
+}
+
+/* Pulled into a hovered port's flow scope: lit, but quieter than the direct
+   resource match above. */
+.flow-scope-glow {
+  outline: 2px solid var(--glow-line);
+  outline-offset: 2px;
+}
+
+/* Zoomed out a storage card is already reduced to its item; a glowing frame
+   around a glowing icon is noise. LED mode glows nothing — the wires and
+   machine cards still light, the drawer itself stays quiet. */
+.factory-flow-board[data-detail-level="glance"] [data-storage-node-id] {
+  outline: none !important;
+  filter: none !important;
 }
 
 @theme inline {
@@ -933,16 +962,15 @@ img {
   border-color: color-mix(in srgb, var(--recipe-node-tint-border) 62%, var(--mc-47));
 }
 
-/* A port pulled into the hovered flow scope must be unmissable: yellow inner
-   ring, cyan outer ring, and a glow - the same loud language the inspector
-   highlight uses. Works over tints and semantic tones alike. */
+/* A port pulled into the hovered flow scope must be unmissable: the one warm
+   glow colour the whole app lights up in (see --glow-line). Works over tints
+   and semantic tones alike. */
 .flow-port--flow-lit {
   position: relative;
   z-index: 15;
   box-shadow:
-    0 0 0 2px #fde047,
-    0 0 0 5px #22d3ee,
-    0 0 14px 3px rgba(34, 211, 238, 0.95);
+    0 0 0 2px var(--glow-line),
+    0 0 10px 2px var(--glow-halo);
   filter: brightness(1.22);
 }
 
