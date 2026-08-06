@@ -783,54 +783,61 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 ].join(" ")}
                 style={nodeColor ? { backgroundColor: nodeColor.panel } : undefined}
               >
-                <div
-                  className={[
-                    "min-w-0 items-center gap-1",
-                    // Every cell sizes to its content except MACHINES, which
-                    // takes the slack: a four-digit machine count is the one
-                    // number here that legitimately gets wide. Parallel
-                    // stretched to fill and then truncated its own label
-                    // ("Parall…"). Calm mode drops the diagnostics and keeps
-                    // just that box, bottom right. The box sizes to its track
-                    // (its input is w-0 flex-1, so shrink-to-fit collapses
-                    // it) — one output-rail-wide column, pushed right, so it
-                    // sits squarely under the outputs at its normal width.
-                    calmMode
-                      ? "grid justify-end grid-cols-[176px]"
-                      : [
-                          "grid",
-                          isCustomRateNode
-                            ? "grid-cols-[auto]"
-                            : machineParallelMultiplier > 1
-                              ? "grid-cols-[auto_auto_minmax(84px,1fr)]"
-                              : "grid-cols-[auto_minmax(84px,1fr)]",
-                        ].join(" "),
-                    isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
-                  ].join(" ")}
-                >
-                  {!calmMode ? (
+                {calmMode ? (
+                  /* Pure presentation: the count as one large line of text,
+                     centred — no stepper, no box. The whole row is already
+                     reserved, so the type gets to be big. */
+                  <div className="flex min-w-0 items-center justify-center">
+                    <span className="truncate text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)]">
+                      {projectNode.machineCount}×{" "}
+                      {isCropProductionNode
+                        ? projectNode.machineCount === 1
+                          ? "Seed"
+                          : "Seeds"
+                        : projectNode.machineCount === 1
+                          ? "Machine"
+                          : "Machines"}
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    className={[
+                      "grid min-w-0 items-center gap-1",
+                      // Every cell sizes to its content except MACHINES, which
+                      // takes the slack: a four-digit machine count is the one
+                      // number here that legitimately gets wide. Parallel
+                      // stretched to fill and then truncated its own label
+                      // ("Parall…").
+                      isCustomRateNode
+                        ? "grid-cols-[auto]"
+                        : machineParallelMultiplier > 1
+                          ? "grid-cols-[auto_auto_minmax(84px,1fr)]"
+                          : "grid-cols-[auto_minmax(84px,1fr)]",
+                      isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
+                    ].join(" ")}
+                  >
                     <UsageStat
                       nodeId={projectNode.id}
                       verdict={verdict}
                       isCustomRate={isCustomRateNode}
                     />
-                  ) : null}
-                  {!isCustomRateNode ? (
-                    <>
-                      {!calmMode && machineParallelMultiplier > 1 ? (
-                        <Stat
-                          label="Parallel"
-                          value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
+                    {!isCustomRateNode ? (
+                      <>
+                        {machineParallelMultiplier > 1 ? (
+                          <Stat
+                            label="Parallel"
+                            value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
+                          />
+                        ) : null}
+                        <MachineCountStat
+                          label={isCropProductionNode ? "Seeds" : "Machines"}
+                          machineCount={projectNode.machineCount}
+                          onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
                         />
-                      ) : null}
-                      <MachineCountStat
-                        label={isCropProductionNode ? "Seeds" : "Machines"}
-                        machineCount={projectNode.machineCount}
-                        onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
-                      />
-                    </>
-                  ) : null}
-                </div>
+                      </>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </GridBlock>
           ) : null}
@@ -1457,6 +1464,7 @@ function PortChip({
   plugRow?: boolean;
 }) {
   const isInput = port.side === "input";
+  const { calmMode } = useBoardView();
   const browseResource = useFactoryStore((state) => state.browseResource);
   const setHoveredFlowScope = useFactoryStore((state) => state.setHoveredFlowScope);
   const isFlowScopeLit = useFactoryStore((state) =>
@@ -1499,13 +1507,15 @@ function PortChip({
   // The rate reads under the name in a lighter grey — the number is worth a
   // line, it just isn't worth competing with the name for attention. The
   // binding input still shows both halves (what it gets over what it asks);
-  // every other port shows the one number that matters.
-  const rateText = port.showNameplate
-    ? `${formatSlotRateBare(port.currentPerSecond)} / ${formatSlotRate(
-        port.nameplatePerSecond,
-        port.kind,
-      )}`
-    : formatSlotRate(port.currentPerSecond, port.kind);
+  // every other port shows the one number that matters. Calm mode always
+  // shows the bare actual rate: no fraction, nothing to diagnose.
+  const rateText =
+    port.showNameplate && !calmMode
+      ? `${formatSlotRateBare(port.currentPerSecond)} / ${formatSlotRate(
+          port.nameplatePerSecond,
+          port.kind,
+        )}`
+      : formatSlotRate(port.currentPerSecond, port.kind);
 
   // One bar, one ruler: 100% = full blast. Solid = now, hatch = would unlock
   // if fed. The caret/burst (the want) is an INPUT-side signal — on outputs
@@ -1614,37 +1624,49 @@ function PortChip({
         <span className="block truncate text-[11px] font-bold leading-[13px] text-[var(--mc-ink)]">
           {port.displayName}
         </span>
-        {/* Neutral, quieter ink: the chip's BAR carries the machine story's
-            color. Green text over a red bar told two stories at once. */}
-        <span className="block truncate text-[10px] leading-[12px] tabular-nums text-[var(--mc-ink-muted)] opacity-80">
-          {rateText}
-        </span>
-        {port.handFed ? (
-          <span className="block text-[7px] font-black leading-3 tracking-[0.5px] text-[var(--mc-ink-muted)]">
-            HAND-FED
+        {calmMode ? (
+          /* Presentation: no bar, no want marks — the room they used goes to
+             the number, which is the thing a viewer actually reads. 14px is
+             the ceiling: a five-digit fluid rate still fits the chip. */
+          <span className="block truncate text-[14px] font-bold leading-[16px] tabular-nums text-[var(--mc-ink)]">
+            {rateText}
           </span>
         ) : (
-          <span className="mt-0.5 flex items-center gap-0.5">
-            <span
-              className={["flow-port-bar block flex-1", hasBurst ? "flow-port-bar--burst" : ""]
-                .join(" ")
-                .trim()}
-            >
-              <i style={{ width: `${fillPct}%` }} />
-              {ghostPct > 1 ? (
-                <s
-                  className="flow-port-ghost"
-                  style={{ left: `${fillPct}%`, width: `${ghostPct}%` }}
-                />
-              ) : null}
-              {caretPct !== undefined ? (
-                <u className="flow-port-caret" style={{ left: `${caretPct}%` }} />
-              ) : null}
+          <>
+            {/* Neutral, quieter ink: the chip's BAR carries the machine
+                story's color. Green text over a red bar told two stories at
+                once. */}
+            <span className="block truncate text-[10px] leading-[12px] tabular-nums text-[var(--mc-ink-muted)] opacity-80">
+              {rateText}
             </span>
-            {hasBurst ? (
-              <em className="flow-port-burst not-italic">{formatTimes(wantRatio)}</em>
-            ) : null}
-          </span>
+            {port.handFed ? (
+              <span className="block text-[7px] font-black leading-3 tracking-[0.5px] text-[var(--mc-ink-muted)]">
+                HAND-FED
+              </span>
+            ) : (
+              <span className="mt-0.5 flex items-center gap-0.5">
+                <span
+                  className={["flow-port-bar block flex-1", hasBurst ? "flow-port-bar--burst" : ""]
+                    .join(" ")
+                    .trim()}
+                >
+                  <i style={{ width: `${fillPct}%` }} />
+                  {ghostPct > 1 ? (
+                    <s
+                      className="flow-port-ghost"
+                      style={{ left: `${fillPct}%`, width: `${ghostPct}%` }}
+                    />
+                  ) : null}
+                  {caretPct !== undefined ? (
+                    <u className="flow-port-caret" style={{ left: `${caretPct}%` }} />
+                  ) : null}
+                </span>
+                {hasBurst ? (
+                  <em className="flow-port-burst not-italic">{formatTimes(wantRatio)}</em>
+                ) : null}
+              </span>
+            )}
+          </>
         )}
       </span>
       <MinecraftTooltip
