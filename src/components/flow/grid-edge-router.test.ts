@@ -185,6 +185,50 @@ describe("solveGridRoutes", () => {
     }
   });
 
+  it("fans same-port wires apart right after the apron", () => {
+    const a = card("a", 0, 0);
+    const b = card("b", 900, 0, 360, 300);
+    // Two wires out of the SAME output, into two different inputs far away.
+    // They used to draw on literally the same line for the whole shared run;
+    // now they may only coincide inside the port stub zone (a couple of
+    // cells around the shared anchor).
+    const routes = solveGridRoutes(
+      [a, b],
+      [
+        request({
+          edgeId: "e1",
+          order: 0,
+          sources: [{ x: 360, y: 60, side: "right" }],
+          targets: [{ x: 900, y: 60, side: "left" }],
+        }),
+        request({
+          edgeId: "e2",
+          order: 1,
+          sources: [{ x: 360, y: 60, side: "right" }],
+          targets: [{ x: 900, y: 260, side: "left" }],
+        }),
+      ],
+    );
+    const first = routes.get("e1")!.points;
+    const second = routes.get("e2")!.points;
+    const horizontalRuns = (points: GridPoint[]) =>
+      segments(points)
+        .filter(({ a: p, b: q }) => Math.abs(p.y - q.y) < 0.01 && Math.abs(p.x - q.x) > 1)
+        .map(({ a: p, b: q }) => ({ y: p.y, lo: Math.min(p.x, q.x), hi: Math.max(p.x, q.x) }));
+    const STUB_ZONE = 360 + 2 * WIRE_NODE_MARGIN;
+    for (const runA of horizontalRuns(first)) {
+      for (const runB of horizontalRuns(second)) {
+        const overlapLo = Math.max(runA.lo, runB.lo, STUB_ZONE);
+        const overlapHi = Math.min(runA.hi, runB.hi);
+        if (overlapHi - overlapLo > 4 && Math.abs(runA.y - runB.y) < 1.9) {
+          throw new Error(
+            `stacked runs: y=${runA.y} vs y=${runB.y} over x ${overlapLo}..${overlapHi}`,
+          );
+        }
+      }
+    }
+  });
+
   it("is deterministic", () => {
     const obstacles = [card("a", 0, 0), card("b", 700, 300), card("c", 200, 400)];
     const requests = [

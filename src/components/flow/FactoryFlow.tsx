@@ -134,6 +134,7 @@ import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
 import { rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
 import { getSupplyCeiling } from "@/components/inspector/usage-limits";
 import {
+  EDGE_DETAIL_ARROWS,
   EDGE_DETAIL_GLOBAL,
   EDGE_DETAIL_LABELS,
   EDGE_DETAIL_PULSE,
@@ -748,20 +749,13 @@ function resolveGridRouteEndpoints(
   const snap = (value: number) => Math.round(value / BOARD_GRID) * BOARD_GRID;
   const centerX = snap((rect.left + rect.right) / 2);
   const centerY = snap((rect.top + rect.bottom) / 2);
-  // Wires slide UNDER the card by two cells instead of stopping dead at its
-  // border — the same tucked-in dock the drawers always had. With arrowheads
-  // gone the tuck is also what says "this line ends here on purpose".
-  const inset = STORAGE_DOCK_INSET;
   return [
-    { x: rect.left, y: centerY, side: "left", inset },
-    { x: rect.right, y: centerY, side: "right", inset },
-    { x: centerX, y: rect.top, side: "top", inset },
-    { x: centerX, y: rect.bottom, side: "bottom", inset },
+    { x: rect.left, y: centerY, side: "left" },
+    { x: rect.right, y: centerY, side: "right" },
+    { x: centerX, y: rect.top, side: "top" },
+    { x: centerX, y: rect.bottom, side: "bottom" },
   ];
 }
-
-/** How far a wire tucks in under a drawer/tank/trash card at its dock. */
-const STORAGE_DOCK_INSET = 40;
 
 /**
  * Runs the grid solve if anything it depends on changed, and parks every
@@ -1725,19 +1719,19 @@ export function FactoryFlow() {
                 : isStorageEdge
                   ? 0.86
                   : 0.92,
-          // A quarter lane as the everyday width — the sub-3px menu the board
-          // used before the grid read as threads between 360px cards.
           strokeWidth: lineThicknessMode
             ? laneWidthForHeat(flowHeat)
             : isFlowHighlighted
               ? 5.5
               : isStorageEdge
                 ? isStorageEdgeEmphasized
-                  ? 4.5
-                  : 4
+                  ? 4
+                  : 3.1
                 : isStarvedEdge
-                  ? 3.2
-                  : 4,
+                  ? 2.7
+                  : edge.resourceKind === "fluid"
+                    ? 3.4
+                    : 2.9,
         },
       });
     });
@@ -3839,9 +3833,11 @@ function ResourceEdgeComponent({
   });
   const visualSource = visualSourceCandidates[0];
   const visualTarget = visualTargetCandidates[0];
-  // No arrowheads on placed wires any more: the pulse dashes already carry
-  // direction, and an arrow at a dock either floated in space or vanished
-  // under the card depending on layer mode.
+  // Direction has one voice: the marching dashes when pulse mode is on,
+  // arrowheads only when it is off. Arrows also sat half-buried under cards
+  // (edges dive beneath nodes in thickness mode), which dashes never do.
+  const showArrowHead =
+    flowRate?.pulse !== true && (isHighlighted || hasEdgeDetail(detailLevel, EDGE_DETAIL_ARROWS));
   // Every wire routes individually through the board-wide grid solve — the
   // solve's lane sharing is what makes a fan-out ride as one ribbon, which
   // is the look the bundle machinery used to fake by hiding members. The
@@ -3997,6 +3993,46 @@ function ResourceEdgeComponent({
               so one per edge repainted the entire board every frame. */}
         </>
       )}
+      {showArrowHead ? (
+        <polyline
+          points={getArrowHeadPointsForRoute({
+            points: routedEdge.points,
+            estimatedTargetX: visualTarget.x,
+            estimatedTargetY: visualTarget.y,
+            estimatedTargetPosition: visualTarget.side,
+          })}
+          stroke="var(--mc-15)"
+          strokeWidth={isHighlighted ? 4 : 3.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+          style={{
+            opacity: isEdgeStarved(data) ? 0.72 : 0.95,
+            filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
+      {showArrowHead ? (
+        <polyline
+          points={getArrowHeadPointsForRoute({
+            points: routedEdge.points,
+            estimatedTargetX: visualTarget.x,
+            estimatedTargetY: visualTarget.y,
+            estimatedTargetPosition: visualTarget.side,
+          })}
+          stroke={edgeColor}
+          strokeWidth={isHighlighted ? 2.2 : 1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+          style={{
+            opacity: isEdgeStarved(data) ? 0.78 : 1,
+            filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
       {hoverPathD ? (
         <path
           d={hoverPathD}
@@ -4614,8 +4650,7 @@ const EDGE_HOP_MAX_RADIUS = 44;
  * pimple under a fat pipe or a hoop over a hair.
  */
 const publishedEdgeStrokeWidths = new Map<string, number>();
-// A quarter lane. The old 3px default read as thread next to the grid cards.
-const DEFAULT_EDGE_STROKE_WIDTH = 4;
+const DEFAULT_EDGE_STROKE_WIDTH = 3;
 
 
 /**
@@ -4634,31 +4669,10 @@ function ownStrokeWidth(edgeId: string | undefined): number {
   );
 }
 
-type HopSegment = {
-  start: { x: number; y: number };
-  end: { x: number; y: number };
-  width: number;
-};
-
-type HopContext = {
-  /** Lines behind this one in depth order: the ones its bumps must clear. */
-  hopped: HopSegment[];
-  /**
-   * EVERY nearby routed line regardless of depth. Bump heights are computed
-   * from the whole neighbourhood so a group of lane-mates crossing the same
-   * thing agree on one nested-arc stack without ever seeing each other's
-   * paths.
-   */
-  all: HopSegment[];
-};
-
-const EMPTY_HOP_CONTEXT: HopContext = { hopped: [], all: [] };
-
 /**
  * Segments this edge should hop over: every other routed line that sits
  * BEHIND it (see compareEdgeDepth), so exactly one side of every crossing
- * bumps and it is always the side you can see. Also returns the unfiltered
- * neighbourhood, for the nested-bump stack.
+ * bumps and it is always the side you can see.
  *
  * Reads the same cache the relaxation loop uses, with the same staleness
  * class: a neighbour's reroute refreshes this edge on the next epoch.
@@ -4667,9 +4681,9 @@ function collectHoppedRouteSegments(
   edgeId: string | undefined,
   routeIndex: number | undefined,
   points: Array<{ x: number; y: number }>,
-): HopContext {
+) {
   if (routeIndex === undefined || points.length < 2) {
-    return EMPTY_HOP_CONTEXT;
+    return [];
   }
 
   // Only a line that runs through this route's own bounding box can cross it,
@@ -4698,69 +4712,49 @@ function collectHoppedRouteSegments(
     end: { x: number; y: number };
     width: number;
   }> = [];
-  const all: HopSegment[] = [];
   for (const entry of queryRouteSegments({
     left: left - margin,
     right: right + margin,
     top: top - margin,
     bottom: bottom + margin,
   })) {
-    if (entry.edgeId === edgeId) {
+    if (
+      entry.edgeId === edgeId ||
+      compareEdgeDepth(own, {
+        width: ownStrokeWidth(entry.edgeId),
+        routeIndex: entry.routeIndex,
+      }) <= 0
+    ) {
       continue;
     }
     // Carry the crossed line's thickness along with its geometry: the hop is
     // sized from it, not from a constant.
-    const segment: HopSegment = {
+    segments.push({
       start: entry.start,
       end: entry.end,
       width: publishedEdgeStrokeWidths.get(entry.edgeId) ?? DEFAULT_EDGE_STROKE_WIDTH,
-    };
-    all.push(segment);
-    if (
-      compareEdgeDepth(own, {
-        width: ownStrokeWidth(entry.edgeId),
-        routeIndex: entry.routeIndex,
-      }) > 0
-    ) {
-      segments.push(segment);
-    }
+    });
   }
-  return { hopped: segments, all };
+  return segments;
 }
-
-/** Crossings closer than this along a run merge into ONE long jump. */
-const HOP_MERGE_GAP = 24;
-/** A wire chains into a nested stack when its base arc would sweep a mate. */
-const HOP_NEST_CLEARANCE = 2;
 
 /**
  * Like pointsToSvgPath, but wherever an orthogonal segment properly crosses
- * one of the given (earlier-routed) segments, the line lifts over it — the
- * classic schematic hop that makes crossings legible instead of a flat X.
- * Horizontal runs bump upward, vertical runs bump toward the right (screen
- * space), so the same crossing always reads the same way.
- *
- * Hops work at the MEGALANE level, and every rule below is computed from the
- * shared segment neighbourhood so all the wires involved agree without ever
- * seeing each other's paths:
- *
- * - Crossings that sit close together on a run merge into ONE flat-topped
- *   long jump over the whole crossed bundle, however many grid lines it
- *   spans — a lane jumps a lane, once.
- * - A wire whose bump would sweep across a bundle-mate on the bump side
- *   vaults the mate too: heights cascade through the stack, so a bundle
- *   crossing draws as nested arcs. Which wire nests over which is a fact of
- *   the geometry (position in the stack), not of paint order.
- * - When the stack's outermost arc would have to be absurd, the ENTIRE
- *   stack skips its bumps and crosses flat. Ten wires over ten wires reads
- *   better as a clean weave than as forty humps.
+ * one of the given (earlier-routed) segments, the line lifts over it in a
+ * small semicircular bump - the classic schematic hop that makes crossings
+ * legible instead of a flat X. Horizontal runs bump upward, vertical runs
+ * bump toward the left, so the same crossing always reads the same way.
  */
 function pointsToHoppedSvgPath(
   points: Array<{ x: number; y: number }>,
-  context: HopContext,
+  otherSegments: Array<{
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    width: number;
+  }>,
   ownWidth = DEFAULT_EDGE_STROKE_WIDTH,
 ) {
-  if (points.length < 2 || context.hopped.length === 0) {
+  if (points.length < 2 || otherSegments.length === 0) {
     return pointsToSvgPath(points);
   }
 
@@ -4776,35 +4770,46 @@ function pointsToHoppedSvgPath(
       continue;
     }
 
-    const ownLine = horizontal ? from.y : from.x;
+    // A crossing near a bend still gets its bump: the arc is CLAMPED into
+    // the run (asymmetric if it must be) rather than shrunk away. Routes
+    // turn beside ports and cross right after the corner, and the old
+    // shrink-to-nothing rule silently dropped exactly those hops — a flat X
+    // in the one place two wires are guaranteed to meet.
+    const crossings: Array<{ at: number; radius: number }> = [];
     const low = horizontal ? Math.min(from.x, to.x) : Math.min(from.y, to.y);
     const high = horizontal ? Math.max(from.x, to.x) : Math.max(from.y, to.y);
     // The other line must properly OVERSHOOT this one on both sides: a
     // segment that merely ends a pixel or two past the line (T-junctions at
     // docks, lane-adjacent turns) reads as a touch, not a crossing, and a
     // hump there looks like it sits over nothing.
-    const OVERSHOOT = 2;
-    const crossings: Array<{ at: number; width: number }> = [];
-    for (const segment of context.hopped) {
+    const OVERSHOOT = 4;
+    for (const segment of otherSegments) {
       const segmentHorizontal = Math.abs(segment.start.y - segment.end.y) < 0.01;
       const segmentVertical = Math.abs(segment.start.x - segment.end.x) < 0.01;
-      if (horizontal === segmentHorizontal || vertical === segmentVertical) {
-        continue;
-      }
-      const crossAt = horizontal ? segment.start.x : segment.start.y;
-      const otherLow = horizontal
-        ? Math.min(segment.start.y, segment.end.y)
-        : Math.min(segment.start.x, segment.end.x);
-      const otherHigh = horizontal
-        ? Math.max(segment.start.y, segment.end.y)
-        : Math.max(segment.start.x, segment.end.x);
-      if (
-        crossAt > low + 2 &&
-        crossAt < high - 2 &&
-        ownLine > otherLow + OVERSHOOT &&
-        ownLine < otherHigh - OVERSHOOT
-      ) {
-        crossings.push({ at: crossAt, width: segment.width });
+      if (horizontal && segmentVertical) {
+        const crossAt = segment.start.x;
+        const otherLow = Math.min(segment.start.y, segment.end.y);
+        const otherHigh = Math.max(segment.start.y, segment.end.y);
+        if (
+          crossAt > low + 1 &&
+          crossAt < high - 1 &&
+          from.y > otherLow + OVERSHOOT &&
+          from.y < otherHigh - OVERSHOOT
+        ) {
+          crossings.push({ at: crossAt, radius: hopRadiusFor(ownWidth, segment.width) });
+        }
+      } else if (vertical && segmentHorizontal) {
+        const crossAt = segment.start.y;
+        const otherLow = Math.min(segment.start.x, segment.end.x);
+        const otherHigh = Math.max(segment.start.x, segment.end.x);
+        if (
+          crossAt > low + 1 &&
+          crossAt < high - 1 &&
+          from.x > otherLow + OVERSHOOT &&
+          from.x < otherHigh - OVERSHOOT
+        ) {
+          crossings.push({ at: crossAt, radius: hopRadiusFor(ownWidth, segment.width) });
+        }
       }
     }
 
@@ -4813,188 +4818,45 @@ function pointsToHoppedSvgPath(
       continue;
     }
 
-    // One long jump per crossed bundle: nearby crossings merge into a group
-    // spanning all of them.
-    crossings.sort((left, right) => left.at - right.at);
-    const groups: Array<{ lo: number; hi: number; maxWidth: number }> = [];
+    const direction = horizontal ? Math.sign(to.x - from.x) : Math.sign(to.y - from.y);
+    crossings.sort((left, right) => (left.at - right.at) * direction);
+    const merged: Array<{ at: number; radius: number }> = [];
     for (const crossing of crossings) {
-      const previous = groups[groups.length - 1];
-      if (previous && crossing.at - previous.hi <= HOP_MERGE_GAP) {
-        previous.hi = crossing.at;
-        previous.maxWidth = Math.max(previous.maxWidth, crossing.width);
-      } else {
-        groups.push({ lo: crossing.at, hi: crossing.at, maxWidth: crossing.width });
+      const previous = merged[merged.length - 1];
+      if (!previous || Math.abs(crossing.at - previous.at) > previous.radius + crossing.radius + 2) {
+        merged.push(crossing);
       }
     }
 
-    // The bump side in world space: horizontal runs lift up (-y), vertical
-    // runs bulge right (+x) — matching the sweep flags below.
-    const bumps: Array<{ lo: number; hi: number; height: number }> = [];
-    for (const group of groups) {
-      const height = nestedHopHeight({
-        context,
-        horizontalRun: horizontal,
-        ownLine,
-        ownWidth,
-        groupLo: group.lo,
-        groupHi: group.hi,
-        crossedWidth: group.maxWidth,
-      });
-      if (height === undefined) {
+    for (const crossing of merged) {
+      // Clamp the bump's feet inside the run; a crossing tight against a
+      // corner gets an asymmetric arc (a taller radius over a shorter
+      // chord) instead of no arc at all.
+      const bumpLow = Math.max(low + 0.5, crossing.at - crossing.radius);
+      const bumpHigh = Math.min(high - 0.5, crossing.at + crossing.radius);
+      const chord = bumpHigh - bumpLow;
+      if (chord < 4) {
         continue;
       }
-      // Room on the run caps the lead-in arcs; shrunken beats skipped near a
-      // corner, but below ~2px there is nothing left to read.
-      const room = Math.min(group.lo - low - 1, high - group.hi - 1);
-      const clamped = Math.min(height, room);
-      if (clamped >= 2) {
-        bumps.push({ lo: group.lo, hi: group.hi, height: clamped });
-      }
-    }
-
-    // Tall neighbouring jumps whose lead-in arcs would collide fuse into one
-    // longer jump — the path must never double back on its own run.
-    bumps.sort((left, right) => left.lo - right.lo);
-    const fused: typeof bumps = [];
-    for (const bump of bumps) {
-      const previous = fused[fused.length - 1];
-      if (previous && bump.lo - bump.height <= previous.hi + previous.height + 2) {
-        previous.hi = bump.hi;
-        previous.height = Math.max(previous.height, bump.height);
-      } else {
-        fused.push(bump);
-      }
-    }
-
-    const direction = horizontal ? Math.sign(to.x - from.x) : Math.sign(to.y - from.y);
-    fused.sort((left, right) => (left.lo - right.lo) * direction);
-    for (const bump of fused) {
-      const height = bump.height;
-      const nearEdge = direction > 0 ? bump.lo : bump.hi;
-      const farEdge = direction > 0 ? bump.hi : bump.lo;
-      const enter = nearEdge - height * direction;
-      const exit = farEdge + height * direction;
-      // SVG sweep=1 is clockwise on screen: traveling east that arcs over
-      // the top; traveling west needs sweep=0 for the same upward bump. The
-      // vertical cases bulge right by the same token. Two quarter arcs and a
-      // flat top; a single crossing (lo == hi) degenerates to the classic
-      // semicircle.
-      const sweep = direction > 0 ? 1 : 0;
+      const radius = Math.max(crossing.radius, chord / 2 + 0.1);
+      const beforeAt = direction > 0 ? bumpLow : bumpHigh;
+      const afterAt = direction > 0 ? bumpHigh : bumpLow;
       if (horizontal) {
-        const top = from.y - height;
-        path +=
-          ` L ${enter},${from.y}` +
-          ` A ${height} ${height} 0 0 ${sweep} ${nearEdge},${top}` +
-          ` L ${farEdge},${top}` +
-          ` A ${height} ${height} 0 0 ${sweep} ${exit},${from.y}`;
+        // SVG sweep=1 is clockwise on screen: traveling east that arcs over
+        // the top; traveling west needs sweep=0 for the same upward bump.
+        const sweep = direction > 0 ? 1 : 0;
+        path += ` L ${beforeAt},${from.y} A ${radius} ${radius} 0 0 ${sweep} ${afterAt},${from.y}`;
       } else {
-        const side = from.x + height;
-        path +=
-          ` L ${from.x},${enter}` +
-          ` A ${height} ${height} 0 0 ${sweep} ${side},${nearEdge}` +
-          ` L ${side},${farEdge}` +
-          ` A ${height} ${height} 0 0 ${sweep} ${from.x},${exit}`;
+        // Traveling south, clockwise (sweep 1) bulges toward the right;
+        // traveling north, sweep 0 keeps the bump on that same side.
+        const sweep = direction > 0 ? 1 : 0;
+        path += ` L ${from.x},${beforeAt} A ${radius} ${radius} 0 0 ${sweep} ${from.x},${afterAt}`;
       }
     }
     path += ` L ${to.x},${to.y}`;
   }
 
   return path;
-}
-
-/**
- * The height of this wire's jump over one crossed group — nested-stack
- * aware — or undefined when the whole stack should cross flat.
- *
- * The stack is every parallel bundle-mate whose line runs through the same
- * crossing region, ordered from the bump side inward. Heights cascade: the
- * bump-most wire jumps at its natural radius, and each mate whose own arc
- * would sweep into the previous one's arc grows just enough to vault it.
- * Every member computes the identical stack from the identical inputs, so
- * the nesting agrees by construction.
- */
-function nestedHopHeight({
-  context,
-  horizontalRun,
-  ownLine,
-  ownWidth,
-  groupLo,
-  groupHi,
-  crossedWidth,
-}: {
-  context: HopContext;
-  horizontalRun: boolean;
-  ownLine: number;
-  ownWidth: number;
-  groupLo: number;
-  groupHi: number;
-  crossedWidth: number;
-}): number | undefined {
-  // Every parallel line (any depth) that runs through the crossed span.
-  const lines: Array<{ line: number; width: number }> = [
-    { line: ownLine, width: ownWidth },
-  ];
-  for (const segment of context.all) {
-    const segmentHorizontal = Math.abs(segment.start.y - segment.end.y) < 0.01;
-    if (segmentHorizontal !== horizontalRun) {
-      continue;
-    }
-    const line = horizontalRun ? segment.start.y : segment.start.x;
-    const spanLo = horizontalRun
-      ? Math.min(segment.start.x, segment.end.x)
-      : Math.min(segment.start.y, segment.end.y);
-    const spanHi = horizontalRun
-      ? Math.max(segment.start.x, segment.end.x)
-      : Math.max(segment.start.y, segment.end.y);
-    if (spanHi < groupLo - 2 || spanLo > groupHi + 2) {
-      continue;
-    }
-    if (Math.abs(line - ownLine) < 0.5) {
-      continue;
-    }
-    const existing = lines.find((entry) => Math.abs(entry.line - line) < 0.5);
-    if (existing) {
-      existing.width = Math.max(existing.width, segment.width);
-    } else {
-      lines.push({ line, width: segment.width });
-    }
-  }
-
-  // Bump-side-most first: horizontal runs bump up (smaller y first),
-  // vertical runs bump right (larger x first).
-  lines.sort((left, right) => (horizontalRun ? left.line - right.line : right.line - left.line));
-
-  // Cascade heights through the chained stack. A break in the chain (a mate
-  // far enough away that arcs cannot touch) resets to the natural radius.
-  let previousLine: number | undefined;
-  let previousHeight = 0;
-  let ownHeight: number | undefined;
-  let maxHeight = 0;
-  for (const entry of lines) {
-    const base = hopRadiusFor(entry.width, crossedWidth);
-    const distance = previousLine === undefined ? Infinity : Math.abs(entry.line - previousLine);
-    const height =
-      distance < base + HOP_NEST_CLEARANCE
-        ? Math.max(base, previousHeight + distance + HOP_NEST_CLEARANCE)
-        : base;
-    if (Math.abs(entry.line - ownLine) < 0.5) {
-      ownHeight = height;
-    }
-    if (height > maxHeight) {
-      maxHeight = height;
-    }
-    previousLine = entry.line;
-    previousHeight = height;
-  }
-
-  // Too jumbled: if the stack's outermost arc would be taller than any
-  // sensible bump, EVERYONE in it crosses flat — a clean weave instead of a
-  // pile of humps. Every member reaches this same verdict from the same
-  // stack, so no wire bumps alone into a flat crowd.
-  if (maxHeight > EDGE_HOP_MAX_RADIUS) {
-    return undefined;
-  }
-  return ownHeight;
 }
 
 function getPointAtPolylineRatio(points: Array<{ x: number; y: number }>, ratio: number) {
@@ -6301,6 +6163,54 @@ function getInitialResourceColor(resource: ResourceEdgeData["resource"]) {
     resource.iconAtlas?.dominantColor ??
     (resource.kind === "fluid" ? DEFAULT_FLUID_EDGE_COLOR : DEFAULT_ITEM_EDGE_COLOR)
   );
+}
+
+function getArrowHeadPoints(targetX: number, targetY: number, targetPosition: unknown) {
+  const length = 8;
+  const width = 5;
+
+  switch (String(targetPosition)) {
+    case "right":
+      return `${targetX + length},${targetY - width} ${targetX},${targetY} ${targetX + length},${targetY + width}`;
+    case "top":
+      return `${targetX - width},${targetY - length} ${targetX},${targetY} ${targetX + width},${targetY - length}`;
+    case "bottom":
+      return `${targetX - width},${targetY + length} ${targetX},${targetY} ${targetX + width},${targetY + length}`;
+    case "left":
+    default:
+      return `${targetX - length},${targetY - width} ${targetX},${targetY} ${targetX - length},${targetY + width}`;
+  }
+}
+
+function getArrowHeadPointsForRoute({
+  points,
+  estimatedTargetX,
+  estimatedTargetY,
+  estimatedTargetPosition,
+}: {
+  points: Array<{ x: number; y: number }>;
+  estimatedTargetX: number;
+  estimatedTargetY: number;
+  estimatedTargetPosition: unknown;
+}) {
+  const routeTarget = points[points.length - 1];
+  const routePrevious = points[points.length - 2];
+  if (!routeTarget || !routePrevious) {
+    return getArrowHeadPoints(estimatedTargetX, estimatedTargetY, estimatedTargetPosition);
+  }
+
+  const distanceX = routeTarget.x - routePrevious.x;
+  const distanceY = routeTarget.y - routePrevious.y;
+  const isVertical = Math.abs(distanceY) > Math.abs(distanceX);
+  const targetPosition = isVertical
+    ? distanceY >= 0
+      ? Position.Top
+      : Position.Bottom
+    : distanceX >= 0
+      ? Position.Left
+      : Position.Right;
+
+  return getArrowHeadPoints(routeTarget.x, routeTarget.y, targetPosition);
 }
 
 function isCompatibleResourceConnection(

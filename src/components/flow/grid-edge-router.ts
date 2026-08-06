@@ -106,10 +106,12 @@ export interface GridRoutedEdge {
 const COST_EMPTY = 1;
 /**
  * Cost per pixel on a lane that already carries wires this one FITS beside.
- * Below 1 on purpose: wires prefer to travel together, which is what forms
- * ribbons. The heuristic uses this same factor to stay admissible.
+ * ABOVE the empty cost on purpose: travelling together means the next lane
+ * over (20px apart — still reads as a ribbon), not riding 2px off another
+ * wire's shoulder. Squeezing into an occupied lane is what a wire does when
+ * the free lanes nearby are blocked or long detours, not its first choice.
  */
-const COST_SHARED = 0.85;
+const COST_SHARED = 1.3;
 /**
  * Cost per pixel on a lane this wire does NOT fit into. High enough that any
  * one-lane detour (two turns + a cell over and back) beats overlapping for
@@ -196,13 +198,15 @@ class LaneOccupancy {
 }
 
 /**
- * Where in the lane a new wire of `width` sits, given what is already there:
- * the free interval closest to the line's centre. First wire rides dead
- * centre; the next slots beside it; a wire that fits nowhere returns centre
- * again — that is the sanctioned port-stub overlap, and the A* cost has
- * already made sure it only happens where there was no alternative.
+ * Where in the lane a new wire of `width` sits, given what is already there.
+ * A lone wire rides dead centre. A joiner slots beside the existing claims —
+ * on the side of its own upcoming turn when it has one (`prefer` −1/+1), so
+ * a wire about to peel off leftward sits on the left of the bundle and never
+ * has to cross its lane-mates to leave. A wire that fits nowhere returns
+ * centre again — that is the sanctioned port-stub overlap, and the A* cost
+ * has already made sure it only happens where there was no alternative.
  */
-function packIntoLane(existing: LaneClaim[], width: number): LaneClaim {
+function packIntoLane(existing: LaneClaim[], width: number, prefer: number): LaneClaim {
   const half = LANE_CAPACITY / 2;
   const tryAt = (center: number): LaneClaim | undefined => {
     const lo = center - width / 2;
@@ -223,7 +227,12 @@ function packIntoLane(existing: LaneClaim[], width: number): LaneClaim {
     candidates.push(claim.hi + LANE_GAP + width / 2);
     candidates.push(claim.lo - LANE_GAP - width / 2);
   }
-  candidates.sort((left, right) => Math.abs(left) - Math.abs(right) || left - right);
+  candidates.sort((left, right) =>
+    prefer !== 0
+      ? // Toward the exit side first; nearest the centre among equals.
+        prefer * (right - left) || Math.abs(left) - Math.abs(right)
+      : Math.abs(left) - Math.abs(right) || left - right,
+  );
   for (const center of candidates) {
     const slot = tryAt(center);
     if (slot) {
@@ -516,7 +525,8 @@ function routeWithinWindow(
         best = manhattan;
       }
     }
-    return best * COST_SHARED;
+    // Admissible: no move costs less than COST_EMPTY per pixel.
+    return best * COST_EMPTY;
   };
 
   // g-scores per (vertex, incoming direction); direction 0..3, plus the
@@ -739,36 +749,51 @@ function claimAndAssemble(
   for (let i = 0; i + 1 < vertices.length; i += 1) {
     const a = vertices[i];
     const b = vertices[i + 1];
-    const run: Run =
+    runs.push(
       a.y === b.y
         ? { axis: "h", line: a.y, from: a.x, to: b.x, drawn: a.y }
-        : { axis: "v", line: a.x, from: a.y, to: b.y, drawn: a.x };
+        : { axis: "v", line: a.x, from: a.y, to: b.y, drawn: a.x },
+    );
+  }
+  // Which side of its lane each run should sit on: the side of the turn at
+  // the run's end (the last run turns toward its target anchor). A wire that
+  // will peel off leftward rides the left of a shared bundle, so leaving
+  // never means crossing over a lane-mate — the crossing the pack order used
+  // to manufacture at exactly the wrong moment.
+  const departureFor = (index: number): number => {
+    const run = runs[index];
+    const next =
+      index + 1 < runs.length
+        ? runs[index + 1].line
+        : run.axis === "h"
+          ? target.y
+          : target.x;
+    return Math.sign(next - run.line);
+  };
+  runs.forEach((run, index) => {
     const existing = context.occupancy.claimsFor(run.axis, run.line, run.from, run.to);
-    const slot = packIntoLane(existing, request.strokeWidth);
+    const slot = packIntoLane(existing, request.strokeWidth, departureFor(index));
     run.drawn = run.line + (slot.lo + slot.hi) / 2;
     context.occupancy.claim(run.axis, run.line, run.from, run.to, slot);
-    runs.push(run);
-  }
-
-  // A first/last run that rides the port's own line keeps the anchor's exact
-  // coordinate instead of its lane offset, so the wire leaves and enters a
-  // port dead straight — the offset would be a pointless few-pixel jog right
-  // at the coupling. Its lane claim stands either way.
-  if (runs[0].axis === sourceStubAxis) {
-    runs[0].drawn = sourceStubAxis === "h" ? source.y : source.x;
-  }
-  if (runs[runs.length - 1].axis === targetStubAxis) {
-    const last = runs[runs.length - 1];
-    last.drawn = targetStubAxis === "h" ? target.y : target.x;
-  }
+  });
 
   const points: GridPoint[] = [{ x: source.x, y: source.y }];
 
-  // Source stub onto the first run.
+  // Source stub onto the first run. When the run is PARALLEL to the stub
+  // (the wire sets off along its own port line), it goes straight only as
+  // far as the apron vertex, then jogs onto its packed lane. Pinning the
+  // whole run to the anchor — the previous behaviour — put every wire out
+  // of the same port on literally the same line for the run's full length.
   const first = runs[0];
-  if (first.axis !== sourceStubAxis) {
-    // The run is perpendicular to the way the wire leaves the port: travel
-    // straight out at the anchor's coordinate until the run's drawn line.
+  const sourceApron = vertices[0];
+  if (first.axis === sourceStubAxis) {
+    if (sourceStubAxis === "h") {
+      points.push({ x: sourceApron.x, y: source.y }, { x: sourceApron.x, y: first.drawn });
+    } else {
+      points.push({ x: source.x, y: sourceApron.y }, { x: first.drawn, y: sourceApron.y });
+    }
+  } else {
+    // Perpendicular: straight out at the anchor's coordinate to the run.
     points.push(
       sourceStubAxis === "h" ? { x: first.drawn, y: source.y } : { x: source.x, y: first.drawn },
     );
@@ -784,26 +809,20 @@ function claimAndAssemble(
     });
   }
 
-  // Target stub off the last run.
+  // Target stub off the last run, mirroring the source: lane until the
+  // apron, jog to the anchor, straight in.
   const last = runs[runs.length - 1];
-  if (last.axis !== targetStubAxis) {
+  const targetApron = vertices[vertices.length - 1];
+  if (last.axis === targetStubAxis) {
+    if (targetStubAxis === "h") {
+      points.push({ x: targetApron.x, y: last.drawn }, { x: targetApron.x, y: target.y });
+    } else {
+      points.push({ x: last.drawn, y: targetApron.y }, { x: target.x, y: targetApron.y });
+    }
+  } else {
     points.push(
       targetStubAxis === "h" ? { x: last.drawn, y: target.y } : { x: target.x, y: last.drawn },
     );
-  } else if (runs.length === 1 && first.axis === sourceStubAxis) {
-    // One run shared by both stubs (straight shot port to port): the run was
-    // pinned to the SOURCE anchor above, so jog across to the target's
-    // coordinate at the run's midpoint if the two anchors disagree.
-    const sourceCoord = sourceStubAxis === "h" ? source.y : source.x;
-    const targetCoord = targetStubAxis === "h" ? target.y : target.x;
-    if (Math.abs(sourceCoord - targetCoord) > 0.5) {
-      const mid = snapLine((first.from + first.to) / 2);
-      if (first.axis === "h") {
-        points.push({ x: mid, y: source.y }, { x: mid, y: target.y });
-      } else {
-        points.push({ x: source.x, y: mid }, { x: target.x, y: mid });
-      }
-    }
   }
   points.push({ x: target.x, y: target.y });
 
