@@ -175,7 +175,9 @@ import {
   edgePulseCount,
   eraseEdgePulseOcclusion,
   publishEdgePulse,
+  publishEdgeWaypointDots,
   retractEdgePulse,
+  retractEdgeWaypointDots,
 } from "./edge-pulse";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
@@ -4104,8 +4106,28 @@ function ResourceEdgeComponent({
       bottom: bottom + margin,
     });
   });
+  // Where this edge's waypoint dots sit, for the dash canvas to punch out —
+  // the canvas paints above the SVG, so without this the dashes march right
+  // over the dots. Published every render (drafts move per pointer frame);
+  // a handful of circles, so the churn is nothing.
+  useEffect(() => {
+    if (activeWaypoints && activeWaypoints.length > 0) {
+      publishEdgeWaypointDots(
+        id,
+        activeWaypoints.map((point) => ({
+          x: point.x,
+          y: point.y,
+          // Circle radius + its 2px ring, with a hair of air.
+          r: coreStrokeWidth / 2 + 6,
+        })),
+      );
+    } else {
+      retractEdgeWaypointDots(id);
+    }
+  });
   useEffect(() => () => {
     retractEdgePulse(id);
+    retractEdgeWaypointDots(id);
   }, [id]);
 
   return (
@@ -4299,9 +4321,14 @@ function ResourceEdgeComponent({
                 if (!flowPoint) {
                   return;
                 }
+                // Clicky, not smooth: the dot lives on the grid, so it MOVES
+                // on the grid — cell to cell under the pointer, exactly where
+                // it will land, instead of gliding free and snapping late.
+                const snappedX = Math.round(flowPoint.x / BOARD_GRID) * BOARD_GRID;
+                const snappedY = Math.round(flowPoint.y / BOARD_GRID) * BOARD_GRID;
                 setDraftWaypoints((current) =>
                   current?.map((point, pointIndex) =>
-                    pointIndex === drag.index ? { x: flowPoint.x, y: flowPoint.y } : point,
+                    pointIndex === drag.index ? { x: snappedX, y: snappedY } : point,
                   ),
                 );
               }}

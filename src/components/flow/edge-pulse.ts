@@ -190,7 +190,43 @@ export function eraseEdgePulseOcclusion(
     context.fillRect(box.left, box.top, box.width, box.height);
   }
 
+  // Waypoint dots sit ON the wires, so without this the dashes march right
+  // over them. Circles, not rects — a square hole poking out around a round
+  // dot reads as a rendering glitch.
+  for (const dots of waypointDots.values()) {
+    for (const dot of dots) {
+      if (
+        dot.x + dot.r < visible.left ||
+        dot.x - dot.r > visible.right ||
+        dot.y + dot.r < visible.top ||
+        dot.y - dot.r > visible.bottom
+      ) {
+        continue;
+      }
+      context.beginPath();
+      context.arc(dot.x, dot.y, dot.r, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+
   context.globalCompositeOperation = previousOperation;
+}
+
+interface EdgeWaypointDot {
+  x: number;
+  y: number;
+  r: number;
+}
+
+const waypointDots = new Map<string, EdgeWaypointDot[]>();
+
+/** The dot circles the dash canvas must not paint over, per edge. */
+export function publishEdgeWaypointDots(edgeId: string, dots: EdgeWaypointDot[]) {
+  waypointDots.set(edgeId, dots);
+}
+
+export function retractEdgeWaypointDots(edgeId: string) {
+  waypointDots.delete(edgeId);
 }
 
 /** Colour and cap match the SVG overlay this replaces, exactly. */
