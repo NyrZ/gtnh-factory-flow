@@ -2902,6 +2902,11 @@ export function FactoryFlow() {
         fitView
         fitViewOptions={fitViewOptions}
         onlyRenderVisibleElements
+        // Double-click PINS AND UNPINS waypoint dots now, so the gesture can
+        // no longer also mean "zoom in". d3's dblclick.zoom listener sits on
+        // the pane, upstream of React's synthetic events — stopPropagation
+        // in the dot handlers can never reach it, so it goes off wholesale.
+        zoomOnDoubleClick={false}
         minZoom={0.15}
         maxZoom={1.8}
         // React Flow's default ("basic") raises every edge to at least the
