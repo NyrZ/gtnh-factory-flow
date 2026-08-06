@@ -2,11 +2,12 @@
 
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { memo, useState } from "react";
-import { Copy, Expand, PackageOpen } from "lucide-react";
+import { Copy, Expand, PackageOpen, Save } from "lucide-react";
 import type { FactoryPocket } from "@/lib/model/types";
 import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
+import { useBlueprintStore } from "@/store/blueprint-store";
 import { makeResourceHandleId } from "./resource-handles";
 import { formatSlotRateOrNull } from "./flow-explainers";
 import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
@@ -68,6 +69,16 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
     }
   };
 
+  // Shelve the whole dimension as a blueprint, no questions asked: the
+  // pocket's own name IS the blueprint's name (rename the pocket to rename
+  // the next save). The blueprint panel's Mine shelf shows the result.
+  const saveAsBlueprint = () => {
+    const payload = captureBoardSelection(useFactoryStore.getState().project, [pocket.id]);
+    if (payload) {
+      void useBlueprintStore.getState().save(pocket.name, payload);
+    }
+  };
+
   return (
     <div
       className={[
@@ -98,7 +109,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
         <NodeGlanceText text="✦" className={INK_MUTED} />
         <div className="px-2">
           {/* One head row, exactly two cells tall, like every machine card. */}
-          <div className="grid h-[40px] min-w-0 grid-cols-[24px_24px_24px_minmax(0,1fr)] items-center gap-1">
+          <div className="grid h-[40px] min-w-0 grid-cols-[24px_24px_24px_24px_minmax(0,1fr)] items-center gap-1">
             <button
               type="button"
               onClick={(event) => {
@@ -122,6 +133,18 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               aria-label={`Clone pocket ${pocket.name}`}
             >
               <Copy aria-hidden className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                saveAsBlueprint();
+              }}
+              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+              title={`Save "${pocket.name}" to my blueprints (sign in required)`}
+              aria-label={`Save pocket ${pocket.name} as a blueprint`}
+            >
+              <Save aria-hidden className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"

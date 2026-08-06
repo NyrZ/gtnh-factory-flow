@@ -8,7 +8,6 @@ import {
   Globe,
   LoaderCircle,
   MapPinPlus,
-  Save,
   Search,
   Trash2,
   User,
@@ -26,7 +25,7 @@ import { snapPositionToGrid } from "@/lib/board-grid";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useCommunityUser } from "@/components/community/auth";
 import { useBlueprintStore } from "@/store/blueprint-store";
-import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
+import { useFactoryStore } from "@/store/factory-store";
 import type { BoardClipboardPayload } from "@/store/factory-store";
 
 /**
@@ -116,44 +115,19 @@ function MineShelf() {
   const isSaving = useBlueprintStore((state) => state.isSaving);
   const busyId = useBlueprintStore((state) => state.busyId);
   const error = useBlueprintStore((state) => state.error);
-  const save = useBlueprintStore((state) => state.save);
   const load = useBlueprintStore((state) => state.load);
   const remove = useBlueprintStore((state) => state.remove);
   const publish = useBlueprintStore((state) => state.publish);
 
-  const selectedBoardIds = useFactoryStore((state) => state.selectedBoardIds);
-  const [draftName, setDraftName] = useState<string | undefined>(undefined);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | undefined>(undefined);
-  const [publishDraftId, setPublishDraftId] = useState<string | undefined>(undefined);
-  const [publishDescription, setPublishDescription] = useState("");
   const [query, setQuery] = useState("");
   const [pocketsOnly, setPocketsOnly] = useState(false);
-
-  const commitSave = async () => {
-    const name = draftName?.trim();
-    setDraftName(undefined);
-    if (!name) {
-      return;
-    }
-    const state = useFactoryStore.getState();
-    const payload = captureBoardSelection(state.project, state.selectedBoardIds);
-    if (!payload) {
-      return;
-    }
-    await save(name, payload);
-  };
 
   const place = async (blueprintId: string) => {
     const payload = await load(blueprintId);
     if (payload) {
       placePayload(payload);
     }
-  };
-
-  const commitPublish = async (blueprintId: string) => {
-    setPublishDraftId(undefined);
-    await publish(blueprintId, true, publishDescription);
-    setPublishDescription("");
   };
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -163,7 +137,6 @@ function MineShelf() {
       (normalizedQuery.length === 0 || blueprint.name.toLowerCase().includes(normalizedQuery)),
   );
   const isFiltering = pocketsOnly || normalizedQuery.length > 0;
-  const canSave = Boolean(user) && selectedBoardIds.length > 0 && !isSaving;
 
   return (
     <>
@@ -175,25 +148,10 @@ function MineShelf() {
               <span className="ml-1 text-neutral-600">({blueprints.length})</span>
             ) : null}
           </span>
-          {user ? (
-            <button
-              type="button"
-              disabled={!canSave}
-              onClick={() => setDraftName(`Blueprint ${blueprints.length + 1}`)}
-              title={
-                canSave
-                  ? `Save the ${selectedBoardIds.length} selected card${selectedBoardIds.length === 1 ? "" : "s"} as a blueprint`
-                  : "Select cards on the board first"
-              }
-              className="flex h-6 items-center gap-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1.5 text-[11px] text-neutral-100 enabled:hover:border-cyan-500 enabled:hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isSaving ? (
-                <LoaderCircle className="h-3 w-3 animate-spin" />
-              ) : (
-                <Save className="h-3 w-3" />
-              )}
-              Save selection
-            </button>
+          {isSaving ? (
+            <span className="flex items-center gap-1 text-[10px] text-neutral-500">
+              <LoaderCircle className="h-3 w-3 animate-spin" /> Saving…
+            </span>
           ) : null}
         </div>
 
@@ -260,51 +218,12 @@ function MineShelf() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-        {draftName !== undefined ? (
-          <div className="mb-1.5 flex items-center gap-1">
-            <input
-              autoFocus
-              value={draftName}
-              maxLength={60}
-              onChange={(event) => setDraftName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  void commitSave();
-                }
-                if (event.key === "Escape") {
-                  setDraftName(undefined);
-                }
-              }}
-              placeholder="Blueprint name"
-              className="h-7 min-w-0 flex-1 rounded-[4px] border border-cyan-600 bg-[#17191d] px-1.5 text-xs text-neutral-100 outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => void commitSave()}
-              title="Save"
-              aria-label="Save blueprint"
-              className="flex h-7 w-7 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-100 hover:border-cyan-500"
-            >
-              <Save className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setDraftName(undefined)}
-              title="Cancel"
-              aria-label="Cancel saving blueprint"
-              className="flex h-7 w-7 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ) : null}
-
         {error ? <p className="mb-1.5 px-0.5 text-[11px] text-red-400">{error}</p> : null}
 
         {isAuthLoading ? null : !user ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
-            Sign in (top right) to keep a cloud library of sub-assemblies: select cards on the
-            board, save them here, publish your best to the network.
+            Sign in (top right) to keep a cloud library of sub-assemblies: hit the save button on
+            any pocket card to shelve it here, publish your best to the network.
           </p>
         ) : isLoading && !hasLoaded ? (
           <p className="flex items-center gap-1.5 px-0.5 pt-1 text-[11px] text-neutral-500">
@@ -312,8 +231,8 @@ function MineShelf() {
           </p>
         ) : blueprints.length === 0 ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
-            Nothing saved yet. Select cards on the board, then hit Save above — the selection
-            becomes a reusable sub-assembly. A selected pocket card saves the whole dimension.
+            Nothing saved yet. Compact cards into a pocket (Ctrl+G), then hit the save button on
+            the pocket card — the whole dimension lands here under the pocket&apos;s name.
           </p>
         ) : filtered.length === 0 && isFiltering ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
@@ -324,7 +243,6 @@ function MineShelf() {
             {filtered.map((blueprint) => {
               const isBusy = busyId === blueprint.id;
               const confirming = confirmDeleteId === blueprint.id;
-              const drafting = publishDraftId === blueprint.id;
               return (
                 <li
                   key={blueprint.id}
@@ -348,16 +266,7 @@ function MineShelf() {
                     <button
                       type="button"
                       disabled={isBusy}
-                      onClick={() => {
-                        if (blueprint.isPublic) {
-                          void publish(blueprint.id, false);
-                        } else if (drafting) {
-                          setPublishDraftId(undefined);
-                        } else {
-                          setPublishDraftId(blueprint.id);
-                          setPublishDescription(blueprint.description ?? "");
-                        }
-                      }}
+                      onClick={() => void publish(blueprint.id, !blueprint.isPublic)}
                       title={
                         blueprint.isPublic
                           ? "Published to the network — click to unpublish"
@@ -401,33 +310,6 @@ function MineShelf() {
                       </button>
                     )}
                   </div>
-                  {drafting ? (
-                    <div className="mt-1 flex items-center gap-1 pl-5">
-                      <input
-                        autoFocus
-                        value={publishDescription}
-                        maxLength={500}
-                        onChange={(event) => setPublishDescription(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            void commitPublish(blueprint.id);
-                          }
-                          if (event.key === "Escape") {
-                            setPublishDraftId(undefined);
-                          }
-                        }}
-                        placeholder="One line about what this builds (optional)"
-                        className="h-7 min-w-0 flex-1 rounded-[4px] border border-emerald-600 bg-[#17191d] px-1.5 text-xs text-neutral-100 outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void commitPublish(blueprint.id)}
-                        className="h-7 shrink-0 rounded-[4px] border border-emerald-700 bg-emerald-950 px-2 text-[11px] text-emerald-300 hover:bg-emerald-900"
-                      >
-                        Publish
-                      </button>
-                    </div>
-                  ) : null}
                   <div className="mt-0.5 flex items-center gap-2 pl-5 text-[10px] text-neutral-500">
                     <span title={new Date(blueprint.createdAt).toLocaleString()}>
                       {formatRelativeDate(blueprint.createdAt)}
@@ -602,7 +484,7 @@ function PublicBlueprintRow({
 }) {
   return (
     <li className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500">
-      <div className="flex items-center gap-1">
+      <div className="flex items-start gap-1.5">
         {/* The vote column: score between the arrows, the browser's own vote lit. */}
         <div className="flex shrink-0 flex-col items-center">
           <button
@@ -644,32 +526,33 @@ function PublicBlueprintRow({
             <ArrowBigDown className="h-4 w-4" />
           </button>
         </div>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs text-neutral-100">
+            {blueprint.name}
+            {blueprint.isMine ? <span className="ml-1 text-[9px] text-cyan-400">yours</span> : null}
+          </span>
+          {blueprint.description ? (
+            <span
+              className="block truncate text-[10px] text-neutral-500"
+              title={blueprint.description}
+            >
+              {blueprint.description}
+            </span>
+          ) : null}
+        </span>
         <button
           type="button"
           disabled={isBusy}
           onClick={onPlace}
-          title="Place this blueprint on the board"
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          title="Download onto your board"
+          aria-label={`Download blueprint ${blueprint.name}`}
+          className="flex h-6 w-6 shrink-0 items-center justify-center self-start rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
         >
           {isBusy ? (
-            <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-emerald-300" />
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin text-emerald-300" />
           ) : (
-            <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-emerald-300" />
+            <Download className="h-3.5 w-3.5" />
           )}
-          <span className="min-w-0">
-            <span className="block truncate text-xs text-neutral-100">
-              {blueprint.name}
-              {blueprint.isMine ? <span className="ml-1 text-[9px] text-cyan-400">yours</span> : null}
-            </span>
-            {blueprint.description ? (
-              <span
-                className="block truncate text-[10px] text-neutral-500"
-                title={blueprint.description}
-              >
-                {blueprint.description}
-              </span>
-            ) : null}
-          </span>
         </button>
       </div>
       <div className="mt-0.5 flex items-center gap-2 pl-6 text-[10px] text-neutral-500">
