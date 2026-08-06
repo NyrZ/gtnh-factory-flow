@@ -80,6 +80,13 @@ export interface GridEndpoint {
   x: number;
   y: number;
   side: GridSide;
+  /**
+   * Extra cost for choosing this dock, in pixel-equivalents. The host uses
+   * it for the centre bias: docks near the middle of a side are free, docks
+   * out toward the corners pay — so a wire attaches near-centre whenever
+   * that costs less than the penalty, including taking a turn to do it.
+   */
+  penalty?: number;
 }
 
 export interface GridRouteRequest {
@@ -617,19 +624,30 @@ function routeWithinWindow(
     left.f - right.f || left.g - right.g || left.seq - right.seq;
 
   for (const start of starts) {
+    const startPenalty = sources[start.endpointIndex]?.penalty ?? 0;
     for (let dir = 0; dir < 4; dir += 1) {
       const state = start.vertex * 4 + dir;
-      gScores[state] = 0;
-      startOf[state] = start.endpointIndex;
-      push({ f: heuristic(start.vertex), g: 0, state, seq: (seq += 1) });
+      if (startPenalty < gScores[state]) {
+        gScores[state] = startPenalty;
+        startOf[state] = start.endpointIndex;
+        push({ f: startPenalty + heuristic(start.vertex), g: startPenalty, state, seq: (seq += 1) });
+      }
     }
   }
 
+  // Goals carry penalties too, so the first goal popped is not necessarily
+  // the winner: keep the best (g + penalty) seen and stop only once nothing
+  // left in the heap could beat it. Penalties are small, so the extra
+  // exploration is a handful of pops.
   let goalState = -1;
+  let goalCost = Infinity;
   let pops = 0;
   while (heap.length > 0) {
     const current = pop();
     if (!current) {
+      break;
+    }
+    if (current.f >= goalCost) {
       break;
     }
     if (current.g > gScores[current.state] + 1e-9) {
@@ -641,9 +659,15 @@ function routeWithinWindow(
     }
     const vertex = Math.floor(current.state / 4);
     const currentDir = current.state % 4;
-    if (goals.has(vertex)) {
-      goalState = current.state;
-      break;
+    const goalIndex = goals.get(vertex);
+    if (goalIndex !== undefined) {
+      const cost = current.g + (targets[goalIndex]?.penalty ?? 0);
+      if (cost < goalCost) {
+        goalCost = cost;
+        goalState = current.state;
+      }
+      // No break, no skip: goal vertices are ordinary ring vertices that
+      // other routes (and cheaper docks past this one) travel through.
     }
 
     const xi = Math.floor(vertex / yCount);

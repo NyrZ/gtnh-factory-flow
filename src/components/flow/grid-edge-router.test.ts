@@ -258,6 +258,34 @@ describe("solveGridRoutes", () => {
     expect(key(first[first.length - 1])).not.toBe(key(second[second.length - 1]));
   });
 
+  it("prefers penalty-free docks when routes cost the same", () => {
+    const a = card("a", 0, 0);
+    const b = card("b", 600, 0);
+    // Facing cards: every right-side dock of A pairs with a left-side dock
+    // of B at identical route cost, so the centre bias (penalties) must be
+    // the tiebreak — without it the corner-most seed wins on heap order.
+    const docks = (x: number, side: "left" | "right", center: number) => {
+      const list: GridRouteRequest["sources"] = [];
+      for (let y = 40; y <= 120; y += 40) {
+        list.push({ x, y, side, penalty: Math.abs(y - center) * 0.25 });
+      }
+      return list;
+    };
+    const routes = solveGridRoutes(
+      [a, b],
+      [
+        request({
+          edgeId: "e1",
+          sources: docks(360, "right", 80),
+          targets: docks(600, "left", 80),
+        }),
+      ],
+    );
+    const points = routes.get("e1")!.points;
+    expect(points[0].y).toBe(80);
+    expect(points[points.length - 1].y).toBe(80);
+  });
+
   it("is deterministic", () => {
     const obstacles = [card("a", 0, 0), card("b", 700, 300), card("c", 200, 400)];
     const requests = [

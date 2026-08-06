@@ -733,15 +733,41 @@ function resolveGridRouteEndpoints(
   // cards coarsen to every other line so the candidate set stays bounded.
   const perimeterCells = (right - left + (bottom - top)) / BOARD_GRID;
   const step = perimeterCells > 60 ? 2 * BOARD_GRID : BOARD_GRID;
+  // Corners and their neighbourhoods are off limits: a wire hanging off the
+  // very corner of a card reads as clipped through it. Docks start two
+  // cells in from each corner — close is fine, corner is not.
+  const cornerKeepOut = 2 * BOARD_GRID;
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
   const candidates: GridEndpoint[] = [];
-  for (let x = left; x <= right; x += step) {
-    candidates.push({ x, y: top, side: "top" }, { x, y: bottom, side: "bottom" });
+  for (let x = left + cornerKeepOut; x <= right - cornerKeepOut; x += step) {
+    const penalty = Math.abs(x - centerX) * DOCK_CENTER_BIAS;
+    candidates.push({ x, y: top, side: "top", penalty }, { x, y: bottom, side: "bottom", penalty });
   }
-  for (let y = top; y <= bottom; y += step) {
-    candidates.push({ x: left, y, side: "left" }, { x: right, y, side: "right" });
+  for (let y = top + cornerKeepOut; y <= bottom - cornerKeepOut; y += step) {
+    const penalty = Math.abs(y - centerY) * DOCK_CENTER_BIAS;
+    candidates.push({ x: left, y, side: "left", penalty }, { x: right, y, side: "right", penalty });
+  }
+  // A card too small to keep two cells off every corner (nothing on the
+  // board today, but a future tiny widget) falls back to its side centres.
+  if (candidates.length === 0) {
+    candidates.push(
+      { x: left, y: snap(centerY), side: "left" },
+      { x: right, y: snap(centerY), side: "right" },
+      { x: snap(centerX), y: top, side: "top" },
+      { x: snap(centerX), y: bottom, side: "bottom" },
+    );
   }
   return candidates;
 }
+
+/**
+ * Cost per pixel of distance from a side's centre when choosing a dock. At
+ * 0.25, docking mid-way out a machine's long side costs about one extra
+ * turn — so wires facing each other meet centre-to-centre, and a wire only
+ * slides toward a corner when the route genuinely earns it.
+ */
+const DOCK_CENTER_BIAS = 0.25;
 
 /**
  * Runs the grid solve if anything it depends on changed, and parks every
@@ -3993,46 +4019,40 @@ function ResourceEdgeComponent({
               so one per edge repainted the entire board every frame. */}
         </>
       )}
-      {showArrowHead ? (
-        <polyline
-          points={getArrowHeadPointsForRoute({
-            points: routedEdge.points,
-            estimatedTargetX: visualTarget.x,
-            estimatedTargetY: visualTarget.y,
-            estimatedTargetPosition: visualTarget.side,
-          })}
-          stroke="var(--mc-15)"
-          strokeWidth={isHighlighted ? 4 : 3.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-          style={{
-            opacity: isEdgeStarved(data) ? 0.72 : 0.95,
-            filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
-            pointerEvents: "none",
-          }}
-        />
-      ) : null}
-      {showArrowHead ? (
-        <polyline
-          points={getArrowHeadPointsForRoute({
-            points: routedEdge.points,
-            estimatedTargetX: visualTarget.x,
-            estimatedTargetY: visualTarget.y,
-            estimatedTargetPosition: visualTarget.side,
-          })}
-          stroke={edgeColor}
-          strokeWidth={isHighlighted ? 2.2 : 1.8}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-          style={{
-            opacity: isEdgeStarved(data) ? 0.78 : 1,
-            filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
-            pointerEvents: "none",
-          }}
-        />
-      ) : null}
+      {/* Direction chevrons, one near each end when the marching dashes are
+          off: the source's says "flow leaves here", the target's "flow lands
+          here". Both are pulled back off the cards — the last stretch of a
+          wire sits in the margin or under the card, where an arrow drowns.
+          White over a dark halo so they read on every wire colour, sized to
+          the stroke: a regular little arrow on a thin wire, fitting INSIDE
+          the stroke on a fat pipe. */}
+      {showArrowHead
+        ? getRouteChevrons(routedEdge.points, coreStrokeWidth).map((chevron, index) => (
+            <g key={index} style={{ pointerEvents: "none" }}>
+              <polyline
+                points={chevron}
+                stroke="#111827"
+                strokeWidth={Math.min(2 + coreStrokeWidth * 0.12, 4) + 2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                opacity={isEdgeStarved(data) ? 0.75 : 0.9}
+              />
+              <polyline
+                points={chevron}
+                stroke="#f8fafc"
+                strokeWidth={Math.min(2 + coreStrokeWidth * 0.12, 4)}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                opacity={isEdgeStarved(data) ? 0.8 : 1}
+                style={{
+                  filter: isHighlighted ? "drop-shadow(0 0 4px rgba(34,211,238,0.9))" : undefined,
+                }}
+              />
+            </g>
+          ))
+        : null}
       {hoverPathD ? (
         <path
           d={hoverPathD}
@@ -6202,52 +6222,67 @@ function getInitialResourceColor(resource: ResourceEdgeData["resource"]) {
   );
 }
 
-function getArrowHeadPoints(targetX: number, targetY: number, targetPosition: unknown) {
-  const length = 8;
-  const width = 5;
+/**
+ * How far a chevron sits back from a wire's endpoint. The final stretch of a
+ * wire is the margin crossing and the bit tucked at the card border — under
+ * the card in thickness mode — so an arrow at the anchor was half-buried.
+ * One cell of margin plus half a cell of air puts it in clear canvas.
+ */
+const ARROW_SETBACK = 30;
 
-  switch (String(targetPosition)) {
-    case "right":
-      return `${targetX + length},${targetY - width} ${targetX},${targetY} ${targetX + length},${targetY + width}`;
-    case "top":
-      return `${targetX - width},${targetY - length} ${targetX},${targetY} ${targetX + width},${targetY - length}`;
-    case "bottom":
-      return `${targetX - width},${targetY + length} ${targetX},${targetY} ${targetX + width},${targetY + length}`;
-    case "left":
-    default:
-      return `${targetX - length},${targetY - width} ${targetX},${targetY} ${targetX - length},${targetY + width}`;
-  }
-}
-
-function getArrowHeadPointsForRoute({
-  points,
-  estimatedTargetX,
-  estimatedTargetY,
-  estimatedTargetPosition,
-}: {
-  points: Array<{ x: number; y: number }>;
-  estimatedTargetX: number;
-  estimatedTargetY: number;
-  estimatedTargetPosition: unknown;
-}) {
-  const routeTarget = points[points.length - 1];
-  const routePrevious = points[points.length - 2];
-  if (!routeTarget || !routePrevious) {
-    return getArrowHeadPoints(estimatedTargetX, estimatedTargetY, estimatedTargetPosition);
+/**
+ * Direction chevrons along a routed wire, as SVG polyline point strings.
+ * One near each end (source and target) when the route is long enough, one
+ * in the middle when it is not. Sized to the stroke: wider than a thin wire
+ * (a regular little arrow), capped so it fits INSIDE a full-lane pipe.
+ */
+function getRouteChevrons(
+  points: Array<{ x: number; y: number }>,
+  strokeWidth: number,
+): string[] {
+  const segments = getPolylineSegments(points);
+  const total = segments.reduce((sum, segment) => sum + segment.length, 0);
+  if (total < 24) {
+    return [];
   }
 
-  const distanceX = routeTarget.x - routePrevious.x;
-  const distanceY = routeTarget.y - routePrevious.y;
-  const isVertical = Math.abs(distanceY) > Math.abs(distanceX);
-  const targetPosition = isVertical
-    ? distanceY >= 0
-      ? Position.Top
-      : Position.Bottom
-    : distanceX >= 0
-      ? Position.Left
-      : Position.Right;
+  const halfWidth = Math.max(3.5, Math.min(strokeWidth * 0.42, 7));
+  const length = halfWidth * 1.6;
 
-  return getArrowHeadPoints(routeTarget.x, routeTarget.y, targetPosition);
+  // The point and travel direction at `distance` along the polyline.
+  const at = (distance: number): { x: number; y: number; dx: number; dy: number } => {
+    let walked = 0;
+    for (const segment of segments) {
+      if (walked + segment.length >= distance || segment === segments[segments.length - 1]) {
+        const t = Math.min(Math.max((distance - walked) / segment.length, 0), 1);
+        return {
+          x: segment.start.x + (segment.end.x - segment.start.x) * t,
+          y: segment.start.y + (segment.end.y - segment.start.y) * t,
+          dx: (segment.end.x - segment.start.x) / segment.length,
+          dy: (segment.end.y - segment.start.y) / segment.length,
+        };
+      }
+      walked += segment.length;
+    }
+    const lastPoint = points[points.length - 1];
+    return { x: lastPoint.x, y: lastPoint.y, dx: 1, dy: 0 };
+  };
+
+  const chevronAt = (tipDistance: number): string => {
+    const { x, y, dx, dy } = at(tipDistance);
+    const backX = x - dx * length;
+    const backY = y - dy * length;
+    // Perpendicular wings behind the tip.
+    const wingX = -dy * halfWidth;
+    const wingY = dx * halfWidth;
+    return `${backX + wingX},${backY + wingY} ${x},${y} ${backX - wingX},${backY - wingY}`;
+  };
+
+  // Short wire: one chevron at the middle says everything there is room for.
+  if (total < 2 * ARROW_SETBACK + 3 * length) {
+    return [chevronAt(total / 2 + length / 2)];
+  }
+  return [chevronAt(ARROW_SETBACK + length), chevronAt(total - ARROW_SETBACK)];
 }
 
 function isCompatibleResourceConnection(
