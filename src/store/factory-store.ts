@@ -53,6 +53,7 @@ import type {
   TargetRate,
   ThroughputResult,
 } from "@/lib/model/types";
+import { collectPocketMembers, resolvePocketMemberIds } from "@/lib/model/pocket-connections";
 
 export const LOCAL_STORAGE_KEY = "gtnh-factory-flow.project.v2";
 export const RESOURCE_HISTORY_STORAGE_KEY = "gtnh-factory-flow.resource-history.v1";
@@ -1715,9 +1716,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const intoPocket = <T extends { id: string; pocketId?: string }>(items: T[]): T[] =>
         items.map((item) => (selected.has(item.id) ? { ...item, pocketId: pocket.id } : item));
 
-      // The graph itself does not change - wires keep running, the solver
-      // never notices. Only what the board SHOWS changes, so no recalc.
-      const project = touchProject({
+      const assembled: FactoryProject = {
         ...state.project,
         nodes: intoPocket(state.project.nodes),
         storages: state.project.storages ? intoPocket(state.project.storages) : undefined,
@@ -1730,8 +1729,15 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           ),
           pocket,
         ],
+      };
+      // The boundary convergence rule may add wires (see
+      // convergePocketBoundaryEdges); membership itself never rewires.
+      const converged = convergePocketBoundaryEdges(assembled, pocket.id);
+      const project = touchProject(converged);
+      return withProjectHistory(state, {
+        project,
+        ...(converged !== assembled ? { lastResult: calculateThroughput(project) } : undefined),
       });
-      return withProjectHistory(state, { project });
     });
     return createdPocketId;
   },
@@ -1741,6 +1747,11 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       if (!pocket) {
         return state;
       }
+
+      // Converge FIRST, while the pocket still exists: a wire that fed the
+      // pocket's port must spill as a wire to everything behind that port,
+      // even when the wiring drifted (an import, members added inside).
+      const converged = convergePocketBoundaryEdges(state.project, pocketId);
 
       // Members surface on the pocket's parent board, exactly where they
       // always were - positions never changed, only visibility.
@@ -1768,11 +1779,11 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       ];
 
       const project = touchProject({
-        ...state.project,
-        nodes: surface(state.project.nodes),
-        storages: state.project.storages ? surface(state.project.storages) : undefined,
-        annotations: state.project.annotations ? surface(state.project.annotations) : undefined,
-        pockets: (state.project.pockets ?? [])
+        ...converged,
+        nodes: surface(converged.nodes),
+        storages: converged.storages ? surface(converged.storages) : undefined,
+        annotations: converged.annotations ? surface(converged.annotations) : undefined,
+        pockets: (converged.pockets ?? [])
           .filter((entry) => entry.id !== pocketId)
           .map((entry) =>
             entry.parentPocketId === pocketId
@@ -1785,6 +1796,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         activePocketId:
           state.activePocketId === pocketId ? pocket.parentPocketId : state.activePocketId,
         pendingBoardSelectionIds: surfacedIds.length > 0 ? surfacedIds : undefined,
+        ...(converged !== state.project ? { lastResult: calculateThroughput(project) } : undefined),
       });
     });
   },
@@ -2570,6 +2582,109 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
         resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, input),
     )
   );
+}
+
+/**
+ * The pocket boundary convergence rule. The collapsed card presents ONE
+ * port per resource, so the wiring underneath must match that story:
+ * whatever feeds a pocket's input feeds EVERY member that takes the
+ * resource, and whatever drinks an output drinks from every member that
+ * offers it. Applied when a pocket forms and again when it unpacks, so
+ * surgical per-machine wiring across the boundary is deliberately
+ * levelled — while wiring wholly inside (or wholly outside) is untouched.
+ * Additive only: existing wires keep their ids, waypoints and overrides;
+ * the rule just completes the fan-out. Returns the project unchanged (same
+ * reference) when nothing was missing.
+ */
+function convergePocketBoundaryEdges(project: FactoryProject, pocketId: string): FactoryProject {
+  const members = collectPocketMembers(project, pocketId);
+  const memberIds = new Set<string>([
+    ...members.nodes.map((node) => node.id),
+    ...members.storages.map((storage) => storage.id),
+  ]);
+
+  interface PortGroup {
+    sample: FactoryEdge;
+    inbound: boolean;
+    portKind: ResourceKind;
+    portResourceId: string;
+    /** Member endpoints this far-end already reaches for this port. */
+    wired: Set<string>;
+  }
+  const groups = new Map<string, PortGroup>();
+  for (const edge of project.edges) {
+    const sourceInside = memberIds.has(edge.source);
+    const targetInside = memberIds.has(edge.target);
+    if (sourceInside === targetInside) {
+      continue;
+    }
+    const inbound = targetInside;
+    // The pocket port this wire docks on: the stored member-side handle's
+    // identity, the wire's resource as the legacy fallback — the same
+    // derivation the card uses to render its port rows.
+    const portHandle = parseResourceHandleId(inbound ? edge.targetHandle : edge.sourceHandle);
+    const portKind = portHandle?.kind ?? edge.resourceKind;
+    const portResourceId = portHandle?.resourceId ?? edge.resourceId;
+    const key = [
+      inbound ? "in" : "out",
+      inbound ? edge.source : edge.target,
+      edge.resourceKind,
+      edge.resourceId,
+      portKind,
+      portResourceId,
+    ].join("|");
+    const memberEnd = inbound ? edge.target : edge.source;
+    const group = groups.get(key);
+    if (group) {
+      group.wired.add(memberEnd);
+    } else {
+      groups.set(key, {
+        sample: edge,
+        inbound,
+        portKind,
+        portResourceId,
+        wired: new Set([memberEnd]),
+      });
+    }
+  }
+
+  const additions: FactoryEdge[] = [];
+  for (const group of groups.values()) {
+    const { sample, inbound, portKind, portResourceId, wired } = group;
+    const memberEndpoints = resolvePocketMemberIds(
+      project,
+      pocketId,
+      inbound ? "input" : "output",
+      { kind: portKind, id: portResourceId },
+    );
+    for (const memberId of memberEndpoints) {
+      if (wired.has(memberId)) {
+        continue;
+      }
+      const resource = {
+        kind: sample.resourceKind,
+        id: sample.resourceId,
+        displayName: sample.label,
+        sourceHandle: inbound
+          ? sample.sourceHandle
+          : makeResourceHandleId("output", { kind: portKind, id: portResourceId }),
+        targetHandle: inbound
+          ? makeResourceHandleId("input", { kind: portKind, id: portResourceId })
+          : sample.targetHandle,
+      };
+      const edge = inbound
+        ? buildEdgeBetweenNodes(project, sample.source, memberId, resource)
+        : buildEdgeBetweenNodes(project, memberId, sample.target, resource);
+      if (edge && !hasStorageEndpointConflict(project, edge)) {
+        additions.push(edge);
+      }
+    }
+  }
+
+  if (additions.length === 0) {
+    return project;
+  }
+  return { ...project, edges: [...project.edges, ...additions] };
 }
 
 function buildEdgeBetweenNodes(

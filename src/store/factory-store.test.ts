@@ -3425,7 +3425,7 @@ describe("pocket dimensions", () => {
     useFactoryStore.getState().setProject(createSelectionEditingProject());
   });
 
-  it("compacts a selection into a pocket without touching the graph", () => {
+  it("compacts a selection into a pocket, converging its boundary wires", () => {
     const before = useFactoryStore.getState().project;
     const pocketId = useFactoryStore
       .getState()
@@ -3438,9 +3438,113 @@ describe("pocket dimensions", () => {
     expect(project.nodes.find((node) => node.id === "alpha")?.pocketId).toBe(pocketId);
     expect(project.storages?.find((storage) => storage.id === "tank")?.pocketId).toBe(pocketId);
     expect(project.nodes.find((node) => node.id === "beta")?.pocketId).toBeUndefined();
-    // The wires and the solver's world are untouched - pockets are a view.
-    expect(project.edges).toEqual(before.edges);
+    // Existing wires survive untouched...
+    for (const edge of before.edges) {
+      expect(project.edges).toContainEqual(edge);
+    }
+    // ...and the boundary convergence rule completes the fan-out: the
+    // pocket offers ONE dust port, so beta now also drinks from the tank
+    // behind it, not just from alpha.
+    expect(project.edges).toHaveLength(before.edges.length + 1);
+    expect(
+      project.edges.some((edge) => edge.source === "tank" && edge.target === "beta"),
+    ).toBe(true);
     expect(undoHistory).toHaveLength(1);
+  });
+
+  it("compacting fans a partially wired input out to every consumer inside", () => {
+    useFactoryStore.getState().setProject({
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "converge",
+      name: "Converge",
+      recipes: [
+        {
+          id: "gen",
+          name: "Cobble Gen",
+          machineType: "Gen",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 8,
+          inputs: [],
+          outputs: [{ kind: "item", id: "cobblestone", amount: 1 }],
+        },
+        {
+          id: "melt",
+          name: "Melter",
+          machineType: "Melter",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 8,
+          inputs: [{ kind: "item", id: "cobblestone", amount: 20 }],
+          outputs: [{ kind: "fluid", id: "lava", amount: 10 }],
+        },
+      ],
+      nodes: [
+        makeNode("source", "gen", 0, 0),
+        makeNode("melt-a", "melt", 300, 0),
+        makeNode("melt-b", "melt", 300, 300),
+      ],
+      edges: [
+        { id: "s2a", source: "source", target: "melt-a", resourceKind: "item", resourceId: "cobblestone" },
+      ],
+      fuelProfiles: [],
+    });
+
+    useFactoryStore.getState().compactSelectionIntoPocket(["melt-a", "melt-b"], "Lava works");
+
+    const edges = useFactoryStore.getState().project.edges;
+    expect(edges).toHaveLength(2);
+    expect(edges.every((edge) => edge.source === "source")).toBe(true);
+    expect(edges.map((edge) => edge.target).sort()).toEqual(["melt-a", "melt-b"]);
+  });
+
+  it("dissolving converges drifted boundary wiring before it spills", () => {
+    // A pocket assembled outside the store's own compact path (an import,
+    // an old plan): the source feeds only one of two identical consumers.
+    useFactoryStore.getState().setProject({
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "drift",
+      name: "Drift",
+      recipes: [
+        {
+          id: "gen",
+          name: "Cobble Gen",
+          machineType: "Gen",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 8,
+          inputs: [],
+          outputs: [{ kind: "item", id: "cobblestone", amount: 1 }],
+        },
+        {
+          id: "melt",
+          name: "Melter",
+          machineType: "Melter",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 8,
+          inputs: [{ kind: "item", id: "cobblestone", amount: 20 }],
+          outputs: [{ kind: "fluid", id: "lava", amount: 10 }],
+        },
+      ],
+      nodes: [
+        makeNode("source", "gen", 0, 0),
+        { ...makeNode("melt-a", "melt", 300, 0), pocketId: "pocket-x" },
+        { ...makeNode("melt-b", "melt", 300, 300), pocketId: "pocket-x" },
+      ],
+      pockets: [{ id: "pocket-x", name: "Lava works", position: { x: 300, y: 0 } }],
+      edges: [
+        { id: "s2a", source: "source", target: "melt-a", resourceKind: "item", resourceId: "cobblestone" },
+      ],
+      fuelProfiles: [],
+    });
+
+    useFactoryStore.getState().dissolvePocket("pocket-x");
+
+    const project = useFactoryStore.getState().project;
+    expect(project.pockets ?? []).toHaveLength(0);
+    expect(project.edges).toHaveLength(2);
+    expect(project.edges.map((edge) => edge.target).sort()).toEqual(["melt-a", "melt-b"]);
   });
 
   it("dissolving a pocket surfaces members on its parent board", () => {
