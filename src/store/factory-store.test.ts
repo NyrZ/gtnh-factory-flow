@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { PROJECT_SCHEMA_VERSION, type FactoryProject } from "@/lib/model/types";
 import { makeResourceHandleId } from "@/components/flow/resource-handles";
-import { captureBoardSelection, useFactoryStore } from "./factory-store";
+import {
+  captureBoardSelection,
+  collectPocketConvergenceWarnings,
+  useFactoryStore,
+} from "./factory-store";
 
 describe("factory resource links", () => {
   beforeEach(() => {
@@ -3496,6 +3500,85 @@ describe("pocket dimensions", () => {
     expect(edges).toHaveLength(2);
     expect(edges.every((edge) => edge.source === "source")).toBe(true);
     expect(edges.map((edge) => edge.target).sort()).toEqual(["melt-a", "melt-b"]);
+  });
+
+  it("warns before compacting only when different sources would pool", () => {
+    const base: Omit<FactoryProject, "edges"> = {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "warn",
+      name: "Warn",
+      recipes: [
+        {
+          id: "gen",
+          name: "Cobble Gen",
+          machineType: "Gen",
+          minimumTier: "LV" as const,
+          durationTicks: 20,
+          eut: 8,
+          inputs: [],
+          outputs: [{ kind: "item" as const, id: "cobblestone", amount: 1 }],
+        },
+        {
+          id: "melt",
+          name: "Melter",
+          machineType: "Melter",
+          minimumTier: "LV" as const,
+          durationTicks: 20,
+          eut: 8,
+          inputs: [{ kind: "item" as const, id: "cobblestone", amount: 20 }],
+          outputs: [{ kind: "fluid" as const, id: "lava", amount: 10 }],
+        },
+      ],
+      nodes: [
+        makeNode("gen-a", "gen", 0, 0),
+        makeNode("gen-b", "gen", 0, 300),
+        makeNode("melt-a", "melt", 300, 0),
+        makeNode("melt-b", "melt", 300, 300),
+      ],
+      fuelProfiles: [],
+    };
+
+    // Two different sources, one each: compacting pools them - warn.
+    useFactoryStore.getState().setProject({
+      ...structuredClone(base),
+      edges: [
+        { id: "a", source: "gen-a", target: "melt-a", resourceKind: "item", resourceId: "cobblestone" },
+        { id: "b", source: "gen-b", target: "melt-b", resourceKind: "item", resourceId: "cobblestone" },
+      ],
+    });
+    const pooled = collectPocketConvergenceWarnings(useFactoryStore.getState().project, [
+      "melt-a",
+      "melt-b",
+    ]);
+    expect(pooled).toHaveLength(1);
+    expect(pooled[0]?.resourceId).toBe("cobblestone");
+    expect(pooled[0]?.farEndCount).toBe(2);
+
+    // One source feeding one of two consumers: silent fan-out, no warning.
+    useFactoryStore.getState().setProject({
+      ...structuredClone(base),
+      edges: [
+        { id: "a", source: "gen-a", target: "melt-a", resourceKind: "item", resourceId: "cobblestone" },
+      ],
+    });
+    expect(
+      collectPocketConvergenceWarnings(useFactoryStore.getState().project, ["melt-a", "melt-b"]),
+    ).toHaveLength(0);
+
+    // Two sources that BOTH already feed both consumers: converging adds
+    // nothing, so nothing to warn about.
+    useFactoryStore.getState().setProject({
+      ...structuredClone(base),
+      edges: [
+        { id: "aa", source: "gen-a", target: "melt-a", resourceKind: "item", resourceId: "cobblestone" },
+        { id: "ab", source: "gen-a", target: "melt-b", resourceKind: "item", resourceId: "cobblestone" },
+        { id: "ba", source: "gen-b", target: "melt-a", resourceKind: "item", resourceId: "cobblestone" },
+        { id: "bb", source: "gen-b", target: "melt-b", resourceKind: "item", resourceId: "cobblestone" },
+      ],
+    });
+    expect(
+      collectPocketConvergenceWarnings(useFactoryStore.getState().project, ["melt-a", "melt-b"]),
+    ).toHaveLength(0);
   });
 
   it("dissolving converges drifted boundary wiring before it spills", () => {

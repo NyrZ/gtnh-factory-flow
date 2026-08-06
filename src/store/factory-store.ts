@@ -53,7 +53,11 @@ import type {
   TargetRate,
   ThroughputResult,
 } from "@/lib/model/types";
-import { collectPocketMembers, resolvePocketMemberIds } from "@/lib/model/pocket-connections";
+import {
+  collectPocketMembers,
+  resolveMemberIdsForResource,
+  resolvePocketMemberIds,
+} from "@/lib/model/pocket-connections";
 
 export const LOCAL_STORAGE_KEY = "gtnh-factory-flow.project.v2";
 export const RESOURCE_HISTORY_STORAGE_KEY = "gtnh-factory-flow.resource-history.v1";
@@ -2582,6 +2586,101 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
         resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, input),
     )
   );
+}
+
+/** One line of the pre-compact warning: a resource whose supplies would pool. */
+export interface PocketConvergenceWarning {
+  side: "input" | "output";
+  kind: ResourceKind;
+  resourceId: string;
+  /** Best-effort display name, the raw id as fallback. */
+  label: string;
+  /** Distinct far-end cards involved (the sources that would merge). */
+  farEndCount: number;
+}
+
+/**
+ * What compacting THIS selection would rewire, before it happens. The
+ * boundary convergence rule silently completes fan-outs from a single
+ * source — nothing meaningfully changes there. What deserves a warning is
+ * SEVERAL distinct far-ends on the same port resource whose coverage
+ * differs: compacting pools supply chains the player kept separate, and
+ * they should get to say no first.
+ */
+export function collectPocketConvergenceWarnings(
+  project: FactoryProject,
+  selectedIds: string[],
+): PocketConvergenceWarning[] {
+  const { itemIds } = collectPocketSelection(project, selectedIds);
+  if (itemIds.size === 0) {
+    return [];
+  }
+
+  interface PortGroup {
+    side: "input" | "output";
+    kind: ResourceKind;
+    resourceId: string;
+    label: string;
+    farEnds: Set<string>;
+    /** farEndId -> member endpoints it already reaches. */
+    pairings: Map<string, Set<string>>;
+  }
+  const groups = new Map<string, PortGroup>();
+  for (const edge of project.edges) {
+    const sourceInside = itemIds.has(edge.source);
+    const targetInside = itemIds.has(edge.target);
+    if (sourceInside === targetInside) {
+      continue;
+    }
+    const inbound = targetInside;
+    const portHandle = parseResourceHandleId(inbound ? edge.targetHandle : edge.sourceHandle);
+    const kind = portHandle?.kind ?? edge.resourceKind;
+    const resourceId = portHandle?.resourceId ?? edge.resourceId;
+    const farEnd = inbound ? edge.source : edge.target;
+    const memberEnd = inbound ? edge.target : edge.source;
+    const key = [inbound ? "in" : "out", kind, resourceId].join("|");
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        side: inbound ? "input" : "output",
+        kind,
+        resourceId,
+        label: edge.label ?? resourceId,
+        farEnds: new Set(),
+        pairings: new Map(),
+      };
+      groups.set(key, group);
+    }
+    group.farEnds.add(farEnd);
+    const wired = group.pairings.get(farEnd) ?? new Set<string>();
+    wired.add(memberEnd);
+    group.pairings.set(farEnd, wired);
+  }
+
+  const warnings: PocketConvergenceWarning[] = [];
+  for (const group of groups.values()) {
+    if (group.farEnds.size < 2) {
+      continue;
+    }
+    const memberEndpoints = resolveMemberIdsForResource(project, itemIds, group.side, {
+      kind: group.kind,
+      id: group.resourceId,
+    });
+    const wouldRewire = [...group.farEnds].some((farEnd) => {
+      const wired = group.pairings.get(farEnd);
+      return memberEndpoints.some((memberId) => !wired?.has(memberId));
+    });
+    if (wouldRewire) {
+      warnings.push({
+        side: group.side,
+        kind: group.kind,
+        resourceId: group.resourceId,
+        label: group.label,
+        farEndCount: group.farEnds.size,
+      });
+    }
+  }
+  return warnings;
 }
 
 /**

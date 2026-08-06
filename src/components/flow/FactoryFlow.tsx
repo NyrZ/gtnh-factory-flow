@@ -98,8 +98,10 @@ import type {
 } from "@/lib/model/types";
 import {
   captureBoardSelection,
+  collectPocketConvergenceWarnings,
   useFactoryStore,
   type BoardClipboardPayload,
+  type PocketConvergenceWarning,
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { isEditableKeyboardTarget } from "./keyboard";
@@ -1439,6 +1441,11 @@ export function FactoryFlow() {
   // through that handoff, parked over the new card and eating every click —
   // the controller below watches this counter and dismisses the rect.
   const [selectionHandoffCount, setSelectionHandoffCount] = useState(0);
+  // Compacting would pool same-resource supplies from different places:
+  // the selection waits here while the player reads what would happen.
+  const [compactWarning, setCompactWarning] = useState<
+    { ids: string[]; warnings: PocketConvergenceWarning[] } | undefined
+  >(undefined);
   const draggingNodeRef = useRef(false);
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
@@ -2759,22 +2766,41 @@ export function FactoryFlow() {
     return true;
   }, [deleteBoardSelection, selectNode, selectedEdgeIds, selectedNodeIds]);
 
+  const runCompact = useCallback(
+    (ids: string[]): boolean => {
+      const pocketId = compactSelectionIntoPocket(ids);
+      if (!pocketId) {
+        return false;
+      }
+
+      // The new pocket card takes the selection, ready to drag or dive into.
+      setPendingBoardSelection([pocketId]);
+      setSelectedNodeIds([pocketId]);
+      setSelectedEdgeIds([]);
+      return true;
+    },
+    [compactSelectionIntoPocket, setPendingBoardSelection],
+  );
+
   const compactSelectedBoardItems = useCallback((): boolean => {
     if (selectedNodeIds.length === 0) {
       return false;
     }
 
-    const pocketId = compactSelectionIntoPocket(selectedNodeIds);
-    if (!pocketId) {
+    // Two cards taking the same resource from DIFFERENT places: compacting
+    // pools those supplies behind one port. Real change, so the player gets
+    // to say no first; single-source fan-outs converge silently.
+    const warnings = collectPocketConvergenceWarnings(
+      useFactoryStore.getState().project,
+      selectedNodeIds,
+    );
+    if (warnings.length > 0) {
+      setCompactWarning({ ids: selectedNodeIds, warnings });
       return false;
     }
 
-    // The new pocket card takes the selection, ready to drag or dive into.
-    setPendingBoardSelection([pocketId]);
-    setSelectedNodeIds([pocketId]);
-    setSelectedEdgeIds([]);
-    return true;
-  }, [compactSelectionIntoPocket, selectedNodeIds, setPendingBoardSelection]);
+    return runCompact(selectedNodeIds);
+  }, [runCompact, selectedNodeIds]);
 
   const pasteBoardClipboard = useCallback(() => {
     if (!boardClipboard) {
@@ -3429,6 +3455,49 @@ export function FactoryFlow() {
         >
           Pick a pocket on the board — it becomes &ldquo;{overwritePicking.name}&rdquo;. Esc
           cancels.
+        </div>
+      ) : null}
+      {compactWarning ? (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55">
+          <div className="max-w-[460px] border-2 border-amber-500 bg-[#1b1d21] p-4 font-mono text-neutral-100 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
+            <p className="text-[13px] font-bold text-amber-300">
+              Heads up — supplies will merge
+            </p>
+            <p className="mt-2 text-[12px] leading-relaxed text-neutral-300">
+              Cards in this selection take the same resource from different places. A pocket has
+              ONE port per resource, so those supplies pool: every source feeds every card that
+              takes it, and the planner decides the split. Unpacking keeps the pooled wiring.
+            </p>
+            <ul className="mt-2 flex flex-col gap-0.5 text-[12px] text-amber-200">
+              {compactWarning.warnings.map((warning) => (
+                <li key={`${warning.side}:${warning.kind}:${warning.resourceId}`}>
+                  {warning.label} — {warning.farEndCount}{" "}
+                  {warning.side === "input" ? "sources" : "destinations"} merge
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 flex justify-end gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCompactWarning(undefined)}
+                className="h-7 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2.5 text-[12px] text-neutral-300 hover:text-neutral-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  const ids = compactWarning.ids;
+                  setCompactWarning(undefined);
+                  runCompact(ids);
+                }}
+                className="h-7 rounded-[4px] border border-amber-600 bg-amber-950 px-2.5 text-[12px] font-medium text-amber-200 hover:bg-amber-900"
+              >
+                Make the pocket
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
       <PocketBreadcrumbs />

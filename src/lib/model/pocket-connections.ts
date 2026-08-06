@@ -176,8 +176,29 @@ export function resolvePocketMemberIds(
   resource: { kind: ResourceKind; id: string },
 ): string[] {
   const members = collectPocketMembers(project, pocketId);
+  const memberIds = new Set<string>([
+    ...members.nodes.map((node) => node.id),
+    ...members.storages.map((storage) => storage.id),
+  ]);
+  return resolveMemberIdsForResource(project, memberIds, side, resource);
+}
+
+/**
+ * Same resolution over an arbitrary member set — how a PROSPECTIVE pocket
+ * (a selection about to be compacted) answers the question before the
+ * pocket exists.
+ */
+export function resolveMemberIdsForResource(
+  project: FactoryProject,
+  memberIds: ReadonlySet<string>,
+  side: "input" | "output",
+  resource: { kind: ResourceKind; id: string },
+): string[] {
   const ids: string[] = [];
-  for (const node of members.nodes) {
+  for (const node of project.nodes) {
+    if (!memberIds.has(node.id)) {
+      continue;
+    }
     const matches = memberSideResources(project, node, side).some(
       (entry) => entry.kind === resource.kind && entry.id === resource.id,
     );
@@ -185,8 +206,12 @@ export function resolvePocketMemberIds(
       ids.push(node.id);
     }
   }
-  for (const storage of members.storages) {
-    if (storage.kind === resource.kind && storage.resourceId === resource.id) {
+  for (const storage of project.storages ?? []) {
+    if (
+      memberIds.has(storage.id) &&
+      storage.kind === resource.kind &&
+      storage.resourceId === resource.id
+    ) {
       ids.push(storage.id);
     }
   }
