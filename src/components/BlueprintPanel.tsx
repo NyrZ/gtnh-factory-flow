@@ -415,7 +415,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         "shrink-0 rounded-[4px] p-0.5",
                         overwriteArmId === blueprint.id
                           ? "text-amber-300"
-                          : "text-neutral-600 opacity-0 hover:text-amber-300 focus:opacity-100 group-hover:opacity-100",
+                          : "text-neutral-600 hover:text-amber-300",
                       ].join(" ")}
                     >
                       <Save className="h-3.5 w-3.5" />
@@ -429,7 +429,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                       }}
                       title="Rename this blueprint"
                       aria-label={`Rename blueprint ${blueprint.name}`}
-                      className="shrink-0 rounded-[4px] p-0.5 text-neutral-600 opacity-0 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100"
+                      className="shrink-0 rounded-[4px] p-0.5 text-neutral-600 hover:text-neutral-200"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -451,7 +451,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         "shrink-0 rounded-[4px] p-0.5",
                         blueprint.isPublic
                           ? "text-emerald-400 hover:text-neutral-400"
-                          : "text-neutral-600 opacity-0 hover:text-emerald-400 focus:opacity-100 group-hover:opacity-100",
+                          : "text-neutral-600 hover:text-emerald-400",
                       ].join(" ")}
                     >
                       <Globe className="h-3.5 w-3.5" />
@@ -474,7 +474,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         onBlur={() => setConfirmDeleteId(undefined)}
                         title="Delete this blueprint (a published copy leaves the network, votes and all)"
                         aria-label={`Delete blueprint ${blueprint.name}`}
-                        className="shrink-0 rounded-[4px] p-0.5 text-neutral-600 opacity-0 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                        className="shrink-0 rounded-[4px] p-0.5 text-neutral-600 hover:text-red-400"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
