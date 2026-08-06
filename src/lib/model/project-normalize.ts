@@ -12,7 +12,57 @@ import { snapPositionToGrid, snapSizeUpToGrid } from "@/lib/board-grid";
  * migration — every caller now gets the full set by construction.
  */
 export function normalizeLoadedProject(project: FactoryProject): FactoryProject {
-  return snapProjectToGrid(repairFilledCellInputOverrides(normalizeProjectFuelProfiles(project)));
+  return snapProjectToGrid(
+    repairPocketReferences(repairFilledCellInputOverrides(normalizeProjectFuelProfiles(project))),
+  );
+}
+
+/**
+ * A card pointing at a pocket that no longer exists would vanish from every
+ * view — not on the root board, not inside any pocket. Dangling `pocketId`s
+ * are cleared (the card surfaces on the root board), and a pocket whose
+ * parent is missing or cyclic is re-rooted for the same reason.
+ */
+function repairPocketReferences(project: FactoryProject): FactoryProject {
+  const pockets = project.pockets ?? [];
+  if (
+    pockets.length === 0 &&
+    !project.nodes.some((node) => node.pocketId) &&
+    !project.storages?.some((storage) => storage.pocketId) &&
+    !project.annotations?.some((annotation) => annotation.pocketId)
+  ) {
+    return project;
+  }
+
+  const pocketIds = new Set(pockets.map((pocket) => pocket.id));
+  const repairedPockets = pockets.map((pocket) => {
+    if (!pocket.parentPocketId) {
+      return pocket;
+    }
+    // Walk the parent chain; a missing link or a loop back to this pocket
+    // means the chain never reaches the root board.
+    let parentId: string | undefined = pocket.parentPocketId;
+    const seen = new Set<string>([pocket.id]);
+    while (parentId) {
+      if (!pocketIds.has(parentId) || seen.has(parentId)) {
+        return { ...pocket, parentPocketId: undefined };
+      }
+      seen.add(parentId);
+      parentId = pockets.find((entry) => entry.id === parentId)?.parentPocketId;
+    }
+    return pocket;
+  });
+
+  const clearDangling = <T extends { pocketId?: string }>(item: T): T =>
+    item.pocketId && !pocketIds.has(item.pocketId) ? { ...item, pocketId: undefined } : item;
+
+  return {
+    ...project,
+    pockets: repairedPockets,
+    nodes: project.nodes.map(clearDangling),
+    storages: project.storages?.map(clearDangling),
+    annotations: project.annotations?.map(clearDangling),
+  };
 }
 
 /**
@@ -45,6 +95,10 @@ function snapProjectToGrid(project: FactoryProject): FactoryProject {
         width: snapSizeUpToGrid(annotation.size.width),
         height: snapSizeUpToGrid(annotation.size.height),
       },
+    })),
+    pockets: project.pockets?.map((pocket) => ({
+      ...pocket,
+      position: snapPositionToGrid(pocket.position),
     })),
   };
 }

@@ -263,6 +263,8 @@ export interface FactoryNode {
   recipeInputOverrides?: Record<string, RecipeInput>;
   targetOutput?: TargetRate;
   enabled: boolean;
+  /** The pocket dimension this card lives in; absent = the root board. */
+  pocketId?: string;
   position: {
     x: number;
     y: number;
@@ -279,6 +281,8 @@ export interface FactoryStorage {
   iconAtlas?: ResourceIconAtlasRef;
   dominantColor?: string;
   capacity?: number;
+  /** The pocket dimension this drawer lives in; absent = the root board. */
+  pocketId?: string;
   position: {
     x: number;
     y: number;
@@ -310,6 +314,28 @@ export interface FactoryAnnotation {
    * ever changed how much room the same small text had to wrap in.
    */
   fontSize?: number;
+  /** The pocket dimension this ink lives in; absent = the root board. */
+  pocketId?: string;
+}
+
+/**
+ * A pocket dimension: a named sub-board that collapses a group of cards into
+ * one node-like card on its parent board. Members are ordinary project
+ * nodes/storages/annotations tagged with `pocketId` — the graph the solver
+ * sees is completely flat; pockets only decide what the board SHOWS. Pockets
+ * nest through `parentPocketId` (absent = the pocket sits on the root board).
+ */
+export interface FactoryPocket {
+  id: string;
+  name: string;
+  colorTag?: FactoryNodeColorTag;
+  /** Which board the collapsed card sits on; absent = the root board. */
+  parentPocketId?: string;
+  /** Where the collapsed card sits on that board. */
+  position: {
+    x: number;
+    y: number;
+  };
 }
 
 export interface FactoryEdge {
@@ -356,6 +382,7 @@ export interface FactoryProject {
   nodes: FactoryNode[];
   storages?: FactoryStorage[];
   annotations?: FactoryAnnotation[];
+  pockets?: FactoryPocket[];
   edges: FactoryEdge[];
   fuelProfiles: FuelProfile[];
   selectedFuelProfileId?: string;

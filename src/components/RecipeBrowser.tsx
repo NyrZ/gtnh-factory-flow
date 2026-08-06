@@ -34,6 +34,7 @@ import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { AppIdentity } from "./AppIdentity";
+import { BlueprintPanel } from "./BlueprintPanel";
 import { machineArtPixels } from "./flow/MachinePicker";
 import { useMachineHandlerIcons } from "./flow/machine-icons";
 import { MinecraftTooltip } from "./nei/MinecraftTooltip";
@@ -106,6 +107,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourceMod, setResourceMod] = useState("");
   const [resourceSort, setResourceSort] = useState<ResourceSortMode>("relevance");
   const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
+  const [isBlueprintPanelCollapsed, setBlueprintPanelCollapsed] = useState(false);
   const [resourceMods, setResourceMods] = useState<Array<{ id: string; count: number }>>([]);
   const [resourceQueryLoading, setResourceQueryLoading] = useState(false);
   const [resourceQueryError, setResourceQueryError] = useState<string | undefined>();
@@ -682,6 +684,12 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           )}
         </div>
         <ResourceHistoryPanel resources={historyResources} onBrowse={browseResource} />
+        {/* The blueprint library claims the sidebar's lower half while open;
+            collapsed it folds to a header strip and the results grow back. */}
+        <BlueprintPanel
+          collapsed={isBlueprintPanelCollapsed}
+          onToggle={() => setBlueprintPanelCollapsed((collapsed) => !collapsed)}
+        />
       </aside>
 
       {activeResource ? (

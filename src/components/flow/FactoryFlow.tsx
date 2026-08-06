@@ -94,7 +94,11 @@ import type {
   ResourceAmount,
   ResourceKind,
 } from "@/lib/model/types";
-import { useFactoryStore, type BoardClipboardPayload } from "@/store/factory-store";
+import {
+  captureBoardSelection,
+  useFactoryStore,
+  type BoardClipboardPayload,
+} from "@/store/factory-store";
 import { isEditableKeyboardTarget } from "./keyboard";
 import {
   ANNOTATION_DEFAULT_ARROW,
@@ -188,6 +192,8 @@ import {
 } from "./edge-pulse";
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
+import { PocketNode, type PocketFlowNode } from "./PocketNode";
+import { computePocketSummaries } from "./pocket-summary";
 import {
   ANNOTATION_DRAG_HANDLE_CLASS,
   AnnotationNode,
@@ -199,9 +205,15 @@ const nodeTypes = {
   storageNode: StorageNode,
   trashNode: TrashNode,
   annotationNode: AnnotationNode,
+  pocketNode: PocketNode,
 } satisfies NodeTypes;
 
-type BoardFlowNode = RecipeFlowNode | StorageFlowNode | TrashFlowNode | AnnotationFlowNode;
+type BoardFlowNode =
+  | RecipeFlowNode
+  | StorageFlowNode
+  | TrashFlowNode
+  | AnnotationFlowNode
+  | PocketFlowNode;
 
 interface AnnotationDraft {
   start: { x: number; y: number };
@@ -983,6 +995,7 @@ const recipeNodeDataCache = new Map<string, RecipeFlowNode["data"]>();
 const storageNodeDataCache = new Map<string, StorageFlowNode["data"]>();
 const trashNodeDataCache = new Map<string, TrashFlowNode["data"]>();
 const annotationNodeDataCache = new Map<string, AnnotationFlowNode["data"]>();
+const pocketNodeDataCache = new Map<string, PocketFlowNode["data"]>();
 // Same idea for edges, but with structural comparison: an edge object nests
 // fresh data/style objects on every rebuild, and handing React Flow an equal-
 // but-new identity re-renders the edge — which re-runs the route solver. Most
@@ -1016,7 +1029,14 @@ function pruneNodeDataCaches(
   storageIds: Set<string>,
   annotationIds: Set<string>,
   edgeIds: Set<string>,
+  pocketIds: Set<string>,
 ) {
+  for (const id of pocketNodeDataCache.keys()) {
+    if (!pocketIds.has(id)) {
+      pocketNodeDataCache.delete(id);
+    }
+  }
+
   for (const id of edgeObjectCache.keys()) {
     if (!edgeIds.has(id)) {
       edgeObjectCache.delete(id);
@@ -1183,6 +1203,13 @@ export function FactoryFlow() {
   const moveBoardItems = useFactoryStore((state) => state.moveBoardItems);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const pasteBoardItems = useFactoryStore((state) => state.pasteBoardItems);
+  const activePocketId = useFactoryStore((state) => state.activePocketId);
+  const enterPocket = useFactoryStore((state) => state.enterPocket);
+  const compactSelectionIntoPocket = useFactoryStore(
+    (state) => state.compactSelectionIntoPocket,
+  );
+  const setPendingBoardSelection = useFactoryStore((state) => state.setPendingBoardSelection);
+  const setSelectedBoardIds = useFactoryStore((state) => state.setSelectedBoardIds);
   const updateNode = useFactoryStore((state) => state.updateNode);
   const updateStorage = useFactoryStore((state) => state.updateStorage);
   const connectNodes = useFactoryStore((state) => state.connectNodes);
@@ -1223,9 +1250,59 @@ export function FactoryFlow() {
     [project.storages],
   );
 
+  // The pocket dimension view. The graph is always the whole flat project;
+  // the board only ever SHOWS one level of it — cards whose pocketId is the
+  // active level, plus one collapsed card per pocket that sits on this level.
+  // `representativeOf` maps any project item to what stands for it here: the
+  // item itself when it is on this level, the ancestor pocket card that
+  // swallowed it, or undefined when it is outside this view entirely (which
+  // is what hides the rest of the plan while zoomed into a pocket).
+  const pocketView = useMemo(() => {
+    const pockets = project.pockets ?? [];
+    const parentById = new Map(pockets.map((pocket) => [pocket.id, pocket.parentPocketId]));
+    const itemPocketById = new Map<string, string | undefined>();
+    for (const node of project.nodes) {
+      itemPocketById.set(node.id, node.pocketId);
+    }
+    for (const storage of project.storages ?? []) {
+      itemPocketById.set(storage.id, storage.pocketId);
+    }
+
+    const representativeOf = (itemId: string): string | undefined => {
+      let level = itemPocketById.get(itemId);
+      if (level === activePocketId) {
+        return itemId;
+      }
+      const seen = new Set<string>();
+      while (level !== undefined && !seen.has(level)) {
+        seen.add(level);
+        const parent = parentById.get(level);
+        if (parent === activePocketId) {
+          return level;
+        }
+        level = parent;
+      }
+      return undefined;
+    };
+
+    return {
+      representativeOf,
+      visiblePockets: pockets.filter((pocket) => pocket.parentPocketId === activePocketId),
+    };
+  }, [activePocketId, project.nodes, project.storages, project.pockets]);
+
+  // Scoped solves are small (a pocket's members only) and run once per
+  // project commit, not per hover — see pocket-summary.ts.
+  const pocketSummaries = useMemo(
+    () => computePocketSummaries(project, pocketView.visiblePockets),
+    [project, pocketView.visiblePockets],
+  );
+
   const nodesFromProject = useMemo<BoardFlowNode[]>(
     () => [
-      ...project.nodes.map((node): BoardFlowNode => {
+      ...project.nodes
+        .filter((node) => node.pocketId === activePocketId)
+        .map((node): BoardFlowNode => {
         const recipe = recipesById.get(node.recipeId) ?? getMissingRecipePlaceholder(node.recipeId);
         // Trash cans get their own compact card; a distinct node TYPE (not a
         // branch inside RecipeNode) so the hook order of the big machine card
@@ -1263,7 +1340,9 @@ export function FactoryFlow() {
           }),
         } satisfies RecipeFlowNode;
       }),
-      ...(project.storages ?? []).map(
+      ...(project.storages ?? [])
+        .filter((storage) => storage.pocketId === activePocketId)
+        .map(
         (storage) =>
           ({
             id: storage.id,
@@ -1279,7 +1358,9 @@ export function FactoryFlow() {
             }),
           }) satisfies StorageFlowNode,
       ),
-      ...(project.annotations ?? []).map(
+      ...(project.annotations ?? [])
+        .filter((annotation) => annotation.pocketId === activePocketId)
+        .map(
         (annotation) =>
           ({
             id: annotation.id,
@@ -1297,11 +1378,26 @@ export function FactoryFlow() {
             data: reuseObjectIdentity(annotationNodeDataCache, annotation.id, { annotation }),
           }) satisfies AnnotationFlowNode,
       ),
+      ...pocketView.visiblePockets.map(
+        (pocket) =>
+          ({
+            id: pocket.id,
+            type: "pocketNode",
+            position: pocket.position,
+            data: reuseObjectIdentity(pocketNodeDataCache, pocket.id, {
+              pocket,
+              summary: pocketSummaries.get(pocket.id),
+            }),
+          }) satisfies PocketFlowNode,
+      ),
     ],
     [
       activeFlowResourceKey,
       activeNodeBottlenecks,
+      activePocketId,
       hoveredUsageNodeId,
+      pocketSummaries,
+      pocketView.visiblePockets,
       project.annotations,
       project.nodes,
       project.storages,
@@ -1324,11 +1420,11 @@ export function FactoryFlow() {
   const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft | undefined>(undefined);
   const annotationDraftRef = useRef<AnnotationDraft | undefined>(undefined);
   const [layoutVersion, setLayoutVersion] = useState(0);
-  // Ids the NEXT project sync should hand the selection to, replacing
-  // whatever is selected now. Set by paste: the pasted cards do not exist in
-  // `flowNodes` until the sync effect rebuilds from the project, so the
-  // selection handover has to ride through that rebuild.
-  const pendingFlowSelectionRef = useRef<Set<string> | undefined>(undefined);
+  // Bumped whenever a paste/compact/blueprint-load hands the selection to
+  // fresh cards. React Flow keeps its band-selection GROUP RECTANGLE up
+  // through that handoff, parked over the new card and eating every click —
+  // the controller below watches this counter and dismisses the rect.
+  const [selectionHandoffCount, setSelectionHandoffCount] = useState(0);
   const draggingNodeRef = useRef(false);
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
@@ -1355,11 +1451,17 @@ export function FactoryFlow() {
     // them, re-ran their memo comparisons and churned the compositor's layer
     // tree. Identity is the whole mechanism the node memos rely on; this is
     // where it was being thrown away.
-    // Consumed here, NOT inside the updater: state updaters must stay pure
-    // (StrictMode double-invokes them, and the second call would find the
-    // ref already cleared).
-    const pendingSelection = pendingFlowSelectionRef.current;
-    pendingFlowSelectionRef.current = undefined;
+    // The store carries ids a paste or a blueprint load wants selected once
+    // the pasted cards exist in flowNodes — which is here, after this rebuild.
+    // Consumed in the effect body, NOT inside the updater: state updaters
+    // must stay pure (StrictMode double-invokes them, and the second call
+    // would find the handoff already cleared).
+    const pendingIds = useFactoryStore.getState().pendingBoardSelectionIds;
+    const pendingSelection = pendingIds ? new Set(pendingIds) : undefined;
+    if (pendingIds) {
+      setPendingBoardSelection(undefined);
+      setSelectionHandoffCount((count) => count + 1);
+    }
     setFlowNodes((current) => {
       const currentById = new Map(current.map((node) => [node.id, node]));
       let changed = current.length !== nodesFromProject.length;
@@ -1384,7 +1486,7 @@ export function FactoryFlow() {
       });
       return changed ? next : current;
     });
-  }, [nodesFromProject]);
+  }, [nodesFromProject, setPendingBoardSelection]);
 
   // Switching pulse mode off has to empty the canvas registry: the edges stay
   // mounted and simply stop publishing, so without this the last frame's
@@ -1401,8 +1503,9 @@ export function FactoryFlow() {
       new Set((project.storages ?? []).map((storage) => storage.id)),
       new Set((project.annotations ?? []).map((annotation) => annotation.id)),
       new Set(project.edges.map((edge) => edge.id)),
+      new Set((project.pockets ?? []).map((pocket) => pocket.id)),
     );
-  }, [project.nodes, project.storages, project.annotations, project.edges]);
+  }, [project.nodes, project.storages, project.annotations, project.edges, project.pockets]);
 
   // Flow-space measurements are cached across frames, so anything that can move
   // a node or change its size has to drop them explicitly. `flowNodes` changes
@@ -1695,7 +1798,20 @@ export function FactoryFlow() {
     // What the grid solve needs about every wire, collected as the edge
     // objects are built and published in one shot below.
     const gridRouteInputs: GridRouteEdgeInput[] = [];
-    const builtEdges = project.edges.map((edge, edgeIndex) => {
+    const builtEdges = project.edges.flatMap((edge, edgeIndex) => {
+      // The pocket view remap. A wire whose endpoint is collapsed inside a
+      // pocket renders against the pocket CARD instead, docking on the
+      // card's canonical port for the wire's resource; a wire with no
+      // visible representative on either end (interior to one collapsed
+      // pocket, or outside the pocket being viewed) does not render at all.
+      // The project edge itself is never touched — this is all view.
+      const sourceRep = pocketView.representativeOf(edge.source);
+      const targetRep = pocketView.representativeOf(edge.target);
+      if (!sourceRep || !targetRep || sourceRep === targetRep) {
+        return [];
+      }
+      const sourceIsPocket = sourceRep !== edge.source;
+      const targetIsPocket = targetRep !== edge.target;
       const edgeResult = result.edges[edge.id];
       const unit = rateUnitSuffix(edge.resourceKind === "fluid").trim();
       const demand = edgeResult?.demandPerSecond ?? edge.ratePerSecond ?? 0;
@@ -1731,8 +1847,15 @@ export function FactoryFlow() {
       // Rails render one canonical (index-less) handle per resource; stored
       // edges may carry legacy per-slot ids. Collapse them here or React Flow
       // refuses to draw the edge and the anchor lookup misses the port.
-      const canonicalSourceHandle = canonicalizeResourceHandleId(edge.sourceHandle);
-      const canonicalTargetHandle = canonicalizeResourceHandleId(edge.targetHandle);
+      // A pocket end docks on the card's canonical port for this resource —
+      // whatever slot the wire fed inside, out here there is one port per
+      // resource.
+      const canonicalSourceHandle = sourceIsPocket
+        ? makeResourceHandleId("output", { kind: edge.resourceKind, id: edge.resourceId })
+        : canonicalizeResourceHandleId(edge.sourceHandle);
+      const canonicalTargetHandle = targetIsPocket
+        ? makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId })
+        : canonicalizeResourceHandleId(edge.targetHandle);
       const isStorageEdgeActive =
         !isStorageEdge || hoveredStorageResourceKey === storageResourceKey;
       const isSearchEdgeActive = edgeMatchesSearch(edge, resource, recipeSearch);
@@ -1745,8 +1868,8 @@ export function FactoryFlow() {
       gridRouteInputs.push({
         edgeId: edge.id,
         order: edgeIndex,
-        sourceNodeId: edge.source,
-        targetNodeId: edge.target,
+        sourceNodeId: sourceRep,
+        targetNodeId: targetRep,
         // A machine end is a PORT even when the stored edge carries no handle
         // id (old plans and the demo do this): the rails publish canonical
         // ids derived from the resource, so the same derivation here finds
@@ -1758,10 +1881,12 @@ export function FactoryFlow() {
         targetHandleId:
           canonicalTargetHandle ??
           makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId }),
-        sourceSlotEndpoint: !sourceStorage,
-        targetSlotEndpoint: !targetStorage && !targetIsTrashCan,
-        sourceStorageEndpoint: Boolean(sourceStorage),
-        targetStorageEndpoint: Boolean(targetStorage || targetIsTrashCan),
+        // A pocket card's port is a slot endpoint like a machine rail's,
+        // whatever the hidden endpoint inside really is.
+        sourceSlotEndpoint: sourceIsPocket || !sourceStorage,
+        targetSlotEndpoint: targetIsPocket || (!targetStorage && !targetIsTrashCan),
+        sourceStorageEndpoint: !sourceIsPocket && Boolean(sourceStorage),
+        targetStorageEndpoint: !targetIsPocket && Boolean(targetStorage || targetIsTrashCan),
         // The published stroke width IS the routing width: it never carries
         // hover/highlight bumps, so a hover can never trigger a re-solve.
         routingWidth: publishedEdgeStrokeWidths.get(edge.id) ?? DEFAULT_EDGE_STROKE_WIDTH,
@@ -1771,7 +1896,7 @@ export function FactoryFlow() {
       // Structural reuse: hover and solver rebuilds leave most edges equal,
       // and returning the previous identity lets React Flow skip re-rendering
       // (and re-routing) them entirely.
-      return reuseDeepObjectIdentity(edgeObjectCache, edge.id, {
+      return [reuseDeepObjectIdentity(edgeObjectCache, edge.id, {
         id: edge.id,
         // Thick lines dive UNDER the cards. At 3px a wire crossing a node
         // edge-on was a detail; at 34px it buries the very ports it docks
@@ -1782,8 +1907,8 @@ export function FactoryFlow() {
         // dragged card itself is elevated (see handleNodeDragStart), so a
         // card in hand always passes OVER the board's wiring.
         zIndex: lineThicknessMode ? -1 : isFlowHighlighted ? 1200 : 20,
-        source: edge.source,
-        target: edge.target,
+        source: sourceRep,
+        target: targetRep,
         sourceHandle: canonicalSourceHandle,
         targetHandle: canonicalTargetHandle,
         type: "resourceEdge",
@@ -1864,7 +1989,7 @@ export function FactoryFlow() {
                     ? 6.8
                     : 5.8,
         },
-      });
+      })];
     });
 
     publishGridRouteEdges(gridRouteInputs, freeDockMode);
@@ -1906,6 +2031,7 @@ export function FactoryFlow() {
     linePulseMode,
     lineThicknessMode,
     layoutVersion,
+    pocketView,
     project,
     recipeSearch,
     result,
@@ -2521,31 +2647,12 @@ export function FactoryFlow() {
   }, [selectNode]);
 
   const copyBoardSelection = useCallback((): boolean => {
-    const selectedIds = new Set(selectedNodeIds);
-    const nodes = project.nodes.filter((node) => selectedIds.has(node.id));
-    const storages = (project.storages ?? []).filter((storage) => selectedIds.has(storage.id));
-    const annotations = (project.annotations ?? []).filter((annotation) =>
-      selectedIds.has(annotation.id),
-    );
-    if (nodes.length + storages.length + annotations.length === 0) {
+    const payload = captureBoardSelection(project, selectedNodeIds);
+    if (!payload) {
       return false;
     }
 
-    const recipeIds = new Set(nodes.map((node) => node.recipeId));
-    boardClipboard = {
-      // Snapshotted, not referenced: the clipboard must not change when the
-      // originals are edited or deleted after the copy.
-      payload: structuredClone({
-        nodes,
-        storages,
-        annotations,
-        edges: project.edges.filter(
-          (edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target),
-        ),
-        recipes: project.recipes.filter((recipe) => recipeIds.has(recipe.id)),
-      }),
-      pasteCount: 0,
-    };
+    boardClipboard = { payload, pasteCount: 0 };
     return true;
   }, [project, selectedNodeIds]);
 
@@ -2561,6 +2668,23 @@ export function FactoryFlow() {
     return true;
   }, [deleteBoardSelection, selectNode, selectedEdgeIds, selectedNodeIds]);
 
+  const compactSelectedBoardItems = useCallback((): boolean => {
+    if (selectedNodeIds.length === 0) {
+      return false;
+    }
+
+    const pocketId = compactSelectionIntoPocket(selectedNodeIds);
+    if (!pocketId) {
+      return false;
+    }
+
+    // The new pocket card takes the selection, ready to drag or dive into.
+    setPendingBoardSelection([pocketId]);
+    setSelectedNodeIds([pocketId]);
+    setSelectedEdgeIds([]);
+    return true;
+  }, [compactSelectionIntoPocket, selectedNodeIds, setPendingBoardSelection]);
+
   const pasteBoardClipboard = useCallback(() => {
     if (!boardClipboard) {
       return;
@@ -2574,11 +2698,12 @@ export function FactoryFlow() {
     }
 
     // The paste takes the selection, so the new cards can be dragged into
-    // place immediately; the ref carries it through the flowNodes rebuild.
-    pendingFlowSelectionRef.current = new Set(pastedIds);
+    // place immediately; the store field carries it through the flowNodes
+    // rebuild.
+    setPendingBoardSelection(pastedIds);
     setSelectedNodeIds(pastedIds);
     setSelectedEdgeIds([]);
-  }, [pasteBoardItems]);
+  }, [pasteBoardItems, setPendingBoardSelection]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2609,6 +2734,16 @@ export function FactoryFlow() {
 
           pasteBoardClipboard();
           event.preventDefault();
+        }
+
+        if (key === "g") {
+          if (isEditableKeyboardTarget(event.target)) {
+            return;
+          }
+
+          if (compactSelectedBoardItems()) {
+            event.preventDefault();
+          }
         }
         return;
       }
@@ -2656,25 +2791,46 @@ export function FactoryFlow() {
           return;
         }
 
+        // Escape means "back out of whatever I'm in": first any active tool
+        // or half-made wire, and with nothing else to cancel, one level out
+        // of the pocket dimension being viewed.
+        const hadTool =
+          nodeColorPaintMode !== undefined ||
+          annotationTool !== undefined ||
+          isDeleteMode ||
+          Boolean(useFactoryStore.getState().pendingResourceConnection);
         cancelResourceConnection();
         setNodeColorPaintMode(undefined);
         setAnnotationTool(undefined);
         setDeleteMode(false);
+        if (!hadTool && activePocketId) {
+          enterPocket(
+            (project.pockets ?? []).find((pocket) => pocket.id === activePocketId)
+              ?.parentPocketId,
+          );
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
+    activePocketId,
+    annotationTool,
     cancelResourceConnection,
+    compactSelectedBoardItems,
     copyBoardSelection,
     deleteAnnotation,
     deleteNode,
     deleteSelectedBoardItems,
     deleteStorage,
+    enterPocket,
+    isDeleteMode,
+    nodeColorPaintMode,
     pasteBoardClipboard,
     project.annotations,
     project.nodes,
+    project.pockets,
     project.storages,
     selectNode,
     selectedNodeId,
@@ -2683,15 +2839,19 @@ export function FactoryFlow() {
 
   const handleSelectionChange = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }: OnSelectionChangeParams) => {
-      setSelectedNodeIds(selectedNodes.map((node) => node.id));
+      const ids = selectedNodes.map((node) => node.id);
+      setSelectedNodeIds(ids);
       setSelectedEdgeIds(selectedEdges.map((edge) => edge.id));
+      // Published so panels outside the canvas (blueprint save, compact) can
+      // act on what is selected without reaching into React Flow.
+      setSelectedBoardIds(ids);
 
       const selectedRecipeNode = [...selectedNodes]
         .reverse()
         .find((node) => node.type === "recipeNode");
       selectNode(selectedRecipeNode?.id);
     },
-    [selectNode],
+    [selectNode, setSelectedBoardIds],
   );
 
   const handleNodeClick = useCallback(
@@ -2703,6 +2863,8 @@ export function FactoryFlow() {
           deleteStorage(node.id);
         } else if (node.type === "annotationNode") {
           deleteAnnotation(node.id);
+        } else if (node.type === "pocketNode") {
+          deleteBoardSelection({ nodeIds: [node.id] });
         }
         return;
       }
@@ -2730,6 +2892,7 @@ export function FactoryFlow() {
     },
     [
       deleteAnnotation,
+      deleteBoardSelection,
       deleteNode,
       deleteStorage,
       isDeleteMode,
@@ -2739,6 +2902,19 @@ export function FactoryFlow() {
       updateNode,
       updateStorage,
     ],
+  );
+
+  // React Flow's own double-click plumbing, not a handler on the card: the
+  // node wrapper's drag machinery can swallow a hand-rolled dblclick, and
+  // this path is guaranteed to coexist with it. The name field's rename
+  // double-click stops propagation before this fires.
+  const handleNodeDoubleClick = useCallback(
+    (_: unknown, node: Node) => {
+      if (node.type === "pocketNode") {
+        enterPocket(node.id);
+      }
+    },
+    [enterPocket],
   );
 
   const handleEdgeClick = useCallback(
@@ -2757,6 +2933,21 @@ export function FactoryFlow() {
     selectNode(undefined);
     cancelResourceConnection();
   }, [cancelResourceConnection, selectNode]);
+
+  // Crossing into or out of a pocket dimension swaps what the board shows
+  // wholesale; the camera follows so the traveller lands looking at the new
+  // level, not at empty space where the old one was.
+  const previousPocketRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (previousPocketRef.current === activePocketId) {
+      return;
+    }
+    previousPocketRef.current = activePocketId;
+    const frame = requestAnimationFrame(() => {
+      void flowInstanceRef.current?.fitView({ padding: 0.2, duration: 320 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activePocketId]);
 
   // Stable references keep the memoized PaintToolbar from re-rendering on the
   // per-frame FactoryFlow renders a node drag produces.
@@ -3064,6 +3255,7 @@ export function FactoryFlow() {
         // did nothing.
         selectionMode={SelectionMode.Partial}
         onNodeClick={handleNodeClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onEdgeClick={handleEdgeClick}
         onNodesChange={handleNodesChange}
         onSelectionChange={handleSelectionChange}
@@ -3094,6 +3286,7 @@ export function FactoryFlow() {
       >
         <NodeDetailController boardRef={boardRef} />
         <HopMapController boardRef={boardRef} />
+        <SelectionHandoffController signal={selectionHandoffCount} activePocketId={activePocketId} />
         {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
         {boardView.canvasPattern === "none" ? null : (
           <Background
@@ -3131,6 +3324,11 @@ export function FactoryFlow() {
         dockToggleWarning={dockToggleWarning}
       />
       <SourceToolbar />
+      <PocketBreadcrumbs />
+      <SelectionActionsBar
+        selectionCount={selectedNodeIds.length}
+        onCompact={compactSelectedBoardItems}
+      />
       <SmartViewToolbar glanceMode={boardView.glanceMode} />
       <HopMapLegend />
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
@@ -3144,6 +3342,131 @@ export function FactoryFlow() {
  * name, I/O rates on hover) or status (utilisation percentage, hop-distance
  * map on hover).
  */
+/**
+ * Lives inside the ReactFlow tree for its store access. After a band select,
+ * React Flow overlays the selection with a group-drag rectangle and keeps it
+ * up until a pane click — but when a compact/paste/blueprint-load hands the
+ * selection to freshly created cards, that rectangle would sit over the new
+ * card and swallow every click. Any handoff or level change dismisses it.
+ */
+function SelectionHandoffController({
+  signal,
+  activePocketId,
+}: {
+  signal: number;
+  activePocketId?: string;
+}) {
+  const storeApi = useStoreApi();
+  useEffect(() => {
+    storeApi.setState({ nodesSelectionActive: false });
+  }, [signal, activePocketId, storeApi]);
+  return null;
+}
+
+/**
+ * Where in the multiverse the board is: "Board ▸ Pocket ▸ Inner pocket",
+ * top-centre, every segment a jump. Hidden entirely on the root board — the
+ * common case pays nothing for the feature.
+ */
+const PocketBreadcrumbs = memo(function PocketBreadcrumbs() {
+  const activePocketId = useFactoryStore((state) => state.activePocketId);
+  const pockets = useFactoryStore((state) => state.project.pockets);
+  const enterPocket = useFactoryStore((state) => state.enterPocket);
+  if (!activePocketId) {
+    return null;
+  }
+
+  const byId = new Map((pockets ?? []).map((pocket) => [pocket.id, pocket]));
+  const trail: { id: string | undefined; name: string }[] = [];
+  let cursor: string | undefined = activePocketId;
+  const seen = new Set<string>();
+  while (cursor !== undefined && !seen.has(cursor)) {
+    seen.add(cursor);
+    const pocket = byId.get(cursor);
+    if (!pocket) {
+      break;
+    }
+    trail.unshift({ id: pocket.id, name: pocket.name });
+    cursor = pocket.parentPocketId;
+  }
+  trail.unshift({ id: undefined, name: "Board" });
+
+  return (
+    <div
+      data-board-toolbar
+      className="nodrag pointer-events-auto absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-1 border-2 border-[#8d6fd1] bg-[#241b33]/95 px-2 py-1.5 font-mono text-[12px] text-white shadow-[inset_2px_2px_0_#3b2d52,inset_-2px_-2px_0_#1a1326]"
+    >
+      <button
+        type="button"
+        onClick={() => {
+          const parent = byId.get(activePocketId)?.parentPocketId;
+          enterPocket(parent);
+        }}
+        title="Back out one level (Esc)"
+        aria-label="Exit this pocket dimension"
+        className="mr-1 flex h-6 w-6 items-center justify-center border border-[#8d6fd1] bg-[#3b2d52] hover:bg-[#5e4a85]"
+      >
+        ↩
+      </button>
+      {trail.map((segment, index) => (
+        <span key={segment.id ?? "root"} className="flex items-center gap-1">
+          {index > 0 ? <span className="text-[#8d7ab0]">▸</span> : null}
+          {index === trail.length - 1 ? (
+            <span className="font-bold text-[#e6dcff]">✦ {segment.name}</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => enterPocket(segment.id)}
+              className="text-[#c9b8ec] underline-offset-2 hover:underline"
+            >
+              {segment.name}
+            </button>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+});
+
+/**
+ * Appears only while several cards are selected: the one gesture that turns
+ * a selection into a pocket dimension. Lives on the board (not a toolbar
+ * dock) so it reads as acting on the selection under it.
+ */
+const SelectionActionsBar = memo(function SelectionActionsBar({
+  selectionCount,
+  onCompact,
+}: {
+  selectionCount: number;
+  onCompact: () => boolean;
+}) {
+  const activePocketId = useFactoryStore((state) => state.activePocketId);
+  if (selectionCount < 2) {
+    return null;
+  }
+
+  return (
+    <div
+      data-board-toolbar
+      // Sits below the breadcrumb strip when both are up.
+      className={[
+        "nodrag pointer-events-auto absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-2",
+        activePocketId ? "top-14" : "top-3",
+      ].join(" ")}
+    >
+      <button
+        type="button"
+        onClick={onCompact}
+        title="Compact the selected cards into a pocket dimension (Ctrl+G): they become one card with the group's inputs and outputs, and you can dive in any time"
+        className="flex h-9 items-center gap-1.5 border-2 border-[#8d6fd1] bg-[#3b2d52] px-3 font-mono text-[12px] font-bold text-white shadow-[inset_2px_2px_0_#5e4a85,inset_-2px_-2px_0_#241b33] hover:brightness-110"
+      >
+        <Box className="h-4 w-4" />
+        Compact {selectionCount} into pocket
+      </button>
+    </div>
+  );
+});
+
 const SmartViewToolbar = memo(function SmartViewToolbar({
   glanceMode,
 }: {

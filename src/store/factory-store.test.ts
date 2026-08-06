@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { PROJECT_SCHEMA_VERSION, type FactoryProject } from "@/lib/model/types";
 import { makeResourceHandleId } from "@/components/flow/resource-handles";
-import { useFactoryStore } from "./factory-store";
+import { captureBoardSelection, useFactoryStore } from "./factory-store";
 
 describe("factory resource links", () => {
   beforeEach(() => {
@@ -3258,6 +3258,7 @@ describe("board selection editing", () => {
       nodes: source.nodes,
       storages: source.storages ?? [],
       annotations: source.annotations ?? [],
+      pockets: [],
       edges: source.edges,
       recipes: source.recipes,
     });
@@ -3311,6 +3312,7 @@ describe("board selection editing", () => {
         nodes: [dialNode],
         storages: [],
         annotations: [],
+        pockets: [],
         edges: [],
         recipes: [dialRecipe],
       }),
@@ -3330,6 +3332,7 @@ describe("board selection editing", () => {
       nodes: source.nodes.filter((node) => node.id === "alpha"),
       storages: [],
       annotations: [],
+      pockets: [],
       edges: [],
       recipes: source.recipes.filter((recipe) => recipe.id === "smelt"),
     });
@@ -3416,3 +3419,120 @@ function createSelectionEditingProject(): FactoryProject {
     fuelProfiles: [],
   };
 }
+
+describe("pocket dimensions", () => {
+  beforeEach(() => {
+    useFactoryStore.getState().setProject(createSelectionEditingProject());
+  });
+
+  it("compacts a selection into a pocket without touching the graph", () => {
+    const before = useFactoryStore.getState().project;
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha", "tank"], "Smeltery");
+
+    const { project, undoHistory } = useFactoryStore.getState();
+    expect(pocketId).toBeDefined();
+    expect(project.pockets).toHaveLength(1);
+    expect(project.pockets?.[0]?.name).toBe("Smeltery");
+    expect(project.nodes.find((node) => node.id === "alpha")?.pocketId).toBe(pocketId);
+    expect(project.storages?.find((storage) => storage.id === "tank")?.pocketId).toBe(pocketId);
+    expect(project.nodes.find((node) => node.id === "beta")?.pocketId).toBeUndefined();
+    // The wires and the solver's world are untouched - pockets are a view.
+    expect(project.edges).toEqual(before.edges);
+    expect(undoHistory).toHaveLength(1);
+  });
+
+  it("dissolving a pocket surfaces members on its parent board", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha", "tank"]) as string;
+    useFactoryStore.getState().enterPocket(pocketId);
+    useFactoryStore.getState().dissolvePocket(pocketId);
+
+    const state = useFactoryStore.getState();
+    expect(state.project.pockets).toHaveLength(0);
+    expect(state.project.nodes.find((node) => node.id === "alpha")?.pocketId).toBeUndefined();
+    expect(state.activePocketId).toBeUndefined();
+  });
+
+  it("nests pockets and re-parents children when the middle one dissolves", () => {
+    const inner = useFactoryStore.getState().compactSelectionIntoPocket(["alpha"]) as string;
+    const outer = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket([inner, "beta"]) as string;
+
+    let project = useFactoryStore.getState().project;
+    expect(project.pockets?.find((pocket) => pocket.id === inner)?.parentPocketId).toBe(outer);
+
+    useFactoryStore.getState().dissolvePocket(outer);
+    project = useFactoryStore.getState().project;
+    expect(project.pockets?.find((pocket) => pocket.id === inner)?.parentPocketId).toBeUndefined();
+    expect(project.nodes.find((node) => node.id === "beta")?.pocketId).toBeUndefined();
+    expect(project.nodes.find((node) => node.id === "alpha")?.pocketId).toBe(inner);
+  });
+
+  it("captures a pocket card as its whole contents", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha", "beta"]) as string;
+
+    const payload = captureBoardSelection(useFactoryStore.getState().project, [pocketId]);
+    expect(payload).toBeDefined();
+    expect(payload?.pockets.map((pocket) => pocket.id)).toEqual([pocketId]);
+    expect(payload?.nodes.map((node) => node.id).sort()).toEqual(["alpha", "beta"]);
+    // alpha→beta runs between two captured cards, so it comes along.
+    expect(payload?.edges.map((edge) => edge.id)).toEqual(["a2b"]);
+  });
+
+  it("pastes a pocket as a fresh dimension and selects only the card", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha", "beta"]) as string;
+    const payload = captureBoardSelection(useFactoryStore.getState().project, [
+      pocketId,
+    ]) as NonNullable<ReturnType<typeof captureBoardSelection>>;
+
+    const pastedIds = useFactoryStore.getState().pasteBoardItems(payload, { x: 40, y: 40 });
+
+    const project = useFactoryStore.getState().project;
+    expect(project.pockets).toHaveLength(2);
+    const newPocket = project.pockets?.find((pocket) => pocket.id !== pocketId);
+    // Only the collapsed card surfaces at the level being viewed.
+    expect(pastedIds).toEqual([newPocket?.id]);
+    const pastedMembers = project.nodes.filter((node) => node.pocketId === newPocket?.id);
+    expect(pastedMembers).toHaveLength(2);
+    // The interior wire was remapped onto the copies, inside the new pocket.
+    expect(project.edges).toHaveLength(3);
+  });
+
+  it("deleting a pocket card deletes the dimension and everything in it", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha", "beta"]) as string;
+    useFactoryStore.getState().deleteBoardSelection({ nodeIds: [pocketId] });
+
+    const { project, undoHistory } = useFactoryStore.getState();
+    expect(project.pockets).toHaveLength(0);
+    expect(project.nodes).toHaveLength(0);
+    expect(project.edges).toHaveLength(0);
+    // Compact + delete = two undo entries.
+    expect(undoHistory).toHaveLength(2);
+  });
+
+  it("pastes root payloads into the pocket being viewed", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha"]) as string;
+    const payload = captureBoardSelection(useFactoryStore.getState().project, [
+      "beta",
+    ]) as NonNullable<ReturnType<typeof captureBoardSelection>>;
+
+    useFactoryStore.getState().enterPocket(pocketId);
+    const pastedIds = useFactoryStore.getState().pasteBoardItems(payload, { x: 40, y: 40 });
+
+    const project = useFactoryStore.getState().project;
+    const pasted = project.nodes.find((node) => node.id === pastedIds[0]);
+    expect(pasted?.pocketId).toBe(pocketId);
+  });
+});

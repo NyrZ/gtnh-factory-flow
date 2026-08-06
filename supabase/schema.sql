@@ -75,3 +75,24 @@ alter table community_users enable row level security;
 alter table community_plans enable row level security;
 alter table community_votes enable row level security;
 alter table community_events enable row level security;
+
+-- Blueprints: per-user saved sub-assemblies — a captured board selection
+-- (cards, wires, pockets, recipes) that can be stamped back into any design.
+-- Immutable by design: no update path, delete and save a new one instead.
+-- Same access model as everything above: RLS on, no policies, service-role only.
+create table if not exists blueprints (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references community_users (id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 60),
+  payload jsonb not null,
+  node_count integer not null default 0,
+  storage_count integer not null default 0,
+  edge_count integer not null default 0,
+  pocket_count integer not null default 0,
+  machine_count integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists blueprints_user_created_idx on blueprints (user_id, created_at desc);
+
+alter table blueprints enable row level security;

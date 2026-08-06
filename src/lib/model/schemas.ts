@@ -280,6 +280,7 @@ export const factoryNodeSchema = z.object({
   recipeInputOverrides: z.record(z.string().min(1), recipeInputSchema).optional(),
   targetOutput: targetRateSchema.optional(),
   enabled: z.boolean(),
+  pocketId: z.string().min(1).optional(),
   position: z.object({
     x: z.number(),
     y: z.number(),
@@ -296,6 +297,7 @@ export const factoryStorageSchema = z.object({
   iconAtlas: resourceIconAtlasRefSchema.optional(),
   dominantColor: dominantColorSchema,
   capacity: z.number().positive().optional(),
+  pocketId: z.string().min(1).optional(),
   position: z.object({
     x: z.number(),
     y: z.number(),
@@ -318,6 +320,18 @@ export const factoryAnnotationSchema = z.object({
   arrowDirection: z.enum(["down-right", "down-left", "up-right", "up-left"]).optional(),
   // Bounded so an imported plan cannot carry a note that swallows the board.
   fontSize: z.number().min(8).max(96).optional(),
+  pocketId: z.string().min(1).optional(),
+});
+
+export const factoryPocketSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  colorTag: factoryNodeColorTagSchema.optional(),
+  parentPocketId: z.string().min(1).optional(),
+  position: z.object({
+    x: z.number(),
+    y: z.number(),
+  }),
 });
 
 export const factoryEdgeSchema = z.object({
@@ -358,6 +372,7 @@ export const factoryProjectSchema = z.object({
   nodes: z.array(factoryNodeSchema),
   storages: z.array(factoryStorageSchema).optional().default([]),
   annotations: z.array(factoryAnnotationSchema).optional().default([]),
+  pockets: z.array(factoryPocketSchema).optional().default([]),
   edges: z.array(factoryEdgeSchema),
   fuelProfiles: z.array(fuelProfileSchema),
   selectedFuelProfileId: z.string().optional(),
@@ -374,3 +389,17 @@ export const factoryProjectSchema = z.object({
 });
 
 export type FactoryProjectInput = z.input<typeof factoryProjectSchema>;
+
+/**
+ * A captured board selection (the clipboard/blueprint payload): validated
+ * server-side before a blueprint is stored, so a hand-crafted upload cannot
+ * smuggle malformed cards into every design that later pastes it.
+ */
+export const boardSelectionPayloadSchema = z.object({
+  nodes: z.array(factoryNodeSchema),
+  storages: z.array(factoryStorageSchema),
+  annotations: z.array(factoryAnnotationSchema),
+  pockets: z.array(factoryPocketSchema),
+  edges: z.array(factoryEdgeSchema),
+  recipes: z.array(recipeSchema),
+});
