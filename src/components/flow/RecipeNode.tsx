@@ -760,86 +760,88 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               perSecond={customRateSlot.resource.amount}
             />
           ) : null}
-          {/* Config dials — coil tiers, TGS tools, crop knobs — are for
-              building a plan, not for showing one; calm mode drops them. */}
-          {calmMode ? null : machineConfigPanel}
-          {calmMode ? null : passiveProductionPanel}
+          {/* The bottom cluster: the config dials (coil tiers, TGS tools,
+              crop knobs) and the stat footer, anchored together to the card's
+              BOTTOM edge with a 6px inset clearing the frame's bevel. One
+              rounded-up block for all of it, so the grid-rounding slack opens
+              between the ports and the controls — never below the controls,
+              where it read as the card trailing off. Calm mode drops the
+              dials and the diagnostics; a custom rate node has no machine
+              count, so calm mode drops its footer entirely. */}
+          {!isCropFarmPlaceholder &&
+          !isCustomRatePlaceholder &&
+          (!calmMode || !isCustomRateNode) ? (
+            <GridBlock minCells={3} align="end" className="min-w-0">
+              {calmMode ? null : machineConfigPanel}
+              {calmMode ? null : passiveProductionPanel}
+              <div
+                className={[
+                  // A hairline over the stats: the knobs are one thing, the
+                  // verdict below them is another.
+                  "min-w-0 border-t border-[var(--mc-56)] pb-[6px] pt-[6px] text-[14px] leading-5 text-[var(--mc-ink)]",
+                  nodeColor ? "recipe-node-stat-grid" : "",
+                ].join(" ")}
+                style={nodeColor ? { backgroundColor: nodeColor.panel } : undefined}
+              >
+                <div
+                  className={[
+                    "min-w-0 items-center gap-1",
+                    // Every cell sizes to its content except MACHINES, which
+                    // takes the slack: a four-digit machine count is the one
+                    // number here that legitimately gets wide. Parallel
+                    // stretched to fill and then truncated its own label
+                    // ("Parall…"). Calm mode drops the diagnostics and keeps
+                    // just that box, bottom right. The box sizes to its track
+                    // (its input is w-0 flex-1, so shrink-to-fit collapses
+                    // it) — one output-rail-wide column, pushed right, so it
+                    // sits squarely under the outputs at its normal width.
+                    calmMode
+                      ? "grid justify-end grid-cols-[176px]"
+                      : [
+                          "grid",
+                          isCustomRateNode
+                            ? "grid-cols-[auto]"
+                            : machineParallelMultiplier > 1
+                              ? "grid-cols-[auto_auto_minmax(84px,1fr)]"
+                              : "grid-cols-[auto_minmax(84px,1fr)]",
+                        ].join(" "),
+                    isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
+                  ].join(" ")}
+                >
+                  {!calmMode ? (
+                    <UsageStat
+                      nodeId={projectNode.id}
+                      verdict={verdict}
+                      isCustomRate={isCustomRateNode}
+                    />
+                  ) : null}
+                  {!isCustomRateNode ? (
+                    <>
+                      {!calmMode && machineParallelMultiplier > 1 ? (
+                        <Stat
+                          label="Parallel"
+                          value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
+                        />
+                      ) : null}
+                      <MachineCountStat
+                        label={isCropProductionNode ? "Seeds" : "Machines"}
+                        machineCount={projectNode.machineCount}
+                        onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
+                      />
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </GridBlock>
+          ) : null}
         </div>
 
-        {/* The footer IS the verdict now: usage leads on the left with the
-            state word beside it, the two facts that used to crowd it shrink
-            to the right. Never a third line — a taller footer on every node
-            costs more board than the sentence was worth. */}
-        {!isCropFarmPlaceholder &&
-        !isCustomRatePlaceholder &&
-        // Calm mode keeps the footer ONLY as a home for the machine count;
-        // a custom rate node has no count, so its footer goes entirely.
-        (!calmMode || !isCustomRateNode) ? (
-          <GridBlock
-            className={[
-              // A hairline over the dials: the machine is one thing, the knobs
-              // under it are another. No extra padding — tight everywhere.
-              "min-w-0 border-t border-[var(--mc-56)] text-[14px] leading-5 text-[var(--mc-ink)]",
-              nodeColor ? "recipe-node-stat-grid" : "",
-            ].join(" ")}
-            style={nodeColor ? { backgroundColor: nodeColor.panel } : undefined}
-          >
-          <div
-            className={[
-              "min-w-0 items-center gap-1",
-              // Every cell sizes to its content except MACHINES, which takes
-              // the slack: a four-digit machine count is the one number here
-              // that legitimately gets wide. Parallel stretched to fill and
-              // then truncated its own label ("Parall…"). Calm mode drops the
-              // diagnostics and keeps just that box, bottom right. The box
-              // sizes to its track (its input is w-0 flex-1, so shrink-to-fit
-              // collapses it) — one output-rail-wide column, pushed right, so
-              // it sits squarely under the outputs at its normal-mode width.
-              calmMode
-                ? "grid justify-end grid-cols-[176px]"
-                : [
-                    "grid",
-                    isCustomRateNode
-                      ? "grid-cols-[auto]"
-                      : machineParallelMultiplier > 1
-                        ? "grid-cols-[auto_auto_minmax(84px,1fr)]"
-                        : "grid-cols-[auto_minmax(84px,1fr)]",
-                  ].join(" "),
-              isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
-            ].join(" ")}
-          >
-            {!calmMode ? (
-              <UsageStat
-                nodeId={projectNode.id}
-                verdict={verdict}
-                isCustomRate={isCustomRateNode}
-              />
-            ) : null}
-            {!isCustomRateNode ? (
-              <>
-                {!calmMode && machineParallelMultiplier > 1 ? (
-                  <Stat
-                    label="Parallel"
-                    value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
-                  />
-                ) : null}
-                <MachineCountStat
-                  label={isCropProductionNode ? "Seeds" : "Machines"}
-                  machineCount={projectNode.machineCount}
-                  onChange={(machineCount) => updateNode(projectNode.id, { machineCount })}
-                />
-              </>
-            ) : null}
-          </div>
-          </GridBlock>
+        {isCropFarmPlaceholder || isCustomRatePlaceholder || (calmMode && isCustomRateNode) ? (
+          /* No bottom cluster: a one-cell chin keeps the last row off the
+             frame's inset bevel. Cards WITH the cluster get their clearance
+             from its bottom inset instead. */
+          <div aria-hidden className="h-[20px]" />
         ) : null}
-        {/* The chin: one whole cell of nothing. The frame is an inset shadow,
-            so the card's last row — a port chip filling its 40px, the footer
-            centred with a pixel of slack — used to land ON the bottom bevel.
-            Sections can only come in whole cells, so the clearance does too;
-            it mirrors the head row's own margins and keeps the total height
-            on the grid. */}
-        <div aria-hidden className="h-[20px]" />
       </div>
     </div>
   );
@@ -1168,12 +1170,23 @@ function GridBlock({
   className,
   minCells = 2,
   style,
+  align = "center",
+  clearancePx = 0,
 }: {
   children: ReactNode;
   className?: string;
   /** Floor, in cells. Two is the standard block. */
   minCells?: number;
   style?: CSSProperties;
+  /** Where content sits in the rounded-up block. The footer bottom-aligns. */
+  align?: "center" | "end";
+  /**
+   * Extra height the measurement must reserve beyond the content itself —
+   * the caller's own padding and border, which scrollHeight cannot see.
+   * Without it a content height near a cell boundary would round to a block
+   * the padding no longer fits in.
+   */
+  clearancePx?: number;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [cellCount, setCellCount] = useState(minCells);
@@ -1184,7 +1197,7 @@ function GridBlock({
       return;
     }
     const measure = () => {
-      const needed = Math.ceil(element.scrollHeight / BOARD_GRID - 0.001);
+      const needed = Math.ceil((element.scrollHeight + clearancePx) / BOARD_GRID - 0.001);
       const next = Math.max(minCells, needed);
       setCellCount((current) => (current === next ? current : next));
     };
@@ -1192,15 +1205,19 @@ function GridBlock({
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [minCells]);
+  }, [clearancePx, minCells]);
 
   return (
     <div className={className} style={{ ...style, height: cellCount * BOARD_GRID }}>
       {/* The measured div must be free to size to its content, or its own
           scrollHeight would just report the height we gave it and the block
-          could never shrink again. The centring wrapper takes the fixed
+          could never shrink again. The aligning wrapper takes the fixed
           height; the child stays auto. */}
-      <div className="flex h-full flex-col justify-center">
+      <div
+        className={
+          align === "end" ? "flex h-full flex-col justify-end" : "flex h-full flex-col justify-center"
+        }
+      >
         <div ref={contentRef}>{children}</div>
       </div>
     </div>
