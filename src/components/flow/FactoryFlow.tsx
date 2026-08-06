@@ -150,7 +150,7 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
-import { getDockTopInset } from "./dock-insets";
+import { getDockTabsRight, getDockTopInset } from "./dock-insets";
 import { isWiringConnection, setWiringConnection, WIRING_BOARD_CLASS } from "./connection-drag";
 import {
   clearHopMap,
@@ -798,15 +798,21 @@ function resolveGridRouteEndpoints(
   // The window's true top: side docks exist only below it, and the corner
   // keep-out measures from IT — the window's corner, not the phantom box's.
   const dockTop = top + topInset;
+  // A top-dock stub descends straight through the zone at its own x. Left of
+  // this line the tab art sits, and a stub there would draw the wire (and
+  // its marching dashes) across a tab — those docks simply do not exist.
+  // Half a cell of margin keeps a fat stub's edge off the last tab too.
+  const tabsKeepOut =
+    topInset > 0 ? rect.left + getDockTabsRight(nodeId) + BOARD_GRID / 2 : -Infinity;
   const centerX = (left + right) / 2;
   const centerY = (dockTop + bottom) / 2;
   const candidates: GridEndpoint[] = [];
   for (let x = left + cornerKeepOut; x <= right - cornerKeepOut; x += step) {
     const penalty = Math.abs(x - centerX) * DOCK_CENTER_BIAS;
-    candidates.push(
-      { x, y: top, side: "top", penalty, stubDepth: topInset || undefined },
-      { x, y: bottom, side: "bottom", penalty },
-    );
+    if (x > tabsKeepOut) {
+      candidates.push({ x, y: top, side: "top", penalty, stubDepth: topInset || undefined });
+    }
+    candidates.push({ x, y: bottom, side: "bottom", penalty });
   }
   for (let y = dockTop + cornerKeepOut; y <= bottom - cornerKeepOut; y += step) {
     const penalty = Math.abs(y - centerY) * DOCK_CENTER_BIAS;
@@ -818,9 +824,11 @@ function resolveGridRouteEndpoints(
     candidates.push(
       { x: left, y: snap(centerY), side: "left" },
       { x: right, y: snap(centerY), side: "right" },
-      { x: snap(centerX), y: top, side: "top", stubDepth: topInset || undefined },
       { x: snap(centerX), y: bottom, side: "bottom" },
     );
+    if (snap(centerX) > tabsKeepOut) {
+      candidates.push({ x: snap(centerX), y: top, side: "top", stubDepth: topInset || undefined });
+    }
   }
   return candidates;
 }
