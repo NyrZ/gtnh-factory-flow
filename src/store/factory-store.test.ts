@@ -3502,7 +3502,7 @@ describe("pocket dimensions", () => {
     expect(edges.map((edge) => edge.target).sort()).toEqual(["melt-a", "melt-b"]);
   });
 
-  it("warns before compacting only when different sources would pool", () => {
+  it("warns before compacting whenever convergence would add wires", () => {
     const base: Omit<FactoryProject, "edges"> = {
       schemaVersion: PROJECT_SCHEMA_VERSION,
       id: "warn",
@@ -3554,16 +3554,23 @@ describe("pocket dimensions", () => {
     expect(pooled[0]?.resourceId).toBe("cobblestone");
     expect(pooled[0]?.farEndCount).toBe(2);
 
-    // One source feeding one of two consumers: silent fan-out, no warning.
+    // One source feeding one of two consumers: the fan-out splits that
+    // source's output and un-hand-feeds the other card - warn, single
+    // source flavour.
     useFactoryStore.getState().setProject({
       ...structuredClone(base),
       edges: [
         { id: "a", source: "gen-a", target: "melt-a", resourceKind: "item", resourceId: "cobblestone" },
       ],
     });
-    expect(
-      collectPocketConvergenceWarnings(useFactoryStore.getState().project, ["melt-a", "melt-b"]),
-    ).toHaveLength(0);
+    const stretched = collectPocketConvergenceWarnings(useFactoryStore.getState().project, [
+      "melt-a",
+      "melt-b",
+    ]);
+    expect(stretched).toHaveLength(1);
+    expect(stretched[0]?.farEndCount).toBe(1);
+    expect(stretched[0]?.memberCount).toBe(2);
+    expect(stretched[0]?.wiredMemberCount).toBe(1);
 
     // Two sources that BOTH already feed both consumers: converging adds
     // nothing, so nothing to warn about.

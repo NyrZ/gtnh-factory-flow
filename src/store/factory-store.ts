@@ -2588,24 +2588,28 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
   );
 }
 
-/** One line of the pre-compact warning: a resource whose supplies would pool. */
+/** One line of the pre-compact warning: a port whose wiring would change. */
 export interface PocketConvergenceWarning {
   side: "input" | "output";
   kind: ResourceKind;
   resourceId: string;
   /** Best-effort display name, the raw id as fallback. */
   label: string;
-  /** Distinct far-end cards involved (the sources that would merge). */
+  /** Distinct far-end cards involved (sources in, destinations out). */
   farEndCount: number;
+  /** Members that take/offer this resource inside the prospective pocket. */
+  memberCount: number;
+  /** Members any crossing wire already reaches. */
+  wiredMemberCount: number;
 }
 
 /**
- * What compacting THIS selection would rewire, before it happens. The
- * boundary convergence rule silently completes fan-outs from a single
- * source — nothing meaningfully changes there. What deserves a warning is
- * SEVERAL distinct far-ends on the same port resource whose coverage
- * differs: compacting pools supply chains the player kept separate, and
- * they should get to say no first.
+ * What compacting THIS selection would rewire, before it happens. The rule
+ * is simple: warn whenever convergence would ADD a wire — several sources
+ * pooling behind one port, or one source stretching to takers it never fed
+ * (splitting its output and un-hand-feeding them), and both mirrored on
+ * the output side. The only silent compact is one whose boundary wiring
+ * already matches the pocket's one-port-per-resource story.
  */
 export function collectPocketConvergenceWarnings(
   project: FactoryProject,
@@ -2659,9 +2663,6 @@ export function collectPocketConvergenceWarnings(
 
   const warnings: PocketConvergenceWarning[] = [];
   for (const group of groups.values()) {
-    if (group.farEnds.size < 2) {
-      continue;
-    }
     const memberEndpoints = resolveMemberIdsForResource(project, itemIds, group.side, {
       kind: group.kind,
       id: group.resourceId,
@@ -2671,12 +2672,20 @@ export function collectPocketConvergenceWarnings(
       return memberEndpoints.some((memberId) => !wired?.has(memberId));
     });
     if (wouldRewire) {
+      const wiredMembers = new Set<string>();
+      for (const wired of group.pairings.values()) {
+        for (const memberId of wired) {
+          wiredMembers.add(memberId);
+        }
+      }
       warnings.push({
         side: group.side,
         kind: group.kind,
         resourceId: group.resourceId,
         label: group.label,
         farEndCount: group.farEnds.size,
+        memberCount: memberEndpoints.length,
+        wiredMemberCount: wiredMembers.size,
       });
     }
   }

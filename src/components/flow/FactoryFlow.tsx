@@ -3461,18 +3461,23 @@ export function FactoryFlow() {
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55">
           <div className="max-w-[460px] border-2 border-amber-500 bg-[#1b1d21] p-4 font-mono text-neutral-100 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
             <p className="text-[13px] font-bold text-amber-300">
-              Heads up — supplies will merge
+              Heads up — compacting rewires the boundary
             </p>
             <p className="mt-2 text-[12px] leading-relaxed text-neutral-300">
-              Cards in this selection take the same resource from different places. A pocket has
-              ONE port per resource, so those supplies pool: every source feeds every card that
-              takes it, and the planner decides the split. Unpacking keeps the pooled wiring.
+              A pocket has ONE port per resource: every source feeds every card that takes it,
+              every destination drinks from every card that makes it, and the planner decides the
+              split. This selection&apos;s wiring doesn&apos;t match that yet, so compacting will
+              add wires. Unpacking keeps them.
             </p>
             <ul className="mt-2 flex flex-col gap-0.5 text-[12px] text-amber-200">
               {compactWarning.warnings.map((warning) => (
                 <li key={`${warning.side}:${warning.kind}:${warning.resourceId}`}>
-                  {warning.label} — {warning.farEndCount}{" "}
-                  {warning.side === "input" ? "sources" : "destinations"} merge
+                  {warning.label} —{" "}
+                  {warning.farEndCount >= 2
+                    ? `${warning.farEndCount} ${warning.side === "input" ? "sources" : "destinations"} merge`
+                    : warning.side === "input"
+                      ? `its source now feeds all ${warning.memberCount} takers (was ${warning.wiredMemberCount}), splitting its output`
+                      : `all ${warning.memberCount} makers now deliver (was ${warning.wiredMemberCount})`}
                 </li>
               ))}
             </ul>
