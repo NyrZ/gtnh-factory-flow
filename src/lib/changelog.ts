@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.11.0",
+    date: "2026-08-05",
+    headline: "A show-off mode, and machines you can recognise from orbit",
+    notes: [
+      "New screen button in the board toolbar: presentation mode. The warning colours calm down to steel, the fix-it dials and buttons step aside, and every card slims to its name, its rates and a machine count — made for showing a build off.",
+      "Machine tabs sit on top of the card like real tabs now, and in presentation mode the chosen machine rides up there as one big icon.",
+      "Zoomed way out, cards now show what they ARE — the machine's icon, big. Hover one and a full-size readout opens with the machine, its count and everything going in and out. Two buttons in the bottom right switch between this and the classic usage view with the distance map.",
+      "The side panel now opens straight onto your resources — needs, outputs and internal flows — with the power figures retired.",
+    ],
+  },
+  {
     version: "1.10.1",
     date: "2026-08-05",
     headline: "Wires you can actually see",
