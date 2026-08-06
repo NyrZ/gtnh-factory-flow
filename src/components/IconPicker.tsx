@@ -169,7 +169,7 @@ export function IconPicker({
                     bare
                     tooltip={false}
                     showAmount={false}
-                    className="!h-7 !w-7"
+                    className="!h-full !w-full"
                   />
                 </button>
               ))}
@@ -215,7 +215,7 @@ export function IconPicker({
                     bare
                     tooltip={false}
                     showAmount={false}
-                    className="!h-7 !w-7"
+                    className="!h-full !w-full"
                   />
                 </button>
               ))}
@@ -251,6 +251,8 @@ export function EntryIconSlot({
   onEdit?: () => void;
   className?: string;
 }) {
+  // Fills the slot: the padded source art is drawn at 200% and cropped by
+  // the wrapper, so the sprite lands at roughly the slot's own size.
   const face = icon ? (
     <ResourceIcon
       resource={{
@@ -265,7 +267,7 @@ export function EntryIconSlot({
       bare
       tooltip={false}
       showAmount={false}
-      className="!h-4 !w-4"
+      className="!h-full !w-full"
     />
   ) : null;
 
