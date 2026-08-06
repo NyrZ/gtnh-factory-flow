@@ -93,6 +93,17 @@ import type {
   ResourceKind,
 } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
+import {
+  ANNOTATION_DEFAULT_ARROW,
+  ANNOTATION_DEFAULT_BOX,
+  ANNOTATION_DEFAULT_TEXT,
+  ANNOTATION_MIN_ARROW,
+  ANNOTATION_MIN_BOX,
+  ANNOTATION_MIN_TEXT,
+  BOARD_GRID,
+  STORAGE_NODE_HEIGHT,
+  STORAGE_NODE_WIDTH,
+} from "@/lib/board-grid";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { RecipeNode, type RecipeFlowNode } from "./RecipeNode";
 import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE, flowRampColor } from "./node-colors";
@@ -218,8 +229,12 @@ const DEFAULT_FLUID_EDGE_COLOR = "#2f89c5";
 const CANVAS_COLOR = "#1b1d21";
 const CANVAS_DOT_COLOR = "#4a4d55";
 
-/** Snap step, and the background gap — same number so nodes land on marks. */
-const BOARD_GRID_SIZE = 24;
+/**
+ * Snap step, and the background gap — same number so nodes land on marks.
+ * It is also the number every card is built out of: see `@/lib/board-grid`,
+ * which owns the cell and the card sizes derived from it.
+ */
+const BOARD_GRID_SIZE = BOARD_GRID;
 /** Stable identity: a fresh array each render would re-init React Flow's snap. */
 const BOARD_GRID_SNAP: [number, number] = [BOARD_GRID_SIZE, BOARD_GRID_SIZE];
 const CANVAS_PATTERN_LABEL: Record<CanvasPattern, string> = {
@@ -344,7 +359,9 @@ function flowBucketFor(kind: ResourceKind): "item" | "fluid" {
 }
 
 const RECIPE_SLOT_EDGE_OFFSET = 20;
-const STORAGE_SLOT_EDGE_OFFSET = 55;
+// Half a drawer card (140×160 → 70), less a cell, so an unmeasured endpoint
+// still lands inside the card the way a measured one does.
+const STORAGE_SLOT_EDGE_OFFSET = 60;
 const EDGE_BUNDLE_CLEARANCE = 30;
 // Wires were correct but claustrophobic at 18 — they hugged node walls.
 const BASE_EDGE_NODE_CLEARANCE = 30;
@@ -1987,7 +2004,8 @@ export function FactoryFlow() {
         draggedResource,
         draggedResource.nodeId,
         draggedResource.side,
-        { x: position.x - 78, y: position.y - 62 },
+        // Centre the new drawer on the pointer; the store snaps it to a cell.
+        { x: position.x - STORAGE_NODE_WIDTH / 2, y: position.y - STORAGE_NODE_HEIGHT / 2 },
         draggedResource.handleId,
       );
     },
@@ -2469,8 +2487,8 @@ export function FactoryFlow() {
           colorTag: activeColorTag,
           position: isClick ? draft.start : corner,
           size: isClick
-            ? { width: 280, height: 180 }
-            : { width: Math.max(width, 48), height: Math.max(height, 48) },
+            ? ANNOTATION_DEFAULT_BOX
+            : { width: Math.max(width, ANNOTATION_MIN_BOX), height: Math.max(height, ANNOTATION_MIN_BOX) },
         });
         return;
       }
@@ -2482,8 +2500,8 @@ export function FactoryFlow() {
           colorTag: activeColorTag,
           position: isClick ? draft.start : corner,
           size: isClick
-            ? { width: 200, height: 8 }
-            : { width: Math.max(width, 8), height: Math.max(height, 8) },
+            ? ANNOTATION_DEFAULT_ARROW
+            : { width: Math.max(width, ANNOTATION_MIN_ARROW), height: Math.max(height, ANNOTATION_MIN_ARROW) },
           arrowDirection: `${draft.end.y >= draft.start.y ? "down" : "up"}-${
             draft.end.x >= draft.start.x ? "right" : "left"
           }` as const,
@@ -2498,8 +2516,11 @@ export function FactoryFlow() {
         text: "",
         position: isClick ? draft.start : corner,
         size: isClick
-          ? { width: 240, height: 80 }
-          : { width: Math.max(width, 96), height: Math.max(height, 40) },
+          ? ANNOTATION_DEFAULT_TEXT
+          : {
+              width: Math.max(width, ANNOTATION_MIN_TEXT.width),
+              height: Math.max(height, ANNOTATION_MIN_TEXT.height),
+            },
       });
     },
     [activeColorTag, addAnnotation],
@@ -2641,7 +2662,8 @@ export function FactoryFlow() {
         // board already sets an explicit zIndex on every edge, so nothing else
         // depended on the automatic elevation.
         zIndexMode="manual"
-        snapToGrid={boardView.snapToGrid}
+        // Always. Cards are whole cells; a card between cells is just wrong.
+        snapToGrid
         snapGrid={BOARD_GRID_SNAP}
       >
         <NodeDetailController boardRef={boardRef} />
@@ -3276,8 +3298,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
   /** Heatmap also drops the paint brush, which lives in the Zustand store. */
   onHeatmapChange: (enabled: boolean) => void;
 }) {
-  const { snapToGrid, canvasPattern, heatmapMode, lineHeatMode, lineThicknessMode, linePulseMode } =
-    view;
+  const { canvasPattern, heatmapMode, lineHeatMode, lineThicknessMode, linePulseMode } = view;
   const PatternIcon =
     canvasPattern === "lines"
       ? Grid3x3
@@ -3315,20 +3336,9 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       >
         <PatternIcon className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        onClick={() => onChange({ snapToGrid: !snapToGrid })}
-        className={buttonClass(snapToGrid)}
-        title={
-          snapToGrid
-            ? `Grid lock on — nodes snap to ${BOARD_GRID_SIZE}px`
-            : "Grid lock off — nodes move freely"
-        }
-        aria-label={snapToGrid ? "Turn grid lock off" : "Turn grid lock on"}
-        aria-pressed={snapToGrid}
-      >
-        <Magnet className="h-4 w-4" />
-      </button>
+      {/* No grid-lock button any more. The grid is not a mode: every card is
+          built out of whole cells and every position is a cell corner, so
+          there is nothing left for a toggle to mean. */}
       <button
         type="button"
         onClick={() => onHeatmapChange(!heatmapMode)}

@@ -5,6 +5,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { FactoryAnnotation } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
 import { GT_NODE_COLORS } from "./node-colors";
+import { ANNOTATION_MIN_ARROW, ANNOTATION_MIN_BOX, ANNOTATION_MIN_TEXT } from "@/lib/board-grid";
 
 export interface AnnotationNodeData extends Record<string, unknown> {
   annotation: FactoryAnnotation;
@@ -45,8 +46,8 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
   const resizer = (
     <NodeResizer
       isVisible={selected}
-      minWidth={annotation.kind === "text" ? 96 : 32}
-      minHeight={annotation.kind === "text" ? 40 : 24}
+      minWidth={annotation.kind === "text" ? ANNOTATION_MIN_TEXT.width : ANNOTATION_MIN_BOX}
+      minHeight={annotation.kind === "text" ? ANNOTATION_MIN_TEXT.height : ANNOTATION_MIN_ARROW}
       lineStyle={{ pointerEvents: "all", borderColor: "#22d3ee" }}
       handleStyle={{
         pointerEvents: "all",
@@ -56,6 +57,8 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
         backgroundColor: "#22d3ee",
         border: "1px solid #0e7490",
       }}
+      // The store rounds both the corner and the size to whole cells, so a
+      // freehand resize still lands on the grid the moment you let go.
       onResizeEnd={(_, params) =>
         updateAnnotation(annotation.id, {
           position: { x: params.x, y: params.y },

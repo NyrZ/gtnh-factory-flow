@@ -172,7 +172,10 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         // drawer zoomed out still reads as a drawer.
         data-node-glance-root=""
         className={[
-          "storage-node-card relative w-[132px] border-2 p-1",
+          // Seven cells by eight, fixed. The card used to be 132×(whatever its
+          // rows added up to); wires dock on its perimeter, so an off-grid
+          // edge meant off-grid endpoints.
+          "storage-node-card relative h-[160px] w-[140px] border-2 p-1",
           isTank
             ? "border-[#565f72] bg-[#b9c2d4] shadow-[inset_2px_2px_0_#e8edf7,inset_-2px_-2px_0_#7b8497]"
             : "border-[#2b1c0e] bg-[#8a6030] shadow-[inset_3px_3px_0_#ad7b3e,inset_-3px_-3px_0_#3e2a13]",
@@ -211,7 +214,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               node. The handles carry inline styles pinned to the well box;
               stylesheet !important wars once let them blanket the whole
               card and swallow the header buttons. */}
-          <div className="relative mx-auto mt-1.5 h-[84px] w-[112px]">
+          <div className="relative mx-auto mt-1.5 h-[84px] w-[116px]">
             <Handle
               id={inputHandleId}
               type="target"
@@ -265,7 +268,9 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         </MinecraftTooltip>
         <div
           className={[
-            "mt-1 text-center text-[9px] font-bold leading-[13px] tabular-nums",
+            // 1.5 not 1: header 24 + badge 15 + well 90 + this 19 fills the
+            // card's 148px interior exactly.
+            "mt-1.5 text-center text-[9px] font-bold leading-[13px] tabular-nums",
             net > 0.005 ? "text-[#1d5c2a]" : net < -0.005 ? "text-[#7c1d1d]" : "text-[#42424b]",
           ].join(" ")}
         >

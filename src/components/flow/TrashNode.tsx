@@ -161,7 +161,8 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         // Glance root is the CARD, so the can keeps its frame and colour and
         // only loses the buttons and the title.
         data-node-glance-root=""
-        className="relative w-[116px] border-2 p-1"
+        // Six cells by seven, fixed — the can docks wires on its perimeter.
+        className="relative h-[140px] w-[120px] border-2 p-1"
         style={{
           borderColor: nodeColor?.border ?? "#565f72",
           backgroundColor: nodeColor?.panel ?? "#b9c2d4",
@@ -214,7 +215,9 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         <MinecraftTooltip content={'Voids any input. Never shows up as an "Output".'}>
           {/* The dark well is the wire zone: drop or drag a wire anywhere on
               it. The frame and header around it move the node. */}
-          <div className="relative mx-auto mb-0.5 mt-1.5 h-[88px] w-[96px]">
+          {/* Square, and sized to fill what the header leaves of the card's
+              128px interior: 20 (header, pulled up by its -m-1) + 6 + 100 + 2. */}
+          <div className="relative mx-auto mb-0.5 mt-1.5 h-[100px] w-[100px]">
             <Handle
               id={inputHandleId}
               type="target"

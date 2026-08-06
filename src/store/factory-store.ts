@@ -25,6 +25,12 @@ import {
 } from "@/lib/model/trash";
 import { optimizeMachineCountsForProject } from "@/lib/solver/machine-count-optimizer";
 import {
+  BOARD_GRID,
+  RECIPE_NODE_WIDTH,
+  snapPositionToGrid,
+  snapSizeUpToGrid,
+} from "@/lib/board-grid";
+import {
   getFilledCellFluidEquivalent,
   getResourceKey,
   isOreDictionaryResource,
@@ -940,10 +946,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         iconPath: resource.iconPath,
         iconAtlas: resource.iconAtlas,
         dominantColor: resource.dominantColor ?? resource.iconAtlas?.dominantColor,
-        position: {
+        position: snapPositionToGrid({
           x: 180 + (state.project.storages?.length ?? 0) * 80,
           y: 180 + (state.project.storages?.length ?? 0) * 60,
-        },
+        }),
       };
       const project = touchProject({
         ...state.project,
@@ -968,7 +974,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         iconPath: storageResource.iconPath,
         iconAtlas: storageResource.iconAtlas,
         dominantColor: storageResource.dominantColor ?? storageResource.iconAtlas?.dominantColor,
-        position,
+        position: snapPositionToGrid(position),
       };
       const projectWithStorage: FactoryProject = {
         ...state.project,
@@ -1066,7 +1072,11 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       }
       const clone = structuredClone(node);
       clone.id = createId("node");
-      clone.position = { x: node.position.x + 48, y: node.position.y + 48 };
+      // Two cells down and across: far enough to see, still on the grid.
+      clone.position = snapPositionToGrid({
+        x: node.position.x + CLONE_OFFSET,
+        y: node.position.y + CLONE_OFFSET,
+      });
       // Custom rate nodes own their recipe (the dialed rate lives on it), so
       // the clone gets its own copy — otherwise both nodes share one dial.
       const recipe = state.project.recipes.find((entry) => entry.id === node.recipeId);
@@ -1096,7 +1106,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       }
       const clone = structuredClone(storage);
       clone.id = createId("storage");
-      clone.position = { x: storage.position.x + 48, y: storage.position.y + 48 };
+      clone.position = snapPositionToGrid({
+        x: storage.position.x + CLONE_OFFSET,
+        y: storage.position.y + CLONE_OFFSET,
+      });
       const project = touchProject({
         ...state.project,
         storages: [...(state.project.storages ?? []), clone],
@@ -1191,7 +1204,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ...state.project,
         annotations: [
           ...(state.project.annotations ?? []),
-          { ...annotation, id: createId("annotation") },
+          { ...annotation, ...snapAnnotationToGrid(annotation), id: createId("annotation") },
         ],
       });
 
@@ -1203,7 +1216,9 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const project = touchProject({
         ...state.project,
         annotations: (state.project.annotations ?? []).map((annotation) =>
-          annotation.id === annotationId ? { ...annotation, ...patch } : annotation,
+          annotation.id === annotationId
+            ? { ...annotation, ...patch, ...snapAnnotationToGrid(patch) }
+            : annotation,
         ),
       });
 
@@ -1607,10 +1622,10 @@ function addRecipeNodeToState(
 ): Partial<FactoryStore> {
   const index = state.project.nodes.length;
   const viewportPosition = state.flowViewportCenter
-    ? {
-        x: state.flowViewportCenter.x - 220,
+    ? snapPositionToGrid({
+        x: state.flowViewportCenter.x - RECIPE_NODE_WIDTH / 2,
         y: state.flowViewportCenter.y - 160,
-      }
+      })
     : undefined;
   // A machine picked in the recipe finder spawns the node with that handler
   // selected, at the handler's own minimum tier.
@@ -1627,10 +1642,12 @@ function addRecipeNodeToState(
     recipeInputOverrides: resource ? buildRecipeInputOverrides(recipe, resource) : undefined,
     colorTag: options?.colorTag,
     enabled: true,
-    position: viewportPosition ?? {
-      x: 100 + index * 90,
-      y: 120 + (index % 4) * 90,
-    },
+    position:
+      viewportPosition ??
+      snapPositionToGrid({
+        x: 100 + index * 80,
+        y: 120 + (index % 4) * 80,
+      }),
   };
   const recipeAlreadyInProject = state.project.recipes.some((entry) => entry.id === recipe.id);
   const project = touchProject({
@@ -1673,10 +1690,11 @@ function addConnectedRecipeNodeToState(
     overclockTier: recipe.minimumTier,
     recipeInputOverrides: buildRecipeInputOverrides(recipe, resource),
     enabled: true,
-    position:
+    position: snapPositionToGrid(
       resource.mode === "recipes"
         ? { x: anchorNode.position.x - 440, y: anchorNode.position.y }
         : { x: anchorNode.position.x + 440, y: anchorNode.position.y },
+    ),
   };
 
   const projectWithNode: FactoryProject = {
@@ -2605,6 +2623,31 @@ function getDatasetIconLookup(dataset: RecipeDataset): Map<string, IconResource>
   }
 
   return iconsByResource;
+}
+
+/** A clone lands two cells down and across from its original. */
+const CLONE_OFFSET = BOARD_GRID * 2;
+
+/**
+ * Annotations are the one thing on the board the user sizes by hand, so they
+ * get snapped on the way into the project rather than left to the magnet: a
+ * box drawn freehand still ends up a whole number of cells, on a cell corner.
+ * Only the keys present in the patch are touched.
+ */
+function snapAnnotationToGrid(
+  patch: Partial<FactoryAnnotation>,
+): Partial<FactoryAnnotation> {
+  const snapped: Partial<FactoryAnnotation> = {};
+  if (patch.position) {
+    snapped.position = snapPositionToGrid(patch.position);
+  }
+  if (patch.size) {
+    snapped.size = {
+      width: snapSizeUpToGrid(patch.size.width),
+      height: snapSizeUpToGrid(patch.size.height),
+    };
+  }
+  return snapped;
 }
 
 function createId(prefix: string): string {

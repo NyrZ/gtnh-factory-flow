@@ -22,7 +22,8 @@ export type CanvasPattern = "dots" | "lines" | "cross" | "none";
 export const CANVAS_PATTERNS: CanvasPattern[] = ["dots", "lines", "cross", "none"];
 
 export interface BoardView {
-  snapToGrid: boolean;
+  // No `snapToGrid`. Snapping was a preference back when cards were sized by
+  // their contents; now they are sized in grid cells, so it is a fact.
   canvasPattern: CanvasPattern;
   /** Machines take their colour from how hard they run. */
   heatmapMode: boolean;
@@ -37,7 +38,6 @@ export interface BoardView {
 const BOARD_VIEW_STORAGE_KEY = "gtnh-factory-flow-board-view";
 
 export const DEFAULT_BOARD_VIEW: BoardView = {
-  snapToGrid: false,
   canvasPattern: "dots",
   heatmapMode: false,
   lineHeatMode: false,
@@ -67,7 +67,6 @@ function readBoardView(): BoardView {
     const flag = (value: unknown, fallback: boolean) =>
       typeof value === "boolean" ? value : fallback;
     return {
-      snapToGrid: flag(parsed.snapToGrid, DEFAULT_BOARD_VIEW.snapToGrid),
       canvasPattern: CANVAS_PATTERNS.includes(parsed.canvasPattern as CanvasPattern)
         ? (parsed.canvasPattern as CanvasPattern)
         : DEFAULT_BOARD_VIEW.canvasPattern,

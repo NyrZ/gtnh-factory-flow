@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.9.0",
+    date: "2026-08-05",
+    headline: "The whole board is built on one grid now",
+    notes: [
+      "Every machine, drawer, tank and trash can is now an exact number of grid squares wide and tall, and always sits on a grid square. Boards line up on their own instead of needing you to nudge cards into place.",
+      "Item and fluid slots line up with the grid too, so the same slot on two different machines sits at the same height.",
+      "The grid lock button is gone — it is always on. Plans you made before this update snap onto the grid the first time you open them.",
+      "Machines are all one width now, so a long recipe name no longer makes a card wider than the one next to it.",
+      "The EU/t figure has left the bottom of every card. It is still in the power panel on the right, where the whole plan's draw is.",
+      "Nothing at the bottom of a card gets cut off any more: if a machine needs more room, the card grows by a whole square instead of squeezing.",
+    ],
+  },
+  {
     version: "1.8.0",
     date: "2026-08-05",
     headline: "Drop a wire anywhere on a machine and it finds the right slot",
