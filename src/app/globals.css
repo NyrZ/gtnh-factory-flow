@@ -189,6 +189,13 @@ textarea {
   visibility: hidden;
 }
 
+/* The machine tab zone protrudes ABOVE the recipe card's window, outside its
+   glance root, so the rule above cannot reach it — hide it here. Zoomed out
+   the tabs are a few pixels of noise over the glance figure. */
+.factory-flow-board[data-detail-level="glance"] .machine-tab-zone {
+  visibility: hidden;
+}
+
 .factory-flow-board[data-detail-level="glance"] [data-node-detail="glance"] {
   display: flex;
 }

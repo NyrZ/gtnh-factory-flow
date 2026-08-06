@@ -445,10 +445,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       // a starved node blames its binding input, an over-asked one blames its
       // couplings, and lighting both at once answers the wrong question.
       data-verdict={verdict.kind}
-      // Everything inside goes at the far zoom step except the glance layer;
-      // see the rule in globals.css. Marking the root rather than listing the
-      // sections means a panel added later is covered without being wired up.
-      data-node-glance-root=""
       className={[
         // recipe-node-shell scopes the strip↔row hover link (globals.css):
         // hovering the verdict lights the input it blames, in pure CSS, so a
@@ -486,18 +482,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
     >
-      {/* Zoomed out the card carries one fact: how hard this machine is
-          running. Coloured by the same verdict tone the footer's state word
-          uses, so a board full of these reads as a health map — red starved,
-          amber over-asked, plain fine. */}
-      <NodeGlanceText
-        text={
-          verdict.kind === "off" || verdict.kind === "no-recipe"
-            ? "—"
-            : `${verdict.pct > 0 && verdict.pct < 0.5 ? formatRate(verdict.pct, 1) : formatPct(verdict.pct)}%`
-        }
-        className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
-      />
       {/* The tab zone: rows of whole cells ABOVE the window, over bare
           canvas — tabs, not a toolbar band inside the card. It is part of
           the shell's box, so the router keeps wires out of the space the
@@ -525,6 +509,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           covers its outer half, which reproduces the old 2px-inside-2px look
           exactly. */}
       <div
+        // Glance root is the WINDOW, not the shell: zoomed out the frame and
+        // paint stay and only what is written on them goes — a card still
+        // reads as a card. The tab zone hides via its own rule in globals.css
+        // (it is the shell's child, outside this root).
+        data-node-glance-root=""
         className="relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]"
         style={
           nodeColor
@@ -535,6 +524,18 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             : undefined
         }
       >
+      {/* Zoomed out the card carries one fact: how hard this machine is
+          running. Coloured by the same verdict tone the footer's state word
+          uses, so a board full of these reads as a health map — red starved,
+          amber over-asked, plain fine. */}
+      <NodeGlanceText
+        text={
+          verdict.kind === "off" || verdict.kind === "no-recipe"
+            ? "—"
+            : `${verdict.pct > 0 && verdict.pct < 0.5 ? formatRate(verdict.pct, 1) : formatPct(verdict.pct)}%`
+        }
+        className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
+      />
       {exceedsMaxTier ? (
         <div
           className={[
@@ -1654,9 +1655,9 @@ function PortChip({
         </span>
         {calmMode ? (
           /* Presentation: no bar, no want marks — the room they used goes to
-             the number, which is the thing a viewer actually reads. 14px is
-             the ceiling: a five-digit fluid rate still fits the chip. */
-          <span className="block truncate text-[14px] font-bold leading-[16px] tabular-nums text-[var(--mc-ink)]">
+             the number, which is the thing a viewer actually reads. Muted ink
+             a step below the name, so the pair still reads name-first. */
+          <span className="block truncate text-[13px] font-bold leading-[15px] tabular-nums text-[var(--mc-ink-muted)]">
             {rateText}
           </span>
         ) : (
