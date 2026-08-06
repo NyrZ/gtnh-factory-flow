@@ -42,6 +42,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const enterPocket = useFactoryStore((state) => state.enterPocket);
   const dissolvePocket = useFactoryStore((state) => state.dissolvePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
+  const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
 
   const inputs = summary?.inputs ?? [];
@@ -111,19 +112,24 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
         <NodeGlanceText text="✦" className={INK_MUTED} />
         <PocketGlanceReveal name={pocket.name} inputs={inputs} outputs={outputs} />
         <div className="px-2">
-          {/* One head row, exactly two cells tall, like every machine card. */}
-          <div className="grid h-[40px] min-w-0 grid-cols-[24px_24px_24px_24px_minmax(0,1fr)] items-center gap-1">
+          {/* One head row, exactly two cells tall, like every machine card:
+              delete/clone/open on the left like every card's edit chrome, the
+              name in the middle, and the two "send it away" actions — shelve
+              as blueprint, unpack — on the right. */}
+          <div className="grid h-[40px] min-w-0 grid-cols-[24px_24px_24px_minmax(0,1fr)_24px_24px] items-center gap-1">
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                enterPocket(pocket.id);
+                deleteBoardSelection({ nodeIds: [pocket.id] });
               }}
-              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-              title="Open this pocket dimension (or double-click the card)"
-              aria-label={`Open pocket ${pocket.name}`}
+              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-red-700"
+              title="Delete this pocket (everything inside goes with it)"
+              aria-label={`Delete pocket ${pocket.name}`}
             >
-              <Expand aria-hidden className="h-3.5 w-3.5" />
+              {/* Drawn rather than a "-" glyph: at this size Monocraft's
+                  metrics baseline-align the hyphen low instead of centring. */}
+              <span aria-hidden className="block h-[2px] w-[8px] bg-white" />
             </button>
             <button
               type="button"
@@ -141,25 +147,13 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                saveAsBlueprint();
+                enterPocket(pocket.id);
               }}
               className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-              title={`Save "${pocket.name}" to my blueprints (sign in required)`}
-              aria-label={`Save pocket ${pocket.name} as a blueprint`}
+              title="Open this pocket dimension (or double-click the card)"
+              aria-label={`Open pocket ${pocket.name}`}
             >
-              <Save aria-hidden className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                dissolvePocket(pocket.id);
-              }}
-              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-              title="Unpack: spill everything back onto this board"
-              aria-label={`Unpack pocket ${pocket.name}`}
-            >
-              <PackageOpen aria-hidden className="h-3.5 w-3.5" />
+              <Expand aria-hidden className="h-3.5 w-3.5" />
             </button>
             {draftName === undefined ? (
               <div
@@ -190,6 +184,30 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                 className="nodrag h-6 min-w-0 border-2 border-[#8d6fd1] bg-[#241b33] px-1 text-[13px] leading-none text-white outline-none"
               />
             )}
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                saveAsBlueprint();
+              }}
+              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+              title={`Save "${pocket.name}" to my blueprints (sign in required)`}
+              aria-label={`Save pocket ${pocket.name} as a blueprint`}
+            >
+              <Save aria-hidden className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                dissolvePocket(pocket.id);
+              }}
+              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+              title="Unpack: spill everything back onto this board"
+              aria-label={`Unpack pocket ${pocket.name}`}
+            >
+              <PackageOpen aria-hidden className="h-3.5 w-3.5" />
+            </button>
           </div>
 
           {/* The rails ARE the node, exactly like a machine card: what the
