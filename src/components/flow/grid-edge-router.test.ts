@@ -311,6 +311,36 @@ describe("solveGridRoutes", () => {
     expect(nearWaypoint).toBe(true);
   });
 
+  it("doubles back to honour waypoint order rather than skipping a stop", () => {
+    const a = card("a", 0, 0);
+    const b = card("b", 1200, 0);
+    // First stop DOWNSTREAM, second stop back UPSTREAM: the wire must visit
+    // them in that order, out and back, not silently drop the excursion.
+    const routes = solveGridRoutes(
+      [a, b],
+      [
+        request({
+          edgeId: "e1",
+          sources: [{ x: 360, y: 60, side: "right" }],
+          targets: [{ x: 1200, y: 60, side: "left" }],
+          waypoints: [
+            { x: 1000, y: 300 },
+            { x: 500, y: 300 },
+          ],
+        }),
+      ],
+    );
+    const points = routes.get("e1")!.points;
+    expect(isOrthogonal(points)).toBe(true);
+    const indexNear = (x: number, y: number) =>
+      points.findIndex((point) => Math.abs(point.x - x) <= 10 && Math.abs(point.y - y) <= 10);
+    const firstStop = indexNear(1000, 300);
+    const secondStop = indexNear(500, 300);
+    expect(firstStop).toBeGreaterThan(-1);
+    expect(secondStop).toBeGreaterThan(-1);
+    expect(firstStop).toBeLessThan(secondStop);
+  });
+
   it("ignores a waypoint sealed inside a card rather than failing", () => {
     const a = card("a", 0, 0);
     const b = card("b", 800, 0);

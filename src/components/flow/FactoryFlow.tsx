@@ -2672,17 +2672,12 @@ export function FactoryFlow() {
       activelyDraggedNodeIds.add(dragged.id);
     }
     draggingNodeRef.current = true;
+    // The card-over-wires layering during the drag is pure CSS: the
+    // --dragging board class lifts the whole nodes layer above the edge
+    // layer, and the .dragging node rule keeps the held card above its
+    // siblings. Per-node zIndex can't do it — each layer is its own
+    // stacking context, so node and edge z values are never compared.
     setNodeDragging(true);
-    // The card in hand rides above everything, wires included. Edges paint
-    // at zIndex 20 by design (their stubs must show over resting cards), so
-    // without this bump a dragged card slides UNDER the board's wiring.
-    setFlowNodes((currentNodes) =>
-      currentNodes.map((entry) =>
-        activelyDraggedNodeIds.has(entry.id)
-          ? ({ ...entry, zIndex: 2500 } as typeof entry)
-          : entry,
-      ),
-    );
   }, []);
 
   const handleNodeDragStop = useCallback(
@@ -2708,11 +2703,7 @@ export function FactoryFlow() {
       setNodeDragging(false);
       setFlowNodes((currentNodes) =>
         currentNodes.map((entry) =>
-          entry.id === node.id
-            ? ({ ...entry, position: node.position, zIndex: undefined } as typeof entry)
-            : entry.zIndex === 2500
-              ? ({ ...entry, zIndex: undefined } as typeof entry)
-              : entry,
+          entry.id === node.id ? ({ ...entry, position: node.position } as typeof entry) : entry,
         ),
       );
     },
@@ -4289,27 +4280,16 @@ function ResourceEdgeComponent({
                 waypointDragRef.current = undefined;
                 if (draftWaypoints) {
                   // On grid, always: the dot commits to the nearest corner.
-                  const snapped = draftWaypoints.map((point) => ({
-                    x: Math.round(point.x / BOARD_GRID) * BOARD_GRID,
-                    y: Math.round(point.y / BOARD_GRID) * BOARD_GRID,
-                  }));
-                  // Dots are ordered by where they sit ALONG THE STREAM, not
-                  // by when they were made: drag a dot upstream past its
-                  // sibling and the two swap, so the wire visits them in the
-                  // order you see them instead of doubling back to honour
-                  // creation order.
-                  const ordered = snapped
-                    .map((point, pointIndex) => ({
-                      point,
-                      pointIndex,
-                      position: polylineArcPositionOf(routedEdge.points, point),
-                    }))
-                    .sort(
-                      (left, right) =>
-                        left.position - right.position || left.pointIndex - right.pointIndex,
-                    )
-                    .map((entry) => entry.point);
-                  updateEdge(id, { waypoints: ordered });
+                  // Order is sacred: the first dot made is the first stop,
+                  // wherever either gets dragged — the wire doubles back if
+                  // it must. Re-sorting by position here silently swapped
+                  // the user's itinerary.
+                  updateEdge(id, {
+                    waypoints: draftWaypoints.map((point) => ({
+                      x: Math.round(point.x / BOARD_GRID) * BOARD_GRID,
+                      y: Math.round(point.y / BOARD_GRID) * BOARD_GRID,
+                    })),
+                  });
                 }
                 setDraftWaypoints(undefined);
               }}

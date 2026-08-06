@@ -966,10 +966,23 @@ function claimAndAssemble(
     );
   }
 
-  // Interior corners: intersection of neighbouring drawn lines.
+  // Interior corners: intersection of neighbouring drawn lines. Two
+  // consecutive runs on the SAME axis are a reversal — a waypoint excursion
+  // turning around — so the corner is the turnaround vertex, with a small
+  // jog between the two runs' lane slots (they pack side by side, which is
+  // what keeps the out-and-back legible as two parallel lines).
   for (let i = 0; i + 1 < runs.length; i += 1) {
     const runA = runs[i];
     const runB = runs[i + 1];
+    if (runA.axis === runB.axis) {
+      const turn = vertices[i + 1];
+      if (runA.axis === "h") {
+        points.push({ x: turn.x, y: runA.drawn }, { x: turn.x, y: runB.drawn });
+      } else {
+        points.push({ x: runA.drawn, y: turn.y }, { x: runB.drawn, y: turn.y });
+      }
+      continue;
+    }
     points.push({
       x: runA.axis === "v" ? runA.drawn : runB.drawn,
       y: runA.axis === "h" ? runA.drawn : runB.drawn,
@@ -996,7 +1009,13 @@ function claimAndAssemble(
   return compactPoints(points);
 }
 
-/** Drops zero-length and collinear intermediate points. */
+/**
+ * Drops zero-length and collinear intermediate points — but ONLY when the
+ * direction of travel is preserved. A point where the wire REVERSES along
+ * the same line (a waypoint excursion: out to a dot and back the way it
+ * came) is a real turnaround, and merging it used to swallow the entire
+ * excursion, which read as the wire ignoring its dot.
+ */
 export function compactPoints(points: GridPoint[]): GridPoint[] {
   const kept: GridPoint[] = [];
   for (const point of points) {
@@ -1012,7 +1031,9 @@ export function compactPoints(points: GridPoint[]): GridPoint[] {
       const collinear =
         (Math.abs(a.x - b.x) < 0.01 && Math.abs(b.x - c.x) < 0.01) ||
         (Math.abs(a.y - b.y) < 0.01 && Math.abs(b.y - c.y) < 0.01);
-      if (!collinear) {
+      const sameDirection =
+        (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y) > 0;
+      if (!collinear || !sameDirection) {
         break;
       }
       kept.splice(kept.length - 2, 1);
