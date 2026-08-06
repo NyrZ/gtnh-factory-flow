@@ -101,7 +101,7 @@ function SaveDialogBody({ request }: { request: BlueprintSaveRequest }) {
 
   return (
     <div className="fixed inset-0 z-[110] grid place-items-center bg-neutral-950/50 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-[6px] border border-neutral-600 bg-[#25272c] p-4 text-neutral-100 shadow-xl">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-[6px] border border-neutral-600 bg-[#25272c] p-4 text-neutral-100 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Save className="h-4 w-4" />
@@ -146,14 +146,22 @@ function SaveDialogBody({ request }: { request: BlueprintSaveRequest }) {
           />
         </div>
 
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-[4px] border border-neutral-700 bg-[#17191d] p-2.5">
-          <div className="flex items-center gap-2 text-[11px] tabular-nums text-neutral-400">
-            <span>{cardCount} cards inside</span>
-            <span>{machineCount} machines</span>
-            {io.highestTier ? <TierBadge tier={io.highestTier} /> : null}
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-[4px] border border-neutral-700 bg-[#17191d] p-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs tabular-nums text-neutral-400">
+            <span>
+              <span className="font-semibold text-neutral-100">{cardCount}</span> cards inside
+            </span>
+            <span>
+              <span className="font-semibold text-neutral-100">{machineCount}</span> machines
+            </span>
+            {io.highestTier ? (
+              <span className="flex items-center gap-1.5">
+                up to <TierBadge tier={io.highestTier} />
+              </span>
+            ) : null}
           </div>
-          <div className="mt-1.5">
-            {renderIoStats(io.needs, io.outputs) ?? (
+          <div className="mt-2">
+            {renderIoStats(io.needs, io.outputs, { layout: "side-by-side" }) ?? (
               <p className="text-[11px] text-neutral-500">No outside needs or leftovers.</p>
             )}
           </div>

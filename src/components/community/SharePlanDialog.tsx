@@ -149,7 +149,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center bg-neutral-950/50 p-4">
-      <div className="w-full max-w-lg rounded border border-line-strong bg-surface p-4 shadow-xl">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-y-auto rounded border border-line-strong bg-surface p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Share2 className="h-4 w-4" /> Share your setup
@@ -210,24 +210,33 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="space-y-3">
-            {/* WHAT is being posted, before anything else — the tab, its
-                headline numbers with the tier in its GT colour, and the
-                real resource lists rather than counts of them. */}
-            <div className="rounded border border-line bg-surface-raised p-2.5">
-              <p className="text-xs text-fg">
-                You are posting the open tab:{" "}
-                <span className="font-semibold">{activeTabName}</span>
-              </p>
-              <div className="mt-1.5 flex items-center gap-2 text-[11px] tabular-nums text-fg-subtle">
-                <span>{stats.nodeCount} cards</span>
-                <span>{stats.machineCount} machines</span>
-                {stats.highestTier ? <TierBadge tier={stats.highestTier} /> : null}
-                {datasetVersion?.gtnhVersion ? (
-                  <span className="truncate">GTNH {datasetVersion.gtnhVersion}</span>
+            {/* What the board carries: the headline numbers with the tier
+                in its GT colour, then the real resource lists side by
+                side. No sentence needed — the dialog IS the open tab. */}
+            <div className="rounded border border-line bg-surface-raised p-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs tabular-nums text-fg-subtle">
+                <span>
+                  <span className="font-semibold text-fg">{stats.nodeCount}</span> cards
+                </span>
+                <span>
+                  <span className="font-semibold text-fg">{stats.machineCount}</span> machines
+                </span>
+                {stats.highestTier ? (
+                  <span className="flex items-center gap-1.5">
+                    up to <TierBadge tier={stats.highestTier} />
+                  </span>
                 ) : null}
+                <span className="ml-auto text-fg-muted">
+                  Game version:{" "}
+                  <span className="text-fg-subtle">
+                    {datasetVersion?.gtnhVersion
+                      ? `GTNH ${datasetVersion.gtnhVersion}`
+                      : "unknown"}
+                  </span>
+                </span>
               </div>
-              <div className="mt-1.5 max-h-40 overflow-y-auto">
-                {renderIoStats(stats.needs, stats.outputs) ?? (
+              <div className="mt-2 max-h-56 overflow-y-auto">
+                {renderIoStats(stats.needs, stats.outputs, { layout: "side-by-side" }) ?? (
                   <p className="text-[11px] text-fg-muted">
                     Nothing comes in or leaves: this plan feeds itself.
                   </p>

@@ -95,52 +95,84 @@ export function TierBadge({ tier }: { tier?: VoltageTier }) {
   );
 }
 
-/** The Needs/Makes stat sections, shared by rows, dialogs and hover cards. */
+/** One Needs/Makes column: a heading and its resource lines. */
+function IoSection({
+  label,
+  stats,
+  limit,
+  muted,
+}: {
+  label: string;
+  stats: PlanResourceStat[];
+  limit: number;
+  /** Renders the heading even when empty; used by the side-by-side layout
+      so the two columns keep their headings aligned. */
+  muted?: boolean;
+}) {
+  if (stats.length === 0 && !muted) {
+    return null;
+  }
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+      {stats.length === 0 ? (
+        <div className="py-0.5 text-[11px] text-slate-500">Nothing</div>
+      ) : null}
+      {stats.slice(0, limit).map((stat) => (
+        <div key={`${stat.kind}:${stat.resourceId}`} className="flex items-center gap-1.5 py-0.5">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden">
+            <ResourceIcon
+              resource={{ ...stat, id: stat.resourceId, amount: 1 }}
+              bare
+              tooltip={false}
+              showAmount={false}
+              iconPixelSize={stat.kind === "fluid" ? 36 : undefined}
+              className={stat.kind === "fluid" ? "!h-5 !w-5" : "!h-5 !w-5 origin-center scale-150"}
+            />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[12px] text-slate-200">
+            {stat.displayName ?? stat.resourceId}
+          </span>
+          <span className="shrink-0 tabular-nums text-[12px] text-slate-400">
+            {formatSlotRate(stat.ratePerSecond, stat.kind)}
+          </span>
+        </div>
+      ))}
+      {stats.length > limit ? (
+        <div className="text-[10px] text-slate-500">+{stats.length - limit} more</div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The Needs/Makes stat sections, shared by rows, dialogs and hover cards.
+ * Stacked by default; `side-by-side` puts needs left and makes right, for
+ * anywhere with the width to spare.
+ */
 export function renderIoStats(
   needs: PlanResourceStat[],
   outputs: PlanResourceStat[],
+  options: { layout?: "stacked" | "side-by-side"; limit?: number } = {},
 ): ReactNode {
   if (needs.length === 0 && outputs.length === 0) {
     return undefined;
   }
 
-  const section = (label: string, stats: typeof needs) =>
-    stats.length > 0 ? (
-      <div className="mt-1.5 first:mt-0">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
-        {stats.slice(0, 8).map((stat) => (
-          <div
-            key={`${stat.kind}:${stat.resourceId}`}
-            className="flex items-center gap-1.5 py-0.5"
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden">
-              <ResourceIcon
-                resource={{ ...stat, id: stat.resourceId, amount: 1 }}
-                bare
-                tooltip={false}
-                showAmount={false}
-                iconPixelSize={stat.kind === "fluid" ? 36 : undefined}
-                className={stat.kind === "fluid" ? "!h-5 !w-5" : "!h-5 !w-5 origin-center scale-150"}
-              />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[12px] text-slate-200">
-              {stat.displayName ?? stat.resourceId}
-            </span>
-            <span className="shrink-0 tabular-nums text-[12px] text-slate-400">
-              {formatSlotRate(stat.ratePerSecond, stat.kind)}
-            </span>
-          </div>
-        ))}
-        {stats.length > 8 ? (
-          <div className="text-[10px] text-slate-500">+{stats.length - 8} more</div>
-        ) : null}
+  const limit = options.limit ?? 8;
+  if (options.layout === "side-by-side") {
+    return (
+      <div className="flex gap-4">
+        <IoSection label="Needs" stats={needs} limit={limit} muted />
+        <IoSection label="Makes" stats={outputs} limit={limit} muted />
       </div>
-    ) : null;
+    );
+  }
 
   return (
-    <div className="w-64">
-      {section("Needs", needs)}
-      {section("Makes", outputs)}
+    <div className="space-y-1.5">
+      <IoSection label="Needs" stats={needs} limit={limit} />
+      <IoSection label="Makes" stats={outputs} limit={limit} />
     </div>
   );
 }
@@ -164,7 +196,9 @@ export function renderEntryHoverCard(entry: {
   outputs?: PlanResourceStat[];
 }): ReactNode {
   return (
-    <div className="w-64">
+    // Wide enough that each of the two resource columns gets the room the
+    // old single stacked column had, so nothing wraps or truncates.
+    <div className="w-[34rem]">
       <div className="flex items-center gap-2">
         {entry.icon ? (
           <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
@@ -200,14 +234,18 @@ export function renderEntryHoverCard(entry: {
         <span>{entry.cardCount} cards</span>
         <span>{entry.machineCount} machines</span>
         {entry.tier ? <TierBadge tier={entry.tier} /> : null}
-        {entry.gameVersion ? <span className="truncate">GTNH {entry.gameVersion}</span> : null}
+        {entry.gameVersion ? (
+          <span className="ml-auto shrink-0 truncate">GTNH {entry.gameVersion}</span>
+        ) : null}
       </div>
       {entry.description ? (
         <p className="mt-1.5 max-h-28 overflow-hidden whitespace-pre-wrap text-[11px] leading-4 text-slate-300">
           {entry.description}
         </p>
       ) : null}
-      <div className="mt-1.5">{renderIoStats(entry.needs ?? [], entry.outputs ?? [])}</div>
+      <div className="mt-2">
+        {renderIoStats(entry.needs ?? [], entry.outputs ?? [], { layout: "side-by-side" })}
+      </div>
     </div>
   );
 }
