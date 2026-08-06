@@ -3183,3 +3183,236 @@ function createNakCoolantProject(): FactoryProject {
     fuelProfiles: [],
   };
 }
+
+describe("board selection editing", () => {
+  beforeEach(() => {
+    useFactoryStore.getState().setProject(createSelectionEditingProject());
+  });
+
+  it("moves a whole dragged selection as one undo entry", () => {
+    useFactoryStore.getState().moveBoardItems([
+      { id: "alpha", position: { x: 100, y: 100 } },
+      { id: "tank", position: { x: 500, y: 100 } },
+      { id: "note", position: { x: 900, y: 100 } },
+    ]);
+
+    const { project, undoHistory } = useFactoryStore.getState();
+    expect(project.nodes.find((node) => node.id === "alpha")?.position).toEqual({
+      x: 100,
+      y: 100,
+    });
+    expect(project.storages?.find((storage) => storage.id === "tank")?.position).toEqual({
+      x: 500,
+      y: 100,
+    });
+    expect(
+      project.annotations?.find((annotation) => annotation.id === "note")?.position,
+    ).toEqual({ x: 900, y: 100 });
+    expect(undoHistory).toHaveLength(1);
+
+    useFactoryStore.getState().undo();
+    const restored = useFactoryStore.getState().project;
+    expect(restored.nodes.find((node) => node.id === "alpha")?.position).toEqual({ x: 0, y: 0 });
+    expect(restored.storages?.find((storage) => storage.id === "tank")?.position).toEqual({
+      x: 400,
+      y: 0,
+    });
+    expect(
+      restored.annotations?.find((annotation) => annotation.id === "note")?.position,
+    ).toEqual({ x: 800, y: 0 });
+  });
+
+  it("records no history for a drop where nothing moved", () => {
+    useFactoryStore.getState().moveBoardItems([
+      { id: "alpha", position: { x: 0, y: 0 } },
+      { id: "missing", position: { x: 60, y: 60 } },
+    ]);
+
+    expect(useFactoryStore.getState().undoHistory).toHaveLength(0);
+  });
+
+  it("deletes a mixed selection and its wires as one undo entry", () => {
+    useFactoryStore.getState().deleteBoardSelection({
+      nodeIds: ["alpha", "tank", "note"],
+      edgeIds: [],
+    });
+
+    const { project, undoHistory } = useFactoryStore.getState();
+    expect(project.nodes.map((node) => node.id)).toEqual(["beta"]);
+    expect(project.storages ?? []).toHaveLength(0);
+    expect(project.annotations ?? []).toHaveLength(0);
+    expect(project.edges).toHaveLength(0);
+    expect(undoHistory).toHaveLength(1);
+
+    useFactoryStore.getState().undo();
+    const restored = useFactoryStore.getState().project;
+    expect(restored.nodes).toHaveLength(2);
+    expect(restored.storages).toHaveLength(1);
+    expect(restored.annotations).toHaveLength(1);
+    expect(restored.edges).toHaveLength(2);
+  });
+
+  it("pastes copies with fresh ids, remapped wires and shifted positions", () => {
+    const source = useFactoryStore.getState().project;
+    const payload = structuredClone({
+      nodes: source.nodes,
+      storages: source.storages ?? [],
+      annotations: source.annotations ?? [],
+      edges: source.edges,
+      recipes: source.recipes,
+    });
+
+    const pastedIds = useFactoryStore.getState().pasteBoardItems(payload, { x: 40, y: 40 });
+
+    const { project, undoHistory } = useFactoryStore.getState();
+    expect(undoHistory).toHaveLength(1);
+    expect(pastedIds).toHaveLength(4);
+    expect(project.nodes).toHaveLength(4);
+    expect(project.storages).toHaveLength(2);
+    expect(project.annotations).toHaveLength(2);
+    expect(project.edges).toHaveLength(4);
+
+    const pastedNodes = project.nodes.filter((node) => !["alpha", "beta"].includes(node.id));
+    expect(pastedNodes.map((node) => node.position)).toEqual([
+      { x: 40, y: 40 },
+      { x: 340, y: 40 },
+    ]);
+
+    const originalIds = new Set(["alpha", "beta", "tank", "note"]);
+    const pastedEdges = project.edges.slice(2);
+    expect(pastedEdges).toHaveLength(2);
+    for (const edge of pastedEdges) {
+      expect(originalIds.has(edge.source)).toBe(false);
+      expect(originalIds.has(edge.target)).toBe(false);
+    }
+  });
+
+  it("gives a pasted custom-rate card its own recipe copy", () => {
+    const project = useFactoryStore.getState().project;
+    const dialRecipe = {
+      id: "dial-recipe",
+      name: "Custom Rate",
+      machineType: "Custom Rate",
+      minimumTier: "NONE",
+      durationTicks: 20,
+      eut: 0,
+      inputs: [],
+      outputs: [{ kind: "item" as const, id: "dust", amount: 5 }],
+    };
+    const dialNode = makeNode("dial", "dial-recipe", 600, 0);
+    useFactoryStore.getState().setProject({
+      ...project,
+      recipes: [...project.recipes, dialRecipe],
+      nodes: [...project.nodes, dialNode],
+    });
+
+    const pastedIds = useFactoryStore.getState().pasteBoardItems(
+      structuredClone({
+        nodes: [dialNode],
+        storages: [],
+        annotations: [],
+        edges: [],
+        recipes: [dialRecipe],
+      }),
+      { x: 40, y: 40 },
+    );
+
+    const next = useFactoryStore.getState().project;
+    const pastedNode = next.nodes.find((node) => node.id === pastedIds[0]);
+    expect(pastedNode?.recipeId).toBeDefined();
+    expect(pastedNode?.recipeId).not.toBe("dial-recipe");
+    expect(next.recipes.filter((recipe) => recipe.machineType === "Custom Rate")).toHaveLength(2);
+  });
+
+  it("carries clipboard recipes into a design that lacks them", () => {
+    const source = useFactoryStore.getState().project;
+    const payload = structuredClone({
+      nodes: source.nodes.filter((node) => node.id === "alpha"),
+      storages: [],
+      annotations: [],
+      edges: [],
+      recipes: source.recipes.filter((recipe) => recipe.id === "smelt"),
+    });
+
+    useFactoryStore.getState().setProject({
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "blank",
+      name: "Blank",
+      recipes: [],
+      nodes: [],
+      edges: [],
+      fuelProfiles: [],
+    });
+    const pastedIds = useFactoryStore.getState().pasteBoardItems(payload, { x: 0, y: 0 });
+
+    const project = useFactoryStore.getState().project;
+    expect(pastedIds).toHaveLength(1);
+    expect(project.recipes.map((recipe) => recipe.id)).toEqual(["smelt"]);
+    expect(project.nodes[0]?.recipeId).toBe("smelt");
+  });
+});
+
+function createSelectionEditingProject(): FactoryProject {
+  return {
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    id: "selection-editing",
+    name: "Selection editing",
+    recipes: [
+      {
+        id: "smelt",
+        name: "Smelter: Dust",
+        machineType: "Smelter",
+        minimumTier: "LV",
+        durationTicks: 100,
+        eut: 32,
+        inputs: [{ kind: "item", id: "ore", amount: 1 }],
+        outputs: [{ kind: "item", id: "dust", amount: 1 }],
+      },
+      {
+        id: "press",
+        name: "Press: Plate",
+        machineType: "Press",
+        minimumTier: "LV",
+        durationTicks: 100,
+        eut: 32,
+        inputs: [{ kind: "item", id: "dust", amount: 1 }],
+        outputs: [{ kind: "item", id: "plate", amount: 1 }],
+      },
+    ],
+    nodes: [makeNode("alpha", "smelt", 0, 0), makeNode("beta", "press", 300, 0)],
+    storages: [
+      {
+        id: "tank",
+        kind: "item",
+        resourceId: "dust",
+        position: { x: 400, y: 0 },
+      },
+    ],
+    annotations: [
+      {
+        id: "note",
+        kind: "text",
+        text: "hello",
+        position: { x: 800, y: 0 },
+        size: { width: 200, height: 100 },
+      },
+    ],
+    edges: [
+      {
+        id: "a2b",
+        source: "alpha",
+        target: "beta",
+        resourceKind: "item",
+        resourceId: "dust",
+      },
+      {
+        id: "a2t",
+        source: "alpha",
+        target: "tank",
+        resourceKind: "item",
+        resourceId: "dust",
+      },
+    ],
+    fuelProfiles: [],
+  };
+}

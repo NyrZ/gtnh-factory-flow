@@ -230,6 +230,24 @@ interface FactoryStore {
   deleteAnnotation: (annotationId: string) => void;
   setAnnotationPosition: (annotationId: string, position: FactoryAnnotation["position"]) => void;
   setNodePosition: (nodeId: string, position: FactoryNode["position"]) => void;
+  /**
+   * One drop for a whole dragged selection - machines, drawers and
+   * annotations land together as a single undo entry. Ids that match nothing
+   * are ignored; a drop where nothing actually moved writes no history.
+   */
+  moveBoardItems: (moves: Array<{ id: string; position: FactoryNode["position"] }>) => void;
+  /**
+   * Delete a whole selection as a single undo entry. `nodeIds` may hold any
+   * mix of machine, storage and annotation ids; wires touching deleted cards
+   * go with them, exactly as the one-at-a-time deletes do.
+   */
+  deleteBoardSelection: (selection: { nodeIds?: string[]; edgeIds?: string[] }) => void;
+  /**
+   * Paste a copied selection: fresh ids, wires remapped onto the copies,
+   * per-node recipes cloned, everything offset and snapped to the grid - one
+   * undo entry. Returns the new board ids so the caller can select them.
+   */
+  pasteBoardItems: (payload: BoardClipboardPayload, offset: { x: number; y: number }) => string[];
   connectNodes: (
     sourceNodeId: string,
     targetNodeId: string,
@@ -261,6 +279,20 @@ interface FactoryStore {
 }
 
 const initialProject = createEmptyProject();
+
+/**
+ * What Ctrl+C lifts off the board: the selected items verbatim, the wires
+ * that run between two selected items, and the recipes those items lean on -
+ * carried along so a paste into another design (or after the originals were
+ * deleted) still has everything it needs.
+ */
+export interface BoardClipboardPayload {
+  nodes: FactoryNode[];
+  storages: FactoryStorage[];
+  annotations: FactoryAnnotation[];
+  edges: FactoryEdge[];
+  recipes: Recipe[];
+}
 
 export type RecipeBrowserMode = "recipes" | "uses";
 export type TierFilter = "all" | Exclude<MachineTier, "DEMO">;
@@ -1260,6 +1292,182 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
 
       return withProjectHistory(state, { project });
     });
+  },
+  moveBoardItems: (moves) => {
+    set((state) => {
+      const positionById = new Map(moves.map((move) => [move.id, move.position] as const));
+      let moved = false;
+      const applyMoves = <T extends { id: string; position: { x: number; y: number } }>(
+        items: T[],
+      ): T[] =>
+        items.map((item) => {
+          const position = positionById.get(item.id);
+          if (!position || (position.x === item.position.x && position.y === item.position.y)) {
+            return item;
+          }
+          moved = true;
+          return { ...item, position };
+        });
+
+      const nodes = applyMoves(state.project.nodes);
+      const storages = state.project.storages ? applyMoves(state.project.storages) : undefined;
+      const annotations = state.project.annotations
+        ? applyMoves(state.project.annotations)
+        : undefined;
+      // A drag that ends where it started is not an edit; recording it would
+      // burn an undo step on nothing.
+      if (!moved) {
+        return state;
+      }
+
+      const project = touchProject({ ...state.project, nodes, storages, annotations });
+      return withProjectHistory(state, { project });
+    });
+  },
+  deleteBoardSelection: ({ nodeIds = [], edgeIds = [] }) => {
+    set((state) => {
+      const doomedItems = new Set(nodeIds);
+      const doomedEdges = new Set(edgeIds);
+      const nodes = state.project.nodes.filter((node) => !doomedItems.has(node.id));
+      const storages = (state.project.storages ?? []).filter(
+        (storage) => !doomedItems.has(storage.id),
+      );
+      const annotations = (state.project.annotations ?? []).filter(
+        (annotation) => !doomedItems.has(annotation.id),
+      );
+      const edges = state.project.edges.filter(
+        (edge) =>
+          !doomedEdges.has(edge.id) &&
+          !doomedItems.has(edge.source) &&
+          !doomedItems.has(edge.target),
+      );
+      const nothingDeleted =
+        nodes.length === state.project.nodes.length &&
+        storages.length === (state.project.storages ?? []).length &&
+        annotations.length === (state.project.annotations ?? []).length &&
+        edges.length === state.project.edges.length;
+      if (nothingDeleted) {
+        return state;
+      }
+
+      const project = touchProject(
+        pruneOrphanStorages({ ...state.project, nodes, storages, annotations, edges }),
+      );
+      const pendingConnectionNodeId = state.pendingResourceConnection?.nodeId;
+      return withProjectHistory(state, {
+        project,
+        pendingResourceConnection:
+          pendingConnectionNodeId && doomedItems.has(pendingConnectionNodeId)
+            ? undefined
+            : state.pendingResourceConnection,
+        selectedNodeId:
+          state.selectedNodeId && doomedItems.has(state.selectedNodeId)
+            ? undefined
+            : state.selectedNodeId,
+        lastResult: calculateThroughput(project),
+      });
+    });
+  },
+  pasteBoardItems: (payload, offset) => {
+    const pastedIds: string[] = [];
+    set((state) => {
+      const shift = (position: { x: number; y: number }) =>
+        snapPositionToGrid({ x: position.x + offset.x, y: position.y + offset.y });
+      const payloadRecipesById = new Map(payload.recipes.map((recipe) => [recipe.id, recipe]));
+      const projectRecipeIds = new Set(state.project.recipes.map((recipe) => recipe.id));
+      const addedRecipes: Recipe[] = [];
+      const idMap = new Map<string, string>();
+
+      const nodes: FactoryNode[] = [];
+      for (const node of payload.nodes) {
+        const recipe =
+          payloadRecipesById.get(node.recipeId) ??
+          state.project.recipes.find((entry) => entry.id === node.recipeId);
+        // A node whose recipe survived nowhere would paste as a broken card.
+        if (!recipe) {
+          continue;
+        }
+        const clone = structuredClone(node);
+        clone.id = createId("node");
+        idMap.set(node.id, clone.id);
+        clone.position = shift(node.position);
+        // Custom rate nodes own their recipe (the dialed rate lives on it) -
+        // same rule as duplicateNode, or both cards would share one dial.
+        if (isCustomRateRecipe(recipe)) {
+          const recipeClone = { ...structuredClone(recipe), id: createId("recipe") };
+          clone.recipeId = recipeClone.id;
+          addedRecipes.push(recipeClone);
+        } else if (!projectRecipeIds.has(recipe.id)) {
+          // Pasting into a design that has never seen this recipe: the
+          // clipboard carries the copy, exactly like plan import does.
+          addedRecipes.push(structuredClone(recipe));
+          projectRecipeIds.add(recipe.id);
+        }
+        nodes.push(clone);
+      }
+      const storages = payload.storages.map((storage) => {
+        const clone = structuredClone(storage);
+        clone.id = createId("storage");
+        idMap.set(storage.id, clone.id);
+        clone.position = shift(storage.position);
+        return clone;
+      });
+      const annotations = payload.annotations.map((annotation) => {
+        const clone = structuredClone(annotation);
+        clone.id = createId("annotation");
+        idMap.set(annotation.id, clone.id);
+        clone.position = shift(annotation.position);
+        return clone;
+      });
+      // Only wires interior to the copied selection can come along - a wire
+      // with one foot outside has nothing on the pasted side to stand on.
+      const edges: FactoryEdge[] = [];
+      for (const edge of payload.edges) {
+        const source = idMap.get(edge.source);
+        const target = idMap.get(edge.target);
+        if (!source || !target) {
+          continue;
+        }
+        const clone = structuredClone(edge);
+        clone.id = createId("edge");
+        clone.source = source;
+        clone.target = target;
+        // Waypoints are absolute board corners; they ride along with the paste.
+        clone.waypoints = clone.waypoints?.map((waypoint) => shift(waypoint));
+        edges.push(clone);
+      }
+      if (nodes.length + storages.length + annotations.length === 0) {
+        return state;
+      }
+
+      const project = touchProject({
+        ...state.project,
+        recipes: addedRecipes.length
+          ? [...state.project.recipes, ...addedRecipes]
+          : state.project.recipes,
+        nodes: [...state.project.nodes, ...nodes],
+        storages: storages.length
+          ? [...(state.project.storages ?? []), ...storages]
+          : state.project.storages,
+        annotations: annotations.length
+          ? [...(state.project.annotations ?? []), ...annotations]
+          : state.project.annotations,
+        edges: edges.length ? [...state.project.edges, ...edges] : state.project.edges,
+      });
+      pastedIds.push(
+        ...nodes.map((node) => node.id),
+        ...storages.map((storage) => storage.id),
+        ...annotations.map((annotation) => annotation.id),
+      );
+      const lastPastedNode = nodes.at(-1);
+      return withProjectHistory(state, {
+        project,
+        selectedNodeId: lastPastedNode?.id ?? state.selectedNodeId,
+        selectedRecipeId: lastPastedNode?.recipeId ?? state.selectedRecipeId,
+        lastResult: calculateThroughput(project),
+      });
+    });
+    return pastedIds;
   },
   connectNodes: (sourceNodeId, targetNodeId, resource) => {
     set((state) => {

@@ -9,6 +9,7 @@ import {
   ConnectionMode,
   Position,
   ReactFlow,
+  SelectionMode,
   applyNodeChanges,
   getNodesBounds,
   getSmoothStepPath,
@@ -93,7 +94,8 @@ import type {
   ResourceAmount,
   ResourceKind,
 } from "@/lib/model/types";
-import { useFactoryStore } from "@/store/factory-store";
+import { useFactoryStore, type BoardClipboardPayload } from "@/store/factory-store";
+import { isEditableKeyboardTarget } from "./keyboard";
 import {
   ANNOTATION_DEFAULT_ARROW,
   ANNOTATION_DEFAULT_BOX,
@@ -1069,6 +1071,11 @@ const MAX_HOP_SETTLE_PASSES = 2;
 // the edges that need it re-render every frame anyway via their position props.
 const activelyDraggedNodeIds = new Set<string>();
 
+// The board clipboard lives at module scope on purpose: it survives design-tab
+// switches, so a selection copied in one design pastes into another.
+// `pasteCount` staggers repeated pastes, each landing two cells past the last.
+let boardClipboard: { payload: BoardClipboardPayload; pasteCount: number } | undefined;
+
 const measuredNodeBoundsCache = new Map<string, MeasuredBounds | undefined>();
 // Obstacle geometry for route avoidance, published by the board from React
 // Flow's node state (positions plus measured sizes). The sweep used to scan
@@ -1173,10 +1180,11 @@ export function FactoryFlow() {
   const project = useFactoryStore((state) => state.project);
   const result = useFactoryStore((state) => state.lastResult);
   const selectNode = useFactoryStore((state) => state.selectNode);
-  const setNodePosition = useFactoryStore((state) => state.setNodePosition);
+  const moveBoardItems = useFactoryStore((state) => state.moveBoardItems);
+  const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
+  const pasteBoardItems = useFactoryStore((state) => state.pasteBoardItems);
   const updateNode = useFactoryStore((state) => state.updateNode);
   const updateStorage = useFactoryStore((state) => state.updateStorage);
-  const setStoragePosition = useFactoryStore((state) => state.setStoragePosition);
   const connectNodes = useFactoryStore((state) => state.connectNodes);
   const connectCustomRate = useFactoryStore((state) => state.connectCustomRate);
   const connectTrash = useFactoryStore((state) => state.connectTrash);
@@ -1188,7 +1196,6 @@ export function FactoryFlow() {
   const addAnnotation = useFactoryStore((state) => state.addAnnotation);
   const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
   const deleteAnnotation = useFactoryStore((state) => state.deleteAnnotation);
-  const setAnnotationPosition = useFactoryStore((state) => state.setAnnotationPosition);
   const cancelResourceConnection = useFactoryStore((state) => state.cancelResourceConnection);
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const setNodeColorPaintMode = useFactoryStore((state) => state.setNodeColorPaintMode);
@@ -1317,6 +1324,11 @@ export function FactoryFlow() {
   const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft | undefined>(undefined);
   const annotationDraftRef = useRef<AnnotationDraft | undefined>(undefined);
   const [layoutVersion, setLayoutVersion] = useState(0);
+  // Ids the NEXT project sync should hand the selection to, replacing
+  // whatever is selected now. Set by paste: the pasted cards do not exist in
+  // `flowNodes` until the sync effect rebuilds from the project, so the
+  // selection handover has to ride through that rebuild.
+  const pendingFlowSelectionRef = useRef<Set<string> | undefined>(undefined);
   const draggingNodeRef = useRef(false);
   const draggedResourceRef = useRef<DraggedResourceConnection | undefined>(undefined);
   const lastConnectionPointerRef = useRef<{ x: number; y: number } | undefined>(undefined);
@@ -1343,12 +1355,27 @@ export function FactoryFlow() {
     // them, re-ran their memo comparisons and churned the compositor's layer
     // tree. Identity is the whole mechanism the node memos rely on; this is
     // where it was being thrown away.
+    // Consumed here, NOT inside the updater: state updaters must stay pure
+    // (StrictMode double-invokes them, and the second call would find the
+    // ref already cleared).
+    const pendingSelection = pendingFlowSelectionRef.current;
+    pendingFlowSelectionRef.current = undefined;
     setFlowNodes((current) => {
       const currentById = new Map(current.map((node) => [node.id, node]));
       let changed = current.length !== nodesFromProject.length;
       const next = nodesFromProject.map((node) => {
         const previous = currentById.get(node.id);
-        const merged = previous?.measured ? { ...node, measured: previous.measured } : node;
+        // React Flow keeps selection on the node objects themselves, so the
+        // rebuilt objects must inherit it — without this, EVERY project
+        // commit (a drag drop, a config change, a solver rerun) silently
+        // deselected the user's whole selection. A pending paste instead
+        // hands the selection over to the freshly pasted cards.
+        const selected = pendingSelection ? pendingSelection.has(node.id) : previous?.selected;
+        const merged = {
+          ...node,
+          ...(previous?.measured ? { measured: previous.measured } : undefined),
+          ...(selected !== undefined ? { selected } : undefined),
+        } as typeof node;
         if (previous && isSameFlowNode(previous, merged)) {
           return previous;
         }
@@ -2493,33 +2520,108 @@ export function FactoryFlow() {
     return () => window.removeEventListener(FLOW_EDGE_LABEL_SELECT_EVENT, handleEdgeLabelSelect);
   }, [selectNode]);
 
+  const copyBoardSelection = useCallback((): boolean => {
+    const selectedIds = new Set(selectedNodeIds);
+    const nodes = project.nodes.filter((node) => selectedIds.has(node.id));
+    const storages = (project.storages ?? []).filter((storage) => selectedIds.has(storage.id));
+    const annotations = (project.annotations ?? []).filter((annotation) =>
+      selectedIds.has(annotation.id),
+    );
+    if (nodes.length + storages.length + annotations.length === 0) {
+      return false;
+    }
+
+    const recipeIds = new Set(nodes.map((node) => node.recipeId));
+    boardClipboard = {
+      // Snapshotted, not referenced: the clipboard must not change when the
+      // originals are edited or deleted after the copy.
+      payload: structuredClone({
+        nodes,
+        storages,
+        annotations,
+        edges: project.edges.filter(
+          (edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target),
+        ),
+        recipes: project.recipes.filter((recipe) => recipeIds.has(recipe.id)),
+      }),
+      pasteCount: 0,
+    };
+    return true;
+  }, [project, selectedNodeIds]);
+
+  const deleteSelectedBoardItems = useCallback((): boolean => {
+    if (selectedNodeIds.length === 0 && selectedEdgeIds.length === 0) {
+      return false;
+    }
+
+    deleteBoardSelection({ nodeIds: selectedNodeIds, edgeIds: selectedEdgeIds });
+    setSelectedNodeIds([]);
+    setSelectedEdgeIds([]);
+    selectNode(undefined);
+    return true;
+  }, [deleteBoardSelection, selectNode, selectedEdgeIds, selectedNodeIds]);
+
+  const pasteBoardClipboard = useCallback(() => {
+    if (!boardClipboard) {
+      return;
+    }
+
+    boardClipboard.pasteCount += 1;
+    const offset = BOARD_GRID * 2 * boardClipboard.pasteCount;
+    const pastedIds = pasteBoardItems(boardClipboard.payload, { x: offset, y: offset });
+    if (pastedIds.length === 0) {
+      return;
+    }
+
+    // The paste takes the selection, so the new cards can be dragged into
+    // place immediately; the ref carries it through the flowNodes rebuild.
+    pendingFlowSelectionRef.current = new Set(pastedIds);
+    setSelectedNodeIds(pastedIds);
+    setSelectedEdgeIds([]);
+  }, [pasteBoardItems]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Delete") {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+        const key = event.key.toLowerCase();
+        if (key === "c" || key === "x") {
+          // Never fight the browser for real text: typing fields and selected
+          // page text keep native copy/cut.
+          if (isEditableKeyboardTarget(event.target) || window.getSelection()?.toString()) {
+            return;
+          }
+
+          if (!copyBoardSelection()) {
+            return;
+          }
+
+          if (key === "x") {
+            deleteSelectedBoardItems();
+          }
+          event.preventDefault();
+          return;
+        }
+
+        if (key === "v") {
+          if (isEditableKeyboardTarget(event.target)) {
+            return;
+          }
+
+          pasteBoardClipboard();
+          event.preventDefault();
+        }
+        return;
+      }
+
+      // Backspace deletes too — React Flow's own Backspace handling is off
+      // (deleteKeyCode null) because it removed cards from the canvas without
+      // telling the project, and they came back on the next commit.
+      if (event.key === "Delete" || event.key === "Backspace") {
         if (isEditableKeyboardTarget(event.target)) {
           return;
         }
 
-        if (selectedEdgeIds.length > 0 || selectedNodeIds.length > 0) {
-          selectedEdgeIds.forEach((edgeId) => deleteEdge(edgeId));
-          selectedNodeIds.forEach((nodeId) => {
-            if (project.nodes.some((node) => node.id === nodeId)) {
-              deleteNode(nodeId);
-              return;
-            }
-
-            if ((project.storages ?? []).some((storage) => storage.id === nodeId)) {
-              deleteStorage(nodeId);
-              return;
-            }
-
-            if ((project.annotations ?? []).some((annotation) => annotation.id === nodeId)) {
-              deleteAnnotation(nodeId);
-            }
-          });
-          setSelectedEdgeIds([]);
-          setSelectedNodeIds([]);
-          selectNode(undefined);
+        if (deleteSelectedBoardItems()) {
           return;
         }
 
@@ -2565,16 +2667,16 @@ export function FactoryFlow() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     cancelResourceConnection,
+    copyBoardSelection,
     deleteAnnotation,
-    deleteEdge,
     deleteNode,
+    deleteSelectedBoardItems,
     deleteStorage,
+    pasteBoardClipboard,
     project.annotations,
     project.nodes,
     project.storages,
     selectNode,
-    selectedEdgeIds,
-    selectedNodeIds,
     selectedNodeId,
     setNodeColorPaintMode,
   ]);
@@ -2717,14 +2819,13 @@ export function FactoryFlow() {
   }, []);
 
   const handleNodeDragStop = useCallback(
-    (_: unknown, node: Node) => {
-      if (node.type === "storageNode") {
-        setStoragePosition(node.id, node.position);
-      } else if (node.type === "annotationNode") {
-        setAnnotationPosition(node.id, node.position);
-      } else {
-        setNodePosition(node.id, node.position);
-      }
+    (_: unknown, node: Node, draggedNodes: Node[]) => {
+      // A drag moves the WHOLE selection, so the whole selection has to land:
+      // persisting only the grabbed card left the rest of the selection at
+      // their old positions in the project, and the next store commit snapped
+      // them back. One batch move is also one undo entry, not one per card.
+      const dropped = draggedNodes.length > 0 ? draggedNodes : [node];
+      moveBoardItems(dropped.map((entry) => ({ id: entry.id, position: entry.position })));
 
       activelyDraggedNodeIds.clear();
       draggingNodeRef.current = false;
@@ -2737,13 +2838,17 @@ export function FactoryFlow() {
       publishBoardGeometry();
       setLayoutVersion((version) => version + 1);
       setNodeDragging(false);
+      const droppedById = new Map(dropped.map((entry) => [entry.id, entry] as const));
       setFlowNodes((currentNodes) =>
-        currentNodes.map((entry) =>
-          entry.id === node.id ? ({ ...entry, position: node.position } as typeof entry) : entry,
-        ),
+        currentNodes.map((entry) => {
+          const droppedNode = droppedById.get(entry.id);
+          return droppedNode
+            ? ({ ...entry, position: droppedNode.position } as typeof entry)
+            : entry;
+        }),
       );
     },
-    [publishBoardGeometry, setAnnotationPosition, setNodePosition, setStoragePosition],
+    [moveBoardItems, publishBoardGeometry],
   );
 
   const handleEdgesDelete = useCallback(
@@ -2948,6 +3053,16 @@ export function FactoryFlow() {
         connectionRadius={18}
         elevateNodesOnSelect={false}
         edgesReconnectable={false}
+        // Delete/Backspace are handled by the board's own keydown handler,
+        // which routes through the store (one undo entry, edges pruned).
+        // React Flow's built-in delete only edited its local copy: cards
+        // vanished from the canvas, stayed in the project, and reappeared on
+        // the next commit.
+        deleteKeyCode={null}
+        // The shift-drag band selects whatever it touches. Full containment
+        // made rubber-banding big cards feel broken - clipping a card's edge
+        // did nothing.
+        selectionMode={SelectionMode.Partial}
         onNodeClick={handleNodeClick}
         onEdgeClick={handleEdgeClick}
         onNodesChange={handleNodesChange}
@@ -6240,14 +6355,6 @@ function isPointerOverIncompatibleFlowHandle(
 
     return !isCompatibleDraggedResourceTarget(project, draggedResource, resourceHandle);
   });
-}
-
-function isEditableKeyboardTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
 }
 
 function getResourceHandleAtPointer(event: MouseEvent | TouchEvent) {

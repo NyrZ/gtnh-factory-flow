@@ -38,6 +38,7 @@ import type {
   ResourceKind,
 } from "@/lib/model/types";
 import { makeResourceHandleId, parseResourceHandleId } from "./flow/resource-handles";
+import { isEditableKeyboardTarget } from "./flow/keyboard";
 import {
   FLOW_IMAGE_EXPORT_COMPLETE_EVENT,
   FLOW_IMAGE_EXPORT_EVENT,
@@ -216,18 +217,28 @@ export function BoardActions() {
 
   useEffect(() => {
     const handleProjectHistoryShortcut = (event: KeyboardEvent) => {
-      if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+      if ((!event.ctrlKey && !event.metaKey) || event.altKey) {
+        return;
+      }
+
+      // Typing owns its own history: Ctrl+Z in a rename field or note must
+      // undo the typing, not the board.
+      if (isEditableKeyboardTarget(event.target)) {
         return;
       }
 
       const key = event.key.toLowerCase();
       if (key === "z") {
         event.preventDefault();
-        undo();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
         return;
       }
 
-      if (key === "y") {
+      if (key === "y" && !event.shiftKey) {
         event.preventDefault();
         redo();
       }
