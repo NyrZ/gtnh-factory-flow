@@ -567,26 +567,6 @@ img {
   color: var(--mc-ink);
 }
 
-.storage-node-tinted .storage-node-card {
-  border-color: var(--storage-node-tint-border);
-  background: color-mix(in srgb, var(--storage-node-tint) 72%, #8a6030);
-}
-
-.storage-node-tinted .storage-node-header {
-  border-color: var(--storage-node-tint-border);
-  background: color-mix(in srgb, var(--storage-node-tint-header) 82%, #8a6030);
-}
-
-.storage-node-tinted .storage-node-card--tank {
-  border-color: var(--mc-12) !important;
-  background: color-mix(in srgb, var(--storage-node-tint) 66%, #b9c2d4);
-}
-
-.storage-node-tinted .storage-node-card--tank .storage-node-body {
-  border-color: var(--mc-12);
-  background: black;
-}
-
 /* ===== Node verdict strip + port rails ===================================
    Verdict color means "where to act": starved = act upstream (red), choke =
    act on this node (amber), demand-set = healthy part load (steel, no
@@ -1031,14 +1011,10 @@ img {
   outline-color: #9db0c4;
 }
 
-/* Storage cards: INFINITE SUPPLY drops its green for the buffer steel, and
-   the net line stops signing its number in red and green. */
-.factory-flow-board--calm [data-storage-mode="supply"] {
-  background-color: #5f7f9c;
-}
-
+/* Storage cards: the net line stops signing its number in red and green.
+   The header word is a constant neutral STORAGE, so it needs no calming. */
 .factory-flow-board--calm .storage-net-line {
-  color: #42424b;
+  color: #a8afbb;
 }
 
 /* Editing chrome — the delete/clone buttons on drawer, tank and trash

@@ -6,7 +6,7 @@ import { Copy } from "lucide-react";
 import type { FactoryStorage, StorageThroughputResult } from "@/lib/model/types";
 import { makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
-import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import { FLUID_ICON_SCALE, ResourceIcon, getFallbackFluidColor } from "@/components/nei/ResourceIcon";
 import { NodeGlanceIcon } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
@@ -53,12 +53,36 @@ const WELL_HANDLE_BASE: CSSProperties = {
 const WELL_HANDLE_LEFT: CSSProperties = { ...WELL_HANDLE_BASE, left: 0, right: "auto" };
 const WELL_HANDLE_RIGHT: CSSProperties = { ...WELL_HANDLE_BASE, left: "auto", right: 0 };
 
-const MODE_BADGE: Record<StorageMode, { word: string; className: string }> = {
-  supply: { word: "INFINITE SUPPLY", className: "bg-[#2f7a3d] text-white" },
-  blackhole: { word: "INFINITE STORAGE", className: "bg-[#3f4652] text-white" },
-  buffer: { word: "BUFFER", className: "bg-[#5f7f9c] text-white" },
-  idle: { word: "UNWIRED", className: "bg-[#8a8a8a] text-white" },
-};
+/** Item icon box on the card face; fluids invert FLUID_ICON_SCALE to match. */
+const CARD_ICON_PX = 96;
+/** Oversized glance icon (zoomed out) — deliberately larger than the card. */
+const GLANCE_ICON_PX = 168;
+
+/**
+ * Rendered and atlas item sprites carry a big baked-in transparent margin —
+ * the art never fills more than ~51% of the canvas (measured across the
+ * rendered set). Drawing the sprite at 2× the box and letting the icon's
+ * overflow-hidden crop the empty margin makes the art itself fill the box.
+ * Same convention as ResourceIcon's default calc(200% - 8px) slot rendering.
+ */
+const ITEM_SPRITE_MARGIN_SCALE = 2;
+
+/** The sprite size that makes the ART fill a box of the given size. */
+function storageIconPixelSize(
+  boxPx: number,
+  storage: Pick<FactoryStorage, "kind" | "iconPath" | "iconAtlas">,
+): number {
+  const isPlainFluid = storage.kind === "fluid" && !storage.iconPath && !storage.iconAtlas;
+  if (isPlainFluid) {
+    // The fluid swatch insets itself to FLUID_ICON_SCALE of the request.
+    return Math.round(boxPx / FLUID_ICON_SCALE);
+  }
+  if (storage.kind === "item") {
+    return boxPx * ITEM_SPRITE_MARGIN_SCALE;
+  }
+  // Aspects (and anything else) draw edge-to-edge already — no margin to crop.
+  return boxPx;
+}
 
 function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
   const { storage, result } = data;
@@ -100,7 +124,6 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
     hoveredStorageResourceKey === resourceKey ||
     (hoveredFlowResourceKey ?? selectedFlowResourceKey) === resourceKey;
   const isSearchHighlighted = storageMatchesSearch(storage, recipeSearch);
-  const storageColor = storage.colorTag ? GT_NODE_COLORS[storage.colorTag] : undefined;
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const paintCursor =
     nodeColorPaintMode !== undefined
@@ -111,6 +134,15 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
   const net = result?.netPerSecond ?? 0;
   const title = storage.displayName ?? storage.resourceId;
   const isTank = storage.kind === "fluid";
+  // The whole card wears the item's colour: paint (colorTag) wins if the user
+  // painted it, then the item's dominant sprite colour, then the same fallback
+  // colour the fluid swatch itself renders in, then neutral steel.
+  const tint =
+    (storage.colorTag ? GT_NODE_COLORS[storage.colorTag].swatch : undefined) ??
+    storage.dominantColor ??
+    storage.iconAtlas?.dominantColor ??
+    (isTank ? getFallbackFluidColor(storage.resourceId) : "#8a93a6");
+  const borderColor = `color-mix(in srgb, ${tint} 55%, #262b34)`;
   const inputHandleId = makeResourceHandleId("input", {
     kind: storage.kind,
     id: storage.resourceId,
@@ -131,26 +163,14 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
       }
       onMouseLeave={() => setHoveredStorageResourceKey(undefined)}
       className={[
-        "group relative text-[#202020]",
-        storageColor ? "storage-node-tinted" : "",
+        "group relative text-[#e8e9ee]",
         selected ? "ring-2 ring-cyan-300" : "",
         isFlowScopeLit && !isHighlighted ? "ring-4 ring-cyan-300" : "",
         isHighlighted
           ? "outline outline-4 outline-offset-4 outline-yellow-300 ring-8 ring-cyan-300 [filter:drop-shadow(0_0_16px_rgba(34,211,238,0.95))]"
           : "",
       ].join(" ")}
-      style={{
-        // Paint tints the card, nothing else: the tank glass, the drawer face
-        // and the net line keep their own colours so the textures stay legible.
-        ...(storageColor
-          ? ({
-              "--storage-node-tint": storageColor.panel,
-              "--storage-node-tint-header": storageColor.header,
-              "--storage-node-tint-border": storageColor.border,
-            } as CSSProperties)
-          : undefined),
-        ...(paintCursor ? { cursor: paintCursor } : undefined),
-      }}
+      style={paintCursor ? { cursor: paintCursor } : undefined}
     >
       {/* Wires dock anywhere on the card's PERIMETER — the anchors span the
           whole card, and the router already picks the best side. */}
@@ -167,23 +187,25 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         className="pointer-events-none absolute inset-0"
       />
       <div
-        // Glance root is the CARD, not the wrapper: the frame, the drawer wood
-        // and the tank glass stay, and only what is written on them goes. A
-        // drawer zoomed out still reads as a drawer.
+        // Glance root is the CARD, not the wrapper: the tinted frame stays,
+        // and only what is written on it goes. A copper drawer zoomed out
+        // still reads as a copper-coloured card.
         data-node-glance-root=""
         className={[
           // Seven cells by eight, fixed. The card used to be 132×(whatever its
           // rows added up to); wires dock on its perimeter, so an off-grid
           // edge meant off-grid endpoints.
           "storage-node-card relative h-[160px] w-[140px] border-2 p-1",
-          isTank
-            ? "border-[#565f72] bg-[#b9c2d4] shadow-[inset_2px_2px_0_#e8edf7,inset_-2px_-2px_0_#7b8497]"
-            : "border-[#2b1c0e] bg-[#8a6030] shadow-[inset_3px_3px_0_#ad7b3e,inset_-3px_-3px_0_#3e2a13]",
+          "shadow-[inset_2px_2px_0_rgba(255,255,255,0.08),inset_-2px_-2px_0_rgba(0,0,0,0.45)]",
           isHighlighted || isSearchHighlighted ? "brightness-125 saturate-150" : "",
         ].join(" ")}
+        style={{
+          borderColor,
+          background: `color-mix(in srgb, ${tint} 24%, #101318)`,
+        }}
       >
         <NodeGlanceIcon>
-          {/* Deliberately bigger than the card it sits on (w-[132px]).
+          {/* Deliberately bigger than the card it sits on (w-[140px]).
               Zoomed out, WHAT is in the drawer is the only thing worth
               reading, and a sprite confined inside the frame is a few pixels
               on screen. Nothing clips it — the card sets no overflow — so it
@@ -194,30 +216,24 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             resource={{ ...storage, id: storage.resourceId, amount: 1 }}
             showAmount={false}
             bare
-            iconPixelSize={168}
+            iconPixelSize={storageIconPixelSize(GLANCE_ICON_PX, storage)}
             className="!h-[168px] !w-[168px]"
           />
         </NodeGlanceIcon>
-        <StorageHeader storageId={storage.id} title={title} isTank={isTank} />
-        <div
-          // The data attribute lets calm mode (globals.css) mute the one
-          // coloured badge, INFINITE SUPPLY, without touching the others.
-          data-storage-mode={mode}
-          className={[
-            "mx-auto mt-1 w-max px-2 text-center text-[7px] font-black leading-[11px] tracking-[0.5px]",
-            MODE_BADGE[mode].className,
-          ].join(" ")}
-        >
-          {MODE_BADGE[mode].word}
+        <StorageHeader storageId={storage.id} isTank={isTank} tint={tint} />
+        {/* The name sits ABOVE the item, not in the header — the header
+            carries the setting word; this line says what is inside. */}
+        <div title={title} className="minecraft-title h-4 truncate px-1 text-center text-[11px] leading-4">
+          {title}
         </div>
         <MinecraftTooltip content={renderStorageHoverContent(storage, mode)}>
-          {/* The black well is the wire zone: drag from its left/right half
-              to pull a wire. Everything around it - header, frame, badge,
+          {/* The icon well is the wire zone: drag from its left/right half
+              to pull a wire. Everything around it - header, frame, name,
               net line - is plain card, so grabbing the border moves the
               node. The handles carry inline styles pinned to the well box;
               stylesheet !important wars once let them blanket the whole
               card and swallow the header buttons. */}
-          <div className="relative mx-auto mt-1.5 h-[84px] w-[116px]">
+          <div className="relative mx-auto h-[96px] w-[120px]">
             <Handle
               id={inputHandleId}
               type="target"
@@ -240,41 +256,25 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               className="nodrag"
               style={WELL_HANDLE_RIGHT}
             />
-            {isTank ? (
-              // The original tank look — steel frame, dark glass well — just
-              // tighter, with the fluid icon much larger inside it.
-              <div className="grid h-full w-full place-items-center border-2 border-[#1f1f1f] bg-black shadow-[inset_5px_5px_0_#1f2933,inset_-5px_-5px_0_#050505]">
-                <ResourceIcon
-                  resource={{ ...storage, id: storage.resourceId, amount: 1 }}
-                  size="sm"
-                  showAmount={false}
-                  bare
-                  className="!h-16 !w-16"
-                />
-              </div>
-            ) : (
-              // The original drawer look — wood well, parchment face — tighter,
-              // with the item icon much larger.
-              <div className="grid h-full w-full place-items-center border-2 border-[#3a260f] bg-[#7a5427] shadow-[inset_5px_5px_0_#5a3b1b,inset_-5px_-5px_0_#4a3117]">
-                <div className="grid h-[72px] w-[72px] place-items-center border-2 border-[#1f1f1f] bg-[#d8c4b4] shadow-[inset_2px_2px_0_#fff,inset_-2px_-2px_0_#7d6d61]">
-                  <ResourceIcon
-                    resource={{ ...storage, id: storage.resourceId, amount: 1 }}
-                    size="sm"
-                    showAmount={false}
-                    bare
-                    className="!h-16 !w-16"
-                  />
-                </div>
-              </div>
-            )}
+            {/* No wood face, no glass box: the dark tinted card IS the
+                surface, and the item fills nearly the whole well. */}
+            <div className="grid h-full w-full place-items-center">
+              <ResourceIcon
+                resource={{ ...storage, id: storage.resourceId, amount: 1 }}
+                showAmount={false}
+                bare
+                iconPixelSize={storageIconPixelSize(CARD_ICON_PX, storage)}
+                className="!h-[96px] !w-[96px]"
+              />
+            </div>
           </div>
         </MinecraftTooltip>
         <div
           className={[
-            // 1.5 not 1: header 24 + badge 15 + well 90 + this 19 fills the
-            // card's 148px interior exactly.
-            "storage-net-line mt-1.5 text-center text-[9px] font-bold leading-[13px] tabular-nums",
-            net > 0.005 ? "text-[#1d5c2a]" : net < -0.005 ? "text-[#7c1d1d]" : "text-[#42424b]",
+            // header 24 + name 16 + well 96 + this 12 fills the card's 148px
+            // interior exactly.
+            "storage-net-line h-3 text-center text-[9px] font-bold leading-[12px] tabular-nums",
+            net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
           ].join(" ")}
         >
           Net {net >= 0 ? "+" : ""}
@@ -295,12 +295,12 @@ export const StorageNode = memo(
 
 function StorageHeader({
   storageId,
-  title,
   isTank,
+  tint,
 }: {
   storageId: string;
-  title: string;
   isTank: boolean;
+  tint: string;
 }) {
   const deleteStorage = useFactoryStore((state) => state.deleteStorage);
   const duplicateStorage = useFactoryStore((state) => state.duplicateStorage);
@@ -308,13 +308,14 @@ function StorageHeader({
 
   return (
     <div
-      className={[
-        // relative z-40: the invisible wire handles (z-30) blanket the card,
-        // and without a higher stacking position they swallow every click
-        // aimed at the delete/clone buttons underneath.
-        "storage-node-header relative z-40 flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.55)]",
-        isTank ? "border-[#747c91] bg-[#b8c1d9]" : "border-[#4f3518] bg-[#8a6030]",
-      ].join(" ")}
+      // relative z-40: the invisible wire handles (z-30) blanket the card,
+      // and without a higher stacking position they swallow every click
+      // aimed at the delete/clone buttons underneath.
+      className="storage-node-header relative z-40 flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]"
+      style={{
+        borderColor: `color-mix(in srgb, ${tint} 55%, #262b34)`,
+        background: `color-mix(in srgb, ${tint} 32%, #0a0c10)`,
+      }}
     >
       <button
         type="button"
@@ -342,14 +343,10 @@ function StorageHeader({
       >
         <Copy aria-hidden className="h-2.5 w-2.5" />
       </button>
-      {/* No centering spacer: in a 132px card it starved the name down to a
-          couple of characters. Left-aligned, smaller, full width, and the
-          native title shows the whole name on hover. */}
-      <div
-        title={title}
-        className="minecraft-title min-w-0 flex-1 truncate text-left text-[11px] leading-4"
-      >
-        {title}
+      {/* One quiet word, always the same: this card is storage. What it is
+          DOING right now (supply / buffer / pile-up) lives in the hover. */}
+      <div className="min-w-0 flex-1 truncate text-right text-[8px] font-black tracking-[0.4px] text-[#9aa1ad] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]">
+        STORAGE
       </div>
     </div>
   );

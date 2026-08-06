@@ -306,9 +306,10 @@ function AspectIconImage({
  *
  * Item sprites carry their own transparent margin, so a full-bleed colour block
  * would read as much heavier than the items beside it. Insetting the swatch puts
- * it on the same visual footing.
+ * it on the same visual footing. Exported so storage cards can invert it when
+ * they want the swatch itself, not the cell, at a target size.
  */
-const FLUID_ICON_SCALE = 0.56;
+export const FLUID_ICON_SCALE = 0.56;
 
 /**
  * Stand-in art for a fluid: a filled cell in the fluid's own colour, bevelled
@@ -353,9 +354,10 @@ function FluidIconImage({
  *
  * Well-known fluids are named so they look right; everything else is hashed from
  * its id, which keeps a given fluid the same colour everywhere in the app and
- * across reloads.
+ * across reloads. Exported so tank cards can tint themselves the same colour
+ * their fluid renders in.
  */
-function getFallbackFluidColor(id: string): string {
+export function getFallbackFluidColor(id: string): string {
   const normalized = id.toLowerCase();
   for (const [needle, color] of FLUID_COLOR_HINTS) {
     if (normalized.includes(needle)) {

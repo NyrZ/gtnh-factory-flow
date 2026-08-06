@@ -92,12 +92,12 @@ for (let y = 0; y < CAN_ROWS.length; y += 1) {
   }
 }
 
-function TrashCanPixelArt() {
+function TrashCanPixelArt({ width = 64, height = 68 }: { width?: number; height?: number }) {
   return (
     <svg
       viewBox="0 0 16 17"
-      width={64}
-      height={68}
+      width={width}
+      height={height}
       shapeRendering="crispEdges"
       aria-hidden
       className="pointer-events-none"
@@ -140,11 +140,15 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
     id: TRASH_ANY_RESOURCE_ID,
   });
 
+  // Same colour system as drawers and tanks: paint wins, otherwise the can's
+  // own steel — mixed into a dark card so the art carries the identity.
+  const tint = nodeColor?.swatch ?? "#8a93a6";
+
   return (
     <div
       data-trash-node-id={projectNode.id}
       className={[
-        "group relative text-[#202020]",
+        "group relative text-[#e8e9ee]",
         selected ? "ring-2 ring-cyan-300" : "",
       ].join(" ")}
       style={paintCursor ? { cursor: paintCursor } : undefined}
@@ -164,9 +168,9 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         // Six cells by seven, fixed — the can docks wires on its perimeter.
         className="relative h-[140px] w-[120px] border-2 p-1"
         style={{
-          borderColor: nodeColor?.border ?? "#565f72",
-          backgroundColor: nodeColor?.panel ?? "#b9c2d4",
-          boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.45), inset -2px -2px 0 rgba(0,0,0,0.28)",
+          borderColor: `color-mix(in srgb, ${tint} 55%, #262b34)`,
+          background: `color-mix(in srgb, ${tint} 24%, #101318)`,
+          boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.45)",
         }}
       >
         <NodeGlanceIcon>
@@ -178,10 +182,10 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
           </div>
         </NodeGlanceIcon>
         <div
-          className="relative z-40 -m-1 mb-0 flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.55)]"
+          className="relative z-40 -m-1 mb-0 flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]"
           style={{
-            borderColor: nodeColor?.border ?? "#565f72",
-            backgroundColor: nodeColor?.header ?? "#9aa5bb",
+            borderColor: `color-mix(in srgb, ${tint} 55%, #262b34)`,
+            background: `color-mix(in srgb, ${tint} 32%, #0a0c10)`,
           }}
         >
           <button
@@ -229,8 +233,10 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
               className="nodrag"
               style={WELL_HANDLE_FULL}
             />
-            <div className="grid h-full w-full place-items-center border-2 border-[#1f1f1f] bg-[#0d1015] shadow-[inset_5px_5px_0_#1f2933,inset_-5px_-5px_0_#050505]">
-              <TrashCanPixelArt />
+            {/* No boxed well: the dark card is the surface, and the can art
+                fills nearly all of it — same doctrine as drawers and tanks. */}
+            <div className="grid h-full w-full place-items-center">
+              <TrashCanPixelArt width={94} height={100} />
             </div>
           </div>
         </MinecraftTooltip>
