@@ -3462,8 +3462,7 @@ export function FactoryFlow() {
           <div className="max-w-[460px] border-2 border-amber-500 bg-[#1b1d21] p-4 font-mono text-neutral-100 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
             <p className="text-[13px] font-bold text-amber-300">One port per resource</p>
             <p className="mt-2 text-[12px] leading-relaxed text-neutral-300">
-              Pockets allow one connection per resource. This selection doesn&apos;t fit that.
-              Compacting shares everything below with every machine that asks for it:
+              Pockets allow one connection per resource. This selection doesn&apos;t fit that:
             </p>
             <ul className="mt-2 flex flex-col gap-0.5 text-[12px] text-amber-200">
               {compactWarning.warnings.map((warning) => (
@@ -3479,6 +3478,10 @@ export function FactoryFlow() {
                 </li>
               ))}
             </ul>
+            <p className="mt-2 text-[12px] leading-relaxed text-neutral-300">
+              Make the pocket and these wires merge. Every machine that asks gets a share, and
+              the planner decides the split. Unpacking keeps the new wiring.
+            </p>
             <div className="mt-3 flex justify-end gap-1.5">
               <button
                 type="button"
