@@ -4534,11 +4534,13 @@ function ResourceEdgeComponent({
                 // Clicky, not smooth: the dot lives on the grid, so it MOVES
                 // on the grid — cell to cell under the pointer, exactly where
                 // it will land, instead of gliding free and snapping late.
-                const snappedX = Math.round(flowPoint.x / BOARD_GRID) * BOARD_GRID;
-                const snappedY = Math.round(flowPoint.y / BOARD_GRID) * BOARD_GRID;
+                // And never onto a card or its wire margin: dragged over one,
+                // the dot rides the nearest legal cell instead, which is
+                // exactly where releasing it will put it.
+                const clamped = clampWaypointToClearSpace(flowPoint.x, flowPoint.y);
                 setDraftWaypoints((current) =>
                   current?.map((point, pointIndex) =>
-                    pointIndex === drag.index ? { x: snappedX, y: snappedY } : point,
+                    pointIndex === drag.index ? clamped : point,
                   ),
                 );
               }}
@@ -4550,16 +4552,18 @@ function ResourceEdgeComponent({
                 event.currentTarget.releasePointerCapture(drag.pointerId);
                 waypointDragRef.current = undefined;
                 if (draftWaypoints) {
-                  // On grid, always: the dot commits to the nearest corner.
+                  // On grid and in clear space, always: the dot commits to
+                  // the nearest legal corner (plans saved before the clamp
+                  // existed can carry dots inside cards — the commit heals
+                  // whichever one was touched).
                   // Order is sacred: the first dot made is the first stop,
                   // wherever either gets dragged — the wire doubles back if
                   // it must. Re-sorting by position here silently swapped
                   // the user's itinerary.
                   updateEdge(id, {
-                    waypoints: draftWaypoints.map((point) => ({
-                      x: Math.round(point.x / BOARD_GRID) * BOARD_GRID,
-                      y: Math.round(point.y / BOARD_GRID) * BOARD_GRID,
-                    })),
+                    waypoints: draftWaypoints.map((point) =>
+                      clampWaypointToClearSpace(point.x, point.y),
+                    ),
                   });
                 }
                 setDraftWaypoints(undefined);
@@ -5623,6 +5627,58 @@ function getMeasuredNodeBoundsById(nodeId: string | undefined) {
  * Whether a label ANCHORED here would overlap some node: the margins are
  * half the label box, so this tests the box, not just the center point.
  */
+/**
+ * The nearest grid corner a waypoint dot may legally sit on: outside every
+ * card and its one-cell wire clearance — the same margin routes keep. A dot
+ * inside that space is a stop the router could only ignore, so instead of
+ * letting it sit on a card it slides out of the nearest side. A push can
+ * land inside a neighbouring card's margin; a few passes settle it, and a
+ * dot buried in a wall of cards just stays where the passes left it.
+ */
+function clampWaypointToClearSpace(x: number, y: number): { x: number; y: number } {
+  const snap = (value: number) => Math.round(value / BOARD_GRID) * BOARD_GRID;
+  let px = snap(x);
+  let py = snap(y);
+  for (let pass = 0; pass < 4; pass += 1) {
+    let moved = false;
+    for (const bounds of queryMeasuredNodeBounds({
+      left: px - BOARD_GRID,
+      right: px + BOARD_GRID,
+      top: py - BOARD_GRID,
+      bottom: py + BOARD_GRID,
+    })) {
+      const inflated = {
+        left: bounds.left - BOARD_GRID,
+        right: bounds.right + BOARD_GRID,
+        top: bounds.top - BOARD_GRID,
+        bottom: bounds.bottom + BOARD_GRID,
+      };
+      // ON the clearance line is legal — that is where the wires travel.
+      if (
+        px <= inflated.left ||
+        px >= inflated.right ||
+        py <= inflated.top ||
+        py >= inflated.bottom
+      ) {
+        continue;
+      }
+      const pushes = [
+        { dx: inflated.left - px, dy: 0, cost: px - inflated.left },
+        { dx: inflated.right - px, dy: 0, cost: inflated.right - px },
+        { dx: 0, dy: inflated.top - py, cost: py - inflated.top },
+        { dx: 0, dy: inflated.bottom - py, cost: inflated.bottom - py },
+      ].sort((left, right) => left.cost - right.cost);
+      px = snap(px + pushes[0]!.dx);
+      py = snap(py + pushes[0]!.dy);
+      moved = true;
+    }
+    if (!moved) {
+      break;
+    }
+  }
+  return { x: px, y: py };
+}
+
 function isPointInsideAnyMeasuredNode(
   point: { x: number; y: number },
   // Half the label box. 80, not 60: the pill grew a supply percent

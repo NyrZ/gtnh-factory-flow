@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.11.2",
+    date: "2026-08-05",
+    headline: "Dots, pills and dashes all know their place now",
+    notes: [
+      "Steering dots refuse to sit on a machine: drag one over a card and it rides the nearest clear grid corner instead — dropping it there is where it stays.",
+      "Rate labels only appear where there is open wire to sit on, and the moving dashes pass underneath them instead of marching across.",
+      "Wires and their dashes stay off the machine tabs at the top of a card — they land on the card itself, past the tabs.",
+    ],
+  },
+  {
     version: "1.11.1",
     date: "2026-08-05",
     headline: "One click rewires the whole board",
