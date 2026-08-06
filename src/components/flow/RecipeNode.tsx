@@ -791,9 +791,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               // the slack: a four-digit machine count is the one number here
               // that legitimately gets wide. Parallel stretched to fill and
               // then truncated its own label ("Parall…"). Calm mode drops the
-              // diagnostics and keeps just that box, bottom right, unchanged.
+              // diagnostics and keeps just that box, bottom right. The box
+              // sizes to its track (its input is w-0 flex-1, so shrink-to-fit
+              // collapses it) — one output-rail-wide column, pushed right, so
+              // it sits squarely under the outputs at its normal-mode width.
               calmMode
-                ? "flex justify-end"
+                ? "grid justify-end grid-cols-[176px]"
                 : [
                     "grid",
                     isCustomRateNode
