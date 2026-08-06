@@ -1403,6 +1403,11 @@ export function FactoryFlow() {
     // layout effect below re-runs on toggle and bumps the layout epoch, which
     // is what makes every edge reroute against the new lanes. Widening the
     // lanes invalidates every cached route, so they go too.
+    //
+    // Dock mode rides the same train for the same reason: the anchor toggle
+    // republishes every endpoint, but an edge only redraws when its identity
+    // changes — without the epoch bump the new docking arrived one hover at
+    // a time, as each edge happened to re-render.
     const nextLaneScale = lineThicknessMode ? THICK_LINE_LANE_SCALE : 1;
     // Clearances are a routing input for the same reason lane width is, and
     // they move together: both are functions of the widest line the current
@@ -1455,7 +1460,7 @@ export function FactoryFlow() {
       .filter((entry) => entry.bounds.right > entry.bounds.left)
       .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
     invalidateMeasuredLayout();
-  }, [lineThicknessMode]);
+  }, [freeDockMode, lineThicknessMode]);
   useLayoutEffect(() => {
     // Drag frames rewrite positions constantly. Measurements stay frozen for
     // the whole drag: untouched edges keep their cached routes and edges on
