@@ -3930,10 +3930,15 @@ function ResourceEdgeComponent({
   const visualSource = visualSourceCandidates[0];
   const visualTarget = visualTargetCandidates[0];
   // Direction has one voice: the marching dashes when pulse mode is on,
-  // arrowheads only when it is off. Arrows also sat half-buried under cards
-  // (edges dive beneath nodes in thickness mode), which dashes never do.
+  // chevrons only when it is off — and only in free-dock mode. With wires
+  // pinned to their ports, which side a wire attaches on already says which
+  // way it flows (inputs left, outputs right), so the chevrons are noise
+  // there. Module state is safe to read here: a mode flip re-signs every
+  // route and the settle pass re-issues every edge.
   const showArrowHead =
-    flowRate?.pulse !== true && (isHighlighted || hasEdgeDetail(detailLevel, EDGE_DETAIL_ARROWS));
+    flowRate?.pulse !== true &&
+    publishedGridFreeDock &&
+    (isHighlighted || hasEdgeDetail(detailLevel, EDGE_DETAIL_ARROWS));
   // Every wire routes individually through the board-wide grid solve — the
   // solve's lane sharing is what makes a fan-out ride as one ribbon, which
   // is the look the bundle machinery used to fake by hiding members. The
