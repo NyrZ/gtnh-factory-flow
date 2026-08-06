@@ -101,8 +101,12 @@ export function BlueprintPanel() {
   );
 }
 
-/** Stamp a fetched payload onto the board, centred on the current view. */
-function placePayload(payload: BoardClipboardPayload) {
+/**
+ * Stamp a fetched payload onto the board, centred on the current view.
+ * Returns the pasted top-level ids (also shared with the Setups shelf,
+ * whose pocket-drop compacts them right after).
+ */
+export function placePayload(payload: BoardClipboardPayload): string[] {
   const state = useFactoryStore.getState();
   const centre = payloadCentre(payload) ?? { x: 0, y: 0 };
   const viewCentre = state.flowViewportCenter ?? { x: 0, y: 0 };
@@ -115,6 +119,7 @@ function placePayload(payload: BoardClipboardPayload) {
     // Arrives selected, ready to drag into place — same handoff as paste.
     state.setPendingBoardSelection(pastedIds);
   }
+  return pastedIds;
 }
 
 /** The controls card: scope tabs on top, the active shelf's own tools under. */

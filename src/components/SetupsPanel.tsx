@@ -10,6 +10,7 @@ import {
   Globe,
   Link2,
   LoaderCircle,
+  Package,
   Search,
   Tags,
   Trash2,
@@ -34,7 +35,9 @@ import { useCommunityUser } from "@/components/community/auth";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { useDesignStore } from "@/store/design-store";
-import { formatRelativeDate, renderIoStats, TagChips } from "./BlueprintPanel";
+import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
+import type { FactoryProject } from "@/lib/model/types";
+import { formatRelativeDate, placePayload, renderIoStats, TagChips } from "./BlueprintPanel";
 
 const SETUP_SORTS: Array<{ value: CommunityPlanSort; label: string }> = [
   { value: "new", label: "Newest" },
@@ -72,7 +75,7 @@ export function SetupsPanel() {
   const [shelf, setShelf] = useState<SetupShelf>();
   const [target, setTarget] = useState<{ key: string; page: number }>({ key: "", page: 1 });
   const [error, setError] = useState<string>();
-  const [busyId, setBusyId] = useState<string>();
+  const [busy, setBusy] = useState<{ id: string; kind: "open" | "pocket" }>();
   const [copiedId, setCopiedId] = useState<string>();
 
   // "My setups" in the account menu can retarget an already-open panel.
@@ -172,7 +175,7 @@ export function SetupsPanel() {
   };
 
   const open = async (plan: CommunityPlanSummary) => {
-    setBusyId(plan.id);
+    setBusy({ id: plan.id, kind: "open" });
     try {
       const { plan: planJson } = await downloadCommunityPlan(plan.id);
       const project = parseFactoryProjectJson(
@@ -184,7 +187,40 @@ export function SetupsPanel() {
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "Opening the setup failed.");
     } finally {
-      setBusyId(undefined);
+      setBusy(undefined);
+    }
+  };
+
+  // The whole setup lands on the CURRENT board as one pocket card: paste it
+  // centred like a blueprint, then compact the pasted cards — same code path
+  // as Ctrl+G, so ports, wiring and the purple room all come out right.
+  const openAsPocket = async (plan: CommunityPlanSummary) => {
+    setBusy({ id: plan.id, kind: "pocket" });
+    try {
+      const { plan: planJson } = await downloadCommunityPlan(plan.id);
+      const project = parseFactoryProjectJson(JSON.stringify(planJson));
+      const payload = captureBoardSelection(project, rootBoardIds(project));
+      if (!payload) {
+        throw new Error("This setup has nothing to place.");
+      }
+
+      const pastedIds = placePayload(payload);
+      if (pastedIds.length > 0) {
+        const state = useFactoryStore.getState();
+        const pocketId = state.compactSelectionIntoPocket(pastedIds, plan.name);
+        if (pocketId) {
+          state.setPendingBoardSelection([pocketId]);
+        }
+      }
+
+      patchPlan(plan.id, (entry) => ({ ...entry, downloads: entry.downloads + 1 }));
+      setError(undefined);
+    } catch (pocketError) {
+      setError(
+        pocketError instanceof Error ? pocketError.message : "Loading as a pocket failed.",
+      );
+    } finally {
+      setBusy(undefined);
     }
   };
 
@@ -332,11 +368,12 @@ export function SetupsPanel() {
                 <SetupRow
                   key={plan.id}
                   plan={plan}
-                  isBusy={busyId === plan.id}
+                  busy={busy?.id === plan.id ? busy.kind : undefined}
                   isCopied={copiedId === plan.id}
                   canManage={plan.isMine === true || user?.isAdmin === true}
                   onVote={() => void vote(plan)}
                   onOpen={() => void open(plan)}
+                  onOpenAsPocket={() => void openAsPocket(plan)}
                   onCopyLink={() => void copyLink(plan)}
                   onDelete={() => void remove(plan)}
                   onSaveTags={(tags) => void saveTags(plan, tags)}
@@ -388,15 +425,37 @@ function renderSetupDetails(plan: CommunityPlanSummary): ReactNode {
   );
 }
 
-/** The GT voltage badge, worn exactly like the tier button on a card. */
-function TierBadge({ tier }: { tier: NonNullable<CommunityPlanSummary["highestTier"]> }) {
-  const color = GT_TIER_COLORS[tier];
-  if (!color) {
-    return null;
+/** Everything living at a project's top level — what a full-plan capture takes. */
+function rootBoardIds(project: FactoryProject): string[] {
+  return [
+    ...project.nodes.filter((node) => !node.pocketId).map((node) => node.id),
+    ...(project.storages ?? [])
+      .filter((storage) => !storage.pocketId)
+      .map((storage) => storage.id),
+    ...(project.annotations ?? [])
+      .filter((annotation) => !annotation.pocketId)
+      .map((annotation) => annotation.id),
+    ...(project.pockets ?? [])
+      .filter((pocket) => !pocket.parentPocketId)
+      .map((pocket) => pocket.id),
+  ];
+}
+
+/**
+ * The GT voltage badge, worn exactly like the tier button on a card — and a
+ * fixed column: every badge is as wide as the widest tier label, so the
+ * author names after them all start on the same line.
+ */
+const TIER_BADGE_WIDTH = "w-8";
+
+function TierBadge({ tier }: { tier?: CommunityPlanSummary["highestTier"] }) {
+  const color = tier ? GT_TIER_COLORS[tier] : undefined;
+  if (!tier || !color) {
+    return <span className={`${TIER_BADGE_WIDTH} shrink-0`} aria-hidden />;
   }
   return (
     <span
-      className="shrink-0 border px-1 text-[9px] font-bold leading-[14px] shadow-[inset_1px_1px_0_rgba(255,255,255,0.55),inset_-1px_-1px_0_rgba(0,0,0,0.45)]"
+      className={`${TIER_BADGE_WIDTH} shrink-0 border text-center text-[9px] font-bold leading-[14px] shadow-[inset_1px_1px_0_rgba(255,255,255,0.55),inset_-1px_-1px_0_rgba(0,0,0,0.45)]`}
       style={{
         backgroundColor: color.background,
         borderColor: color.border,
@@ -412,27 +471,30 @@ function TierBadge({ tier }: { tier: NonNullable<CommunityPlanSummary["highestTi
 
 function SetupRow({
   plan,
-  isBusy,
+  busy,
   isCopied,
   canManage,
   onVote,
   onOpen,
+  onOpenAsPocket,
   onCopyLink,
   onDelete,
   onSaveTags,
   onTag,
 }: {
   plan: CommunityPlanSummary;
-  isBusy: boolean;
+  busy?: "open" | "pocket";
   isCopied: boolean;
   canManage: boolean;
   onVote: () => void;
   onOpen: () => void;
+  onOpenAsPocket: () => void;
   onCopyLink: () => void;
   onDelete: () => void;
   onSaveTags: (tags: string[]) => void;
   onTag: (tag: string) => void;
 }) {
+  const isBusy = busy !== undefined;
   // The tag editor lives in the row: edits stay local as chips and save
   // once, on close — one PUT per session, same manners as blueprints.
   const [tagEditor, setTagEditor] = useState<{ draft: string[]; input: string }>();
@@ -535,12 +597,26 @@ function SetupRow({
           <button
             type="button"
             disabled={isBusy}
+            onClick={onOpenAsPocket}
+            title="Drop onto this board as one pocket card"
+            aria-label={`Load setup ${plan.name} as a pocket`}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-[#8d6fd1] enabled:hover:text-[#c9b8ec] disabled:opacity-50"
+          >
+            {busy === "pocket" ? (
+              <LoaderCircle className="h-3 w-3 animate-spin text-[#c9b8ec]" />
+            ) : (
+              <Package className="h-3 w-3" />
+            )}
+          </button>
+          <button
+            type="button"
+            disabled={isBusy}
             onClick={onOpen}
             title="Open as its own design tab"
             aria-label={`Open setup ${plan.name}`}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
           >
-            {isBusy ? (
+            {busy === "open" ? (
               <LoaderCircle className="h-3 w-3 animate-spin text-emerald-300" />
             ) : (
               <FolderOpen className="h-3 w-3" />
@@ -548,7 +624,7 @@ function SetupRow({
           </button>
         </div>
         <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] tabular-nums text-neutral-500">
-          {plan.highestTier ? <TierBadge tier={plan.highestTier} /> : null}
+          <TierBadge tier={plan.highestTier} />
           {plan.authorName ? (
             <span className="truncate text-neutral-400" title={`By ${plan.authorName}`}>
               {plan.authorName}

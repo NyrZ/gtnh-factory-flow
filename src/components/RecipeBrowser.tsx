@@ -3,9 +3,7 @@
 import {
   ChevronLeft,
   ChevronRight,
-  Factory,
   GitBranchPlus,
-  Layers,
   LayoutGrid,
   List,
   Plus,
@@ -580,47 +578,44 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         className="relative z-40 flex h-full min-h-[360px] flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100"
       >
         <AppIdentity onLoadDatasetVersion={onLoadDatasetVersion} />
-        {/* The master switch: item search or the blueprint library, whole
-            column each. Flat tabs, not buttons — the controls below live on
-            their own card, and two layers of boxes read as clutter. */}
+        {/* The master switch: item search, the blueprint library, or the
+            setups network — whole column each. Flat tabs, not buttons; and
+            text only, three iconed labels in 312px read as one crammed word. */}
         <div className="flex shrink-0 border-b border-neutral-800">
           <button
             type="button"
             onClick={() => setSidebarMode("items")}
             className={[
-              "flex h-9 flex-1 items-center justify-center gap-1.5 border-b-2 text-xs font-medium",
+              "flex h-9 flex-1 items-center justify-center border-b-2 text-xs font-medium",
               sidebarMode === "items"
                 ? "border-cyan-400 text-cyan-300"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
-            <Search className="h-3.5 w-3.5" />
             Items
           </button>
           <button
             type="button"
             onClick={() => setSidebarMode("blueprints")}
             className={[
-              "flex h-9 flex-1 items-center justify-center gap-1.5 border-b-2 text-xs font-medium",
+              "flex h-9 flex-1 items-center justify-center border-b-2 text-xs font-medium",
               sidebarMode === "blueprints"
                 ? "border-[#8d6fd1] text-[#c9b8ec]"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
-            <Layers className="h-3.5 w-3.5" />
             Blueprints
           </button>
           <button
             type="button"
             onClick={() => setSidebarMode("setups")}
             className={[
-              "flex h-9 flex-1 items-center justify-center gap-1.5 border-b-2 text-xs font-medium",
+              "flex h-9 flex-1 items-center justify-center border-b-2 text-xs font-medium",
               sidebarMode === "setups"
                 ? "border-emerald-400 text-emerald-300"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
-            <Factory className="h-3.5 w-3.5" />
             Setups
           </button>
         </div>

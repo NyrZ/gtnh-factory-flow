@@ -23,6 +23,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "The Community page is gone. Everyone's shared factories now live in a Setups tab, right beside Items and Blueprints.",
       "Browse, search, sort and upvote without leaving your board. Hover a setup to read its story: what it needs, what it makes.",
       "One click opens a setup as its own design tab, so it never lands on top of your work. Your own posts sit under Mine.",
+      "Or drop a setup straight onto the board you have open: the box button lands the whole thing as one pocket card, wired and ready.",
       "Setups wear tags now, just like blueprints: search with #tag, tag your own posts from the shelf or the share dialog.",
       "Every setup shows its top voltage tier in that tier's own colour, the same badge machines wear on the board.",
       "Old community links still work: they open the shared setup straight in the planner.",
