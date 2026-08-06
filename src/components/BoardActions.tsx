@@ -210,7 +210,7 @@ export function BoardActions() {
   }, [redo, undo]);
 
   return (
-    <div className="flex shrink-0 items-center gap-1">
+    <div data-help-anchor="plan-actions" className="flex shrink-0 items-center gap-1">
       <div className="flex items-center gap-1">
         <ToolbarButton icon={Undo2} label="Undo" disabled={!canUndo} onClick={undo} />
         <ToolbarButton icon={Redo2} label="Redo" disabled={!canRedo} onClick={redo} />
