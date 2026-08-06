@@ -770,7 +770,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             state word beside it, the two facts that used to crowd it shrink
             to the right. Never a third line — a taller footer on every node
             costs more board than the sentence was worth. */}
-        {!isCropFarmPlaceholder && !isCustomRatePlaceholder && !calmMode ? (
+        {!isCropFarmPlaceholder &&
+        !isCustomRatePlaceholder &&
+        // Calm mode keeps the footer ONLY as a home for the machine count;
+        // a custom rate node has no count, so its footer goes entirely.
+        (!calmMode || !isCustomRateNode) ? (
           <GridBlock
             className={[
               // A hairline over the dials: the machine is one thing, the knobs
@@ -782,27 +786,35 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           >
           <div
             className={[
-              "grid min-w-0 items-center gap-1",
+              "min-w-0 items-center gap-1",
               // Every cell sizes to its content except MACHINES, which takes
               // the slack: a four-digit machine count is the one number here
               // that legitimately gets wide. Parallel stretched to fill and
-              // then truncated its own label ("Parall…").
-              isCustomRateNode
-                ? "grid-cols-[auto]"
-                : machineParallelMultiplier > 1
-                  ? "grid-cols-[auto_auto_minmax(84px,1fr)]"
-                  : "grid-cols-[auto_minmax(84px,1fr)]",
+              // then truncated its own label ("Parall…"). Calm mode drops the
+              // diagnostics and keeps just that box, bottom right, unchanged.
+              calmMode
+                ? "flex justify-end"
+                : [
+                    "grid",
+                    isCustomRateNode
+                      ? "grid-cols-[auto]"
+                      : machineParallelMultiplier > 1
+                        ? "grid-cols-[auto_auto_minmax(84px,1fr)]"
+                        : "grid-cols-[auto_minmax(84px,1fr)]",
+                  ].join(" "),
               isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
             ].join(" ")}
           >
-            <UsageStat
-              nodeId={projectNode.id}
-              verdict={verdict}
-              isCustomRate={isCustomRateNode}
-            />
+            {!calmMode ? (
+              <UsageStat
+                nodeId={projectNode.id}
+                verdict={verdict}
+                isCustomRate={isCustomRateNode}
+              />
+            ) : null}
             {!isCustomRateNode ? (
               <>
-                {machineParallelMultiplier > 1 ? (
+                {!calmMode && machineParallelMultiplier > 1 ? (
                   <Stat
                     label="Parallel"
                     value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
