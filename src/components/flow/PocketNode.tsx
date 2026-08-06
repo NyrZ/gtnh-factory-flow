@@ -2,11 +2,11 @@
 
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { memo, useState } from "react";
-import { Maximize2, Ungroup } from "lucide-react";
+import { Copy, Expand, PackageOpen } from "lucide-react";
 import type { FactoryPocket } from "@/lib/model/types";
 import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
-import { useFactoryStore } from "@/store/factory-store";
+import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import { makeResourceHandleId } from "./resource-handles";
 import { formatSlotRateOrNull } from "./flow-explainers";
 import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
@@ -53,6 +53,21 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
     setDraftName(undefined);
   };
 
+  // Clone the whole dimension — the pocket, every member, every internal
+  // wire — through the same capture/paste path Ctrl+C/Ctrl+V uses, so the
+  // copy lands beside the original, selected and ready to drag.
+  const duplicatePocket = () => {
+    const state = useFactoryStore.getState();
+    const payload = captureBoardSelection(state.project, [pocket.id]);
+    if (!payload) {
+      return;
+    }
+    const pastedIds = state.pasteBoardItems(payload, { x: POCKET_NODE_WIDTH + 40, y: 0 });
+    if (pastedIds.length > 0) {
+      state.setPendingBoardSelection(pastedIds);
+    }
+  };
+
   return (
     <div
       className={[
@@ -83,7 +98,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
         <NodeGlanceText text="✦" className={INK_MUTED} />
         <div className="px-2">
           {/* One head row, exactly two cells tall, like every machine card. */}
-          <div className="grid h-[40px] min-w-0 grid-cols-[24px_24px_minmax(0,1fr)] items-center gap-1">
+          <div className="grid h-[40px] min-w-0 grid-cols-[24px_24px_24px_minmax(0,1fr)] items-center gap-1">
             <button
               type="button"
               onClick={(event) => {
@@ -94,7 +109,19 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               title="Open this pocket dimension (or double-click the card)"
               aria-label={`Open pocket ${pocket.name}`}
             >
-              <Maximize2 aria-hidden className="h-3.5 w-3.5" />
+              <Expand aria-hidden className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                duplicatePocket();
+              }}
+              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+              title="Clone this pocket dimension (everything inside comes along)"
+              aria-label={`Clone pocket ${pocket.name}`}
+            >
+              <Copy aria-hidden className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
@@ -106,7 +133,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               title="Unpack: spill everything back onto this board"
               aria-label={`Unpack pocket ${pocket.name}`}
             >
-              <Ungroup aria-hidden className="h-3.5 w-3.5" />
+              <PackageOpen aria-hidden className="h-3.5 w-3.5" />
             </button>
             {draftName === undefined ? (
               <div

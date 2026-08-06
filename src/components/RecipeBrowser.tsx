@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   GitBranchPlus,
+  Layers,
   LayoutGrid,
   List,
   Plus,
@@ -24,7 +25,6 @@ import type { DatasetResourceIndexEntry, RecipeSummary } from "@/lib/datasets/ty
 import {
   GT_VOLTAGE_TIERS,
   getRecipeMachineHandlers,
-  isVirtualChoiceResource,
   resourceLabel,
   resourceMatchesInput,
 } from "@/lib/model";
@@ -35,6 +35,7 @@ import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { AppIdentity } from "./AppIdentity";
 import { BlueprintPanel } from "./BlueprintPanel";
+import { useBlueprintStore } from "@/store/blueprint-store";
 import { machineArtPixels } from "./flow/MachinePicker";
 import { useMachineHandlerIcons } from "./flow/machine-icons";
 import { MinecraftTooltip } from "./nei/MinecraftTooltip";
@@ -62,7 +63,6 @@ function getResourceModLabel(resource: { id: string; kind: string }): string {
   }
   return resource.kind === "fluid" ? "fluids" : "other";
 }
-const RESOURCE_HISTORY_VISIBLE_FALLBACK = 18;
 const RECIPE_QUERY_CACHE_TTL_MS = 90_000;
 const RESOURCE_QUERY_CACHE_TTL_MS = 90_000;
 const RESOURCE_SEARCH_DEBOUNCE_MS = 125;
@@ -83,7 +83,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const maxTier = useFactoryStore((state) => state.maxTierFilter);
   const browserResource = useFactoryStore((state) => state.recipeBrowserResource);
   const browserMode = useFactoryStore((state) => state.recipeBrowserMode);
-  const resourceHistory = useFactoryStore((state) => state.recipeResourceHistory);
   const selectedRecipeId = useFactoryStore((state) => state.selectedRecipeId);
   const setRecipeSearch = useFactoryStore((state) => state.setRecipeSearch);
   const setHighlightSearch = useFactoryStore((state) => state.setHighlightSearch);
@@ -107,7 +106,11 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourceMod, setResourceMod] = useState("");
   const [resourceSort, setResourceSort] = useState<ResourceSortMode>("relevance");
   const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
-  const [isBlueprintPanelCollapsed, setBlueprintPanelCollapsed] = useState(false);
+  // The master switch: what the whole left panel is FOR right now — finding
+  // items to build with, or stamping saved blueprints. One at a time, full
+  // column each; the old bottom-strip library never had room to breathe.
+  const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints">("items");
+  const blueprintCount = useBlueprintStore((state) => state.blueprints.length);
   const [resourceMods, setResourceMods] = useState<Array<{ id: string; count: number }>>([]);
   const [resourceQueryLoading, setResourceQueryLoading] = useState(false);
   const [resourceQueryError, setResourceQueryError] = useState<string | undefined>();
@@ -140,8 +143,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       anchorNodeId: browserResource.anchorNodeId,
     };
   }, [browserResource]);
-
-  const historyResources = resourceHistory.filter((resource) => !isVirtualChoiceResource(resource));
 
   const recipeMaps = useMemo(
     () => availableRecipeMaps.filter(Boolean).sort((a, b) => a.localeCompare(b)),
@@ -567,6 +568,43 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     <>
       <aside className="relative z-40 flex h-full min-h-[360px] flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100">
         <AppIdentity onLoadDatasetVersion={onLoadDatasetVersion} />
+        {/* The master switch: item search or the blueprint library, whole
+            column each. */}
+        <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-neutral-800 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setSidebarMode("items")}
+            className={[
+              "flex h-8 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+              sidebarMode === "items"
+                ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
+                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
+            ].join(" ")}
+          >
+            <Search className="h-3.5 w-3.5" />
+            Items
+          </button>
+          <button
+            type="button"
+            onClick={() => setSidebarMode("blueprints")}
+            className={[
+              "flex h-8 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+              sidebarMode === "blueprints"
+                ? "border-[#8d6fd1] bg-[#8d6fd1]/15 text-[#c9b8ec]"
+                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
+            ].join(" ")}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            Blueprints
+            {blueprintCount > 0 ? (
+              <span className="text-[10px] text-neutral-500">({blueprintCount})</span>
+            ) : null}
+          </button>
+        </div>
+        {sidebarMode === "blueprints" ? (
+          <BlueprintPanel />
+        ) : (
+          <>
         <div className="border-b border-neutral-800 px-3 py-3">
           <label className="flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
             <Search className="h-4 w-4 text-neutral-500" />
@@ -683,13 +721,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             />
           )}
         </div>
-        <ResourceHistoryPanel resources={historyResources} onBrowse={browseResource} />
-        {/* The blueprint library claims the sidebar's lower half while open;
-            collapsed it folds to a header strip and the results grow back. */}
-        <BlueprintPanel
-          collapsed={isBlueprintPanelCollapsed}
-          onToggle={() => setBlueprintPanelCollapsed((collapsed) => !collapsed)}
-        />
+          </>
+        )}
       </aside>
 
       {activeResource ? (
@@ -743,106 +776,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       ) : null}
     </>
   );
-}
-
-function ResourceHistoryPanel({
-  resources,
-  onBrowse,
-}: {
-  resources: Array<
-    Pick<ResourceAmount, "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor">
-  >;
-  onBrowse: (
-    resource: Pick<
-      ResourceAmount,
-      "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor"
-    >,
-    mode: "recipes" | "uses",
-  ) => void;
-}) {
-  const { containerRef, visibleSlotCount } = useVisibleResourceHistorySlots(resources.length);
-  const visibleResources = resources.slice(0, visibleSlotCount);
-
-  if (resources.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="pointer-events-auto z-20 shrink-0 border-t border-neutral-700 bg-[#2a2d33] px-2 pb-2 pt-1.5">
-      <p className="mb-1 px-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
-        Recent
-      </p>
-      <div
-        ref={containerRef}
-        className="minecraft-pixel-art grid w-full min-w-0 gap-1 overflow-hidden"
-        style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(${HISTORY_CELL_SIZE}px, 1fr))`,
-        }}
-      >
-        {visibleResources.map((resource) => (
-          <button
-            key={`${resource.kind}:${resource.id}`}
-            type="button"
-            onClick={() => onBrowse(resource, "recipes")}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              onBrowse(resource, "uses");
-            }}
-            aria-label={resourceLabel(resource)}
-            title={resourceLabel(resource)}
-            className="flex aspect-square items-center justify-center overflow-hidden rounded-[4px] border border-transparent p-0 hover:border-neutral-500 hover:bg-white/5"
-          >
-            <ResourceIcon
-              resource={{ ...resource, amount: 1 }}
-              size="lg"
-              bare
-              showAmount={false}
-              tooltip={false}
-              // Zoom the art without growing the cell, like the crop picker;
-              // the rendered textures carry ~50% transparent padding.
-              className="scale-[1.4]"
-            />
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const HISTORY_CELL_SIZE = 62;
-const HISTORY_ROWS = 3;
-
-function useVisibleResourceHistorySlots(resourceCount: number) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [visibleSlotCount, setVisibleSlotCount] = useState(RESOURCE_HISTORY_VISIBLE_FALLBACK);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const updateVisibleSlotCount = () => {
-      const gap = 4;
-      const width = Math.max(0, container.clientWidth - 1);
-      const columns = Math.max(1, Math.floor((width + gap) / (HISTORY_CELL_SIZE + gap)));
-      setVisibleSlotCount(columns * HISTORY_ROWS);
-    };
-
-    const animationFrame = window.requestAnimationFrame(updateVisibleSlotCount);
-    const observer = new ResizeObserver(updateVisibleSlotCount);
-    observer.observe(container);
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-      observer.disconnect();
-    };
-  }, [resourceCount]);
-
-  return { containerRef, visibleSlotCount };
 }
 
 function useResourcePageSize(

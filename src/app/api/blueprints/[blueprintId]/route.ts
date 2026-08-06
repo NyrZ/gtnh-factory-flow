@@ -3,6 +3,8 @@ import type { BoardClipboardPayload } from "@/store/factory-store";
 import { getCommunityDb, getSessionUser, isCommunityConfigured } from "@/lib/server/community";
 import {
   BLUEPRINT_SUMMARY_COLUMNS,
+  BLUEPRINT_TABLE_MISSING_MESSAGE,
+  isMissingBlueprintTable,
   rowToBlueprintSummary,
   type BlueprintRow,
 } from "@/lib/server/blueprints";
@@ -33,7 +35,14 @@ export async function GET(request: Request, context: RouteContext) {
     .eq("user_id", sessionUser.id)
     .maybeSingle();
   if (error) {
-    return NextResponse.json({ error: "Blueprint could not be loaded." }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: isMissingBlueprintTable(error)
+          ? BLUEPRINT_TABLE_MISSING_MESSAGE
+          : "Blueprint could not be loaded.",
+      },
+      { status: 500 },
+    );
   }
   if (!data) {
     return NextResponse.json({ error: "Blueprint not found." }, { status: 404 });
@@ -63,7 +72,14 @@ export async function DELETE(request: Request, context: RouteContext) {
     .eq("id", blueprintId)
     .eq("user_id", sessionUser.id);
   if (error) {
-    return NextResponse.json({ error: "Blueprint could not be deleted." }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: isMissingBlueprintTable(error)
+          ? BLUEPRINT_TABLE_MISSING_MESSAGE
+          : "Blueprint could not be deleted.",
+      },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true });

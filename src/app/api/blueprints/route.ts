@@ -14,6 +14,8 @@ import {
 } from "@/lib/server/community";
 import {
   BLUEPRINT_SUMMARY_COLUMNS,
+  BLUEPRINT_TABLE_MISSING_MESSAGE,
+  isMissingBlueprintTable,
   rowToBlueprintSummary,
   type BlueprintRow,
 } from "@/lib/server/blueprints";
@@ -39,7 +41,14 @@ export async function GET(request: Request) {
     .order("created_at", { ascending: false })
     .limit(BLUEPRINT_MAX_PER_USER);
   if (error) {
-    return NextResponse.json({ error: "Blueprints could not be loaded." }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: isMissingBlueprintTable(error)
+          ? BLUEPRINT_TABLE_MISSING_MESSAGE
+          : "Blueprints could not be loaded.",
+      },
+      { status: 500 },
+    );
   }
 
   const response: BlueprintListResponse = {
@@ -124,7 +133,14 @@ export async function POST(request: Request) {
     .select(BLUEPRINT_SUMMARY_COLUMNS)
     .single();
   if (error || !data) {
-    return NextResponse.json({ error: "Blueprint could not be saved." }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: isMissingBlueprintTable(error)
+          ? BLUEPRINT_TABLE_MISSING_MESSAGE
+          : "Blueprint could not be saved.",
+      },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ blueprint: rowToBlueprintSummary(data as BlueprintRow) });
