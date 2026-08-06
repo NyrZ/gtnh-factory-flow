@@ -78,7 +78,10 @@ alter table community_events enable row level security;
 
 -- Blueprints: per-user saved sub-assemblies — a captured board selection
 -- (cards, wires, pockets, recipes) that can be stamped back into any design.
--- Immutable by design: no update path, delete and save a new one instead.
+-- The payload is immutable: no update path, delete and save a new one.
+-- Publishing flips is_public and stamps author/description/published_at;
+-- the payload itself never changes, so a public blueprint is exactly what
+-- its author saved. Votes and downloads mirror community_plans.
 -- Same access model as everything above: RLS on, no policies, service-role only.
 create table if not exists blueprints (
   id uuid primary key default gen_random_uuid(),
@@ -90,9 +93,31 @@ create table if not exists blueprints (
   edge_count integer not null default 0,
   pocket_count integer not null default 0,
   machine_count integer not null default 0,
+  is_public boolean not null default false,
+  description text not null default '' check (char_length(description) <= 500),
+  author_name text not null default '',
+  published_at timestamptz,
+  upvotes integer not null default 0,
+  downvotes integer not null default 0,
+  score integer generated always as (upvotes - downvotes) stored,
+  downloads integer not null default 0,
   created_at timestamptz not null default now()
 );
 
 create index if not exists blueprints_user_created_idx on blueprints (user_id, created_at desc);
+create index if not exists blueprints_public_new_idx on blueprints (is_public, published_at desc);
+create index if not exists blueprints_public_top_idx on blueprints (is_public, score desc);
+create index if not exists blueprints_public_downloads_idx on blueprints (is_public, downloads desc);
 
 alter table blueprints enable row level security;
+
+-- One vote per anonymous actor per blueprint, exactly like community_votes.
+create table if not exists blueprint_votes (
+  blueprint_id uuid not null references blueprints (id) on delete cascade,
+  voter_key text not null,
+  value smallint not null check (value in (-1, 1)),
+  created_at timestamptz not null default now(),
+  primary key (blueprint_id, voter_key)
+);
+
+alter table blueprint_votes enable row level security;

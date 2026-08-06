@@ -4,15 +4,19 @@ import {
   BLUEPRINT_MAX_PER_USER,
   BLUEPRINT_NAME_MAX_LENGTH,
   BLUEPRINT_PAYLOAD_MAX_BYTES,
+  PUBLIC_BLUEPRINT_PAGE_SIZE,
   type BlueprintListResponse,
+  type PublicBlueprintSort,
 } from "@/lib/blueprints/types";
 import {
   checkRateLimit,
   getCommunityDb,
   getSessionUser,
   isCommunityConfigured,
+  makeActorKey,
 } from "@/lib/server/community";
 import {
+  attachMyBlueprintVotes,
   BLUEPRINT_SUMMARY_COLUMNS,
   BLUEPRINT_TABLE_MISSING_MESSAGE,
   isMissingBlueprintTable,
@@ -26,6 +30,11 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   if (!isCommunityConfigured()) {
     return NextResponse.json({ error: "Cloud storage is not configured." }, { status: 503 });
+  }
+
+  const url = new URL(request.url);
+  if (url.searchParams.get("scope") === "public") {
+    return listPublicBlueprints(request, url);
   }
 
   const sessionUser = await getSessionUser(request);
@@ -52,8 +61,75 @@ export async function GET(request: Request) {
   }
 
   const response: BlueprintListResponse = {
-    blueprints: (data as BlueprintRow[]).map(rowToBlueprintSummary),
+    blueprints: (data as BlueprintRow[]).map((row) =>
+      rowToBlueprintSummary(row, sessionUser.id),
+    ),
   };
+  return NextResponse.json(response);
+}
+
+/**
+ * The public shelf: anyone may browse, signed in or not. Sorting happens in
+ * the database (the shelf can outgrow one page), search matches names and
+ * descriptions, and each row carries the browser's own vote so the arrows
+ * render already-lit.
+ */
+async function listPublicBlueprints(request: Request, url: URL) {
+  const sortParam = url.searchParams.get("sort");
+  const sort: PublicBlueprintSort =
+    sortParam === "newest" || sortParam === "downloads" ? sortParam : "top";
+  // ilike patterns and PostgREST's or() syntax both have magic characters;
+  // stripping them beats escaping them for a search box.
+  const search = (url.searchParams.get("search") ?? "")
+    .replace(/[,()%_\\]/g, " ")
+    .trim()
+    .slice(0, 80);
+  const page = Math.max(0, Number.parseInt(url.searchParams.get("page") ?? "0", 10) || 0);
+  const deviceId = (url.searchParams.get("deviceId") ?? "").slice(0, 64);
+
+  const db = getCommunityDb();
+  let query = db
+    .from("blueprints")
+    .select(BLUEPRINT_SUMMARY_COLUMNS)
+    .eq("is_public", true);
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+  }
+  if (sort === "top") {
+    query = query.order("score", { ascending: false }).order("published_at", { ascending: false });
+  } else if (sort === "downloads") {
+    query = query
+      .order("downloads", { ascending: false })
+      .order("published_at", { ascending: false });
+  } else {
+    query = query.order("published_at", { ascending: false });
+  }
+
+  // One row past the page answers "is there more" without a second count query.
+  const from = page * PUBLIC_BLUEPRINT_PAGE_SIZE;
+  const { data, error } = await query.range(from, from + PUBLIC_BLUEPRINT_PAGE_SIZE);
+  if (error) {
+    return NextResponse.json(
+      {
+        error: isMissingBlueprintTable(error)
+          ? BLUEPRINT_TABLE_MISSING_MESSAGE
+          : "Public blueprints could not be loaded.",
+      },
+      { status: 500 },
+    );
+  }
+
+  const rows = data as BlueprintRow[];
+  const hasMore = rows.length > PUBLIC_BLUEPRINT_PAGE_SIZE;
+  const sessionUser = await getSessionUser(request);
+  const blueprints = rows
+    .slice(0, PUBLIC_BLUEPRINT_PAGE_SIZE)
+    .map((row) => rowToBlueprintSummary(row, sessionUser?.id));
+  if (deviceId) {
+    await attachMyBlueprintVotes(blueprints, makeActorKey(request, deviceId));
+  }
+
+  const response: BlueprintListResponse = { blueprints, hasMore };
   return NextResponse.json(response);
 }
 
@@ -143,5 +219,7 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ blueprint: rowToBlueprintSummary(data as BlueprintRow) });
+  return NextResponse.json({
+    blueprint: rowToBlueprintSummary(data as BlueprintRow, sessionUser.id),
+  });
 }
