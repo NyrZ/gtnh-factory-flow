@@ -78,10 +78,11 @@ alter table community_events enable row level security;
 
 -- Blueprints: per-user saved sub-assemblies — a captured board selection
 -- (cards, wires, pockets, recipes) that can be stamped back into any design.
--- The payload is immutable: no update path, delete and save a new one.
--- Publishing flips is_public and stamps author/description/published_at;
--- the payload itself never changes, so a public blueprint is exactly what
--- its author saved. Votes and downloads mirror community_plans.
+-- The OWNER may edit in place (rename, overwrite the payload from a board
+-- pocket): the row keeps its id, votes, downloads and publish state, so an
+-- author can refresh a published build without losing its standing.
+-- Publishing flips is_public and stamps author/description/published_at.
+-- Votes and downloads mirror community_plans.
 -- Same access model as everything above: RLS on, no policies, service-role only.
 create table if not exists blueprints (
   id uuid primary key default gen_random_uuid(),

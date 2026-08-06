@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { boardSelectionPayloadSchema, resourceIconAtlasRefSchema } from "@/lib/model/schemas";
+import { boardSelectionPayloadSchema } from "@/lib/model/schemas";
 import {
   BLUEPRINT_MAX_PER_USER,
   BLUEPRINT_NAME_MAX_LENGTH,
   BLUEPRINT_PAYLOAD_MAX_BYTES,
-  BLUEPRINT_RESOURCE_STAT_LIMIT,
   PUBLIC_BLUEPRINT_PAGE_SIZE,
   type BlueprintListResponse,
   type PublicBlueprintSort,
@@ -21,32 +19,13 @@ import {
   attachMyBlueprintVotes,
   BLUEPRINT_SUMMARY_COLUMNS,
   blueprintStorageErrorMessage,
+  parseResourceStats,
   rowToBlueprintSummary,
   type BlueprintRow,
 } from "@/lib/server/blueprints";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * Client-computed stat lines (same trust model as community plan stats).
- * Anything that doesn't parse becomes an empty stat card, never a rejection.
- */
-const resourceStatSchema = z.object({
-  kind: z.enum(["item", "fluid"]),
-  resourceId: z.string().min(1).max(200),
-  displayName: z.string().max(200).optional(),
-  iconPath: z.string().max(500).optional(),
-  iconAtlas: resourceIconAtlasRefSchema.optional(),
-  dominantColor: z.string().max(32).optional(),
-  ratePerSecond: z.number().finite().nonnegative(),
-});
-const resourceStatsSchema = z.array(resourceStatSchema).max(BLUEPRINT_RESOURCE_STAT_LIMIT);
-
-function parseResourceStats(value: unknown) {
-  const parsed = resourceStatsSchema.safeParse(value);
-  return parsed.success ? parsed.data : [];
-}
 
 export async function GET(request: Request) {
   if (!isCommunityConfigured()) {

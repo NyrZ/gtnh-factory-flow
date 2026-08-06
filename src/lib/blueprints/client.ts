@@ -48,6 +48,32 @@ export async function getBlueprint(blueprintId: string): Promise<BlueprintDetail
   return body.blueprint;
 }
 
+/**
+ * Edits a blueprint in place — rename, overwrite the payload from a board
+ * pocket, or both. Identity (id, votes, downloads, publish state) survives.
+ */
+export async function updateBlueprint(
+  blueprintId: string,
+  patch: {
+    name?: string;
+    payload?: BoardClipboardPayload;
+    io?: { needs: BlueprintResourceStat[]; outputs: BlueprintResourceStat[] };
+  },
+): Promise<BlueprintSummary> {
+  const response = await fetch(`/api/blueprints/${encodeURIComponent(blueprintId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: patch.name,
+      payload: patch.payload,
+      needs: patch.io?.needs,
+      outputs: patch.io?.outputs,
+    }),
+  });
+  const body = await parseJsonOrThrow<{ blueprint: BlueprintSummary }>(response);
+  return body.blueprint;
+}
+
 export async function deleteBlueprint(blueprintId: string): Promise<void> {
   const response = await fetch(`/api/blueprints/${encodeURIComponent(blueprintId)}`, {
     method: "DELETE",

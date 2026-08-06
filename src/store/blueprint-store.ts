@@ -9,6 +9,7 @@ import {
   listPublicBlueprints,
   publishBlueprint,
   saveBlueprint,
+  updateBlueprint,
   voteBlueprint,
 } from "@/lib/blueprints/client";
 import { computeBlueprintIo } from "@/lib/blueprints/io-stats";
@@ -52,6 +53,14 @@ interface BlueprintStore {
   save: (name: string, payload: BoardClipboardPayload) => Promise<boolean>;
   load: (blueprintId: string) => Promise<BoardClipboardPayload | undefined>;
   remove: (blueprintId: string) => Promise<void>;
+  /**
+   * Edit in place — rename, overwrite the payload from a board pocket, or
+   * both. The row keeps its id, votes, downloads and publish state.
+   */
+  update: (
+    blueprintId: string,
+    patch: { name?: string; payload?: BoardClipboardPayload },
+  ) => Promise<boolean>;
 
   setPublicSort: (sort: PublicBlueprintSort) => void;
   setPublicSearch: (search: string) => void;
@@ -121,6 +130,30 @@ export const useBlueprintStore = create<BlueprintStore>((set, get) => ({
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "Blueprint could not be loaded." });
       return undefined;
+    } finally {
+      set((state) => (state.busyId === blueprintId ? { busyId: undefined } : state));
+    }
+  },
+  update: async (blueprintId, patch) => {
+    set({ busyId: blueprintId, error: undefined });
+    try {
+      const updated = await updateBlueprint(blueprintId, {
+        name: patch.name,
+        payload: patch.payload,
+        io: patch.payload ? computeBlueprintIo(patch.payload) : undefined,
+      });
+      const apply = (list: BlueprintSummary[]) =>
+        list.map((blueprint) =>
+          blueprint.id === blueprintId ? { ...blueprint, ...updated } : blueprint,
+        );
+      set((state) => ({
+        blueprints: apply(state.blueprints),
+        publicBlueprints: apply(state.publicBlueprints),
+      }));
+      return true;
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Blueprint could not be updated." });
+      return false;
     } finally {
       set((state) => (state.busyId === blueprintId ? { busyId: undefined } : state));
     }

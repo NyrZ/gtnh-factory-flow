@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 import type { BoardClipboardPayload } from "@/store/factory-store";
-import { getCommunityDb, getSessionUser, isCommunityConfigured } from "@/lib/server/community";
+import { boardSelectionPayloadSchema } from "@/lib/model/schemas";
+import {
+  BLUEPRINT_NAME_MAX_LENGTH,
+  BLUEPRINT_PAYLOAD_MAX_BYTES,
+} from "@/lib/blueprints/types";
+import {
+  checkRateLimit,
+  getCommunityDb,
+  getSessionUser,
+  isCommunityConfigured,
+} from "@/lib/server/community";
 import {
   BLUEPRINT_SUMMARY_COLUMNS,
   blueprintStorageErrorMessage,
+  parseResourceStats,
   rowToBlueprintSummary,
   type BlueprintRow,
 } from "@/lib/server/blueprints";
@@ -47,6 +58,109 @@ export async function GET(request: Request, context: RouteContext) {
   const row = data as BlueprintRow & { payload: BoardClipboardPayload };
   return NextResponse.json({
     blueprint: { ...rowToBlueprintSummary(row, sessionUser?.id), payload: row.payload },
+  });
+}
+
+/**
+ * Edits a blueprint IN PLACE — the row keeps its id, votes, downloads and
+ * publish state, which is the whole point: an author refreshes a published
+ * build without losing the standing it earned. `name` renames; `payload`
+ * (with its stat card) overwrites the content from a pocket on the board.
+ * Owner only, both.
+ */
+export async function PUT(request: Request, context: RouteContext) {
+  if (!isCommunityConfigured()) {
+    return NextResponse.json({ error: "Cloud storage is not configured." }, { status: 503 });
+  }
+
+  const sessionUser = await getSessionUser(request);
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Sign in to edit blueprints." }, { status: 401 });
+  }
+
+  if (!(await checkRateLimit(`user:${sessionUser.id}`, "blueprint-update", 60, 60 * 60))) {
+    return NextResponse.json(
+      { error: "Editing too fast — try again later." },
+      { status: 429 },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const { name, payload, needs, outputs } = (body ?? {}) as {
+    name?: unknown;
+    payload?: unknown;
+    needs?: unknown;
+    outputs?: unknown;
+  };
+
+  const patch: Record<string, unknown> = {};
+  if (name !== undefined) {
+    const trimmedName = typeof name === "string" ? name.trim() : "";
+    if (!trimmedName || trimmedName.length > BLUEPRINT_NAME_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `Blueprint names run 1–${BLUEPRINT_NAME_MAX_LENGTH} characters.` },
+        { status: 400 },
+      );
+    }
+    patch.name = trimmedName;
+  }
+  if (payload !== undefined) {
+    if (JSON.stringify(payload ?? null).length > BLUEPRINT_PAYLOAD_MAX_BYTES) {
+      return NextResponse.json({ error: "Blueprint is too large to save." }, { status: 413 });
+    }
+    const parsedPayload = boardSelectionPayloadSchema.safeParse(payload);
+    if (!parsedPayload.success) {
+      return NextResponse.json({ error: "Blueprint payload is not valid." }, { status: 400 });
+    }
+    const captured = parsedPayload.data;
+    if (captured.nodes.length + captured.storages.length + captured.pockets.length === 0) {
+      return NextResponse.json({ error: "Blueprint has no cards in it." }, { status: 400 });
+    }
+    // Stats are always derived server-side from the validated payload.
+    patch.payload = captured;
+    patch.node_count = captured.nodes.length;
+    patch.storage_count = captured.storages.length;
+    patch.edge_count = captured.edges.length;
+    patch.pocket_count = captured.pockets.length;
+    patch.machine_count = captured.nodes.reduce(
+      (sum, node) => sum + Math.max(0, Math.round(node.machineCount)),
+      0,
+    );
+    patch.needs = parseResourceStats(needs);
+    patch.outputs = parseResourceStats(outputs);
+  }
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: "Nothing to change." }, { status: 400 });
+  }
+
+  const db = getCommunityDb();
+  const { blueprintId } = await context.params;
+  // Ownership is the cookie's user id; the update matches nothing for anyone
+  // else's blueprint, which reads back as 404.
+  const { data, error } = await db
+    .from("blueprints")
+    .update(patch)
+    .eq("id", blueprintId)
+    .eq("user_id", sessionUser.id)
+    .select(BLUEPRINT_SUMMARY_COLUMNS)
+    .maybeSingle();
+  if (error) {
+    return NextResponse.json(
+      { error: blueprintStorageErrorMessage(error, "Blueprint could not be updated.") },
+      { status: 500 },
+    );
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Blueprint not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    blueprint: rowToBlueprintSummary(data as BlueprintRow, sessionUser.id),
   });
 }
 

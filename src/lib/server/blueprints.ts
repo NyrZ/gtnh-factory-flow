@@ -1,5 +1,31 @@
-import type { BlueprintResourceStat, BlueprintSummary } from "@/lib/blueprints/types";
+import { z } from "zod";
+import { resourceIconAtlasRefSchema } from "@/lib/model/schemas";
+import {
+  BLUEPRINT_RESOURCE_STAT_LIMIT,
+  type BlueprintResourceStat,
+  type BlueprintSummary,
+} from "@/lib/blueprints/types";
 import { getCommunityDb } from "@/lib/server/community";
+
+/**
+ * Client-computed stat lines (same trust model as community plan stats).
+ * Anything that doesn't parse becomes an empty stat card, never a rejection.
+ */
+const resourceStatSchema = z.object({
+  kind: z.enum(["item", "fluid"]),
+  resourceId: z.string().min(1).max(200),
+  displayName: z.string().max(200).optional(),
+  iconPath: z.string().max(500).optional(),
+  iconAtlas: resourceIconAtlasRefSchema.optional(),
+  dominantColor: z.string().max(32).optional(),
+  ratePerSecond: z.number().finite().nonnegative(),
+});
+const resourceStatsSchema = z.array(resourceStatSchema).max(BLUEPRINT_RESOURCE_STAT_LIMIT);
+
+export function parseResourceStats(value: unknown) {
+  const parsed = resourceStatsSchema.safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
 
 export const BLUEPRINT_SUMMARY_COLUMNS =
   "id,user_id,name,node_count,storage_count,edge_count,pocket_count,machine_count,is_public,description,author_name,published_at,upvotes,downvotes,score,downloads,needs,outputs,created_at";

@@ -3,10 +3,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowBigUp,
+  ArrowDownToLine,
   Download,
   Globe,
   LoaderCircle,
   MapPinPlus,
+  Pencil,
   Search,
   Trash2,
   User,
@@ -27,14 +29,16 @@ import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { formatSlotRate } from "@/components/flow/flow-explainers";
 import { useBlueprintStore } from "@/store/blueprint-store";
-import { useFactoryStore } from "@/store/factory-store";
+import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import type { BoardClipboardPayload } from "@/store/factory-store";
 
 /**
  * The blueprint library, owning the whole left column while the sidebar's
- * master switch points at it. Two shelves: MINE is the account's private
- * collection (saved from pocket cards, published with one click); PUBLIC is
- * the network — everyone's published sub-assemblies, searchable, sortable,
+ * master switch points at it. Two shelves: MINE is the account's collection
+ * (saved from pocket cards, published with one click, renameable, and
+ * OVERWRITABLE — select a pocket on the board and any owned row can adopt it
+ * while keeping its id, votes, downloads and publish state); PUBLIC is the
+ * network — everyone's published sub-assemblies, searchable, sortable,
  * upvoteable, placeable. Hovering any row reveals the blueprint's stat card:
  * what it needs from outside and what it makes, the same reading the
  * zoomed-out board gives a hovered machine.
@@ -187,10 +191,23 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
   const load = useBlueprintStore((state) => state.load);
   const remove = useBlueprintStore((state) => state.remove);
   const publish = useBlueprintStore((state) => state.publish);
+  const update = useBlueprintStore((state) => state.update);
+
+  // Exactly one pocket selected on the board arms the overwrite buttons:
+  // the selection IS the picker, whichever way round the gesture starts.
+  const overwriteSourceId = useFactoryStore((state) => {
+    const pockets = state.project.pockets ?? [];
+    const selected = state.selectedBoardIds.filter((id) =>
+      pockets.some((pocket) => pocket.id === id),
+    );
+    return selected.length === 1 ? selected[0] : undefined;
+  });
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | undefined>(undefined);
+  const [confirmOverwriteId, setConfirmOverwriteId] = useState<string | undefined>(undefined);
+  const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
+  const [renameDraft, setRenameDraft] = useState("");
   const [query, setQuery] = useState("");
-  const [pocketsOnly, setPocketsOnly] = useState(false);
 
   const place = async (blueprintId: string) => {
     const payload = await load(blueprintId);
@@ -199,13 +216,31 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
     }
   };
 
+  const overwriteFromBoard = (blueprintId: string) => {
+    if (!overwriteSourceId) {
+      return;
+    }
+    const payload = captureBoardSelection(useFactoryStore.getState().project, [overwriteSourceId]);
+    if (payload) {
+      void update(blueprintId, { payload });
+    }
+  };
+
+  const commitRename = (blueprintId: string) => {
+    const name = renameDraft.trim();
+    setRenamingId(undefined);
+    const current = blueprints.find((blueprint) => blueprint.id === blueprintId);
+    if (name && current && name !== current.name) {
+      void update(blueprintId, { name });
+    }
+  };
+
   const normalizedQuery = query.trim().toLowerCase();
   const filtered = sortBlueprints(blueprints, sort).filter(
     (blueprint) =>
-      (!pocketsOnly || blueprint.pocketCount > 0) &&
-      (normalizedQuery.length === 0 || blueprint.name.toLowerCase().includes(normalizedQuery)),
+      normalizedQuery.length === 0 || blueprint.name.toLowerCase().includes(normalizedQuery),
   );
-  const isFiltering = pocketsOnly || normalizedQuery.length > 0;
+  const isFiltering = normalizedQuery.length > 0;
 
   return (
     <>
@@ -232,31 +267,6 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
           ) : null}
         </label>
         <div className="mt-2 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setPocketsOnly(false)}
-            className={[
-              "h-7 shrink-0 whitespace-nowrap rounded-[4px] border px-2.5 text-xs font-medium",
-              !pocketsOnly
-                ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
-                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-            ].join(" ")}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            onClick={() => setPocketsOnly(true)}
-            title="Only blueprints that carry a pocket dimension"
-            className={[
-              "h-7 shrink-0 whitespace-nowrap rounded-[4px] border px-2.5 text-xs font-medium",
-              pocketsOnly
-                ? "border-[#8d6fd1] bg-[#8d6fd1]/15 text-[#c9b8ec]"
-                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-            ].join(" ")}
-          >
-            ✦ Pockets
-          </button>
           <select
             value={sort}
             onChange={(event) => setSort(event.target.value as BlueprintSort)}
@@ -296,7 +306,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
           </p>
         ) : filtered.length === 0 && isFiltering ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
-            No blueprints match{pocketsOnly ? " — none of these carry a pocket" : ""}.
+            No blueprints match.
           </p>
         ) : (
           <ul className="flex flex-col gap-1">
@@ -309,27 +319,92 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                   className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500"
                 >
                   <div className="flex items-center gap-1">
-                    <MinecraftTooltip
-                      label={blueprint.name}
-                      content={renderBlueprintIo(blueprint)}
-                    >
+                    {renamingId === blueprint.id ? (
+                      <input
+                        autoFocus
+                        value={renameDraft}
+                        maxLength={60}
+                        onChange={(event) => setRenameDraft(event.target.value)}
+                        onBlur={() => commitRename(blueprint.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            commitRename(blueprint.id);
+                          }
+                          if (event.key === "Escape") {
+                            setRenamingId(undefined);
+                          }
+                        }}
+                        className="h-6 min-w-0 flex-1 rounded-[4px] border border-cyan-600 bg-[#17191d] px-1.5 text-[13px] text-neutral-100 outline-none"
+                      />
+                    ) : (
+                      <MinecraftTooltip
+                        label={blueprint.name}
+                        content={renderBlueprintIo(blueprint)}
+                      >
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void place(blueprint.id)}
+                          title="Place this blueprint on the board"
+                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                        >
+                          {isBusy ? (
+                            <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
+                          ) : (
+                            <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
+                          )}
+                          <span className="truncate text-[13px] leading-5 text-neutral-100">
+                            {blueprint.name}
+                          </span>
+                        </button>
+                      </MinecraftTooltip>
+                    )}
+                    {confirmOverwriteId === blueprint.id ? (
                       <button
                         type="button"
-                        disabled={isBusy}
-                        onClick={() => void place(blueprint.id)}
-                        title="Place this blueprint on the board"
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                        onClick={() => {
+                          setConfirmOverwriteId(undefined);
+                          overwriteFromBoard(blueprint.id);
+                        }}
+                        onBlur={() => setConfirmOverwriteId(undefined)}
+                        className="shrink-0 rounded-[4px] border border-amber-700 bg-amber-950 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-900"
                       >
-                        {isBusy ? (
-                          <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
-                        ) : (
-                          <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
-                        )}
-                        <span className="truncate text-[13px] leading-5 text-neutral-100">
-                          {blueprint.name}
-                        </span>
+                        Overwrite?
                       </button>
-                    </MinecraftTooltip>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isBusy || !overwriteSourceId}
+                        onClick={() => setConfirmOverwriteId(blueprint.id)}
+                        title={
+                          overwriteSourceId
+                            ? "Overwrite this blueprint with the selected pocket (votes and downloads survive)"
+                            : "Select one pocket on the board to overwrite this blueprint with it"
+                        }
+                        aria-label={`Overwrite blueprint ${blueprint.name} from the board`}
+                        className={[
+                          "shrink-0 rounded-[4px] p-0.5",
+                          overwriteSourceId
+                            ? "text-amber-400 hover:text-amber-300"
+                            : "text-neutral-600 opacity-0 focus:opacity-100 group-hover:opacity-100",
+                        ].join(" ")}
+                      >
+                        <ArrowDownToLine className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => {
+                        setRenamingId(blueprint.id);
+                        setRenameDraft(blueprint.name);
+                      }}
+                      title="Rename this blueprint"
+                      aria-label={`Rename blueprint ${blueprint.name}`}
+                      className="shrink-0 rounded-[4px] p-0.5 text-neutral-600 opacity-0 hover:text-neutral-200 focus:opacity-100 group-hover:opacity-100"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
                     <button
                       type="button"
                       disabled={isBusy}
@@ -369,7 +444,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         type="button"
                         onClick={() => setConfirmDeleteId(blueprint.id)}
                         onBlur={() => setConfirmDeleteId(undefined)}
-                        title="Delete this blueprint (a published copy leaves the network too)"
+                        title="Delete this blueprint (a published copy leaves the network, votes and all)"
                         aria-label={`Delete blueprint ${blueprint.name}`}
                         className="shrink-0 rounded-[4px] p-0.5 text-neutral-600 opacity-0 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
                       >
