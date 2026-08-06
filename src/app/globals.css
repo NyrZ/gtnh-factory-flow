@@ -876,3 +876,86 @@ img {
     0 0 14px 3px rgba(34, 211, 238, 0.95);
   filter: brightness(1.22);
 }
+
+/* ===== Calm colours (the presentation toggle) ============================
+   One class on the board root and every status colour steps down to steel:
+   the words, bars, chips and badges still say bottleneck / over-asked / fed,
+   they just stop shouting it in red, amber and green. Interaction colours —
+   selection rings, flow-scope highlights, the drag drop wash — are left
+   alone; they answer to the pointer, not to the solver.
+
+   The indicator variables can be overridden at the board root because they
+   resolve to :root palette constants; only the verdict inks are re-pointed
+   on the card shell, where the per-card --mc-ink (set inline by paint and
+   heatmap) is in scope. */
+.factory-flow-board--calm {
+  --rail-bar-ok: #7b8b9c;
+  --rail-bar-bad: #7b8b9c;
+  --rail-bar-hot: #7b8b9c;
+  --port-bind-bg: var(--mc-71);
+  --port-bind-edge: var(--mc-47);
+  --port-hot-bg: var(--mc-71);
+  --port-hot-edge: var(--mc-47);
+  --port-fed-bg: var(--mc-71);
+  --port-fed-edge: var(--mc-47);
+}
+
+/* The REASON word and the zoomed-out percent keep their card's own ink. */
+.factory-flow-board--calm .recipe-node-shell {
+  --verdict-short-ink: var(--mc-ink);
+  --verdict-over-ink: var(--mc-ink);
+}
+
+/* The hardcoded accents: want carets, ×N bursts, SHORT/ASKED badges. */
+.factory-flow-board--calm .flow-port-caret,
+.factory-flow-board--calm .flow-port--bind .flow-port-caret {
+  border-bottom-color: #cfd6e0;
+}
+
+.factory-flow-board--calm .flow-port-burst,
+.factory-flow-board--calm .flow-port--bind .flow-port-burst,
+.factory-flow-board--calm .flow-port--slowed .flow-port-burst {
+  border-color: #8b95a3;
+  background: rgba(90, 102, 118, 0.35);
+  color: #dfe5ee;
+}
+
+.factory-flow-board--calm .flow-port--bind .flow-port-badge,
+.factory-flow-board--calm .flow-port--hot .flow-port-badge {
+  background: #4a5a6c;
+}
+
+/* Calmed bind/hot chips on a painted card take the paint like every other
+   panel — without this they'd sit grey on a tinted face. */
+.factory-flow-board--calm .recipe-node-tinted-area .flow-port--bind,
+.factory-flow-board--calm .recipe-node-tinted-area .flow-port--hot {
+  background: color-mix(in srgb, var(--recipe-node-tint) 86%, var(--mc-71));
+  border-color: color-mix(in srgb, var(--recipe-node-tint-border) 62%, var(--mc-47));
+}
+
+/* The usage-hover teaching link stays, in steel: with the port edge vars
+   calmed to near-black the outline would all but vanish. */
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
+  outline-color: #9db0c4;
+}
+
+/* Storage cards: INFINITE SUPPLY drops its green for the buffer steel, and
+   the net line stops signing its number in red and green. */
+.factory-flow-board--calm [data-storage-mode="supply"] {
+  background-color: #5f7f9c;
+}
+
+.factory-flow-board--calm .storage-net-line {
+  color: #42424b;
+}
+
+/* Editing chrome — the delete/clone buttons on drawer, tank and trash
+   headers — has no place in a presentation. The recipe card's head buttons,
+   footer and config dials are gated in JSX instead, because their grid
+   columns and cell heights leave with them. */
+.factory-flow-board--calm .board-edit-chrome {
+  display: none;
+}

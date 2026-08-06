@@ -149,7 +149,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     isFlowResourceHighlighted || isNodeBottleneckHighlighted || isUsageHighlighted;
   // Heatmap wins over the paint tag while it is on, and gives it straight back
   // when it goes off — the tag is never written to or lost.
-  const { heatmapMode } = useBoardView();
+  const { heatmapMode, calmMode } = useBoardView();
   const paintColor = projectNode.colorTag ? GT_NODE_COLORS[projectNode.colorTag] : undefined;
   const heatColor = heatmapMode
     ? heatmapColorFor(result?.utilization, projectNode.enabled !== false)
@@ -462,7 +462,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         isInspectorHighlighted
           ? "outline outline-4 outline-offset-4 outline-yellow-300 ring-8 ring-cyan-300 [filter:drop-shadow(0_0_16px_rgba(34,211,238,0.95))]"
           : "",
-        exceedsMaxTier ? "ring-4 ring-red-500" : "",
+        exceedsMaxTier && !calmMode ? "ring-4 ring-red-500" : "",
       ].join(" ")}
       style={{
         // Every recipe card is the same 18 cells wide. Width used to be
@@ -497,8 +497,22 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
       />
       {exceedsMaxTier ? (
-        <div className="pointer-events-none absolute -right-3 -top-3 z-40 flex max-w-[210px] items-center gap-2 border-4 border-red-700 bg-[#facc15] px-2 py-1 font-mono text-[13px] font-black uppercase leading-tight text-red-950 shadow-[4px_4px_0_rgba(0,0,0,0.45)] [text-shadow:1px_1px_0_rgba(255,255,255,0.45)]">
-          <AlertTriangle className="h-7 w-7 shrink-0 fill-red-700 text-red-950" />
+        <div
+          className={[
+            "pointer-events-none absolute -right-3 -top-3 z-40 flex max-w-[210px] items-center gap-2 border-4 px-2 py-1 font-mono text-[13px] font-black uppercase leading-tight shadow-[4px_4px_0_rgba(0,0,0,0.45)]",
+            // Calm mode keeps the fact and drops the siren: same badge, steel.
+            calmMode
+              ? "border-[#28323d] bg-[#4a5a6c] text-white"
+              : "border-red-700 bg-[#facc15] text-red-950 [text-shadow:1px_1px_0_rgba(255,255,255,0.45)]",
+          ].join(" ")}
+        >
+          <AlertTriangle
+            className={
+              calmMode
+                ? "h-7 w-7 shrink-0 text-white"
+                : "h-7 w-7 shrink-0 fill-red-700 text-red-950"
+            }
+          />
           <span>{recipePowerTier} Required</span>
         </div>
       ) : null}
@@ -529,35 +543,44 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             // stays 24px and centres in the row — the extra space is the
             // margin that puts the first port centre on a grid line.
             "grid h-[40px] min-w-0 items-center gap-1",
-            tierControl
-              ? "grid-cols-[24px_24px_minmax(0,1fr)_50px]"
-              : "grid-cols-[24px_24px_minmax(0,1fr)]",
+            // Calm mode drops the delete/clone chrome; the title takes the row.
+            calmMode
+              ? tierControl
+                ? "grid-cols-[minmax(0,1fr)_50px]"
+                : "grid-cols-[minmax(0,1fr)]"
+              : tierControl
+                ? "grid-cols-[24px_24px_minmax(0,1fr)_50px]"
+                : "grid-cols-[24px_24px_minmax(0,1fr)]",
           ].join(" ")}
         >
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              deleteNode(projectNode.id);
-            }}
-            className="nodrag h-6 w-6 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-base leading-[16px] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-red-700"
-            title="Delete node"
-            aria-label="Delete node"
-          >
-            -
-          </button>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              duplicateNode(projectNode.id);
-            }}
-            className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
-            title="Clone node (same machine and settings, no wires)"
-            aria-label="Clone node"
-          >
-            <Copy aria-hidden className="h-3.5 w-3.5" />
-          </button>
+          {!calmMode ? (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  deleteNode(projectNode.id);
+                }}
+                className="nodrag h-6 w-6 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-base leading-[16px] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-red-700"
+                title="Delete node"
+                aria-label="Delete node"
+              >
+                -
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  duplicateNode(projectNode.id);
+                }}
+                className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+                title="Clone node (same machine and settings, no wires)"
+                aria-label="Clone node"
+              >
+                <Copy aria-hidden className="h-3.5 w-3.5" />
+              </button>
+            </>
+          ) : null}
           <div className="relative min-w-0">
             <MinecraftTooltip
               content={
@@ -737,15 +760,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               perSecond={customRateSlot.resource.amount}
             />
           ) : null}
-          {machineConfigPanel}
-          {passiveProductionPanel}
+          {/* Config dials — coil tiers, TGS tools, crop knobs — are for
+              building a plan, not for showing one; calm mode drops them. */}
+          {calmMode ? null : machineConfigPanel}
+          {calmMode ? null : passiveProductionPanel}
         </div>
 
         {/* The footer IS the verdict now: usage leads on the left with the
             state word beside it, the two facts that used to crowd it shrink
             to the right. Never a third line — a taller footer on every node
             costs more board than the sentence was worth. */}
-        {!isCropFarmPlaceholder && !isCustomRatePlaceholder ? (
+        {!isCropFarmPlaceholder && !isCustomRatePlaceholder && !calmMode ? (
           <GridBlock
             className={[
               // A hairline over the dials: the machine is one thing, the knobs
@@ -793,6 +818,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           </div>
           </GridBlock>
         ) : null}
+        {/* The chin: one whole cell of nothing. The frame is an inset shadow,
+            so the card's last row — a port chip filling its 40px, the footer
+            centred with a pixel of slack — used to land ON the bottom bevel.
+            Sections can only come in whole cells, so the clearance does too;
+            it mirrors the head row's own margins and keeps the total height
+            on the grid. */}
+        <div aria-hidden className="h-[20px]" />
       </div>
     </div>
   );

@@ -200,6 +200,9 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         </NodeGlanceIcon>
         <StorageHeader storageId={storage.id} title={title} isTank={isTank} />
         <div
+          // The data attribute lets calm mode (globals.css) mute the one
+          // coloured badge, INFINITE SUPPLY, without touching the others.
+          data-storage-mode={mode}
           className={[
             "mx-auto mt-1 w-max px-2 text-center text-[7px] font-black leading-[11px] tracking-[0.5px]",
             MODE_BADGE[mode].className,
@@ -270,7 +273,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           className={[
             // 1.5 not 1: header 24 + badge 15 + well 90 + this 19 fills the
             // card's 148px interior exactly.
-            "mt-1.5 text-center text-[9px] font-bold leading-[13px] tabular-nums",
+            "storage-net-line mt-1.5 text-center text-[9px] font-bold leading-[13px] tabular-nums",
             net > 0.005 ? "text-[#1d5c2a]" : net < -0.005 ? "text-[#7c1d1d]" : "text-[#42424b]",
           ].join(" ")}
         >
@@ -319,7 +322,7 @@ function StorageHeader({
           event.stopPropagation();
           deleteStorage(storageId);
         }}
-        className="nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-red-700"
+        className="board-edit-chrome nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-red-700"
         title={`Delete ${noun}`}
         aria-label={`Delete ${noun}`}
       >
@@ -333,7 +336,7 @@ function StorageHeader({
           event.stopPropagation();
           duplicateStorage(storageId);
         }}
-        className="nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+        className="board-edit-chrome nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
         title={`Clone ${noun}`}
         aria-label={`Clone ${noun}`}
       >

@@ -42,6 +42,7 @@ import {
   Paintbrush,
   Palette,
   Plus,
+  Presentation,
   Redo2,
   Sprout,
   Square,
@@ -1169,7 +1170,8 @@ export function FactoryFlow() {
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const setNodeColorPaintMode = useFactoryStore((state) => state.setNodeColorPaintMode);
   const boardView = useBoardView();
-  const { freeDockMode, lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode } = boardView;
+  const { freeDockMode, lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode, calmMode } =
+    boardView;
   const anyLineMode = lineHeatMode || lineThicknessMode || linePulseMode;
   const setFlowViewportCenter = useFactoryStore((state) => state.setFlowViewportCenter);
   const hoveredStorageResourceKey = useFactoryStore((state) => state.hoveredStorageResourceKey);
@@ -2883,6 +2885,7 @@ export function FactoryFlow() {
         annotationTool ? "factory-flow-board--annotating" : "",
         isDeleteMode ? "factory-flow-board--deleting" : "",
         lineThicknessMode ? "factory-flow-board--edges-under" : "",
+        calmMode ? "factory-flow-board--calm" : "",
       ].join(" ")}
       style={
         {
@@ -3620,6 +3623,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
     lineLabelsMode,
     lineThicknessMode,
     linePulseMode,
+    calmMode,
   } = view;
   const PatternIcon =
     canvasPattern === "lines"
@@ -3751,6 +3755,20 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         aria-pressed={freeDockMode}
       >
         <Anchor className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange({ calmMode: !calmMode })}
+        className={buttonClass(calmMode)}
+        title={
+          calmMode
+            ? "Calm colours on — the board still names every problem, just without the alarm reds and greens. Click to bring them back."
+            : "Calm the colours: keep every readout but drop the alarm reds, ambers and greens — for showing a plan off"
+        }
+        aria-label={calmMode ? "Turn calm colours off" : "Turn calm colours on"}
+        aria-pressed={calmMode}
+      >
+        <Presentation className="h-4 w-4" />
       </button>
     </div>
   );

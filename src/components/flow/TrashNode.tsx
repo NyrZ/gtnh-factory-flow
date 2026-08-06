@@ -190,7 +190,7 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
               event.stopPropagation();
               deleteNode(projectNode.id);
             }}
-            className="nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-red-700"
+            className="board-edit-chrome nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-red-700"
             title="Delete trash can"
             aria-label="Delete trash can"
           >
@@ -202,7 +202,7 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
               event.stopPropagation();
               duplicateNode(projectNode.id);
             }}
-            className="nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+            className="board-edit-chrome nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
             title="Clone trash can (no wires)"
             aria-label="Clone trash can"
           >
