@@ -35,7 +35,6 @@ import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { AppIdentity } from "./AppIdentity";
 import { BlueprintPanel } from "./BlueprintPanel";
-import { useBlueprintStore } from "@/store/blueprint-store";
 import { machineArtPixels } from "./flow/MachinePicker";
 import { useMachineHandlerIcons } from "./flow/machine-icons";
 import { MinecraftTooltip } from "./nei/MinecraftTooltip";
@@ -110,7 +109,6 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   // items to build with, or stamping saved blueprints. One at a time, full
   // column each; the old bottom-strip library never had room to breathe.
   const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints">("items");
-  const blueprintCount = useBlueprintStore((state) => state.blueprints.length);
   const [resourceMods, setResourceMods] = useState<Array<{ id: string; count: number }>>([]);
   const [resourceQueryLoading, setResourceQueryLoading] = useState(false);
   const [resourceQueryError, setResourceQueryError] = useState<string | undefined>();
@@ -569,16 +567,17 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       <aside className="relative z-40 flex h-full min-h-[360px] flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100">
         <AppIdentity onLoadDatasetVersion={onLoadDatasetVersion} />
         {/* The master switch: item search or the blueprint library, whole
-            column each. */}
-        <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-neutral-800 px-3 py-2">
+            column each. Flat tabs, not buttons — the controls below live on
+            their own card, and two layers of boxes read as clutter. */}
+        <div className="flex shrink-0 border-b border-neutral-800">
           <button
             type="button"
             onClick={() => setSidebarMode("items")}
             className={[
-              "flex h-8 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+              "flex h-9 flex-1 items-center justify-center gap-1.5 border-b-2 text-xs font-medium",
               sidebarMode === "items"
-                ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
-                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
+                ? "border-cyan-400 text-cyan-300"
+                : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
             <Search className="h-3.5 w-3.5" />
@@ -588,17 +587,14 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             type="button"
             onClick={() => setSidebarMode("blueprints")}
             className={[
-              "flex h-8 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+              "flex h-9 flex-1 items-center justify-center gap-1.5 border-b-2 text-xs font-medium",
               sidebarMode === "blueprints"
-                ? "border-[#8d6fd1] bg-[#8d6fd1]/15 text-[#c9b8ec]"
-                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
+                ? "border-[#8d6fd1] text-[#c9b8ec]"
+                : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
             <Layers className="h-3.5 w-3.5" />
             Blueprints
-            {blueprintCount > 0 ? (
-              <span className="text-[10px] text-neutral-500">({blueprintCount})</span>
-            ) : null}
           </button>
         </div>
         {sidebarMode === "blueprints" ? (

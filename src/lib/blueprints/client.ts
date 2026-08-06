@@ -5,6 +5,7 @@ import { getDeviceId } from "@/lib/community/client";
 import type {
   BlueprintDetail,
   BlueprintListResponse,
+  BlueprintResourceStat,
   BlueprintSummary,
   BlueprintVoteResponse,
   PublicBlueprintListRequest,
@@ -30,11 +31,12 @@ export async function listBlueprints(): Promise<BlueprintSummary[]> {
 export async function saveBlueprint(
   name: string,
   payload: BoardClipboardPayload,
+  io?: { needs: BlueprintResourceStat[]; outputs: BlueprintResourceStat[] },
 ): Promise<BlueprintSummary> {
   const response = await fetch("/api/blueprints", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, payload }),
+    body: JSON.stringify({ name, payload, needs: io?.needs ?? [], outputs: io?.outputs ?? [] }),
   });
   const body = await parseJsonOrThrow<{ blueprint: BlueprintSummary }>(response);
   return body.blueprint;

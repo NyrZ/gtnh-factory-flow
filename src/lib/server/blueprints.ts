@@ -1,8 +1,8 @@
-import type { BlueprintSummary } from "@/lib/blueprints/types";
+import type { BlueprintResourceStat, BlueprintSummary } from "@/lib/blueprints/types";
 import { getCommunityDb } from "@/lib/server/community";
 
 export const BLUEPRINT_SUMMARY_COLUMNS =
-  "id,user_id,name,node_count,storage_count,edge_count,pocket_count,machine_count,is_public,description,author_name,published_at,upvotes,downvotes,score,downloads,created_at";
+  "id,user_id,name,node_count,storage_count,edge_count,pocket_count,machine_count,is_public,description,author_name,published_at,upvotes,downvotes,score,downloads,needs,outputs,created_at";
 
 export interface BlueprintRow {
   id: string;
@@ -21,6 +21,8 @@ export interface BlueprintRow {
   downvotes: number;
   score: number;
   downloads: number;
+  needs: BlueprintResourceStat[];
+  outputs: BlueprintResourceStat[];
   created_at: string;
 }
 
@@ -46,6 +48,8 @@ export function rowToBlueprintSummary(
     score: row.score,
     downloads: row.downloads,
     isMine: Boolean(sessionUserId && row.user_id === sessionUserId),
+    needs: row.needs ?? [],
+    outputs: row.outputs ?? [],
   };
 }
 

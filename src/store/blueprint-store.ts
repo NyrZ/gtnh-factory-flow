@@ -11,6 +11,7 @@ import {
   saveBlueprint,
   voteBlueprint,
 } from "@/lib/blueprints/client";
+import { computeBlueprintIo } from "@/lib/blueprints/io-stats";
 import type {
   BlueprintSort,
   BlueprintSummary,
@@ -102,7 +103,7 @@ export const useBlueprintStore = create<BlueprintStore>((set, get) => ({
   save: async (name, payload) => {
     set({ isSaving: true, error: undefined });
     try {
-      const created = await saveBlueprint(name, payload);
+      const created = await saveBlueprint(name, payload, computeBlueprintIo(payload));
       set((state) => ({ blueprints: [created, ...state.blueprints] }));
       return true;
     } catch (error) {

@@ -97,6 +97,11 @@ create table if not exists blueprints (
   description text not null default '' check (char_length(description) <= 500),
   author_name text not null default '',
   published_at timestamptz,
+  -- The stat card: external needs and unconsumed outputs, computed at save
+  -- time from the payload's own sub-plan solve (icons included), so listings
+  -- can show what a blueprint eats and makes without fetching payloads.
+  needs jsonb not null default '[]'::jsonb,
+  outputs jsonb not null default '[]'::jsonb,
   upvotes integer not null default 0,
   downvotes integer not null default 0,
   score integer generated always as (upvotes - downvotes) stored,

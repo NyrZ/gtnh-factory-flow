@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  ArrowBigDown,
   ArrowBigUp,
   Download,
   Globe,
@@ -24,6 +23,9 @@ import {
 import { snapPositionToGrid } from "@/lib/board-grid";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useCommunityUser } from "@/components/community/auth";
+import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
+import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import { formatSlotRate } from "@/components/flow/flow-explainers";
 import { useBlueprintStore } from "@/store/blueprint-store";
 import { useFactoryStore } from "@/store/factory-store";
 import type { BoardClipboardPayload } from "@/store/factory-store";
@@ -31,10 +33,11 @@ import type { BoardClipboardPayload } from "@/store/factory-store";
 /**
  * The blueprint library, owning the whole left column while the sidebar's
  * master switch points at it. Two shelves: MINE is the account's private
- * collection (save a selection, publish the good ones); PUBLIC is the
- * network — everyone's published sub-assemblies, searchable, sortable,
- * voteable, placeable. Payloads are immutable either way: delete and save
- * a new one, never edit.
+ * collection (saved from pocket cards, published with one click); PUBLIC is
+ * the network — everyone's published sub-assemblies, searchable, sortable,
+ * upvoteable, placeable. Hovering any row reveals the blueprint's stat card:
+ * what it needs from outside and what it makes, the same reading the
+ * zoomed-out board gives a hovered machine.
  */
 export function BlueprintPanel() {
   const { user } = useCommunityUser();
@@ -50,38 +53,41 @@ export function BlueprintPanel() {
     void refresh();
   }, [user, refresh, reset]);
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid shrink-0 grid-cols-2 gap-1 border-b border-neutral-800 px-3 py-2">
-        <button
-          type="button"
-          onClick={() => setScope("mine")}
-          className={[
-            "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
-            scope === "mine"
-              ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
-              : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-          ].join(" ")}
-        >
-          <User className="h-3.5 w-3.5" />
-          Mine
-        </button>
-        <button
-          type="button"
-          onClick={() => setScope("public")}
-          className={[
-            "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
-            scope === "public"
-              ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
-              : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-          ].join(" ")}
-        >
-          <Globe className="h-3.5 w-3.5" />
-          Public
-        </button>
-      </div>
-      {scope === "mine" ? <MineShelf /> : <PublicShelf />}
+  const scopeTabs = (
+    <div className="grid grid-cols-2 gap-1">
+      <button
+        type="button"
+        onClick={() => setScope("mine")}
+        className={[
+          "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+          scope === "mine"
+            ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
+            : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
+        ].join(" ")}
+      >
+        <User className="h-3.5 w-3.5" />
+        Mine
+      </button>
+      <button
+        type="button"
+        onClick={() => setScope("public")}
+        className={[
+          "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+          scope === "public"
+            ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+            : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
+        ].join(" ")}
+      >
+        <Globe className="h-3.5 w-3.5" />
+        Public
+      </button>
     </div>
+  );
+
+  return scope === "mine" ? (
+    <MineShelf scopeTabs={scopeTabs} />
+  ) : (
+    <PublicShelf scopeTabs={scopeTabs} />
   );
 }
 
@@ -101,11 +107,74 @@ function placePayload(payload: BoardClipboardPayload) {
   }
 }
 
+/** The controls card: scope tabs on top, the active shelf's own tools under. */
+function ControlsCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-2 mt-2 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The hover reveal: what this blueprint needs from outside and what it
+ * makes, icons and rates — the same reading a hovered machine gives on the
+ * zoomed-out board. Returns undefined for stat-less rows (older saves), so
+ * the tooltip simply doesn't open.
+ */
+function renderBlueprintIo(blueprint: BlueprintSummary): ReactNode {
+  const needs = blueprint.needs ?? [];
+  const outputs = blueprint.outputs ?? [];
+  if (needs.length === 0 && outputs.length === 0) {
+    return undefined;
+  }
+
+  const section = (label: string, stats: typeof needs) =>
+    stats.length > 0 ? (
+      <div className="mt-1.5 first:mt-0">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+        {stats.slice(0, 8).map((stat) => (
+          <div
+            key={`${stat.kind}:${stat.resourceId}`}
+            className="flex items-center gap-1.5 py-0.5"
+          >
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden">
+              <ResourceIcon
+                resource={{ ...stat, id: stat.resourceId, amount: 1 }}
+                bare
+                tooltip={false}
+                showAmount={false}
+                iconPixelSize={stat.kind === "fluid" ? 36 : undefined}
+                className={stat.kind === "fluid" ? "!h-5 !w-5" : "!h-5 !w-5 origin-center scale-150"}
+              />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-slate-200">
+              {stat.displayName ?? stat.resourceId}
+            </span>
+            <span className="shrink-0 tabular-nums text-[12px] text-slate-400">
+              {formatSlotRate(stat.ratePerSecond, stat.kind)}
+            </span>
+          </div>
+        ))}
+        {stats.length > 8 ? (
+          <div className="text-[10px] text-slate-500">+{stats.length - 8} more</div>
+        ) : null}
+      </div>
+    ) : null;
+
+  return (
+    <div className="w-64">
+      {section("Needs", needs)}
+      {section("Makes", outputs)}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // MINE: the private collection, with publishing.
 // ---------------------------------------------------------------------------
 
-function MineShelf() {
+function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
   const { user, isLoading: isAuthLoading } = useCommunityUser();
   const blueprints = useBlueprintStore((state) => state.blueprints);
   const sort = useBlueprintStore((state) => state.sort);
@@ -140,21 +209,8 @@ function MineShelf() {
 
   return (
     <>
-      <div className="border-b border-neutral-800 px-3 py-3">
-        <div className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 px-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500">
-            My blueprints
-            {blueprints.length > 0 ? (
-              <span className="ml-1 text-neutral-600">({blueprints.length})</span>
-            ) : null}
-          </span>
-          {isSaving ? (
-            <span className="flex items-center gap-1 text-[10px] text-neutral-500">
-              <LoaderCircle className="h-3 w-3 animate-spin" /> Saving…
-            </span>
-          ) : null}
-        </div>
-
+      <ControlsCard>
+        {scopeTabs}
         <label className="mt-2 flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
           <Search className="h-4 w-4 text-neutral-500" />
           <input
@@ -175,7 +231,6 @@ function MineShelf() {
             </button>
           ) : null}
         </label>
-
         <div className="mt-2 flex items-center gap-1">
           <button
             type="button"
@@ -215,9 +270,14 @@ function MineShelf() {
             ))}
           </select>
         </div>
-      </div>
+        {isSaving ? (
+          <p className="mt-1.5 flex items-center gap-1 px-0.5 text-[10px] text-neutral-500">
+            <LoaderCircle className="h-3 w-3 animate-spin" /> Saving…
+          </p>
+        ) : null}
+      </ControlsCard>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {error ? <p className="mb-1.5 px-0.5 text-[11px] text-red-400">{error}</p> : null}
 
         {isAuthLoading ? null : !user ? (
@@ -249,20 +309,27 @@ function MineShelf() {
                   className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500"
                 >
                   <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => void place(blueprint.id)}
-                      title="Place this blueprint on the board"
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                    <MinecraftTooltip
+                      label={blueprint.name}
+                      content={renderBlueprintIo(blueprint)}
                     >
-                      {isBusy ? (
-                        <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
-                      ) : (
-                        <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
-                      )}
-                      <span className="truncate text-xs text-neutral-100">{blueprint.name}</span>
-                    </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void place(blueprint.id)}
+                        title="Place this blueprint on the board"
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                      >
+                        {isBusy ? (
+                          <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
+                        ) : (
+                          <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
+                        )}
+                        <span className="truncate text-[13px] leading-5 text-neutral-100">
+                          {blueprint.name}
+                        </span>
+                      </button>
+                    </MinecraftTooltip>
                     <button
                       type="button"
                       disabled={isBusy}
@@ -324,9 +391,9 @@ function MineShelf() {
                     {blueprint.isPublic ? (
                       <span
                         className="ml-auto flex shrink-0 items-center gap-1.5 text-emerald-500"
-                        title={`On the network: ${blueprint.upvotes} up, ${blueprint.downvotes} down, placed ${blueprint.downloads} times`}
+                        title={`On the network: ${blueprint.upvotes} upvotes, placed ${blueprint.downloads} times`}
                       >
-                        {blueprint.score > 0 ? `+${blueprint.score}` : blueprint.score}
+                        <ArrowBigUp className="h-3 w-3" /> {blueprint.upvotes}
                         <Download className="h-3 w-3" /> {blueprint.downloads}
                       </span>
                     ) : null}
@@ -345,7 +412,7 @@ function MineShelf() {
 // PUBLIC: the network shelf.
 // ---------------------------------------------------------------------------
 
-function PublicShelf() {
+function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
   const publicBlueprints = useBlueprintStore((state) => state.publicBlueprints);
   const publicSort = useBlueprintStore((state) => state.publicSort);
   const setPublicSort = useBlueprintStore((state) => state.setPublicSort);
@@ -383,8 +450,9 @@ function PublicShelf() {
 
   return (
     <>
-      <div className="border-b border-neutral-800 px-3 py-3">
-        <label className="flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
+      <ControlsCard>
+        {scopeTabs}
+        <label className="mt-2 flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
           <Search className="h-4 w-4 text-neutral-500" />
           <input
             value={query}
@@ -404,7 +472,6 @@ function PublicShelf() {
             </button>
           ) : null}
         </label>
-
         <div className="mt-2 flex items-center gap-1">
           {(Object.entries(PUBLIC_BLUEPRINT_SORTS) as Array<[PublicBlueprintSort, string]>).map(
             ([value, label]) => (
@@ -424,9 +491,9 @@ function PublicShelf() {
             ),
           )}
         </div>
-      </div>
+      </ControlsCard>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {publicError ? (
           <p className="mb-1.5 px-0.5 text-[11px] text-red-400">{publicError}</p>
         ) : null}
@@ -437,8 +504,8 @@ function PublicShelf() {
           </p>
         ) : publicBlueprints.length === 0 && hasLoadedPublic && !publicError ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
-            Nothing published{query.trim() ? " that matches" : " yet"}. Save a selection on the
-            Mine shelf and hit its globe — your build becomes the network&apos;s first.
+            Nothing published{query.trim() ? " that matches" : " yet"}. Save a pocket on the Mine
+            shelf and hit its globe — your build becomes the network&apos;s first.
           </p>
         ) : (
           <>
@@ -449,7 +516,7 @@ function PublicShelf() {
                   blueprint={blueprint}
                   isBusy={busyId === blueprint.id}
                   onPlace={() => void place(blueprint.id)}
-                  onVote={(value) => void vote(blueprint.id, value)}
+                  onUpvote={() => void vote(blueprint.id, 1)}
                 />
               ))}
             </ul>
@@ -475,78 +542,43 @@ function PublicBlueprintRow({
   blueprint,
   isBusy,
   onPlace,
-  onVote,
+  onUpvote,
 }: {
   blueprint: BlueprintSummary;
   isBusy: boolean;
   onPlace: () => void;
-  onVote: (value: 1 | -1) => void;
+  onUpvote: () => void;
 }) {
   return (
     <li className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500">
-      <div className="flex items-start gap-1.5">
-        {/* The vote column: score between the arrows, the browser's own vote lit. */}
-        <div className="flex shrink-0 flex-col items-center">
-          <button
-            type="button"
-            onClick={() => onVote(1)}
-            title="Upvote"
-            aria-label={`Upvote ${blueprint.name}`}
-            className={[
-              "-my-0.5 rounded-[3px]",
-              blueprint.myVote === 1
-                ? "text-emerald-400"
-                : "text-neutral-600 hover:text-emerald-400",
-            ].join(" ")}
-          >
-            <ArrowBigUp className="h-4 w-4" />
-          </button>
-          <span
-            className={[
-              "text-[10px] font-bold leading-3 tabular-nums",
-              blueprint.score > 0
-                ? "text-emerald-400"
-                : blueprint.score < 0
-                  ? "text-red-400"
-                  : "text-neutral-500",
-            ].join(" ")}
-          >
-            {blueprint.score}
-          </span>
-          <button
-            type="button"
-            onClick={() => onVote(-1)}
-            title="Downvote"
-            aria-label={`Downvote ${blueprint.name}`}
-            className={[
-              "-my-0.5 rounded-[3px]",
-              blueprint.myVote === -1 ? "text-red-400" : "text-neutral-600 hover:text-red-400",
-            ].join(" ")}
-          >
-            <ArrowBigDown className="h-4 w-4" />
-          </button>
-        </div>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs text-neutral-100">
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onUpvote}
+          title={blueprint.myVote === 1 ? "Upvoted — click to retract" : "Upvote"}
+          aria-label={`Upvote ${blueprint.name}`}
+          className={[
+            "flex shrink-0 items-center gap-0.5 rounded-[4px] border px-1 py-0.5 text-[11px] font-bold tabular-nums",
+            blueprint.myVote === 1
+              ? "border-emerald-600 bg-emerald-500/15 text-emerald-300"
+              : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-emerald-600 hover:text-emerald-300",
+          ].join(" ")}
+        >
+          <ArrowBigUp className="h-3.5 w-3.5" />
+          {blueprint.upvotes}
+        </button>
+        <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
+          <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
             {blueprint.name}
-            {blueprint.isMine ? <span className="ml-1 text-[9px] text-cyan-400">yours</span> : null}
           </span>
-          {blueprint.description ? (
-            <span
-              className="block truncate text-[10px] text-neutral-500"
-              title={blueprint.description}
-            >
-              {blueprint.description}
-            </span>
-          ) : null}
-        </span>
+        </MinecraftTooltip>
         <button
           type="button"
           disabled={isBusy}
           onClick={onPlace}
           title="Download onto your board"
           aria-label={`Download blueprint ${blueprint.name}`}
-          className="flex h-6 w-6 shrink-0 items-center justify-center self-start rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
         >
           {isBusy ? (
             <LoaderCircle className="h-3.5 w-3.5 animate-spin text-emerald-300" />
@@ -555,7 +587,7 @@ function PublicBlueprintRow({
           )}
         </button>
       </div>
-      <div className="mt-0.5 flex items-center gap-2 pl-6 text-[10px] text-neutral-500">
+      <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] text-neutral-500">
         {blueprint.authorName ? (
           <span className="truncate text-neutral-400">{blueprint.authorName}</span>
         ) : null}

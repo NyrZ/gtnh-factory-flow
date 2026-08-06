@@ -1,4 +1,11 @@
 import type { BoardClipboardPayload } from "@/store/factory-store";
+import type { PlanResourceStat } from "@/lib/community/types";
+
+/** One line of a blueprint's stat card — same shape community plans use. */
+export type BlueprintResourceStat = PlanResourceStat;
+
+/** Stat lines kept per side; matches the community plan cap. */
+export const BLUEPRINT_RESOURCE_STAT_LIMIT = 64;
 
 export const BLUEPRINT_NAME_MAX_LENGTH = 60;
 export const BLUEPRINT_DESCRIPTION_MAX_LENGTH = 500;
@@ -31,6 +38,9 @@ export interface BlueprintSummary {
   isMine?: boolean;
   /** Public listings: the vote this browser has cast, if any. */
   myVote?: 1 | -1;
+  /** The stat card: external needs and unconsumed outputs at save time. */
+  needs: BlueprintResourceStat[];
+  outputs: BlueprintResourceStat[];
 }
 
 export interface BlueprintDetail extends BlueprintSummary {

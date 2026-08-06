@@ -105,8 +105,11 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
         data-node-glance-root=""
         className="relative bg-[#3b2d52] shadow-[inset_0_0_0_2px_#241b33,inset_4px_4px_0_#5e4a85,inset_-4px_-4px_0_#1a1326]"
       >
-        {/* Zoomed out, the card is a star on purple — a pocket, not a machine. */}
+        {/* Zoomed out, the card is a star on purple — a pocket, not a machine.
+            Hovering opens the same I/O reveal a machine card gives: name bar
+            plus needs → offers, scaled to screen size by the glance CSS. */}
         <NodeGlanceText text="✦" className={INK_MUTED} />
+        <PocketGlanceReveal name={pocket.name} inputs={inputs} outputs={outputs} />
         <div className="px-2">
           {/* One head row, exactly two cells tall, like every machine card. */}
           <div className="grid h-[40px] min-w-0 grid-cols-[24px_24px_24px_24px_minmax(0,1fr)] items-center gap-1">
@@ -242,6 +245,86 @@ export const PocketNode = memo(
   PocketNodeComponent,
   (previous, next) => previous.data === next.data && previous.selected === next.selected,
 );
+
+/**
+ * The zoomed-out hover reveal, pocket edition: the machine card's glance
+ * panel in purple. Pure CSS shows it (globals.css `.glance-io`) only at the
+ * glance detail level on hover, scaled to screen size — the panel is in the
+ * DOM from the start, so hovering never rebuilds the board. `absolute
+ * inset-0` like every glance layer: no say in the card's size, invisible to
+ * the router.
+ */
+function PocketGlanceReveal({
+  name,
+  inputs,
+  outputs,
+}: {
+  name: string;
+  inputs: PocketPortSummary[];
+  outputs: PocketPortSummary[];
+}) {
+  return (
+    <div
+      data-node-detail="glance"
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center"
+    >
+      <span className="glance-io absolute left-1/2 top-full z-30 w-[560px] origin-top flex-col gap-2 border-2 border-[#241b33] bg-[#3b2d52] p-3 font-mono text-white shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
+        <span className="minecraft-title flex h-8 min-w-0 items-center border-2 border-[#241b33] bg-[#5e4a85] px-2 text-[16px] leading-[22px] shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140]">
+          <span className="mx-auto min-w-0 truncate">✦ {name}</span>
+        </span>
+        {inputs.length > 0 || outputs.length > 0 ? (
+          <span className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] items-start gap-x-1">
+            <span className="flex min-w-0 flex-col gap-1">
+              {inputs.map((port) => (
+                <PocketGlanceIoRow key={`${port.kind}:${port.resourceId}`} port={port} />
+              ))}
+            </span>
+            <span className={`flex items-start justify-center pt-2 text-[20px] font-black leading-6 ${INK_MUTED}`}>
+              →
+            </span>
+            <span className="flex min-w-0 flex-col gap-1">
+              {outputs.map((port) => (
+                <PocketGlanceIoRow key={`${port.kind}:${port.resourceId}`} port={port} />
+              ))}
+            </span>
+          </span>
+        ) : (
+          <span className={`text-center text-[13px] ${INK_MUTED}`}>
+            self-contained — nothing crosses the boundary
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** One chip of the pocket reveal, in the pocket's own chip clothes. */
+function PocketGlanceIoRow({ port }: { port: PocketPortSummary }) {
+  const rate = formatSlotRateOrNull(port.ratePerSecond, port.kind);
+  return (
+    <span className="pocket-port flex items-center gap-1.5 px-1 py-0.5">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
+        <ResourceIcon
+          resource={{ ...port, id: port.resourceId, amount: 1 }}
+          bare
+          tooltip={false}
+          showAmount={false}
+          iconPixelSize={port.kind === "fluid" ? 50 : undefined}
+          className={port.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 origin-center scale-150"}
+        />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-[14px] font-bold leading-[17px] text-white">
+          {port.displayName ?? port.resourceId}
+        </span>
+        {rate ? (
+          <span className={`truncate text-[13px] leading-4 tabular-nums ${INK_MUTED}`}>{rate}</span>
+        ) : null}
+      </span>
+    </span>
+  );
+}
 
 /**
  * One side of the rails: 140px chips in 40px rows with no gaps, the same

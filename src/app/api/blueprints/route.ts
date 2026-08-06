@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { boardSelectionPayloadSchema } from "@/lib/model/schemas";
+import { z } from "zod";
+import { boardSelectionPayloadSchema, resourceIconAtlasRefSchema } from "@/lib/model/schemas";
 import {
   BLUEPRINT_MAX_PER_USER,
   BLUEPRINT_NAME_MAX_LENGTH,
   BLUEPRINT_PAYLOAD_MAX_BYTES,
+  BLUEPRINT_RESOURCE_STAT_LIMIT,
   PUBLIC_BLUEPRINT_PAGE_SIZE,
   type BlueprintListResponse,
   type PublicBlueprintSort,
@@ -26,6 +28,26 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * Client-computed stat lines (same trust model as community plan stats).
+ * Anything that doesn't parse becomes an empty stat card, never a rejection.
+ */
+const resourceStatSchema = z.object({
+  kind: z.enum(["item", "fluid"]),
+  resourceId: z.string().min(1).max(200),
+  displayName: z.string().max(200).optional(),
+  iconPath: z.string().max(500).optional(),
+  iconAtlas: resourceIconAtlasRefSchema.optional(),
+  dominantColor: z.string().max(32).optional(),
+  ratePerSecond: z.number().finite().nonnegative(),
+});
+const resourceStatsSchema = z.array(resourceStatSchema).max(BLUEPRINT_RESOURCE_STAT_LIMIT);
+
+function parseResourceStats(value: unknown) {
+  const parsed = resourceStatsSchema.safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
 
 export async function GET(request: Request) {
   if (!isCommunityConfigured()) {
@@ -157,7 +179,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { name, payload } = (body ?? {}) as { name?: unknown; payload?: unknown };
+  const { name, payload, needs, outputs } = (body ?? {}) as {
+    name?: unknown;
+    payload?: unknown;
+    needs?: unknown;
+    outputs?: unknown;
+  };
   const trimmedName = typeof name === "string" ? name.trim() : "";
   if (!trimmedName || trimmedName.length > BLUEPRINT_NAME_MAX_LENGTH) {
     return NextResponse.json(
@@ -205,6 +232,8 @@ export async function POST(request: Request) {
         (sum, node) => sum + Math.max(0, Math.round(node.machineCount)),
         0,
       ),
+      needs: parseResourceStats(needs),
+      outputs: parseResourceStats(outputs),
     })
     .select(BLUEPRINT_SUMMARY_COLUMNS)
     .single();
