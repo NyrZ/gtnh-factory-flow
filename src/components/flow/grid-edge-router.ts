@@ -112,10 +112,12 @@ export interface GridRoutedEdge {
 const COST_EMPTY = 1;
 /**
  * Cost per pixel on a lane that already carries wires this one FITS beside.
- * Below 1 on purpose: wires prefer to travel together, which is what forms
- * ribbons. The heuristic uses this same factor to stay admissible.
+ * Well below 1 on purpose: wires going the same way should form MEGALANES —
+ * shared corridors that read as one ribbon — and only strike out alone when
+ * joining costs real distance. The heuristic uses this same factor to stay
+ * admissible.
  */
-const COST_SHARED = 0.85;
+const COST_SHARED = 0.8;
 /**
  * Cost per pixel on a lane this wire does NOT fit into. High enough that any
  * one-lane detour (two turns + a cell over and back) beats overlapping for
