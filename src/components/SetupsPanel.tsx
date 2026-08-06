@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   Package,
   Search,
+  Share2,
   Tags,
   Trash2,
   User,
@@ -32,6 +33,7 @@ import { parseFactoryProjectJson } from "@/lib/import-export";
 import { formatRate } from "@/lib/model";
 import { OPEN_SETUPS_EVENT, takePendingSetupsScope, type SetupsScope } from "@/lib/setups-tab";
 import { useCommunityUser } from "@/components/community/auth";
+import { SharePlanDialog } from "@/components/community/SharePlanDialog";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { useDesignStore } from "@/store/design-store";
@@ -77,6 +79,11 @@ export function SetupsPanel() {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<{ id: string; kind: "open" | "pocket" }>();
   const [copiedId, setCopiedId] = useState<string>();
+  const [isShareOpen, setShareOpen] = useState(false);
+  // Bumped when the share dialog closes, so a fresh post shows up without
+  // a manual refresh.
+  const [refreshTick, setRefreshTick] = useState(0);
+  const hasBoardContent = useFactoryStore((state) => state.project.nodes.length > 0);
 
   // "My setups" in the account menu can retarget an already-open panel.
   useEffect(() => {
@@ -92,7 +99,7 @@ export function SetupsPanel() {
 
   const username = user?.username ?? "";
   const search = debouncedQuery.trim();
-  const key = `${scope}|${sort}|${search}|${username}`;
+  const key = `${scope}|${sort}|${search}|${username}|${refreshTick}`;
   // A "load more" targets deeper pages of the key it was clicked under; any
   // filter move leaves that target stale and the shelf falls back to page 1.
   const activePage = target.key === key ? target.page : 1;
@@ -307,14 +314,32 @@ export function SetupsPanel() {
   return (
     <>
       <div className="mx-2 mt-2 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
-        {/* Mine | Public, the same words in the same order as the blueprint
-            shelf. The panel still OPENS on Public: browsing is the point. */}
-        <div className="grid grid-cols-2 gap-1">
+        {/* Share on the left, then Mine | Public: the same row shape as the
+            blueprint shelf. The panel still OPENS on Public: browsing is
+            the point. */}
+        <div className="flex gap-1">
+          <MinecraftTooltip
+            label={
+              hasBoardContent
+                ? "Share this design\nPuts the board you have open on the Public shelf"
+                : "Share this design\nBuild something on the board first"
+            }
+          >
+            <button
+              type="button"
+              disabled={!hasBoardContent}
+              onClick={() => setShareOpen(true)}
+              aria-label="Share the open design as a setup"
+              className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-600 enabled:hover:text-emerald-300 disabled:opacity-50"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+            </button>
+          </MinecraftTooltip>
           <button
             type="button"
             onClick={() => setScope("mine")}
             className={[
-              "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+              "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
               scope === "mine"
                 ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
                 : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
@@ -327,7 +352,7 @@ export function SetupsPanel() {
             type="button"
             onClick={() => setScope("network")}
             className={[
-              "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+              "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
               scope === "network"
                 ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
                 : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
@@ -449,6 +474,14 @@ export function SetupsPanel() {
           </>
         )}
       </div>
+      {isShareOpen ? (
+        <SharePlanDialog
+          onClose={() => {
+            setShareOpen(false);
+            setRefreshTick((tick) => tick + 1);
+          }}
+        />
+      ) : null}
     </>
   );
 }

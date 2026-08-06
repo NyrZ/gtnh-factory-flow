@@ -47,12 +47,17 @@ interface BlueprintStore {
   publicError?: string;
 
   /**
-   * Pocket-picker mode: an owned blueprint is waiting for the user to click
-   * a pocket on the board to overwrite it with. The board reads this to
-   * wear the mode — banner up top, every pocket card ringed as a target.
+   * Pocket-picker mode: the shelf is waiting for the user to click a pocket
+   * on the board — either to overwrite an owned blueprint (blueprintId set)
+   * or to upload the picked pocket as a brand-new one (create set). The
+   * board reads this to wear the mode — banner up top, pockets ringed.
    */
-  overwritePicking?: { blueprintId: string; name: string };
-  setOverwritePicking: (picking?: { blueprintId: string; name: string }) => void;
+  overwritePicking?: { blueprintId: string; name: string; create?: boolean };
+  setOverwritePicking: (picking?: {
+    blueprintId: string;
+    name: string;
+    create?: boolean;
+  }) => void;
 
   setSort: (sort: BlueprintSort) => void;
   refresh: () => Promise<void>;

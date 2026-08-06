@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowBigUp,
   Boxes,
@@ -11,6 +11,7 @@ import {
   Pencil,
   Save,
   Search,
+  Share2,
   Tags,
   Trash2,
   User,
@@ -52,7 +53,27 @@ export function BlueprintPanel() {
   const { user } = useCommunityUser();
   const refresh = useBlueprintStore((state) => state.refresh);
   const reset = useBlueprintStore((state) => state.reset);
+  const save = useBlueprintStore((state) => state.save);
   const [scope, setScope] = useState<"mine" | "public">("mine");
+
+  // Exactly one pocket selected on the board arms the pocket flows: the
+  // selection IS the picker, whichever way round the gesture starts. Lives
+  // up here (not in MineShelf) so the share button next to the scope tabs
+  // can run the same machinery from either shelf.
+  const pickedPocketId = useFactoryStore((state) => {
+    const pockets = state.project.pockets ?? [];
+    const selected = state.selectedBoardIds.filter((id) =>
+      pockets.some((pocket) => pocket.id === id),
+    );
+    return selected.length === 1 ? selected[0] : undefined;
+  });
+  const [overwriteArmId, setOverwriteArmId] = useState<string | undefined>(undefined);
+  // The share flow: pick a pocket, it uploads as a brand-new blueprint.
+  const [isShareArmed, setShareArmed] = useState(false);
+  const pickedPocketName = pickedPocketId
+    ? useFactoryStore.getState().project.pockets?.find((pocket) => pocket.id === pickedPocketId)
+        ?.name
+    : undefined;
 
   useEffect(() => {
     if (!user) {
@@ -62,13 +83,119 @@ export function BlueprintPanel() {
     void refresh();
   }, [user, refresh, reset]);
 
+  // Signing out mid-pick can't leave the share flow armed.
+  if (!user && isShareArmed) {
+    setShareArmed(false);
+  }
+
+  /** The picked pocket uploads under its own name, onto the Mine shelf. */
+  const commitShare = useCallback(
+    (pocketId: string) => {
+      const project = useFactoryStore.getState().project;
+      const pocket = project.pockets?.find((entry) => entry.id === pocketId);
+      const payload = captureBoardSelection(project, [pocketId]);
+      if (payload) {
+        void save(pocket?.name || "Pocket blueprint", payload);
+      }
+    },
+    [save],
+  );
+
+  // The board wears picker mode while either flow waits for its pocket —
+  // banner and ringed pocket cards; cleared the moment anything changes,
+  // and always on unmount, so the board can never be left stuck in a mode.
+  useEffect(() => {
+    const setOverwritePicking = useBlueprintStore.getState().setOverwritePicking;
+    if (overwriteArmId && !pickedPocketId) {
+      const blueprint = useBlueprintStore
+        .getState()
+        .blueprints.find((entry) => entry.id === overwriteArmId);
+      setOverwritePicking({ blueprintId: overwriteArmId, name: blueprint?.name ?? "" });
+    } else if (isShareArmed && !pickedPocketId) {
+      setOverwritePicking({ blueprintId: "", name: "", create: true });
+    } else {
+      setOverwritePicking(undefined);
+    }
+    return () => setOverwritePicking(undefined);
+  }, [overwriteArmId, pickedPocketId, isShareArmed]);
+
+  // Esc backs out of either flow, wherever the pointer happens to be.
+  useEffect(() => {
+    if (!overwriteArmId && !isShareArmed) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOverwriteArmId(undefined);
+        setShareArmed(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [overwriteArmId, isShareArmed]);
+
+  // Share commit: while armed, watch the board for a pocket pick and upload
+  // the moment one lands. (A pocket already selected at click time commits
+  // straight from the button handler and never arms at all.)
+  useEffect(() => {
+    if (!isShareArmed) {
+      return;
+    }
+    const unsubscribe = useFactoryStore.subscribe((state) => {
+      const pockets = state.project.pockets ?? [];
+      const selected = state.selectedBoardIds.filter((id) =>
+        pockets.some((pocket) => pocket.id === id),
+      );
+      if (selected.length === 1) {
+        setShareArmed(false);
+        commitShare(selected[0]);
+      }
+    });
+    return unsubscribe;
+  }, [isShareArmed, commitShare]);
+
   const scopeTabs = (
-    <div className="grid grid-cols-2 gap-1">
+    <div className="flex gap-1">
+      <MinecraftTooltip
+        label={
+          !user
+            ? "Share a pocket\nSign in (top right) first"
+            : isShareArmed
+              ? "Picking\nClick a pocket on the board, or click again to cancel"
+              : "Share a pocket\nPick one on the board; it uploads to Mine as a new blueprint"
+        }
+      >
+        <button
+          type="button"
+          disabled={!user}
+          onClick={() => {
+            setScope("mine");
+            setOverwriteArmId(undefined);
+            if (isShareArmed) {
+              setShareArmed(false);
+            } else if (pickedPocketId) {
+              // A pocket already selected counts as picked: upload it now.
+              commitShare(pickedPocketId);
+            } else {
+              setShareArmed(true);
+            }
+          }}
+          aria-label="Share a pocket as a new blueprint"
+          className={[
+            "flex h-7 w-9 shrink-0 items-center justify-center rounded-[4px] border",
+            isShareArmed
+              ? "border-amber-500 bg-amber-500/15 text-amber-300"
+              : "border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-amber-600 enabled:hover:text-amber-300 disabled:opacity-50",
+          ].join(" ")}
+        >
+          <Share2 className="h-3.5 w-3.5" />
+        </button>
+      </MinecraftTooltip>
       <button
         type="button"
         onClick={() => setScope("mine")}
         className={[
-          "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+          "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
           scope === "mine"
             ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
             : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
@@ -81,7 +208,7 @@ export function BlueprintPanel() {
         type="button"
         onClick={() => setScope("public")}
         className={[
-          "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+          "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
           scope === "public"
             ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
             : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
@@ -94,7 +221,13 @@ export function BlueprintPanel() {
   );
 
   return scope === "mine" ? (
-    <MineShelf scopeTabs={scopeTabs} />
+    <MineShelf
+      scopeTabs={scopeTabs}
+      overwriteArmId={overwriteArmId}
+      setOverwriteArmId={setOverwriteArmId}
+      overwriteSourceId={pickedPocketId}
+      overwriteSourceName={pickedPocketName}
+    />
   ) : (
     <PublicShelf scopeTabs={scopeTabs} />
   );
@@ -222,7 +355,19 @@ export function renderIoStats(needs: PlanResourceStat[], outputs: PlanResourceSt
 // MINE: the private collection, with publishing.
 // ---------------------------------------------------------------------------
 
-function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
+function MineShelf({
+  scopeTabs,
+  overwriteArmId,
+  setOverwriteArmId,
+  overwriteSourceId,
+  overwriteSourceName,
+}: {
+  scopeTabs: ReactNode;
+  overwriteArmId?: string;
+  setOverwriteArmId: (blueprintId?: string) => void;
+  overwriteSourceId?: string;
+  overwriteSourceName?: string;
+}) {
   const { user, isLoading: isAuthLoading } = useCommunityUser();
   const blueprints = useBlueprintStore((state) => state.blueprints);
   const sort = useBlueprintStore((state) => state.sort);
@@ -237,22 +382,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
   const publish = useBlueprintStore((state) => state.publish);
   const update = useBlueprintStore((state) => state.update);
 
-  // Exactly one pocket selected on the board arms the overwrite buttons:
-  // the selection IS the picker, whichever way round the gesture starts.
-  const overwriteSourceId = useFactoryStore((state) => {
-    const pockets = state.project.pockets ?? [];
-    const selected = state.selectedBoardIds.filter((id) =>
-      pockets.some((pocket) => pocket.id === id),
-    );
-    return selected.length === 1 ? selected[0] : undefined;
-  });
-
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | undefined>(undefined);
-  // The overwrite flow is a little conversation under the row: armed, it
-  // asks you to pick a pocket on the board (the board wears the mode too —
-  // banner and ringed pocket cards); once one is picked it warns before
-  // committing. A pocket already selected when arming counts as picked.
-  const [overwriteArmId, setOverwriteArmId] = useState<string | undefined>(undefined);
   const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
   const [renameDraft, setRenameDraft] = useState("");
   // The tag editor: edits live locally as chips and save once, on close —
@@ -261,41 +391,6 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
   const [tagDraft, setTagDraft] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [query, setQuery] = useState("");
-  const overwriteSourceName = overwriteSourceId
-    ? useFactoryStore
-        .getState()
-        .project.pockets?.find((pocket) => pocket.id === overwriteSourceId)?.name
-    : undefined;
-
-  // The board wears picker mode while a row waits for its pocket: publish
-  // it whenever armed-without-a-pick, clear it the moment either changes —
-  // and always on unmount, so the board can never be left stuck in a mode.
-  useEffect(() => {
-    const setOverwritePicking = useBlueprintStore.getState().setOverwritePicking;
-    if (overwriteArmId && !overwriteSourceId) {
-      const blueprint = useBlueprintStore
-        .getState()
-        .blueprints.find((entry) => entry.id === overwriteArmId);
-      setOverwritePicking({ blueprintId: overwriteArmId, name: blueprint?.name ?? "" });
-    } else {
-      setOverwritePicking(undefined);
-    }
-    return () => setOverwritePicking(undefined);
-  }, [overwriteArmId, overwriteSourceId]);
-
-  // Esc backs out of the whole flow, wherever the pointer happens to be.
-  useEffect(() => {
-    if (!overwriteArmId) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOverwriteArmId(undefined);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [overwriteArmId]);
 
   const place = async (blueprintId: string) => {
     const payload = await load(blueprintId);

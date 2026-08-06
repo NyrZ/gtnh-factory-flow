@@ -28,6 +28,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Every setup shows its top voltage tier in that tier's own colour, the same badge machines wear on the board.",
       "Your own posts get a globe button, same as blueprints: click to take a setup private or publish it again. Private posts keep their votes and downloads.",
       "The two shelves speak one language now: Mine and Public tabs, matching buttons, and every button explains itself when you hover it.",
+      "Both shelves grew a share button beside Mine and Public. On Setups it shares the board you have open. On Blueprints it asks for a pocket: click one and it lands on your shelf as a new blueprint.",
       "Old community links still work: they open the shared setup straight in the planner.",
     ],
   },

@@ -3575,8 +3575,14 @@ export function FactoryFlow() {
             activePocketId ? "top-14" : "top-3",
           ].join(" ")}
         >
-          Pick a pocket on the board. It becomes &ldquo;{overwritePicking.name}&rdquo;. Esc
-          cancels.
+          {overwritePicking.create ? (
+            <>Pick a pocket on the board. It uploads to your shelf as a new blueprint. Esc cancels.</>
+          ) : (
+            <>
+              Pick a pocket on the board. It becomes &ldquo;{overwritePicking.name}&rdquo;. Esc
+              cancels.
+            </>
+          )}
         </div>
       ) : null}
       {compactWarning ? (
