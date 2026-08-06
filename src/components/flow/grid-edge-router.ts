@@ -98,6 +98,12 @@ export interface GridRouteRequest {
   targets: GridEndpoint[];
   /** Stroke this wire draws at, in px. Must be ≤ LANE_CAPACITY. */
   strokeWidth: number;
+  /**
+   * User-pinned stops, in order: the wire routes source → each waypoint →
+   * target. Unreachable stops (dragged inside a card's margin) make the
+   * route fall back to ignoring them rather than failing.
+   */
+  waypoints?: GridPoint[];
 }
 
 export interface GridRoutedEdge {
@@ -401,14 +407,29 @@ function routeOne(context: SolveContext, request: GridRouteRequest): GridRoutedE
   const freeTargets = allTargets.filter((e) => !context.usedDocks.has(dockKey(e)));
   const sources = freeSources.length > 0 ? freeSources : allSources;
   const targets = freeTargets.length > 0 ? freeTargets : allTargets;
+  const waypoints = (request.waypoints ?? []).filter(
+    (point) => Number.isFinite(point.x) && Number.isFinite(point.y),
+  );
 
   let pad = WINDOW_PAD;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const routed = routeWithinWindow(context, request, sources, targets, pad);
+    const routed = routeWithinWindow(context, request, sources, targets, waypoints, pad);
     if (routed) {
       return routed;
     }
     pad *= WINDOW_GROWTH;
+  }
+  // Waypoints that cannot be reached (parked inside a card's margin, sealed
+  // off) must not cost the wire its route: try again without them.
+  if (waypoints.length > 0) {
+    pad = WINDOW_PAD;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const routed = routeWithinWindow(context, request, sources, targets, [], pad);
+      if (routed) {
+        return routed;
+      }
+      pad *= WINDOW_GROWTH;
+    }
   }
 
   // Boxed in (touching cards, sealed pockets): a plain L so the wire still
@@ -440,16 +461,18 @@ function routeWithinWindow(
   request: GridRouteRequest,
   sources: GridEndpoint[],
   targets: GridEndpoint[],
+  waypoints: GridPoint[],
   pad: number,
 ): GridRoutedEdge | undefined {
   const sourceAprons = sources.map(apronPoint);
   const targetAprons = targets.map(apronPoint);
+  const stops = waypoints.map((point) => ({ x: snapLine(point.x), y: snapLine(point.y) }));
 
   let windowLeft = Infinity;
   let windowRight = -Infinity;
   let windowTop = Infinity;
   let windowBottom = -Infinity;
-  for (const point of [...sourceAprons, ...targetAprons]) {
+  for (const point of [...sourceAprons, ...targetAprons, ...stops]) {
     if (point.x < windowLeft) windowLeft = point.x;
     if (point.x > windowRight) windowRight = point.x;
     if (point.y < windowTop) windowTop = point.y;
@@ -464,7 +487,8 @@ function routeWithinWindow(
 
   // Candidate lines: every card boundary pushed one and two cells out (the
   // travel lane and its overflow neighbour), plus each endpoint's own apron
-  // lines so starts and goals always exist in the graph.
+  // lines and each waypoint's cross so starts, goals, and stops all exist
+  // in the graph.
   const xs: number[] = [];
   const ys: number[] = [];
   for (const obstacle of context.obstacles) {
@@ -483,7 +507,7 @@ function routeWithinWindow(
     xs.push(left - BOARD_GRID, left - 2 * BOARD_GRID, right + BOARD_GRID, right + 2 * BOARD_GRID);
     ys.push(top - BOARD_GRID, top - 2 * BOARD_GRID, bottom + BOARD_GRID, bottom + 2 * BOARD_GRID);
   }
-  for (const point of [...sourceAprons, ...targetAprons]) {
+  for (const point of [...sourceAprons, ...targetAprons, ...stops]) {
     xs.push(point.x);
     ys.push(point.y);
   }
@@ -522,234 +546,319 @@ function routeWithinWindow(
 
   const xCount = xAxis.coords.length;
   const yCount = yAxis.coords.length;
-  const vertexCount = xCount * yCount;
-  const stateCount = vertexCount * 4;
+  const stateCount = xCount * yCount * 4;
+
+  const vertexOf = (point: GridPoint): number | undefined => {
+    const xi = xAxis.index.get(point.x);
+    const yi = yAxis.index.get(point.y);
+    return xi === undefined || yi === undefined ? undefined : xi * yCount + yi;
+  };
 
   const starts: Array<{ vertex: number; endpointIndex: number }> = [];
   for (let i = 0; i < sourceAprons.length; i += 1) {
-    const xi = xAxis.index.get(sourceAprons[i].x);
-    const yi = yAxis.index.get(sourceAprons[i].y);
-    if (xi !== undefined && yi !== undefined) {
-      starts.push({ vertex: xi * yCount + yi, endpointIndex: i });
+    const vertex = vertexOf(sourceAprons[i]);
+    if (vertex !== undefined) {
+      starts.push({ vertex, endpointIndex: i });
     }
   }
   const goals = new Map<number, number>();
   for (let i = 0; i < targetAprons.length; i += 1) {
-    const xi = xAxis.index.get(targetAprons[i].x);
-    const yi = yAxis.index.get(targetAprons[i].y);
-    if (xi !== undefined && yi !== undefined) {
-      goals.set(xi * yCount + yi, i);
+    const vertex = vertexOf(targetAprons[i]);
+    if (vertex !== undefined && !goals.has(vertex)) {
+      goals.set(vertex, i);
     }
   }
   if (starts.length === 0 || goals.size === 0) {
     return undefined;
   }
-
-  // Distance to the goal set's bounding box: with whole-perimeter docking
-  // there can be dozens of goal aprons, and a per-apron loop per pop is the
-  // difference between a solve and a stall. Box distance is a lower bound on
-  // the distance to any goal, so admissibility holds.
-  let goalLeft = Infinity;
-  let goalRight = -Infinity;
-  let goalTop = Infinity;
-  let goalBottom = -Infinity;
-  for (const apron of targetAprons) {
-    if (apron.x < goalLeft) goalLeft = apron.x;
-    if (apron.x > goalRight) goalRight = apron.x;
-    if (apron.y < goalTop) goalTop = apron.y;
-    if (apron.y > goalBottom) goalBottom = apron.y;
-  }
-  const heuristic = (vertex: number): number => {
-    const x = xAxis.coords[Math.floor(vertex / yCount)];
-    const y = yAxis.coords[vertex % yCount];
-    const dx = x < goalLeft ? goalLeft - x : x > goalRight ? x - goalRight : 0;
-    const dy = y < goalTop ? goalTop - y : y > goalBottom ? y - goalBottom : 0;
-    // Admissible: no move costs less than COST_EMPTY per pixel.
-    return (dx + dy) * COST_EMPTY;
-  };
-
-  // g-scores per (vertex, incoming direction); direction 0..3, plus the
-  // virtual "no direction yet" handled by seeding all four at the start.
-  const gScores = new Float64Array(stateCount).fill(Infinity);
-  const cameFrom = new Int32Array(stateCount).fill(-1);
-  const startOf = new Int32Array(stateCount).fill(-1);
-
-  interface HeapEntry {
-    f: number;
-    g: number;
-    state: number;
-    /** Monotone tiebreak keeps the pop order deterministic. */
-    seq: number;
-  }
-  const heap: HeapEntry[] = [];
-  let seq = 0;
-  const push = (entry: HeapEntry) => {
-    heap.push(entry);
-    let i = heap.length - 1;
-    while (i > 0) {
-      const parent = (i - 1) >> 1;
-      if (compareHeap(heap[parent], heap[i]) <= 0) {
-        break;
-      }
-      [heap[parent], heap[i]] = [heap[i], heap[parent]];
-      i = parent;
-    }
-  };
-  const pop = (): HeapEntry | undefined => {
-    const top = heap[0];
-    const last = heap.pop();
-    if (heap.length > 0 && last) {
-      heap[0] = last;
-      let i = 0;
-      for (;;) {
-        const leftChild = i * 2 + 1;
-        const rightChild = leftChild + 1;
-        let smallest = i;
-        if (leftChild < heap.length && compareHeap(heap[leftChild], heap[smallest]) < 0) {
-          smallest = leftChild;
-        }
-        if (rightChild < heap.length && compareHeap(heap[rightChild], heap[smallest]) < 0) {
-          smallest = rightChild;
-        }
-        if (smallest === i) {
-          break;
-        }
-        [heap[i], heap[smallest]] = [heap[smallest], heap[i]];
-        i = smallest;
-      }
-    }
-    return top;
-  };
-  const compareHeap = (left: HeapEntry, right: HeapEntry): number =>
-    left.f - right.f || left.g - right.g || left.seq - right.seq;
-
-  for (const start of starts) {
-    const startPenalty = sources[start.endpointIndex]?.penalty ?? 0;
-    for (let dir = 0; dir < 4; dir += 1) {
-      const state = start.vertex * 4 + dir;
-      if (startPenalty < gScores[state]) {
-        gScores[state] = startPenalty;
-        startOf[state] = start.endpointIndex;
-        push({ f: startPenalty + heuristic(start.vertex), g: startPenalty, state, seq: (seq += 1) });
-      }
-    }
-  }
-
-  // Goals carry penalties too, so the first goal popped is not necessarily
-  // the winner: keep the best (g + penalty) seen and stop only once nothing
-  // left in the heap could beat it. Penalties are small, so the extra
-  // exploration is a handful of pops.
-  let goalState = -1;
-  let goalCost = Infinity;
-  let pops = 0;
-  while (heap.length > 0) {
-    const current = pop();
-    if (!current) {
-      break;
-    }
-    if (current.f >= goalCost) {
-      break;
-    }
-    if (current.g > gScores[current.state] + 1e-9) {
-      continue;
-    }
-    pops += 1;
-    if (pops > MAX_ASTAR_POPS) {
+  const stopVertices: number[] = [];
+  for (const stop of stops) {
+    const vertex = vertexOf(stop);
+    if (vertex === undefined) {
       return undefined;
     }
-    const vertex = Math.floor(current.state / 4);
-    const currentDir = current.state % 4;
-    const goalIndex = goals.get(vertex);
-    if (goalIndex !== undefined) {
-      const cost = current.g + (targets[goalIndex]?.penalty ?? 0);
-      if (cost < goalCost) {
-        goalCost = cost;
-        goalState = current.state;
-      }
-      // No break, no skip: goal vertices are ordinary ring vertices that
-      // other routes (and cheaper docks past this one) travel through.
+    stopVertices.push(vertex);
+  }
+
+  interface LegSeed {
+    state: number;
+    g: number;
+    startIndex: number;
+  }
+  interface LegResult {
+    startIndex: number;
+    arrivalDir: number;
+    vertices: GridPoint[];
+    goalVertex: number;
+  }
+
+  /**
+   * One A* leg over the shared graph. Seeds are (vertex, direction) states
+   * with starting costs; goals map vertex to endpoint index; goalPenalty is
+   * the dock's centre-bias cost, paid when finishing there. The best
+   * (g + penalty) goal wins, not the first popped.
+   */
+  const searchLeg = (
+    seeds: LegSeed[],
+    legGoals: Map<number, number>,
+    goalPenalty: (goalIndex: number) => number,
+    goalAprons: GridPoint[],
+  ): LegResult | undefined => {
+    let goalLeft = Infinity;
+    let goalRight = -Infinity;
+    let goalTop = Infinity;
+    let goalBottom = -Infinity;
+    for (const apron of goalAprons) {
+      if (apron.x < goalLeft) goalLeft = apron.x;
+      if (apron.x > goalRight) goalRight = apron.x;
+      if (apron.y < goalTop) goalTop = apron.y;
+      if (apron.y > goalBottom) goalBottom = apron.y;
     }
+    // Distance to the goal set's bounding box: a lower bound on the distance
+    // to any goal, so admissibility holds at COST_EMPTY per pixel.
+    const heuristic = (vertex: number): number => {
+      const x = xAxis.coords[Math.floor(vertex / yCount)];
+      const y = yAxis.coords[vertex % yCount];
+      const dx = x < goalLeft ? goalLeft - x : x > goalRight ? x - goalRight : 0;
+      const dy = y < goalTop ? goalTop - y : y > goalBottom ? y - goalBottom : 0;
+      return (dx + dy) * COST_EMPTY;
+    };
 
-    const xi = Math.floor(vertex / yCount);
-    const yi = vertex % yCount;
-    for (let dir = 0; dir < 4; dir += 1) {
-      const { dx, dy } = DIRECTIONS[dir];
-      const nxi = xi + dx;
-      const nyi = yi + dy;
-      if (nxi < 0 || nxi >= xCount || nyi < 0 || nyi >= yCount) {
-        continue;
-      }
-      const fromX = xAxis.coords[xi];
-      const fromY = yAxis.coords[yi];
-      const toX = xAxis.coords[nxi];
-      const toY = yAxis.coords[nyi];
-      let laneAxis: "h" | "v";
-      let laneLine: number;
-      let from: number;
-      let to: number;
-      if (dy === 0) {
-        // Horizontal move rides the horizontal line y = fromY.
-        laneAxis = "h";
-        laneLine = fromY;
-        from = fromX;
-        to = toX;
-        if (!runIsFree(horizontalBlocked.byLine[yi], fromX, toX)) {
-          continue;
-        }
-      } else {
-        laneAxis = "v";
-        laneLine = fromX;
-        from = fromY;
-        to = toY;
-        if (!runIsFree(verticalBlocked.byLine[xi], fromY, toY)) {
-          continue;
-        }
-      }
+    const gScores = new Float64Array(stateCount).fill(Infinity);
+    const cameFrom = new Int32Array(stateCount).fill(-1);
+    const startOf = new Int32Array(stateCount).fill(-1);
 
-      const distance = Math.abs(to - from);
-      const used = context.occupancy.usedWidth(laneAxis, laneLine, from, to);
-      const fits = used === 0 || used + LANE_GAP + request.strokeWidth <= LANE_CAPACITY;
-      const factor = used === 0 ? COST_EMPTY : fits ? COST_SHARED : COST_OVERFLOW;
-      const stepCost = distance * factor + (dir === currentDir ? 0 : TURN_COST);
-      const nextState = (nxi * yCount + nyi) * 4 + dir;
-      const nextG = current.g + stepCost;
-      if (nextG < gScores[nextState] - 1e-9) {
-        gScores[nextState] = nextG;
-        cameFrom[nextState] = current.state;
-        startOf[nextState] = startOf[current.state];
+    interface HeapEntry {
+      f: number;
+      g: number;
+      state: number;
+      /** Monotone tiebreak keeps the pop order deterministic. */
+      seq: number;
+    }
+    const heap: HeapEntry[] = [];
+    let seq = 0;
+    const compareHeap = (left: HeapEntry, right: HeapEntry): number =>
+      left.f - right.f || left.g - right.g || left.seq - right.seq;
+    const push = (entry: HeapEntry) => {
+      heap.push(entry);
+      let i = heap.length - 1;
+      while (i > 0) {
+        const parent = (i - 1) >> 1;
+        if (compareHeap(heap[parent], heap[i]) <= 0) {
+          break;
+        }
+        [heap[parent], heap[i]] = [heap[i], heap[parent]];
+        i = parent;
+      }
+    };
+    const pop = (): HeapEntry | undefined => {
+      const top = heap[0];
+      const last = heap.pop();
+      if (heap.length > 0 && last) {
+        heap[0] = last;
+        let i = 0;
+        for (;;) {
+          const leftChild = i * 2 + 1;
+          const rightChild = leftChild + 1;
+          let smallest = i;
+          if (leftChild < heap.length && compareHeap(heap[leftChild], heap[smallest]) < 0) {
+            smallest = leftChild;
+          }
+          if (rightChild < heap.length && compareHeap(heap[rightChild], heap[smallest]) < 0) {
+            smallest = rightChild;
+          }
+          if (smallest === i) {
+            break;
+          }
+          [heap[i], heap[smallest]] = [heap[smallest], heap[i]];
+          i = smallest;
+        }
+      }
+      return top;
+    };
+
+    for (const seed of seeds) {
+      if (seed.g < gScores[seed.state]) {
+        gScores[seed.state] = seed.g;
+        startOf[seed.state] = seed.startIndex;
         push({
-          f: nextG + heuristic(nxi * yCount + nyi),
-          g: nextG,
-          state: nextState,
+          f: seed.g + heuristic(Math.floor(seed.state / 4)),
+          g: seed.g,
+          state: seed.state,
           seq: (seq += 1),
         });
       }
     }
+
+    let goalState = -1;
+    let goalCost = Infinity;
+    let pops = 0;
+    while (heap.length > 0) {
+      const current = pop();
+      if (!current) {
+        break;
+      }
+      if (current.f >= goalCost) {
+        break;
+      }
+      if (current.g > gScores[current.state] + 1e-9) {
+        continue;
+      }
+      pops += 1;
+      if (pops > MAX_ASTAR_POPS) {
+        return undefined;
+      }
+      const vertex = Math.floor(current.state / 4);
+      const currentDir = current.state % 4;
+      const goalIndex = legGoals.get(vertex);
+      if (goalIndex !== undefined) {
+        const cost = current.g + goalPenalty(goalIndex);
+        if (cost < goalCost) {
+          goalCost = cost;
+          goalState = current.state;
+        }
+        // No break, no skip: goal vertices are ordinary vertices that other
+        // routes (and cheaper docks past this one) travel through.
+      }
+
+      const xi = Math.floor(vertex / yCount);
+      const yi = vertex % yCount;
+      for (let dir = 0; dir < 4; dir += 1) {
+        const { dx, dy } = DIRECTIONS[dir];
+        const nxi = xi + dx;
+        const nyi = yi + dy;
+        if (nxi < 0 || nxi >= xCount || nyi < 0 || nyi >= yCount) {
+          continue;
+        }
+        const fromX = xAxis.coords[xi];
+        const fromY = yAxis.coords[yi];
+        const toX = xAxis.coords[nxi];
+        const toY = yAxis.coords[nyi];
+        let laneAxis: "h" | "v";
+        let laneLine: number;
+        let from: number;
+        let to: number;
+        if (dy === 0) {
+          // Horizontal move rides the horizontal line y = fromY.
+          laneAxis = "h";
+          laneLine = fromY;
+          from = fromX;
+          to = toX;
+          if (!runIsFree(horizontalBlocked.byLine[yi], fromX, toX)) {
+            continue;
+          }
+        } else {
+          laneAxis = "v";
+          laneLine = fromX;
+          from = fromY;
+          to = toY;
+          if (!runIsFree(verticalBlocked.byLine[xi], fromY, toY)) {
+            continue;
+          }
+        }
+
+        const distance = Math.abs(to - from);
+        const used = context.occupancy.usedWidth(laneAxis, laneLine, from, to);
+        const fits = used === 0 || used + LANE_GAP + request.strokeWidth <= LANE_CAPACITY;
+        const factor = used === 0 ? COST_EMPTY : fits ? COST_SHARED : COST_OVERFLOW;
+        const stepCost = distance * factor + (dir === currentDir ? 0 : TURN_COST);
+        const nextState = (nxi * yCount + nyi) * 4 + dir;
+        const nextG = current.g + stepCost;
+        if (nextG < gScores[nextState] - 1e-9) {
+          gScores[nextState] = nextG;
+          cameFrom[nextState] = current.state;
+          startOf[nextState] = startOf[current.state];
+          push({
+            f: nextG + heuristic(nxi * yCount + nyi),
+            g: nextG,
+            state: nextState,
+            seq: (seq += 1),
+          });
+        }
+      }
+    }
+
+    if (goalState < 0) {
+      return undefined;
+    }
+    const chain: number[] = [];
+    for (let state = goalState; state >= 0; state = cameFrom[state]) {
+      chain.push(Math.floor(state / 4));
+    }
+    chain.reverse();
+    return {
+      startIndex: startOf[goalState],
+      arrivalDir: goalState % 4,
+      goalVertex: Math.floor(goalState / 4),
+      vertices: chain.map((vertex) => ({
+        x: xAxis.coords[Math.floor(vertex / yCount)],
+        y: yAxis.coords[vertex % yCount],
+      })),
+    };
+  };
+
+  // The legs: source, then each waypoint in order, then target. Each leg
+  // restarts its costs (the dots are the user's law, not something to
+  // optimise around), but carries the arrival direction so passing straight
+  // through a dot is free and turning at it costs the normal turn.
+  let seeds: LegSeed[] = [];
+  for (const start of starts) {
+    const startPenalty = sources[start.endpointIndex]?.penalty ?? 0;
+    for (let dir = 0; dir < 4; dir += 1) {
+      seeds.push({
+        state: start.vertex * 4 + dir,
+        g: startPenalty,
+        startIndex: start.endpointIndex,
+      });
+    }
   }
 
-  if (goalState < 0) {
+  const mergedVertices: GridPoint[] = [];
+  let sourceIndex: number | undefined;
+  for (const stopVertex of stopVertices) {
+    const stopPoint = {
+      x: xAxis.coords[Math.floor(stopVertex / yCount)],
+      y: yAxis.coords[stopVertex % yCount],
+    };
+    const leg = searchLeg(seeds, new Map([[stopVertex, 0]]), () => 0, [stopPoint]);
+    if (!leg) {
+      return undefined;
+    }
+    if (sourceIndex === undefined) {
+      sourceIndex = leg.startIndex;
+    }
+    mergedVertices.push(...(mergedVertices.length > 0 ? leg.vertices.slice(1) : leg.vertices));
+    seeds = [];
+    for (let dir = 0; dir < 4; dir += 1) {
+      seeds.push({
+        state: stopVertex * 4 + dir,
+        g: dir === leg.arrivalDir ? 0 : TURN_COST,
+        startIndex: leg.startIndex,
+      });
+    }
+  }
+
+  const finalLeg = searchLeg(
+    seeds,
+    goals,
+    (goalIndex) => targets[goalIndex]?.penalty ?? 0,
+    targetAprons,
+  );
+  if (!finalLeg) {
     return undefined;
   }
+  mergedVertices.push(
+    ...(mergedVertices.length > 0 ? finalLeg.vertices.slice(1) : finalLeg.vertices),
+  );
 
-  // Reconstruct the vertex chain, oldest first.
-  const chain: number[] = [];
-  for (let state = goalState; state >= 0; state = cameFrom[state]) {
-    chain.push(Math.floor(state / 4));
-  }
-  chain.reverse();
-  const vertices = chain.map((vertex) => ({
-    x: xAxis.coords[Math.floor(vertex / yCount)],
-    y: yAxis.coords[vertex % yCount],
-  }));
-
-  const source = sources[startOf[goalState]] ?? sources[0];
-  const target = targets[goals.get(Math.floor(goalState / 4)) ?? 0] ?? targets[0];
+  const source = sources[sourceIndex ?? finalLeg.startIndex] ?? sources[0];
+  const target = targets[goals.get(finalLeg.goalVertex) ?? 0] ?? targets[0];
   context.usedDocks.add(dockKey(source));
   context.usedDocks.add(dockKey(target));
 
   return {
     edgeId: request.edgeId,
-    points: claimAndAssemble(context, request, source, target, compactPoints(vertices)),
+    points: claimAndAssemble(context, request, source, target, compactPoints(mergedVertices)),
   };
 }
 

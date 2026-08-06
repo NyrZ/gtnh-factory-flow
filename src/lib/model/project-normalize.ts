@@ -29,6 +29,11 @@ function snapProjectToGrid(project: FactoryProject): FactoryProject {
       ...node,
       position: snapPositionToGrid(node.position),
     })),
+    edges: project.edges.map((edge) =>
+      edge.waypoints && edge.waypoints.length > 0
+        ? { ...edge, waypoints: edge.waypoints.map((point) => snapPositionToGrid(point)) }
+        : edge,
+    ),
     storages: project.storages?.map((storage) => ({
       ...storage,
       position: snapPositionToGrid(storage.position),

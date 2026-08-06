@@ -286,6 +286,51 @@ describe("solveGridRoutes", () => {
     expect(points[points.length - 1].y).toBe(80);
   });
 
+  it("routes through user waypoints in order", () => {
+    const a = card("a", 0, 0);
+    const b = card("b", 800, 0);
+    // A straight shot would run along y=60; the waypoint drags the wire down
+    // through (580, 400) first.
+    const routes = solveGridRoutes(
+      [a, b],
+      [
+        request({
+          edgeId: "e1",
+          sources: [{ x: 360, y: 60, side: "right" }],
+          targets: [{ x: 800, y: 60, side: "left" }],
+          waypoints: [{ x: 580, y: 400 }],
+        }),
+      ],
+    );
+    const points = routes.get("e1")!.points;
+    expect(isOrthogonal(points)).toBe(true);
+    // The wire must pass within a lane's width of the pinned dot.
+    const nearWaypoint = points.some(
+      (point) => Math.abs(point.x - 580) <= 10 && Math.abs(point.y - 400) <= 10,
+    );
+    expect(nearWaypoint).toBe(true);
+  });
+
+  it("ignores a waypoint sealed inside a card rather than failing", () => {
+    const a = card("a", 0, 0);
+    const b = card("b", 800, 0);
+    const routes = solveGridRoutes(
+      [a, b],
+      [
+        request({
+          edgeId: "e1",
+          sources: [{ x: 360, y: 60, side: "right" }],
+          targets: [{ x: 800, y: 60, side: "left" }],
+          // Dead centre of card B: unreachable.
+          waypoints: [{ x: 980, y: 80 }],
+        }),
+      ],
+    );
+    const points = routes.get("e1")!.points;
+    expect(points.length).toBeGreaterThanOrEqual(2);
+    expect(isOrthogonal(points)).toBe(true);
+  });
+
   it("is deterministic", () => {
     const obstacles = [card("a", 0, 0), card("b", 700, 300), card("c", 200, 400)];
     const requests = [

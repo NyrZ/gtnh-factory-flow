@@ -418,6 +418,8 @@ type ResourceEdgeData = {
   isStorageEdge: boolean;
   showLabel: boolean;
   labelOffset?: { x: number; y: number };
+  /** User-pinned stops the wire routes through, in order. */
+  waypoints?: Array<{ x: number; y: number }>;
   sourceHandleId?: string | null;
   targetHandleId?: string | null;
   sourceSlotEndpoint: boolean;
@@ -685,6 +687,8 @@ type GridRouteEdgeInput = {
    * never change a route.
    */
   routingWidth: number;
+  /** User-pinned stops the wire must pass through, in order. */
+  waypoints?: Array<{ x: number; y: number }>;
 };
 
 let publishedGridRouteEdges: GridRouteEdgeInput[] = [];
@@ -843,14 +847,21 @@ function ensureGridSolve() {
       sources,
       targets,
       strokeWidth: Math.min(input.routingWidth, LANE_CAPACITY),
+      waypoints: input.waypoints,
     });
     orderByEdge.set(input.edgeId, input.order);
     // Free-dock candidates derive purely from the card rects, and the sweep
     // hash already covers those — identity suffices. Fixed-port anchors also
     // depend on lazily-arriving slot measurements, so their coords go in.
+    const waypointPart =
+      input.waypoints && input.waypoints.length > 0
+        ? `|wp:${input.waypoints
+            .map((point) => `${Math.round(point.x)},${Math.round(point.y)}`)
+            .join("+")}`
+        : "";
     const describe = publishedGridFreeDock
-      ? ""
-      : `|${sources
+      ? waypointPart
+      : `${waypointPart}|${sources
           .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
           .join("+")}|${targets
           .map((endpoint) => `${Math.round(endpoint.x)},${Math.round(endpoint.y)}`)
@@ -1693,6 +1704,7 @@ export function FactoryFlow() {
         // The published stroke width IS the routing width: it never carries
         // hover/highlight bumps, so a hover can never trigger a re-solve.
         routingWidth: publishedEdgeStrokeWidths.get(edge.id) ?? DEFAULT_EDGE_STROKE_WIDTH,
+        waypoints: edge.waypoints,
       });
 
       // Structural reuse: hover and solver rebuilds leave most edges equal,
@@ -1738,6 +1750,7 @@ export function FactoryFlow() {
           isStorageEdge,
           showLabel: lineLabelsMode,
           labelOffset: edge.labelOffset,
+          waypoints: edge.waypoints,
           sourceHandleId: canonicalSourceHandle,
           targetHandleId: canonicalTargetHandle,
           sourceSlotEndpoint: Boolean(sourceHandle && !sourceStorage),
@@ -3828,6 +3841,20 @@ function ResourceEdgeComponent({
   selected,
   data,
 }: EdgeProps<ResourceFlowEdge>) {
+  const updateEdge = useFactoryStore((state) => state.updateEdge);
+  // Waypoint dot dragging: local draft while the pointer is down, committed
+  // to the store (snapped to the grid) on release — the same freeze-then-
+  // reconcile shape node drags use, so no board-wide re-solve runs per
+  // pointer frame. While a draft exists the wire draws as simple legs
+  // through the dots; the drop brings back the real grid route.
+  const [draftWaypoints, setDraftWaypoints] = useState<
+    Array<{ x: number; y: number }> | undefined
+  >(undefined);
+  const waypointDragRef = useRef<{ pointerId: number; index: number } | undefined>(undefined);
+  // Double-press detection for removing a dot. A native dblclick never
+  // arrives here: the first press starts a pointer-captured drag and the
+  // commit re-renders the circle out from under the second click.
+  const waypointPressRef = useRef<{ index: number; time: number } | undefined>(undefined);
   // The board's single detail level, not a zoom threshold of its own — nodes
   // and lines have to switch together or the board looks like it is glitching
   // half a step at a time. Subscribed rather than selected because the level is
@@ -3892,13 +3919,12 @@ function ResourceEdgeComponent({
         : data?.bundle?.role === "primary"
           ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
           : Number(style?.strokeWidth ?? 3.1);
-  // AGENTS.md requires routing to be deterministic and independent of zoom
-  // level. Precise routing used to be switched off below 0.45 because measuring
-  // was expensive; now that measurements are cached across frames it always runs,
-  // so a route no longer changes shape when the user zooms out. The one
-  // exception is an edge whose endpoint node is mid-drag: measurements are
-  // frozen for the whole drag, so this edge follows the pointer with cheap
-  // estimated endpoints and gets its precise route back on drop.
+  // Mid-drag, an edge whose endpoint node is moving keeps its LAST solved
+  // route, full stop — no cheap pointer-chasing approximation. The old
+  // follow-the-pointer preview always guessed differently from what the
+  // drop's real solve produced, which read as the board lying. Measurements
+  // stay frozen for the drag (the flag below), and the drop's geometry
+  // publish re-signs the solve so every touched wire reroutes at once.
   const shouldUsePreciseRouting =
     !activelyDraggedNodeIds.has(source) && !activelyDraggedNodeIds.has(target);
   const visualSourceCandidates = getSlotEdgeEndpointCandidates({
@@ -3955,9 +3981,17 @@ function ResourceEdgeComponent({
     targetX: visualTarget.x,
     targetY: visualTarget.y,
     targetPosition: visualTarget.side,
-    useSmartRouting: shouldUsePreciseRouting,
+    // Always the solved route: during a drag the solve signature is frozen,
+    // so this returns the cached pre-drag route unchanged. The simple-L
+    // fallback inside only ever covers a brand-new wire the solve has not
+    // seen yet.
+    useSmartRouting: true,
     strokeWidth: coreStrokeWidth,
   });
+  // The dots the user has pinned — the draft while one is mid-drag. Only
+  // the DOT follows the pointer; the wire holds its route and takes the
+  // real one on release. Live previews always guessed wrong.
+  const activeWaypoints = draftWaypoints ?? data?.waypoints;
   // Lights this line (or its whole bundle) plus both endpoint ports; shared
   // by the hover-anywhere line surface below.
   const applyEdgeFlowScope = () => {
@@ -4152,8 +4186,117 @@ function ResourceEdgeComponent({
               }),
             );
           }}
+          onDoubleClick={(event) => {
+            // Double-click the wire: pin a dot here. The wire must pass
+            // through it from now on; drag it to steer, double-press it to
+            // remove. Inserted in route order so several dots chain sanely.
+            event.stopPropagation();
+            if (Date.now() - lastWaypointRemovalAt < 500) {
+              return;
+            }
+            const flowPoint = screenToFlowPoint(
+              { x: event.clientX, y: event.clientY },
+              event.currentTarget as unknown as HTMLElement,
+            );
+            if (!flowPoint) {
+              return;
+            }
+            const snapped = {
+              x: Math.round(flowPoint.x / BOARD_GRID) * BOARD_GRID,
+              y: Math.round(flowPoint.y / BOARD_GRID) * BOARD_GRID,
+            };
+            const existing = data?.waypoints ?? [];
+            const clickPosition = polylineArcPositionOf(routedEdge.points, snapped);
+            let insertAt = 0;
+            for (const waypoint of existing) {
+              if (polylineArcPositionOf(routedEdge.points, waypoint) <= clickPosition) {
+                insertAt += 1;
+              }
+            }
+            updateEdge(id, {
+              waypoints: [...existing.slice(0, insertAt), snapped, ...existing.slice(insertAt)],
+            });
+          }}
         />
       ) : null}
+      {activeWaypoints && activeWaypoints.length > 0 && hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS)
+        ? activeWaypoints.map((waypoint, index) => (
+            <circle
+              key={index}
+              className="nodrag nopan"
+              cx={waypoint.x}
+              cy={waypoint.y}
+              // A touch wider than the wire it steers, whatever that width is.
+              r={coreStrokeWidth / 2 + 4}
+              fill={brightenHexColor(edgeColor, 0.15)}
+              stroke="#111827"
+              strokeWidth={2}
+              style={{ pointerEvents: "all", cursor: "grab" }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                const now = Date.now();
+                const lastPress = waypointPressRef.current;
+                waypointPressRef.current = { index, time: now };
+                if (lastPress && lastPress.index === index && now - lastPress.time < 400) {
+                  // Second press on the same dot: unpin it, no drag.
+                  waypointPressRef.current = undefined;
+                  lastWaypointRemovalAt = now;
+                  const rest = (data?.waypoints ?? []).filter(
+                    (_, pointIndex) => pointIndex !== index,
+                  );
+                  updateEdge(id, { waypoints: rest.length > 0 ? rest : undefined });
+                  return;
+                }
+                event.currentTarget.setPointerCapture(event.pointerId);
+                waypointDragRef.current = { pointerId: event.pointerId, index };
+                setDraftWaypoints((data?.waypoints ?? []).map((point) => ({ ...point })));
+              }}
+              onPointerMove={(event) => {
+                const drag = waypointDragRef.current;
+                if (!drag) {
+                  return;
+                }
+                event.stopPropagation();
+                const flowPoint = screenToFlowPoint(
+                  { x: event.clientX, y: event.clientY },
+                  event.currentTarget as unknown as HTMLElement,
+                );
+                if (!flowPoint) {
+                  return;
+                }
+                setDraftWaypoints((current) =>
+                  current?.map((point, pointIndex) =>
+                    pointIndex === drag.index ? { x: flowPoint.x, y: flowPoint.y } : point,
+                  ),
+                );
+              }}
+              onPointerUp={(event) => {
+                const drag = waypointDragRef.current;
+                if (!drag) {
+                  return;
+                }
+                event.currentTarget.releasePointerCapture(drag.pointerId);
+                waypointDragRef.current = undefined;
+                if (draftWaypoints) {
+                  // On grid, always: the dot commits to the nearest corner.
+                  updateEdge(id, {
+                    waypoints: draftWaypoints.map((point) => ({
+                      x: Math.round(point.x / BOARD_GRID) * BOARD_GRID,
+                      y: Math.round(point.y / BOARD_GRID) * BOARD_GRID,
+                    })),
+                  });
+                }
+                setDraftWaypoints(undefined);
+              }}
+              onPointerCancel={() => {
+                waypointDragRef.current = undefined;
+                setDraftWaypoints(undefined);
+              }}
+            >
+              <title>Drag to steer this wire — double-click to remove the stop</title>
+            </circle>
+          ))
+        : null}
       {data?.showLabel && data.resource && hasEdgeDetail(detailLevel, EDGE_DETAIL_LABELS) ? (
         // The rate pill, back by request as a VIEW mode (the tag button in
         // the board toolbar), and deliberately lean this time: what flows
@@ -6299,12 +6442,55 @@ function getInitialResourceColor(resource: ResourceEdgeData["resource"]) {
 }
 
 /**
+ * Arclength position of the nearest point on the polyline to `target` —
+ * where along the wire a click or a dot sits, for keeping waypoints in
+ * route order.
+ */
+function polylineArcPositionOf(
+  points: Array<{ x: number; y: number }>,
+  target: { x: number; y: number },
+): number {
+  let bestDistance = Infinity;
+  let bestPosition = 0;
+  let walked = 0;
+  for (let i = 0; i + 1 < points.length; i += 1) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 0.01) {
+      continue;
+    }
+    const t = Math.min(
+      Math.max(((target.x - a.x) * dx + (target.y - a.y) * dy) / (length * length), 0),
+      1,
+    );
+    const distance = Math.hypot(target.x - (a.x + dx * t), target.y - (a.y + dy * t));
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestPosition = walked + length * t;
+    }
+    walked += length;
+  }
+  return bestPosition;
+}
+
+/**
  * How far a chevron sits back from a wire's endpoint. The final stretch of a
  * wire is tucked at the card border — under the card in thickness mode — so
  * an arrow at the anchor was half-buried. Half a cell of air is enough to
  * clear the frame while staying snug against the card.
  */
 const ARROW_SETBACK = 10;
+
+/**
+ * When a double-press removes a waypoint dot, the gesture's trailing
+ * native dblclick lands on whatever wire sits under the vanished dot —
+ * often a DIFFERENT edge, whose spawn handler would pin a fresh dot right
+ * back. Module-wide so every edge shares the suppression window.
+ */
+let lastWaypointRemovalAt = 0;
 
 /**
  * Direction chevrons along a routed wire, as SVG polyline point strings.

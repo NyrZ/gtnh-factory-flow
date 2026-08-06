@@ -110,11 +110,11 @@ nodes. Everything below was validated with profiled stress tests (120 nodes /
      callbacks — FactoryFlow re-renders every drag frame and takes
      non-memoized children with it.
 
-5. **Drags are frozen, drops reconcile.** While a node is dragged
-   (`activelyDraggedNodeIds`), untouched edges keep their cached routes and do
-   not re-render; edges on the dragged node fall back to cheap estimated
-   endpoints and simple routing so they follow the pointer. The one full
-   precise reroute happens on drop, against freshly published geometry.
+5. **Drags are frozen, drops reconcile.** While a node (or an edge waypoint
+   dot) is dragged, EVERY wire keeps its last solved route - no pointer-
+   chasing approximation; a preview that guesses differently from the
+   drop's real solve reads as the board lying. The one full reroute
+   happens on drop, against freshly published geometry.
 
 6. **Route scoring is local.** Candidates are scored only against obstacles
    and edge segments inside the candidates' own reach envelope (padded by the
@@ -190,7 +190,7 @@ render. Mid-drag edges fall back to a simple L and the drop re-solves.
 - Anything O(nodes) per frame is suspect; anything O(nodes × edges) per frame
   is a bug.
 - After touching board internals, re-verify the behavioral contracts with
-  Playwright: edges follow a dragged node and reroute precisely on drop;
+  Playwright: edges hold their routes during a drag and reroute precisely on drop;
   untouched edges' paths do not change during someone else's drag; a node
   resize reroutes its edges; labels and arrowheads sit on their paths.
 

@@ -331,6 +331,7 @@ export const factoryEdgeSchema = z.object({
   label: z.string().optional(),
   ratePerSecond: z.number().positive().optional(),
   labelOffset: z.object({ x: z.number(), y: z.number() }).optional(),
+  waypoints: z.array(z.object({ x: z.number(), y: z.number() })).optional(),
 });
 
 export const fuelProfileSchema = z
