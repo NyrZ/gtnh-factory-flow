@@ -54,7 +54,13 @@ const WELL_HANDLE_LEFT: CSSProperties = { ...WELL_HANDLE_BASE, left: 0, right: "
 const WELL_HANDLE_RIGHT: CSSProperties = { ...WELL_HANDLE_BASE, left: "auto", right: 0 };
 
 /** Item icon box on the card face; fluids invert FLUID_ICON_SCALE to match. */
-const CARD_ICON_PX = 96;
+const CARD_ICON_PX = 94;
+/**
+ * Plain-fluid swatches draw edge to edge — no baked-in margin like item
+ * sprites — so undiluted they brush right up against the name above and the
+ * net line below. Shrink only them; items keep the full box.
+ */
+const FLUID_BREATHE_PX = 8;
 /** Oversized glance icon (zoomed out) — deliberately larger than the card. */
 const GLANCE_ICON_PX = 168;
 
@@ -134,6 +140,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
   const net = result?.netPerSecond ?? 0;
   const title = storage.displayName ?? storage.resourceId;
   const isTank = storage.kind === "fluid";
+  const isPlainFluid = isTank && !storage.iconPath && !storage.iconAtlas;
   // The whole card wears the item's colour: paint (colorTag) wins if the user
   // painted it, then the item's dominant sprite colour, then the same fallback
   // colour the fluid swatch itself renders in, then neutral steel.
@@ -233,7 +240,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               node. The handles carry inline styles pinned to the well box;
               stylesheet !important wars once let them blanket the whole
               card and swallow the header buttons. */}
-          <div className="relative mx-auto h-[96px] w-[120px]">
+          <div className="relative mx-auto h-[94px] w-[120px]">
             <Handle
               id={inputHandleId}
               type="target"
@@ -263,17 +270,20 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
                 resource={{ ...storage, id: storage.resourceId, amount: 1 }}
                 showAmount={false}
                 bare
-                iconPixelSize={storageIconPixelSize(CARD_ICON_PX, storage)}
-                className="!h-[96px] !w-[96px]"
+                iconPixelSize={storageIconPixelSize(
+                  isPlainFluid ? CARD_ICON_PX - FLUID_BREATHE_PX : CARD_ICON_PX,
+                  storage,
+                )}
+                className="!h-[94px] !w-[94px]"
               />
             </div>
           </div>
         </MinecraftTooltip>
         <div
           className={[
-            // header 24 + name 16 + well 96 + this 12 fills the card's 148px
+            // header 24 + name 16 + well 94 + this 14 fills the card's 148px
             // interior exactly.
-            "storage-net-line h-3 text-center text-[9px] font-bold leading-[12px] tabular-nums",
+            "storage-net-line h-3.5 text-center text-[11px] font-bold leading-[14px] tabular-nums",
             net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
           ].join(" ")}
         >
@@ -344,8 +354,9 @@ function StorageHeader({
         <Copy aria-hidden className="h-2.5 w-2.5" />
       </button>
       {/* One quiet word, always the same: this card is storage. What it is
-          DOING right now (supply / buffer / pile-up) lives in the hover. */}
-      <div className="min-w-0 flex-1 truncate text-right text-[8px] font-black tracking-[0.4px] text-[#9aa1ad] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]">
+          DOING right now (supply / buffer / pile-up) lives in the hover.
+          storage-node-word: calm mode centres it once the buttons go. */}
+      <div className="storage-node-word min-w-0 flex-1 truncate text-right text-[8px] font-black tracking-[0.4px] text-[#9aa1ad] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]">
         STORAGE
       </div>
     </div>

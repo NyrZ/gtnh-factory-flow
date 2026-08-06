@@ -1012,9 +1012,14 @@ img {
 }
 
 /* Storage cards: the net line stops signing its number in red and green.
-   The header word is a constant neutral STORAGE, so it needs no calming. */
+   The header word is a constant neutral STORAGE, so it needs no calming —
+   but with the edit buttons gone it moves to where they were, on the left. */
 .factory-flow-board--calm .storage-net-line {
   color: #a8afbb;
+}
+
+.factory-flow-board--calm .storage-node-word {
+  text-align: left;
 }
 
 /* Editing chrome — the delete/clone buttons on drawer, tank and trash
