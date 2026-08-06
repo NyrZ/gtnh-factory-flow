@@ -11,6 +11,7 @@ import { NodeGlanceIcon } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useFactoryStore } from "@/store/factory-store";
+import { useBoardView } from "./board-view";
 import { formatSlotRate } from "./flow-explainers";
 import { makeResourceHandleId } from "./resource-handles";
 import { GT_NODE_COLORS } from "./node-colors";
@@ -131,6 +132,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
     (hoveredFlowResourceKey ?? selectedFlowResourceKey) === resourceKey;
   const isSearchHighlighted = storageMatchesSearch(storage, recipeSearch);
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
+  const { glanceMode } = useBoardView();
   const paintCursor =
     nodeColorPaintMode !== undefined
       ? getPaintBrushCursor(
@@ -226,6 +228,31 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             iconPixelSize={storageIconPixelSize(GLANCE_ICON_PX, storage)}
             className="!h-[168px] !w-[168px]"
           />
+          {glanceMode === "identity" ? (
+            // The hover reveal, same machinery as the recipe cards' (see
+            // GlanceIdentityLayer): in the DOM from the start, pure CSS shows
+            // it on hover at the glance step and scales it to SCREEN size.
+            // A drawer has exactly two facts worth revealing: what it holds
+            // and how fast it is filling or draining.
+            <span className="glance-io absolute left-1/2 top-full z-30 w-[320px] origin-top flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-82)] p-3 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
+              <span className="minecraft-title flex h-8 min-w-0 items-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 text-[16px] leading-[22px] shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)]">
+                <span className="mx-auto min-w-0 truncate">{title}</span>
+              </span>
+              <span
+                className={[
+                  "text-center text-[24px] font-black leading-7 tabular-nums",
+                  net > 0.005
+                    ? "text-[var(--mc-good)]"
+                    : net < -0.005
+                      ? "text-[var(--mc-bad)]"
+                      : "text-[var(--mc-ink-muted)]",
+                ].join(" ")}
+              >
+                {net >= 0 ? "+" : ""}
+                {formatCompactRate(net, storage.kind)}
+              </span>
+            </span>
+          ) : null}
         </NodeGlanceIcon>
         <StorageHeader storageId={storage.id} isTank={isTank} tint={tint} />
         {/* The name sits ABOVE the item, not in the header — the header
