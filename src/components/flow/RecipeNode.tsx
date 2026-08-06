@@ -812,11 +812,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 style={nodeColor ? { backgroundColor: nodeColor.panel } : undefined}
               >
                 {calmMode ? (
-                  /* Pure presentation: the count as one large line of text,
-                     centred — no stepper, no box. The whole row is already
-                     reserved, so the type gets to be big. */
+                  /* Pure presentation: the count as one large line, centred,
+                     on the same bordered tile every other element sits on —
+                     bare text floated alone on the card face. */
                   <div className="flex min-w-0 items-center justify-center">
-                    <span className="truncate text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)]">
+                    <span className="truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                       {projectNode.machineCount}×{" "}
                       {isCropProductionNode
                         ? projectNode.machineCount === 1
