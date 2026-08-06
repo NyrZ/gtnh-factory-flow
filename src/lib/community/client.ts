@@ -156,12 +156,6 @@ export async function logoutCommunityUser(): Promise<void> {
 }
 
 /**
- * Hand-off used by "Open in editor": the community page stashes the plan and
- * the editor imports it on next load.
- */
-export const PENDING_IMPORT_STORAGE_KEY = "gtnh-factory-flow.pending-community-import.v1";
-
-/**
  * Stamps a downloaded plan with the community post it came from, so the
  * editor's Share and link actions can target that exact post later.
  */
@@ -172,26 +166,4 @@ export function tagPlanWithCommunityId(plan: unknown, planId: string): unknown {
 
   const record = plan as { metadata?: Record<string, unknown> };
   return { ...record, metadata: { ...record.metadata, communityPlanId: planId } };
-}
-
-export function stashPlanForEditor(plan: unknown): void {
-  window.localStorage.setItem(PENDING_IMPORT_STORAGE_KEY, JSON.stringify(plan));
-}
-
-export function takePendingEditorImport(): unknown | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  const raw = window.localStorage.getItem(PENDING_IMPORT_STORAGE_KEY);
-  if (!raw) {
-    return undefined;
-  }
-
-  window.localStorage.removeItem(PENDING_IMPORT_STORAGE_KEY);
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
 }

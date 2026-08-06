@@ -1,33 +1,16 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { AppHeader } from "@/components/AppHeader";
-import { CommunityBrowser } from "@/components/community/CommunityBrowser";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export const metadata: Metadata = {
-  title: "Community plans | GTNH Factory Flow",
-  description:
-    "Browse, preview, and download GregTech: New Horizons factory plans shared by the community. Sort by votes, downloads, machines, tier, and power.",
-};
-
-export default function CommunityPage() {
-  return (
-    <div className="flex min-h-screen flex-col bg-canvas text-fg">
-      <AppHeader page="community" />
-      <main className="flex-1">
-        <div className="mx-auto w-full max-w-6xl px-4 pt-6">
-          <h1 className="text-xl font-bold">Community plans</h1>
-          <p className="mt-1 text-sm text-fg-subtle">
-            Factories shared by other players. Preview the stats, grab the JSON, or open a plan
-            straight in the editor — and share your own from the planner&apos;s Share button.
-          </p>
-        </div>
-        {/* Suspense boundary is required by useSearchParams inside the browser. */}
-        <Suspense>
-          <CommunityBrowser />
-        </Suspense>
-      </main>
-    </div>
-  );
+/**
+ * The community hub lives inside the planner now, as the sidebar's Setups
+ * tab. Old links still land somewhere useful: /community?plan=x becomes the
+ * editor's /?plan=x open-to-edit link, everything else goes home.
+ */
+export default async function CommunityRedirect({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const plan = typeof params.plan === "string" ? params.plan : undefined;
+  redirect(plan ? `/?plan=${encodeURIComponent(plan)}` : "/");
 }

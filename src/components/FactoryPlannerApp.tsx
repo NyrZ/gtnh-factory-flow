@@ -12,11 +12,7 @@ import {
 } from "@/lib/datasets/browser-loader";
 import { loadResourceHistory, useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
-import {
-  downloadCommunityPlan,
-  tagPlanWithCommunityId,
-  takePendingEditorImport,
-} from "@/lib/community/client";
+import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { AppHeader } from "./AppHeader";
 import { DesignTabs } from "./DesignTabs";
@@ -84,22 +80,16 @@ export function FactoryPlannerApp() {
 
       void hydrateDesigns()
         .then(async () => {
-          // A plan handed off from the community hub becomes its own design
-          // tab, so it never overwrites whatever the user was working on.
+          // A setup opened from a shared link becomes its own design tab, so
+          // it never overwrites whatever the user was working on.
           const importAsDesign = async (raw: unknown) => {
             const project = parseFactoryProjectJson(JSON.stringify(raw));
             await useDesignStore
               .getState()
-              .importProjectAsDesign(project, project.name || "Community plan");
+              .importProjectAsDesign(project, project.name || "Shared setup");
           };
 
           try {
-            const pending = takePendingEditorImport();
-            if (pending) {
-              await importAsDesign(pending);
-              return;
-            }
-
             // Shared "open to edit" links: /?plan=<community id>.
             const params = new URLSearchParams(window.location.search);
             const sharedPlanId = params.get("plan");
@@ -119,7 +109,7 @@ export function FactoryPlannerApp() {
             }
           } catch (error) {
             console.error(
-              error instanceof Error ? error.message : "Importing the community plan failed.",
+              error instanceof Error ? error.message : "Importing the shared setup failed.",
             );
           }
         })
@@ -202,7 +192,7 @@ export function FactoryPlannerApp() {
 
   return (
     <div className="flex h-screen min-h-[720px] flex-col bg-canvas text-fg">
-      <AppHeader page="editor" />
+      <AppHeader />
       {/* 312/277: the browser column reads fine slimmer, which buys the board
           room; the inspector gets a touch more so stat rows stop wrapping. */}
       <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[312px_minmax(0,1fr)_277px]">

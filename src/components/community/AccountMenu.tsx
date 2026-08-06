@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronDown, LogOut, ShieldCheck, User, Users } from "lucide-react";
-import Link from "next/link";
+import { ChevronDown, Factory, LogOut, ShieldCheck, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { openSetupsTab } from "@/lib/setups-tab";
 import { AuthForm, useCommunityUser } from "./auth";
 
 /**
- * Top-right account control, shared by the planner and community headers:
- * a Sign in button when logged out, a username menu when logged in.
+ * Top-right account control: a Sign in button when logged out, a username
+ * menu when logged in.
  */
 export function AccountMenu() {
   const { user, isLoading, setUser, signOut } = useCommunityUser();
@@ -88,13 +88,16 @@ export function AccountMenu() {
       </button>
       {isMenuOpen ? (
         <div className="absolute right-0 top-9 z-[110] min-w-44 rounded border border-line-strong bg-surface py-1 text-sm shadow-lg">
-          <Link
-            href="/community?mine=1"
-            onClick={() => setMenuOpen(false)}
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              openSetupsTab("mine");
+            }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-raised"
           >
-            <Users className="h-3.5 w-3.5 text-fg-muted" /> My posts
-          </Link>
+            <Factory className="h-3.5 w-3.5 text-fg-muted" /> My setups
+          </button>
           <button
             type="button"
             onClick={() => {

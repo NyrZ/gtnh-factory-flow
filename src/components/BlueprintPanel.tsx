@@ -27,6 +27,7 @@ import {
   type BlueprintSummary,
   type PublicBlueprintSort,
 } from "@/lib/blueprints/types";
+import type { PlanResourceStat } from "@/lib/community/types";
 import { snapPositionToGrid } from "@/lib/board-grid";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useCommunityUser } from "@/components/community/auth";
@@ -162,8 +163,11 @@ function TagChips({
  * the tooltip simply doesn't open.
  */
 function renderBlueprintIo(blueprint: BlueprintSummary): ReactNode {
-  const needs = blueprint.needs ?? [];
-  const outputs = blueprint.outputs ?? [];
+  return renderIoStats(blueprint.needs ?? [], blueprint.outputs ?? []);
+}
+
+/** The Needs/Makes stat sections, shared with the Setups shelf's tooltips. */
+export function renderIoStats(needs: PlanResourceStat[], outputs: PlanResourceStat[]): ReactNode {
   if (needs.length === 0 && outputs.length === 0) {
     return undefined;
   }
@@ -958,7 +962,7 @@ function payloadCentre(payload: BoardClipboardPayload): { x: number; y: number }
   };
 }
 
-function formatRelativeDate(iso: string): string {
+export function formatRelativeDate(iso: string): string {
   const then = new Date(iso).getTime();
   if (!Number.isFinite(then)) {
     return "";

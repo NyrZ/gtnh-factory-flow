@@ -1,20 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { PencilRuler, Users } from "lucide-react";
-import Link from "next/link";
 import { APP_VERSION } from "@/lib/version";
 import { AccountMenu } from "./community/AccountMenu";
 import { BoardActions } from "./BoardActions";
 import { ChangelogDialog } from "./ChangelogDialog";
 
 /**
- * The one top bar for the whole app. Title and account are always there;
- * the board actions only exist on the editor; the nav button flips
- * between Community and Editor so switching feels like changing panels, not
- * changing sites.
+ * The one top bar for the whole app: title, version chip, board actions,
+ * account. The old Community page folded into the sidebar's Setups tab, so
+ * there is no page switch up here anymore.
  */
-export function AppHeader({ page }: { page: "editor" | "community" }) {
+export function AppHeader() {
   const [isChangelogOpen, setChangelogOpen] = useState(false);
 
   return (
@@ -22,9 +19,6 @@ export function AppHeader({ page }: { page: "editor" | "community" }) {
       <h1 className="flex items-center gap-2 text-sm font-bold tracking-tight">
         <span>
           GTNH <span className="text-cyan-500">Planner</span>
-          {page === "community" ? (
-            <span className="ml-2 font-medium text-fg-muted">Community</span>
-          ) : null}
         </span>
         <button
           type="button"
@@ -38,22 +32,7 @@ export function AppHeader({ page }: { page: "editor" | "community" }) {
       </h1>
       {isChangelogOpen ? <ChangelogDialog onClose={() => setChangelogOpen(false)} /> : null}
       <div className="flex items-center gap-2">
-        {page === "editor" ? <BoardActions /> : null}
-        {page === "editor" ? (
-          <Link
-            href="/community"
-            className="inline-flex h-7 items-center gap-1.5 rounded border border-cyan-700 bg-cyan-600 px-3 text-sm font-semibold text-white hover:bg-cyan-500"
-          >
-            <Users className="h-3.5 w-3.5" /> Community
-          </Link>
-        ) : (
-          <Link
-            href="/"
-            className="inline-flex h-7 items-center gap-1.5 rounded border border-cyan-700 bg-cyan-600 px-3 text-sm font-semibold text-white hover:bg-cyan-500"
-          >
-            <PencilRuler className="h-3.5 w-3.5" /> Editor
-          </Link>
-        )}
+        <BoardActions />
         <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
         <AccountMenu />
       </div>

@@ -70,6 +70,7 @@ const CALLOUTS: Array<{
       "Click one, pick a recipe",
       "The machine lands on the board",
       "Blueprints: saved chunks",
+      "Setups: everyone's factories",
     ],
   },
   {

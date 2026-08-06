@@ -3,6 +3,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  Factory,
   GitBranchPlus,
   Layers,
   LayoutGrid,
@@ -33,11 +34,12 @@ import type { TierFilter } from "@/store/factory-store";
 import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { OPEN_SETUPS_EVENT } from "@/lib/setups-tab";
 import { AppIdentity } from "./AppIdentity";
 import { BlueprintPanel } from "./BlueprintPanel";
+import { SetupsPanel } from "./SetupsPanel";
 import { machineArtPixels } from "./flow/MachinePicker";
 import { useMachineHandlerIcons } from "./flow/machine-icons";
-import { MinecraftTooltip } from "./nei/MinecraftTooltip";
 import { NeiRecipeWindow } from "./nei/NeiRecipeWindow";
 import { ResourceIcon } from "./nei/ResourceIcon";
 
@@ -106,9 +108,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourceSort, setResourceSort] = useState<ResourceSortMode>("relevance");
   const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
   // The master switch: what the whole left panel is FOR right now — finding
-  // items to build with, or stamping saved blueprints. One at a time, full
-  // column each; the old bottom-strip library never had room to breathe.
-  const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints">("items");
+  // items to build with, stamping saved blueprints, or browsing the network's
+  // shared setups. One at a time, full column each; the old bottom-strip
+  // library never had room to breathe.
+  const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints" | "setups">("items");
   const [resourceMods, setResourceMods] = useState<Array<{ id: string; count: number }>>([]);
   const [resourceQueryLoading, setResourceQueryLoading] = useState(false);
   const [resourceQueryError, setResourceQueryError] = useState<string | undefined>();
@@ -122,6 +125,14 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const pendingRecipePrefetchesRef = useRef<Set<string>>(new Set());
   const debouncedRecipeSearch = useDebouncedValue(recipeSearch, RESOURCE_SEARCH_DEBOUNCE_MS);
   const debouncedRecipeBookSearch = useDebouncedValue(recipeBookSearch, RECIPE_SEARCH_DEBOUNCE_MS);
+
+  // Buttons far from this column ("My setups" in the account menu, the share
+  // dialog's shelf link) can land the sidebar on the Setups shelf.
+  useEffect(() => {
+    const openSetups = () => setSidebarMode("setups");
+    window.addEventListener(OPEN_SETUPS_EVENT, openSetups);
+    return () => window.removeEventListener(OPEN_SETUPS_EVENT, openSetups);
+  }, []);
 
   // Publish the settled query to the canvas. Highlighting every node, storage and
   // edge against a half-typed word is wasted work the user never sees, so the
@@ -599,9 +610,24 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             <Layers className="h-3.5 w-3.5" />
             Blueprints
           </button>
+          <button
+            type="button"
+            onClick={() => setSidebarMode("setups")}
+            className={[
+              "flex h-9 flex-1 items-center justify-center gap-1.5 border-b-2 text-xs font-medium",
+              sidebarMode === "setups"
+                ? "border-emerald-400 text-emerald-300"
+                : "border-transparent text-neutral-400 hover:text-neutral-200",
+            ].join(" ")}
+          >
+            <Factory className="h-3.5 w-3.5" />
+            Setups
+          </button>
         </div>
         {sidebarMode === "blueprints" ? (
           <BlueprintPanel />
+        ) : sidebarMode === "setups" ? (
+          <SetupsPanel />
         ) : (
           <>
         <div className="border-b border-neutral-800 px-3 py-3">

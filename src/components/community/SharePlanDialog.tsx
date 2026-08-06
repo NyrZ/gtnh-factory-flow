@@ -1,7 +1,6 @@
 ﻿"use client";
 
-import { Check, ImageOff, Link2, LoaderCircle, Pencil, Share2, X } from "lucide-react";
-import Link from "next/link";
+import { Check, ImageOff, Link2, LoaderCircle, Share2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   listCommunityPlans,
@@ -17,6 +16,7 @@ import {
   FLOW_IMAGE_EXPORT_EVENT,
 } from "@/lib/import-export/plan-image";
 import { serializeFactoryProject } from "@/lib/import-export";
+import { openSetupsTab } from "@/lib/setups-tab";
 import { useFactoryStore } from "@/store/factory-store";
 import { AuthForm, useCommunityUser } from "./auth";
 
@@ -49,7 +49,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
   const [isUploading, setUploading] = useState(false);
   const [error, setError] = useState<string>();
   const [shared, setShared] = useState<{ kind: "created" | "updated"; planId: string }>();
-  const [copiedLink, setCopiedLink] = useState<"view" | "edit">();
+  const [isLinkCopied, setLinkCopied] = useState(false);
 
   const stats = useMemo(() => computeCommunityPlanStats(project, result), [project, result]);
   const datasetVersion = manifest?.versions.find(
@@ -147,15 +147,12 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const copyShareLink = async (kind: "view" | "edit") => {
+  const copyShareLink = async () => {
     if (!shared) {
       return;
     }
 
-    const url =
-      kind === "edit"
-        ? `${window.location.origin}/?plan=${shared.planId}`
-        : `${window.location.origin}/community?plan=${shared.planId}`;
+    const url = `${window.location.origin}/?plan=${shared.planId}`;
     try {
       await navigator.clipboard.writeText(url);
     } catch {
@@ -163,11 +160,8 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    setCopiedLink(kind);
-    window.setTimeout(
-      () => setCopiedLink((current) => (current === kind ? undefined : current)),
-      1500,
-    );
+    setLinkCopied(true);
+    window.setTimeout(() => setLinkCopied(false), 1500);
   };
 
   return (
@@ -175,7 +169,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
       <div className="w-full max-w-lg rounded border border-line-strong bg-surface p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
-            <Share2 className="h-4 w-4" /> Share to community
+            <Share2 className="h-4 w-4" /> Share your setup
           </h2>
           <button
             type="button"
@@ -197,36 +191,28 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void copyShareLink("view")}
+                onClick={() => void copyShareLink()}
+                title="The link opens this setup in a friend's planner"
                 className="inline-flex items-center gap-1.5 rounded border border-line-strong px-3 py-1.5 text-sm hover:bg-surface-raised"
               >
-                {copiedLink === "view" ? (
+                {isLinkCopied ? (
                   <Check className="h-4 w-4 text-emerald-500" />
                 ) : (
                   <Link2 className="h-4 w-4" />
                 )}
                 Copy link
               </button>
-              <button
-                type="button"
-                onClick={() => void copyShareLink("edit")}
-                title="A link that opens this plan directly in a friend's editor"
-                className="inline-flex items-center gap-1.5 rounded border border-line-strong px-3 py-1.5 text-sm hover:bg-surface-raised"
-              >
-                {copiedLink === "edit" ? (
-                  <Check className="h-4 w-4 text-emerald-500" />
-                ) : (
-                  <Pencil className="h-4 w-4" />
-                )}
-                Copy edit link
-              </button>
             </div>
-            <Link
-              href="/community"
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                openSetupsTab();
+              }}
               className="inline-flex rounded border border-cyan-700 bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500"
             >
-              View it in the community hub
-            </Link>
+              See it on the Setups shelf
+            </button>
           </div>
         ) : isUserLoading ? (
           <div className="grid place-items-center py-8 text-fg-muted">

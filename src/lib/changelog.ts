@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.13.0",
+    date: "2026-08-06",
+    headline: "The community hub moved in next door",
+    notes: [
+      "The Community page is gone. Everyone's shared factories now live in a Setups tab, right beside Items and Blueprints.",
+      "Browse, search, sort and upvote without leaving your board. Hover a setup to read its story: what it needs, what it makes.",
+      "One click opens a setup as its own design tab, so it never lands on top of your work. Your own posts sit under Mine.",
+      "Old community links still work: they open the shared setup straight in the planner.",
+    ],
+  },
+  {
     version: "1.12.0",
     date: "2026-08-06",
     headline: "Pocket dimensions, a blueprint shelf, and a board that explains itself",
