@@ -193,9 +193,10 @@ export function FactoryPlannerApp() {
   return (
     <div className="flex h-screen min-h-[720px] flex-col bg-canvas text-fg">
       <AppHeader />
-      {/* 312/277: the browser column reads fine slimmer, which buys the board
-          room; the inspector gets a touch more so stat rows stop wrapping. */}
-      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[312px_minmax(0,1fr)_277px]">
+      {/* 344/277: the browser column carries three iconed tabs and the setup
+          shelf now, so it gets a touch more than the old 312; the inspector
+          keeps its width so stat rows don't wrap. */}
+      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[344px_minmax(0,1fr)_277px]">
         {/* Each column carries its own header row, all the same height, so the
             three line up where the full-width bar used to be. */}
         {/* The browser owns its own header row, so no wrapper here — it stays a

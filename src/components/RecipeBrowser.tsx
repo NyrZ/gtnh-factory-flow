@@ -3,7 +3,9 @@
 import {
   ChevronLeft,
   ChevronRight,
+  Factory,
   GitBranchPlus,
+  Layers,
   LayoutGrid,
   List,
   Plus,
@@ -579,43 +581,48 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       >
         <AppIdentity onLoadDatasetVersion={onLoadDatasetVersion} />
         {/* The master switch: item search, the blueprint library, or the
-            setups network — whole column each. Flat tabs, not buttons; and
-            text only, three iconed labels in 312px read as one crammed word. */}
+            setups network — whole column each. Flat tabs, not buttons. Three
+            iconed labels need every trick to breathe: the column runs 344px,
+            and the tabs wear 12px icons with 11px text, one size under the
+            rest of the sidebar. */}
         <div className="flex shrink-0 border-b border-neutral-800">
           <button
             type="button"
             onClick={() => setSidebarMode("items")}
             className={[
-              "flex h-9 flex-1 items-center justify-center border-b-2 text-xs font-medium",
+              "flex h-9 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
               sidebarMode === "items"
                 ? "border-cyan-400 text-cyan-300"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
+            <Search className="h-3 w-3" />
             Items
           </button>
           <button
             type="button"
             onClick={() => setSidebarMode("blueprints")}
             className={[
-              "flex h-9 flex-1 items-center justify-center border-b-2 text-xs font-medium",
+              "flex h-9 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
               sidebarMode === "blueprints"
                 ? "border-[#8d6fd1] text-[#c9b8ec]"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
+            <Layers className="h-3 w-3" />
             Blueprints
           </button>
           <button
             type="button"
             onClick={() => setSidebarMode("setups")}
             className={[
-              "flex h-9 flex-1 items-center justify-center border-b-2 text-xs font-medium",
+              "flex h-9 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
               sidebarMode === "setups"
                 ? "border-emerald-400 text-emerald-300"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
+            <Factory className="h-3 w-3" />
             Setups
           </button>
         </div>
