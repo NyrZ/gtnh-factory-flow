@@ -8,7 +8,6 @@ import {
   Download,
   Globe,
   LoaderCircle,
-  MapPinPlus,
   Pencil,
   Save,
   Search,
@@ -452,6 +451,13 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                 <li
                   key={blueprint.id}
                   className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500"
+                  // Double-click anywhere that isn't a control places it —
+                  // the download button stays as the single-click way.
+                  onDoubleClick={(event) => {
+                    if (!isBusy && !(event.target as HTMLElement).closest("button, input")) {
+                      void place(blueprint.id);
+                    }
+                  }}
                 >
                   {/* Tooltips are per-element: every button explains ITSELF,
                       and the I/O stat card opens from the name and the fact
@@ -476,31 +482,12 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                       />
                     ) : (
                       <MinecraftTooltip
-                        content={
-                          <div>
-                            <div className="mb-1 text-[11px] text-slate-400">
-                              Click places it on the board
-                            </div>
-                            {renderBlueprintIo(blueprint)}
-                          </div>
-                        }
+                        label={blueprint.name}
+                        content={renderBlueprintIo(blueprint)}
                       >
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => void place(blueprint.id)}
-                          aria-label={`Place blueprint ${blueprint.name} on the board`}
-                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                        >
-                          {isBusy ? (
-                            <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
-                          ) : (
-                            <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
-                          )}
-                          <span className="truncate text-[13px] leading-5 text-neutral-100">
-                            {blueprint.name}
-                          </span>
-                        </button>
+                        <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
+                          {blueprint.name}
+                        </span>
                       </MinecraftTooltip>
                     )}
                     <MinecraftTooltip
@@ -621,6 +608,23 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         </button>
                       </MinecraftTooltip>
                     )}
+                    <MinecraftTooltip
+                      label={"Place on your board\nDouble-clicking the row works too"}
+                    >
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void place(blueprint.id)}
+                        aria-label={`Place blueprint ${blueprint.name} on the board`}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
+                      >
+                        {isBusy ? (
+                          <LoaderCircle className="h-3 w-3 animate-spin text-emerald-300" />
+                        ) : (
+                          <Download className="h-3 w-3" />
+                        )}
+                      </button>
+                    </MinecraftTooltip>
                   </div>
                   {overwriteArmId === blueprint.id ? (
                     <div className="mt-1 flex items-center gap-1.5 rounded-[4px] border border-amber-700 bg-amber-950/60 px-1.5 py-1">
@@ -714,13 +718,13 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                     <TagChips
                       tags={blueprint.tags ?? []}
                       onTag={(tag) => setQuery(`#${tag}`)}
-                      className="pl-5"
+                      className="pl-0.5"
                     />
                   )}
                   {/* Facts as icon pairs, words in the hover — text rows kept
                       truncating to three dots in a 300px column. */}
                   <MinecraftTooltip content={renderBlueprintIo(blueprint)}>
-                  <div className="mt-0.5 flex items-center gap-2.5 pl-5 text-[10px] tabular-nums text-neutral-500">
+                  <div className="mt-0.5 flex items-center gap-2.5 pl-0.5 text-[10px] tabular-nums text-neutral-500">
                     <span title={`Saved ${new Date(blueprint.createdAt).toLocaleString()}`}>
                       {formatRelativeDate(blueprint.createdAt)}
                     </span>

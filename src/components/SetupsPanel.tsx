@@ -421,7 +421,9 @@ export function SetupsPanel() {
                   plan={plan}
                   busy={busy?.id === plan.id ? busy.kind : undefined}
                   isCopied={copiedId === plan.id}
-                  canManage={plan.isMine === true || user?.isAdmin === true}
+                  // Owner tools are for OWNERS: other people's rows stay
+                  // lean (link, pocket, open), even for the site admin.
+                  canManage={plan.isMine === true}
                   onVote={() => void vote(plan)}
                   onOpen={() => void open(plan)}
                   onOpenAsPocket={() => void openAsPocket(plan)}
