@@ -164,8 +164,19 @@ is no snap toggle any more.
    where the height is already deterministic.
 
 Anything that sets a width, height, or offset on the board should be a
-multiple of `BOARD_GRID` or built from the tokens in `board-grid.ts`. Edge
-routing does not yet run on the grid; that is the next step.
+multiple of `BOARD_GRID` or built from the tokens in `board-grid.ts`.
+
+Wires live on the grid too (`grid-edge-router.ts`): a pure, deterministic
+A* over the Hanan lines of the margin-inflated cards, solved for ALL edges
+at once so lanes can be shared. Each 20px line is a lane with 16 usable px;
+wire widths are lane fractions, side-by-side sharing is slightly cheaper
+than an empty lane (that is what forms ribbons), overflow is expensive
+(that is what prevents overlap), and only port stubs may stack. The host
+side (`ensureGridSolve` in FactoryFlow) publishes the edge list from the
+`flowEdges` memo, resolves measured port anchors, fingerprints everything
+(sweep hash + endpoints + widths — never hover state), and parks routes in
+`directRouteCache`; a stamp/epoch gate keeps the check O(1) per edge
+render. Mid-drag edges fall back to a simple L and the drop re-solves.
 
 ### Rules of thumb for new board code
 
