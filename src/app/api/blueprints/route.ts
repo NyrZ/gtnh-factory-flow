@@ -4,6 +4,7 @@ import {
   BLUEPRINT_MAX_PER_USER,
   BLUEPRINT_NAME_MAX_LENGTH,
   BLUEPRINT_PAYLOAD_MAX_BYTES,
+  normalizeBlueprintTags,
   PUBLIC_BLUEPRINT_PAGE_SIZE,
   type BlueprintListResponse,
   type PublicBlueprintSort,
@@ -88,8 +89,17 @@ async function listPublicBlueprints(request: Request, url: URL) {
     .from("blueprints")
     .select(BLUEPRINT_SUMMARY_COLUMNS)
     .eq("is_public", true);
-  if (search) {
-    query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+  // Tag-aware search: a plain term matches names, descriptions and tags;
+  // a leading # narrows to tags alone.
+  if (search.startsWith("#")) {
+    const tagTerm = search.slice(1).trim();
+    if (tagTerm) {
+      query = query.ilike("tags_text", `%${tagTerm}%`);
+    }
+  } else if (search) {
+    query = query.or(
+      `name.ilike.%${search}%,description.ilike.%${search}%,tags_text.ilike.%${search}%`,
+    );
   }
   if (sort === "top") {
     query = query.order("score", { ascending: false }).order("published_at", { ascending: false });
@@ -149,12 +159,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { name, payload, needs, outputs } = (body ?? {}) as {
+  const { name, payload, needs, outputs, tags } = (body ?? {}) as {
     name?: unknown;
     payload?: unknown;
     needs?: unknown;
     outputs?: unknown;
+    tags?: unknown;
   };
+  const normalizedTags = normalizeBlueprintTags(tags);
   const trimmedName = typeof name === "string" ? name.trim() : "";
   if (!trimmedName || trimmedName.length > BLUEPRINT_NAME_MAX_LENGTH) {
     return NextResponse.json(
@@ -204,6 +216,8 @@ export async function POST(request: Request) {
       ),
       needs: parseResourceStats(needs),
       outputs: parseResourceStats(outputs),
+      tags: normalizedTags,
+      tags_text: normalizedTags.join(" "),
     })
     .select(BLUEPRINT_SUMMARY_COLUMNS)
     .single();

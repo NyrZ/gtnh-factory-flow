@@ -4,6 +4,7 @@ import { boardSelectionPayloadSchema } from "@/lib/model/schemas";
 import {
   BLUEPRINT_NAME_MAX_LENGTH,
   BLUEPRINT_PAYLOAD_MAX_BYTES,
+  normalizeBlueprintTags,
 } from "@/lib/blueprints/types";
 import {
   checkRateLimit,
@@ -91,14 +92,20 @@ export async function PUT(request: Request, context: RouteContext) {
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
-  const { name, payload, needs, outputs } = (body ?? {}) as {
+  const { name, payload, needs, outputs, tags } = (body ?? {}) as {
     name?: unknown;
     payload?: unknown;
     needs?: unknown;
     outputs?: unknown;
+    tags?: unknown;
   };
 
   const patch: Record<string, unknown> = {};
+  if (tags !== undefined) {
+    const normalizedTags = normalizeBlueprintTags(tags);
+    patch.tags = normalizedTags;
+    patch.tags_text = normalizedTags.join(" ");
+  }
   if (name !== undefined) {
     const trimmedName = typeof name === "string" ? name.trim() : "";
     if (!trimmedName || trimmedName.length > BLUEPRINT_NAME_MAX_LENGTH) {

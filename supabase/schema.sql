@@ -103,6 +103,11 @@ create table if not exists blueprints (
   -- can show what a blueprint eats and makes without fetching payloads.
   needs jsonb not null default '[]'::jsonb,
   outputs jsonb not null default '[]'::jsonb,
+  -- Author-curated tags, normalized lowercase. tags_text is the same list
+  -- space-joined, maintained by the app, so ilike search reaches into tags
+  -- without jsonb gymnastics.
+  tags jsonb not null default '[]'::jsonb,
+  tags_text text not null default '',
   upvotes integer not null default 0,
   downvotes integer not null default 0,
   score integer generated always as (upvotes - downvotes) stored,
@@ -122,6 +127,8 @@ alter table blueprints enable row level security;
 -- converge through idempotent ALTERs — keep every later addition here.
 alter table blueprints add column if not exists needs jsonb not null default '[]'::jsonb;
 alter table blueprints add column if not exists outputs jsonb not null default '[]'::jsonb;
+alter table blueprints add column if not exists tags jsonb not null default '[]'::jsonb;
+alter table blueprints add column if not exists tags_text text not null default '';
 
 -- One vote per anonymous actor per blueprint, exactly like community_votes.
 create table if not exists blueprint_votes (

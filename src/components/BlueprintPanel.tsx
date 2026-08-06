@@ -12,12 +12,15 @@ import {
   Pencil,
   Save,
   Search,
+  Tags,
   Trash2,
   User,
   X,
 } from "lucide-react";
 import {
+  blueprintMatchesSearch,
   BLUEPRINT_SORTS,
+  normalizeBlueprintTags,
   PUBLIC_BLUEPRINT_SORTS,
   sortBlueprints,
   type BlueprintSort,
@@ -122,6 +125,36 @@ function ControlsCard({ children }: { children: ReactNode }) {
   );
 }
 
+/** A row's tags as small chips; clicking one searches for it (`#tag`). */
+function TagChips({
+  tags,
+  onTag,
+  className,
+}: {
+  tags: string[];
+  onTag: (tag: string) => void;
+  className?: string;
+}) {
+  if (tags.length === 0) {
+    return null;
+  }
+  return (
+    <div className={["mt-0.5 flex flex-wrap gap-1", className ?? ""].join(" ")}>
+      {tags.map((tag) => (
+        <button
+          key={tag}
+          type="button"
+          onClick={() => onTag(tag)}
+          title={`Search #${tag}`}
+          className="rounded-[3px] border border-neutral-700 bg-[#17191d] px-1 py-px text-[9px] leading-3 text-neutral-400 hover:border-cyan-600 hover:text-cyan-300"
+        >
+          #{tag}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The hover reveal: what this blueprint needs from outside and what it
  * makes, icons and rates — the same reading a hovered machine gives on the
@@ -213,6 +246,11 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
   const [overwriteArmId, setOverwriteArmId] = useState<string | undefined>(undefined);
   const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
   const [renameDraft, setRenameDraft] = useState("");
+  // The tag editor: edits live locally as chips and save once, on close —
+  // one PUT per session, never per keystroke, and no republishing needed.
+  const [taggingId, setTaggingId] = useState<string | undefined>(undefined);
+  const [tagDraft, setTagDraft] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [query, setQuery] = useState("");
   const overwriteSourceName = overwriteSourceId
     ? useFactoryStore
@@ -277,12 +315,34 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
     }
   };
 
-  const normalizedQuery = query.trim().toLowerCase();
-  const filtered = sortBlueprints(blueprints, sort).filter(
-    (blueprint) =>
-      normalizedQuery.length === 0 || blueprint.name.toLowerCase().includes(normalizedQuery),
+  const openTagEditor = (blueprint: BlueprintSummary) => {
+    setTaggingId(blueprint.id);
+    setTagDraft(blueprint.tags ?? []);
+    setTagInput("");
+  };
+
+  const addDraftTag = () => {
+    const next = normalizeBlueprintTags([...tagDraft, tagInput]);
+    setTagDraft(next);
+    setTagInput("");
+    return next;
+  };
+
+  // Closing saves — whatever is still in the input counts as one last tag.
+  const closeTagEditor = (blueprintId: string) => {
+    const finalTags = tagInput.trim() ? addDraftTag() : tagDraft;
+    setTaggingId(undefined);
+    setTagInput("");
+    const current = blueprints.find((blueprint) => blueprint.id === blueprintId);
+    if (current && JSON.stringify(finalTags) !== JSON.stringify(current.tags ?? [])) {
+      void update(blueprintId, { tags: finalTags });
+    }
+  };
+
+  const filtered = sortBlueprints(blueprints, sort).filter((blueprint) =>
+    blueprintMatchesSearch(blueprint, query),
   );
-  const isFiltering = normalizedQuery.length > 0;
+  const isFiltering = query.trim().length > 0;
 
   return (
     <>
@@ -293,7 +353,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search my blueprints..."
+            placeholder="Search my blueprints... (#tag)"
             className="min-w-0 flex-1 bg-transparent outline-none"
           />
           {query ? (
@@ -434,6 +494,25 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                     <button
                       type="button"
                       disabled={isBusy}
+                      onClick={() =>
+                        taggingId === blueprint.id
+                          ? closeTagEditor(blueprint.id)
+                          : openTagEditor(blueprint)
+                      }
+                      title="Edit tags (closing saves)"
+                      aria-label={`Edit tags for blueprint ${blueprint.name}`}
+                      className={[
+                        "shrink-0 rounded-[4px] p-0.5",
+                        taggingId === blueprint.id
+                          ? "text-cyan-300"
+                          : "text-neutral-600 hover:text-cyan-300",
+                      ].join(" ")}
+                    >
+                      <Tags className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
                       onClick={() => void publish(blueprint.id, !blueprint.isPublic)}
                       title={
                         blueprint.isPublic
@@ -511,6 +590,68 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                       </button>
                     </div>
                   ) : null}
+                  {taggingId === blueprint.id ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-1 rounded-[4px] border border-cyan-800 bg-[#17191d] px-1.5 py-1">
+                      {tagDraft.map((tag) => (
+                        <span
+                          key={tag}
+                          className="flex items-center gap-0.5 rounded-[3px] border border-neutral-600 bg-[#25272c] px-1 py-0.5 text-[10px] leading-3 text-neutral-200"
+                        >
+                          #{tag}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTagDraft(tagDraft.filter((entry) => entry !== tag))
+                            }
+                            title={`Remove #${tag}`}
+                            aria-label={`Remove tag ${tag}`}
+                            className="text-neutral-500 hover:text-red-400"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                      <input
+                        autoFocus
+                        value={tagInput}
+                        onChange={(event) => setTagInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            if (tagInput.trim()) {
+                              addDraftTag();
+                            } else {
+                              closeTagEditor(blueprint.id);
+                            }
+                          }
+                          if (event.key === "Escape") {
+                            closeTagEditor(blueprint.id);
+                          }
+                          if (
+                            event.key === "Backspace" &&
+                            !tagInput &&
+                            tagDraft.length > 0
+                          ) {
+                            setTagDraft(tagDraft.slice(0, -1));
+                          }
+                        }}
+                        placeholder={tagDraft.length > 0 ? "add tag…" : "add tags…"}
+                        className="h-5 min-w-[72px] flex-1 bg-transparent text-[11px] text-neutral-100 outline-none placeholder:text-neutral-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => closeTagEditor(blueprint.id)}
+                        className="shrink-0 rounded-[4px] border border-cyan-700 bg-cyan-950 px-1.5 py-0.5 text-[10px] text-cyan-300 hover:bg-cyan-900"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  ) : (
+                    <TagChips
+                      tags={blueprint.tags ?? []}
+                      onTag={(tag) => setQuery(`#${tag}`)}
+                      className="pl-5"
+                    />
+                  )}
                   {/* Facts as icon pairs, words in the hover — text rows kept
                       truncating to three dots in a 300px column. */}
                   <div className="mt-0.5 flex items-center gap-2.5 pl-5 text-[10px] tabular-nums text-neutral-500">
@@ -601,7 +742,7 @@ function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search the network..."
+            placeholder="Search the network... (#tag)"
             className="min-w-0 flex-1 bg-transparent outline-none"
           />
           {query ? (
@@ -661,6 +802,7 @@ function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                   isBusy={busyId === blueprint.id}
                   onPlace={() => void place(blueprint.id)}
                   onUpvote={() => void vote(blueprint.id, 1)}
+                  onTag={(tag) => setQuery(`#${tag}`)}
                 />
               ))}
             </ul>
@@ -687,11 +829,13 @@ function PublicBlueprintRow({
   isBusy,
   onPlace,
   onUpvote,
+  onTag,
 }: {
   blueprint: BlueprintSummary;
   isBusy: boolean;
   onPlace: () => void;
   onUpvote: () => void;
+  onTag: (tag: string) => void;
 }) {
   return (
     <li
@@ -782,6 +926,7 @@ function PublicBlueprintRow({
           <Download className="h-3 w-3" /> {blueprint.downloads}
         </span>
       </div>
+      <TagChips tags={blueprint.tags ?? []} onTag={onTag} className="pl-0.5" />
       </MinecraftTooltip>
     </li>
   );

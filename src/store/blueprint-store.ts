@@ -67,7 +67,7 @@ interface BlueprintStore {
    */
   update: (
     blueprintId: string,
-    patch: { name?: string; payload?: BoardClipboardPayload },
+    patch: { name?: string; payload?: BoardClipboardPayload; tags?: string[] },
   ) => Promise<boolean>;
 
   setPublicSort: (sort: PublicBlueprintSort) => void;
@@ -152,6 +152,7 @@ export const useBlueprintStore = create<BlueprintStore>((set, get) => ({
         name: patch.name,
         payload: patch.payload,
         io: patch.payload ? computeBlueprintIo(patch.payload) : undefined,
+        tags: patch.tags,
       });
       const apply = (list: BlueprintSummary[]) =>
         list.map((blueprint) =>

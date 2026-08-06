@@ -7,6 +7,64 @@ export type BlueprintResourceStat = PlanResourceStat;
 /** Stat lines kept per side; matches the community plan cap. */
 export const BLUEPRINT_RESOURCE_STAT_LIMIT = 64;
 
+export const BLUEPRINT_TAG_MAX_COUNT = 12;
+export const BLUEPRINT_TAG_MAX_LENGTH = 24;
+
+/**
+ * One identity per tag: lowercase, single-spaced, no leading #, deduped,
+ * capped. Capitalization is the only "similar spelling" folded together —
+ * beyond that, a tag is exactly what its author typed.
+ */
+export function normalizeBlueprintTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const tags: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const tag = entry
+      .toLowerCase()
+      .replace(/^#+/, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, BLUEPRINT_TAG_MAX_LENGTH);
+    if (tag && !tags.includes(tag)) {
+      tags.push(tag);
+    }
+    if (tags.length >= BLUEPRINT_TAG_MAX_COUNT) {
+      break;
+    }
+  }
+  return tags;
+}
+
+/**
+ * Tag-aware matching for a search box: a plain term matches names and tags,
+ * a `#term` narrows to tags alone. Used verbatim by the Mine shelf's local
+ * filter; the public shelf's server search follows the same contract.
+ */
+export function blueprintMatchesSearch(
+  blueprint: Pick<BlueprintSummary, "name" | "tags">,
+  query: string,
+): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  const tagOnly = normalized.startsWith("#");
+  const term = tagOnly ? normalized.slice(1).trim() : normalized;
+  if (!term) {
+    return true;
+  }
+  const tags = blueprint.tags ?? [];
+  if (tags.some((tag) => tag.includes(term))) {
+    return true;
+  }
+  return !tagOnly && blueprint.name.toLowerCase().includes(term);
+}
+
 export const BLUEPRINT_NAME_MAX_LENGTH = 60;
 export const BLUEPRINT_DESCRIPTION_MAX_LENGTH = 500;
 /** A blueprint is a fragment, not a whole plan; half the community cap. */
@@ -41,6 +99,8 @@ export interface BlueprintSummary {
   /** The stat card: external needs and unconsumed outputs at save time. */
   needs: BlueprintResourceStat[];
   outputs: BlueprintResourceStat[];
+  /** Author-curated tags, normalized lowercase. */
+  tags: string[];
 }
 
 export interface BlueprintDetail extends BlueprintSummary {

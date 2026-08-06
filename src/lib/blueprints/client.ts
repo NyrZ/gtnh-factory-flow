@@ -58,6 +58,7 @@ export async function updateBlueprint(
     name?: string;
     payload?: BoardClipboardPayload;
     io?: { needs: BlueprintResourceStat[]; outputs: BlueprintResourceStat[] };
+    tags?: string[];
   },
 ): Promise<BlueprintSummary> {
   const response = await fetch(`/api/blueprints/${encodeURIComponent(blueprintId)}`, {
@@ -68,6 +69,7 @@ export async function updateBlueprint(
       payload: patch.payload,
       needs: patch.io?.needs,
       outputs: patch.io?.outputs,
+      tags: patch.tags,
     }),
   });
   const body = await parseJsonOrThrow<{ blueprint: BlueprintSummary }>(response);
