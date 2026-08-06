@@ -70,7 +70,7 @@ import {
   MachineTabStrip,
   machineArtPixels,
 } from "./MachinePicker";
-import { NodeGlanceText } from "./NodeGlance";
+import { NodeGlanceText, glanceTileStyle } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./machine-icons";
 import { publishDockTopInset } from "./dock-insets";
@@ -578,6 +578,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         <GlanceIdentityLayer
           machineIcon={machineGlanceIcon}
           fallbackResource={rails.outputs[0]?.resource ?? rails.inputs[0]?.resource}
+          paintTint={nodeColor?.swatch}
           label={
             isCustomRateNode
               ? (effectiveRecipe.name ?? "Custom rate")
@@ -969,21 +970,35 @@ export const RecipeNode = memo(
 function GlanceIdentityLayer({
   machineIcon,
   fallbackResource,
+  paintTint,
   label,
   inputs,
   outputs,
 }: {
   machineIcon?: MachineHandlerIcon;
   fallbackResource?: ResourceAmount;
+  /** The card's paint, when painted — it beats the icon's own colour. */
+  paintTint?: string;
   label: string;
   inputs: RailPort[];
   outputs: RailPort[];
 }) {
+  // The LED tile behind the big icon: paint first, then the icon's dominant
+  // sprite colour, then neutral steel — deep-dimmed by glanceTileStyle so
+  // the icon stays the bright thing.
+  const tileTint =
+    paintTint ??
+    machineIcon?.dominantColor ??
+    machineIcon?.iconAtlas?.dominantColor ??
+    fallbackResource?.dominantColor ??
+    fallbackResource?.iconAtlas?.dominantColor ??
+    "#8a93a6";
   return (
     <div
       data-node-detail="glance"
       aria-hidden
       className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center"
+      style={glanceTileStyle(tileTint)}
     >
       {machineIcon ? (
         <ResourceIcon

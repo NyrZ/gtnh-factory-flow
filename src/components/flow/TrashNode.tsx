@@ -173,7 +173,7 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
           boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.45)",
         }}
       >
-        <NodeGlanceIcon>
+        <NodeGlanceIcon tileTint={tint}>
           {/* Same reasoning as the drawer: bigger than the w-[116px] card, so
               the can reads at a glance. The art is a viewBox SVG, so it scales
               cleanly at any size. */}

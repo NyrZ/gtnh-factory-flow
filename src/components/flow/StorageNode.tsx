@@ -206,7 +206,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           background: `color-mix(in srgb, ${tint} 24%, #101318)`,
         }}
       >
-        <NodeGlanceIcon>
+        <NodeGlanceIcon tileTint={tint}>
           {/* Deliberately bigger than the card it sits on (w-[140px]).
               Zoomed out, WHAT is in the drawer is the only thing worth
               reading, and a sprite confined inside the frame is a few pixels

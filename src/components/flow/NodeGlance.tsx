@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 /**
  * What a node shows once it is too small to read.
@@ -74,12 +74,24 @@ export function NodeGlanceText({
   );
 }
 
-export function NodeGlanceIcon({ children }: { children: ReactNode }) {
+/**
+ * The LED tile: zoomed out, the card face behind the big icon takes the
+ * icon's own colour, deep-dimmed — the item stays the bright thing and the
+ * tile reads as its shadow. Delivered as a CSS variable rather than an
+ * inline background so the hop map's hover paint (globals.css, higher
+ * specificity) can still flood the layer in status mode.
+ */
+export function glanceTileStyle(tint: string): CSSProperties {
+  return { "--glance-bg": `color-mix(in srgb, ${tint} 26%, #07090c)` } as CSSProperties;
+}
+
+export function NodeGlanceIcon({ children, tileTint }: { children: ReactNode; tileTint?: string }) {
   return (
     <div
       data-node-detail="glance"
       aria-hidden
       className="pointer-events-none absolute inset-0 z-10 hidden items-center justify-center p-1"
+      style={tileTint ? glanceTileStyle(tileTint) : undefined}
     >
       {/* Just centres. Sizing is the caller's job: a sprite is a
           background-image on a fixed-size span rather than an <img>, so it

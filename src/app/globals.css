@@ -227,6 +227,11 @@ textarea {
 
 .factory-flow-board[data-detail-level="glance"] [data-node-detail="glance"] {
   display: flex;
+  /* The LED tile (see NodeGlance.tsx): cards that publish --glance-bg get a
+     deep-dimmed wash of their icon's colour behind the big icon. The hop
+     map's rule below carries more specificity, so its hover flood still
+     wins in status mode. */
+  background-color: var(--glance-bg, transparent);
 }
 
 /* The identity glance's hover reveal: name, count and I/O rates in a panel
