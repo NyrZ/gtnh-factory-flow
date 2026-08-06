@@ -735,7 +735,9 @@ img {
    (who asks, gets/asks, ×N, the fix) lives in its hover. */
 /* 34px, and the output rail is exactly chip + 2px gap + this — a coupling
    wider than the rail hangs off the card's right edge. Keep the two in step:
-   PORT_CHIP_WIDTH_CLASS (132) + 2 + 34 = the rail's w-[168px]. */
+   PORT_CHIP_WIDTH_CLASS (140) + 2 + 34 = the rail's w-[176px], which with the
+   input rail (140), the divider (16) and two 4px gaps fills the card's 340px
+   inner width exactly. See src/lib/board-grid.ts. */
 .flow-plug {
   position: relative;
   z-index: 5;

@@ -109,6 +109,18 @@ gh run watch <run-id> --exit-status
 - When selected handler changes through the machine dropdown/multi-arrow UI, carry handler-specific tier/config behavior with it.
 - Images/icons in recipe nodes should use dataset resources/atlas paths. If they exist in prod but not dev, suspect deployment/static asset path/build mismatch before changing recipe logic.
 
+## The Board Grid
+
+- `src/lib/board-grid.ts` owns `BOARD_GRID = 20` and every card size derived
+  from it. Read the "board grid" section of `ARCHITECTURE.md` before changing
+  any size, offset, or padding on the flow board.
+- The grid is always on. There is no snap toggle and no grid button; do not
+  reintroduce one.
+- Node positions, node sizes, and port row centres must all be multiples of
+  `BOARD_GRID`. Verify with a Playwright measurement, not by eye.
+- Blocks whose height depends on content use `GridBlock` in `RecipeNode.tsx`:
+  round up to the next cell, never compress to fit.
+
 ## Routing Links
 
 - Link routing must be deterministic for the same graph state, independent of zoom level.

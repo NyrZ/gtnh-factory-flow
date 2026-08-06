@@ -1,7 +1,15 @@
 "use client";
 
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { memo, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  memo,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { AlertTriangle, ChevronDown, Copy, Minus, Plus, Sprout } from "lucide-react";
 import type {
   FactoryNode,
@@ -54,6 +62,7 @@ import {
   type CustomRateMode,
 } from "@/lib/model/custom-rate";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
+import { BOARD_GRID, CONFIG_PANEL_ROW_HEIGHT, RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { CropPickerMenu } from "./CropPickerMenu";
 import { MachineCompareTable, MachineTabStrip } from "./MachinePicker";
 import { NodeGlanceText } from "./NodeGlance";
@@ -438,7 +447,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // recipe-node-shell scopes the strip↔row hover link (globals.css):
         // hovering the verdict lights the input it blames, in pure CSS, so a
         // hover never re-renders a node.
-        "recipe-node-shell group relative w-max border-2 border-[var(--mc-96)] bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]",
+        // The 2px frame is an INSET shadow, not a border. A real border sits
+        // outside the content box and would push every row 2px off the grid;
+        // painted inside, the card's box and its content box are the same
+        // rectangle, so a head of 40 and rows of 40 land exactly on cell
+        // lines. The bevel is drawn at 4px and the frame covers its outer
+        // half, which reproduces the old 2px-inside-2px look exactly.
+        "recipe-node-shell group relative bg-[var(--mc-78)] font-mono text-[var(--mc-ink)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]",
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
         isCompareOpen ? "recipe-node-popup-open" : "",
@@ -448,17 +463,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           ? "outline outline-4 outline-offset-4 outline-yellow-300 ring-8 ring-cyan-300 [filter:drop-shadow(0_0_16px_rgba(34,211,238,0.95))]"
           : "",
         exceedsMaxTier ? "ring-4 ring-red-500" : "",
-        // No special floor for custom-rate nodes any more: the title is a
-        // fixed two words and the rate field sizes to the number typed into
-        // it, so the card is exactly as wide as its contents need.
-        "min-w-[240px]",
       ].join(" ")}
       style={{
+        // Every recipe card is the same 18 cells wide. Width used to be
+        // content-driven (`w-max`), which put the card's right edge — and so
+        // every output coupling — at an arbitrary sub-cell offset.
+        width: RECIPE_NODE_WIDTH,
         ...(nodeColor
           ? ({
               backgroundColor: nodeColor.panel,
-              borderColor: nodeColor.border,
-              boxShadow: `inset 2px 2px 0 var(--mc-100), inset -2px -2px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
+              boxShadow: `inset 0 0 0 2px ${nodeColor.border}, inset 4px 4px 0 var(--mc-100), inset -4px -4px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
               // The paint decides the ink. Everything inside the card reads
               // its text colour from these two variables, so one assignment
               // here keeps names, rates and stats legible on black and on
@@ -488,7 +502,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           <span>{recipePowerTier} Required</span>
         </div>
       ) : null}
-      <div className="px-2 pb-2 pt-1">
+      {/* No vertical padding: the head, the rails, the panels and the footer
+          each own a whole number of cells, and any padding here would push
+          all of them off the grid. Horizontal padding is 8, which is what
+          makes the rails add up to RECIPE_RAIL_AREA_WIDTH. */}
+      <div className="px-2">
         {/* width:0 + min-width:100% — the picker header adapts to whatever
             width the recipe card sets and can never widen the node itself,
             no matter how long a machine name or tab strip gets. */}
@@ -507,7 +525,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         ) : null}
         <div
           className={[
-            "mb-1 grid min-w-0 items-center gap-1",
+            // One head row, exactly two cells tall. The title bar inside it
+            // stays 24px and centres in the row — the extra space is the
+            // margin that puts the first port centre on a grid line.
+            "grid h-[40px] min-w-0 items-center gap-1",
             tierControl
               ? "grid-cols-[24px_24px_minmax(0,1fr)_50px]"
               : "grid-cols-[24px_24px_minmax(0,1fr)]",
@@ -668,7 +689,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 event.stopPropagation();
                 setCropMenuOpen(true);
               }}
-              className="nodrag mx-auto my-2 flex h-[72px] w-[240px] items-center justify-center gap-2 border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[14px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+              className="nodrag mx-auto my-0 flex h-[80px] w-[240px] items-center justify-center gap-2 border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[14px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
             >
               <Sprout className="h-5 w-5" /> Pick a crop
             </button>
@@ -725,24 +746,29 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             to the right. Never a third line — a taller footer on every node
             costs more board than the sentence was worth. */}
         {!isCropFarmPlaceholder && !isCustomRatePlaceholder ? (
-          <div
+          <GridBlock
             className={[
               // A hairline over the dials: the machine is one thing, the knobs
               // under it are another. No extra padding — tight everywhere.
-              "mt-1 grid min-w-0 items-stretch gap-1 border-t border-[var(--mc-56)] pt-1 text-[14px] leading-5 text-[var(--mc-ink)]",
-              // Every cell sizes to its content except MACHINES, which takes
-              // the slack: a four-digit machine count is the one number here
-              // that legitimately gets wide. Power and Parallel stretched to
-              // fill and then truncated their own labels ("Parall…").
-              isCustomRateNode
-                ? "grid-cols-[auto]"
-                : machineParallelMultiplier > 1
-                  ? "grid-cols-[auto_auto_auto_minmax(84px,1fr)]"
-                  : "grid-cols-[auto_auto_minmax(84px,1fr)]",
-              isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
+              "min-w-0 border-t border-[var(--mc-56)] text-[14px] leading-5 text-[var(--mc-ink)]",
               nodeColor ? "recipe-node-stat-grid" : "",
             ].join(" ")}
             style={nodeColor ? { backgroundColor: nodeColor.panel } : undefined}
+          >
+          <div
+            className={[
+              "grid min-w-0 items-center gap-1",
+              // Every cell sizes to its content except MACHINES, which takes
+              // the slack: a four-digit machine count is the one number here
+              // that legitimately gets wide. Parallel stretched to fill and
+              // then truncated its own label ("Parall…").
+              isCustomRateNode
+                ? "grid-cols-[auto]"
+                : machineParallelMultiplier > 1
+                  ? "grid-cols-[auto_auto_minmax(84px,1fr)]"
+                  : "grid-cols-[auto_minmax(84px,1fr)]",
+              isCropProductionNode ? CROP_CONFIG_PANEL_WIDTH_CLASS : "",
+            ].join(" ")}
           >
             <UsageStat
               nodeId={projectNode.id}
@@ -751,12 +777,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             />
             {!isCustomRateNode ? (
               <>
-                <Stat
-                  label="Power"
-                  value={
-                    isCropProductionNode ? "Passive" : `${formatCompact(result?.euT ?? 0)} EU/t`
-                  }
-                />
                 {machineParallelMultiplier > 1 ? (
                   <Stat
                     label="Parallel"
@@ -771,6 +791,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               </>
             ) : null}
           </div>
+          </GridBlock>
         ) : null}
       </div>
     </div>
@@ -1080,8 +1101,67 @@ function verdictHoverFix(
   return undefined;
 }
 
+/**
+ * A block that is always a whole number of grid cells tall, and always tall
+ * enough for what is inside it.
+ *
+ * The rails and the head are deterministic — a port row is 40px because we say
+ * so — but the footer and the config panels hold text and controls whose height
+ * depends on the recipe, the machine and the browser's font metrics. Pinning
+ * those to a fixed height is what made stats hang out of the bottom of the
+ * card. So they measure instead, and round UP: never compress to fit the grid,
+ * take another cell.
+ *
+ * The observer fires when the content's own height changes — a different
+ * recipe, a wider number — not on drags, hovers or frames, so it costs nothing
+ * in the cases the board's performance is judged on.
+ */
+function GridBlock({
+  children,
+  className,
+  minCells = 2,
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  /** Floor, in cells. Two is the standard block. */
+  minCells?: number;
+  style?: CSSProperties;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [cellCount, setCellCount] = useState(minCells);
+
+  useLayoutEffect(() => {
+    const element = contentRef.current;
+    if (!element) {
+      return;
+    }
+    const measure = () => {
+      const needed = Math.ceil(element.scrollHeight / BOARD_GRID - 0.001);
+      const next = Math.max(minCells, needed);
+      setCellCount((current) => (current === next ? current : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [minCells]);
+
+  return (
+    <div className={className} style={{ ...style, height: cellCount * BOARD_GRID }}>
+      {/* The measured div must be free to size to its content, or its own
+          scrollHeight would just report the height we gave it and the block
+          could never shrink again. The centring wrapper takes the fixed
+          height; the child stays auto. */}
+      <div className="flex h-full flex-col justify-center">
+        <div ref={contentRef}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 /** Input chip width, shared by the input rail and the output rail's chip. */
-const PORT_CHIP_WIDTH_CLASS = "w-[132px]";
+const PORT_CHIP_WIDTH_CLASS = "w-[140px]";
 
 /**
  * One side of the port rails. Every port always renders - a hidden port is a
@@ -1108,13 +1188,15 @@ function PortRail({
   return (
     <div
       className={[
-        "flex shrink-0 flex-col justify-start gap-0.5 py-0",
+        // No gap between rows: the row IS the grid unit (40px = two cells),
+        // and a gap would put every row after the first off the grid.
+        "flex shrink-0 flex-col justify-start gap-0 py-0",
         // Half the old rails. The rate text under each name was the thing that
         // demanded 210px of chip; with it gone the name is the only wide thing
         // left, and a truncated name plus a hover beats a board you can't fit.
-        // The output rail is chip (132) + 2px gap + the coupling (34, in
+        // The output rail is chip (140) + 2px gap + the coupling (34, in
         // globals.css) — anything wider and the couplings hang off the card.
-        isInput ? PORT_CHIP_WIDTH_CLASS : "w-[168px]",
+        isInput ? PORT_CHIP_WIDTH_CLASS : "w-[176px]",
       ].join(" ")}
     >
       {ports.map((port) =>
@@ -1376,10 +1458,16 @@ function PortChip({
   return (
     <div
       className={[
-        // 38px: name + rate + bar, and nothing more. Still well under the old
-        // 52px row — the height came back for the rate line, not for padding.
-        "flow-port relative flex min-h-[38px] items-center gap-1 px-0.5 py-0",
-        plugRow ? `${PORT_CHIP_WIDTH_CLASS} flex-none` : "flex-1",
+        // 40px — two grid cells, fixed. The row is the board's vertical unit:
+        // rails have no gaps and the head above them is a whole number of
+        // 40s, so every port centre lands exactly on a grid line. Name, rate
+        // and bar total 32px and centre inside it.
+        "flow-port relative flex h-[40px] items-center gap-1 px-0.5 py-0",
+        // flex-none both ways. An input chip used to be `flex-1`, and in a
+        // column flex container that resolves the row's main size from its
+        // content — quietly beating the 40px height and leaving the rail 4px
+        // short per row, which is exactly how ports drift off the grid.
+        plugRow ? `${PORT_CHIP_WIDTH_CLASS} flex-none` : "w-full flex-none",
         toneClass,
         isFlowScopeLit ? "flow-port--flow-lit" : "",
       ].join(" ")}
@@ -1523,12 +1611,13 @@ function PortChip({
 // whatever resource the far end carries (the machine side decides direction).
 function CustomRateUniversalPorts({ nodeId }: { nodeId: string }) {
   return (
-    <div className="my-2 flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-3">
+    // Six cells: one row of ports over the explanation.
+    <div className="flex h-[120px] flex-col gap-0">
+      <div className="flex h-[40px] items-center justify-between gap-3">
         <UniversalPortChip nodeId={nodeId} side="input" label="Drain any" />
         <UniversalPortChip nodeId={nodeId} side="output" label="Supply any" />
       </div>
-      <p className="mx-auto max-w-[300px] text-center text-[11px] leading-tight text-[var(--mc-ink-muted)]">
+      <p className="mx-auto flex max-w-[300px] flex-1 items-center text-center text-[11px] leading-tight text-[var(--mc-ink-muted)]">
         Wire either port to any machine — this node adopts that resource. Right side
         supplies it at a dialed rate, left side constantly drains it.
       </p>
@@ -1549,7 +1638,7 @@ function UniversalPortChip({
   const handleId = makeResourceHandleId(side, { kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID });
   return (
     <div
-      className="relative flex h-[44px] w-[148px] items-center justify-center border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[11px] font-bold uppercase tracking-wide text-[var(--mc-ink-muted)]"
+      className="relative flex h-[40px] w-[160px] items-center justify-center border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[11px] font-bold uppercase tracking-wide text-[var(--mc-ink-muted)]"
       data-resource-edge-anchor="true"
       data-resource-node-id={nodeId}
       data-resource-handle-id={handleId}
@@ -1618,7 +1707,9 @@ function CustomRatePanel({
     ].join(" ");
 
   return (
-    <div className="mt-1 flex items-center gap-1 border border-[var(--mc-47)] bg-[var(--mc-71)] p-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    // Two cells tall, or more if the dial needs them.
+    <GridBlock className="nodrag border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <div className="flex items-center gap-1">
       <div className="flex border-2 border-[var(--mc-33)]">
         <button
           type="button"
@@ -1675,6 +1766,7 @@ function CustomRatePanel({
         {rateUnitSuffix(kind === "fluid").trim() || "/s"}
       </span>
     </div>
+    </GridBlock>
   );
 }
 
@@ -2250,9 +2342,16 @@ function MachineConfigControlPanel({
     return null;
   }
 
+  // Two controls per row (2 × 168 + 4 gap = the card's 340px inner width),
+  // three cells per row — and GridBlock adds a cell if a label wraps rather
+  // than letting the controls spill out of the panel.
+  const rows = Math.ceil(controls.length / 2);
   return (
-    <div className="nodrag mt-1 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(172px,1fr))] gap-1">
+    <GridBlock
+      className="nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
+    >
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(168px,1fr))] items-center gap-x-1 gap-y-1">
         {controls.map((control) => (
           <label key={control.id} className="min-w-0">
             <span className="mb-0.5 block text-[12px] font-bold uppercase leading-[14px] text-[var(--mc-ink-muted)]">
@@ -2295,7 +2394,7 @@ function MachineConfigControlPanel({
           </label>
         ))}
       </div>
-    </div>
+    </GridBlock>
   );
 }
 
@@ -2316,14 +2415,17 @@ function PassiveProductionConfigPanel({
     return null;
   }
 
+  // Same deal as MachineConfigControlPanel: two per row, three cells a row.
+  const rows = Math.ceil(controls.length / 2);
   return (
-    <div
+    <GridBlock
       className={[
-        "nodrag mt-1 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
+        "nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
         className,
       ].join(" ")}
+      minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1 gap-y-1">
         {controls.map((control) => (
           <MinecraftTooltip key={control.id} content={getControlHelp?.(control.id)}>
           <label className="min-w-0">
@@ -2342,7 +2444,7 @@ function PassiveProductionConfigPanel({
           </MinecraftTooltip>
         ))}
       </div>
-    </div>
+    </GridBlock>
   );
 }
 

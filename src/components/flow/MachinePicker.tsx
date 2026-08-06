@@ -264,16 +264,27 @@ export function MachineTabStrip({
       // Browser tabs, not a toolbar: each machine carries its own tab and
       // nothing else does. The strip used to be one band across the node, so
       // two machines left a wide grey nothing on the right.
-      className="flex flex-wrap items-end gap-[3px] border-b-2 border-[var(--mc-15)] px-1"
+      // Every tab sits in its own 40px-tall slot and the baseline is painted
+      // rather than bordered, so the strip is always a whole number of head
+      // rows tall — one, two, however many the tabs wrap onto. That is what
+      // lets the port rows below it stay on the board grid no matter how many
+      // machines a recipe offers.
+      className="relative flex flex-wrap content-start items-end gap-x-[3px] px-1"
       onMouseLeave={() => onHover(undefined)}
     >
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[2px] bg-[var(--mc-15)]"
+      />
       {handlers.map((handler) => {
         const active = handler.id === selectedId;
         const peeked = handler.id === previewId && !active;
         const icon = iconsById.get(handler.id);
         return (
+          // The 40px slot is the grid unit; the tab inside it is free to be
+          // whatever height reads best.
+          <span key={handler.id} className="flex h-[40px] items-end">
           <button
-            key={handler.id}
             type="button"
             // Preview is pointer-only (focus used to flash it around clicks)
             // and only the strip's own mouseleave clears it — clearing per
@@ -295,9 +306,11 @@ export function MachineTabStrip({
               // what makes it read as a tab rather than a pressed button.
               "nodrag flex items-center justify-center border-2 border-b-0 hover:brightness-110",
               active
-                ? "relative z-10 -mb-0.5 h-[42px] w-[46px] border-[var(--mc-15)] bg-[var(--mc-78)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+                ? "relative z-10 h-[40px] w-[46px] border-[var(--mc-15)] bg-[var(--mc-78)] shadow-[inset_2px_2px_0_var(--mc-100)]"
                 : [
-                    "h-[32px] w-[40px] border-[var(--mc-33)] bg-[var(--mc-56)] shadow-[inset_1px_1px_0_var(--mc-71),inset_-1px_-1px_0_var(--mc-25)]",
+                    // Stops 2px short of the baseline so the painted line
+                    // runs unbroken past it; only the selected tab covers it.
+                    "mb-[2px] h-[30px] w-[40px] border-[var(--mc-33)] bg-[var(--mc-56)] shadow-[inset_1px_1px_0_var(--mc-71),inset_-1px_-1px_0_var(--mc-25)]",
                     peeked ? "brightness-125" : "opacity-90",
                   ].join(" "),
             ].join(" ")}
@@ -318,8 +331,10 @@ export function MachineTabStrip({
               </span>
             )}
           </button>
+          </span>
         );
       })}
+      <span className="flex h-[40px] items-end">
       <button
         type="button"
         onClick={(event) => {
@@ -331,7 +346,7 @@ export function MachineTabStrip({
         title="Compare all machines"
         aria-label="Compare all machines"
         className={[
-          "nodrag flex h-[36px] w-[36px] items-center justify-center self-end border-2 border-b-0 text-[18px] font-bold leading-none hover:brightness-110",
+          "nodrag mb-[2px] flex h-[34px] w-[36px] items-center justify-center border-2 border-b-0 text-[18px] font-bold leading-none hover:brightness-110",
           isCompareOpen
             ? "border-[var(--mc-15)] bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
             : "border-[var(--mc-33)] bg-[var(--mc-61)] text-white shadow-[inset_2px_2px_0_var(--mc-85)] [text-shadow:1px_1px_0_var(--mc-24)]",
@@ -339,6 +354,7 @@ export function MachineTabStrip({
       >
         ⋯
       </button>
+      </span>
     </div>
   );
 }

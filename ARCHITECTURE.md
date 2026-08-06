@@ -138,6 +138,35 @@ nodes. Everything below was validated with profiled stress tests (120 nodes /
    also gated on the glance detail step, settles before it paints, and is
    dropped on pan/zoom, because culled nodes cannot be painted.
 
+### The board grid
+
+`src/lib/board-grid.ts` owns one number, `BOARD_GRID = 20`, and every size on
+the canvas is derived from it. This is an invariant, not a preference — there
+is no snap toggle any more.
+
+1. **Positions are cell corners.** React Flow snaps drags; the store snaps
+   every programmatic placement (creation, clone, wire-drop); and
+   `normalizeLoadedProject` snaps whole plans on the way in, so old designs
+   land on the grid the first time they are opened.
+2. **Card sizes are whole cells.** Recipe cards are a fixed 360 wide. Drawers
+   and tanks are 140×160, trash cans 120×140.
+3. **Port rows are the vertical unit.** A port row is 40px (two cells) with no
+   gaps between rows, and the head above the rails is a whole number of 40s
+   (one title row, plus one per wrapped row of the machine tab strip). Port
+   centres therefore land on grid lines at `head + 20 + 40i`, which is what
+   makes slot endpoints grid-aligned.
+4. **The recipe card's frame is an inset shadow, not a border.** A real border
+   sits outside the content box and would push every row 2px off the grid.
+5. **Content-driven blocks grow, never compress.** The footer and the config
+   panels hold text whose height depends on the recipe, so they use
+   `GridBlock`: a ResizeObserver rounds them UP to the next whole cell. It
+   fires on content change only — never per frame — but do not reach for it
+   where the height is already deterministic.
+
+Anything that sets a width, height, or offset on the board should be a
+multiple of `BOARD_GRID` or built from the tokens in `board-grid.ts`. Edge
+routing does not yet run on the grid; that is the next step.
+
 ### Rules of thumb for new board code
 
 - Never call `querySelectorAll`/`getBoundingClientRect` per edge, per node, or
