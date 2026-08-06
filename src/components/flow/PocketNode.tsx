@@ -245,7 +245,7 @@ function PocketPortChip({
 
   return (
     <div
-      className="relative flex h-[40px] w-full flex-none items-center gap-1 px-0.5 py-0"
+      className="pocket-port relative flex h-[40px] w-full flex-none items-center gap-1 px-0.5 py-0"
       data-resource-edge-anchor="true"
       data-resource-node-id={nodeId}
       data-resource-handle-id={handleId}

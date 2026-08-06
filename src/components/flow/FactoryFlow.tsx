@@ -249,6 +249,8 @@ const DEFAULT_FLUID_EDGE_COLOR = "#2f89c5";
 // colour rather than a CSS variable, so these mirror --canvas / --canvas-dot.
 const CANVAS_COLOR = "#1b1d21";
 const CANVAS_DOT_COLOR = "#4a4d55";
+// Inside a pocket dimension the dots go faintly violet with the room.
+const POCKET_CANVAS_DOT_COLOR = "#5b4c7a";
 
 /**
  * Snap step, and the background gap — same number so nodes land on marks.
@@ -3299,6 +3301,9 @@ export function FactoryFlow() {
         isDeleteMode ? "factory-flow-board--deleting" : "",
         lineThicknessMode ? "factory-flow-board--edges-under" : "",
         calmMode ? "factory-flow-board--calm" : "",
+        // Inside a pocket dimension the room itself says where you are:
+        // purple canvas, purple dots, purple window frame (globals.css).
+        activePocketId ? "factory-flow-board--pocket-view" : "",
       ].join(" ")}
       style={
         {
@@ -3380,7 +3385,7 @@ export function FactoryFlow() {
             // Lines tile edge to edge, so they need to be thinner than a dot
             // to read as a background instead of as graph paper.
             size={boardView.canvasPattern === "lines" ? 1 : 2}
-            color={CANVAS_DOT_COLOR}
+            color={activePocketId ? POCKET_CANVAS_DOT_COLOR : CANVAS_DOT_COLOR}
           />
         )}
         <Controls position="bottom-left" />

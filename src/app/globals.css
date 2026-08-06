@@ -651,6 +651,35 @@ img {
     inset -1px -1px 0 var(--mc-47);
 }
 
+/* A pocket card's port chip: the machine chip's raised tile, in purple. */
+.pocket-port {
+  background: #463659;
+  border: 2px solid #241b33;
+  box-shadow:
+    inset 1px 1px 0 #6b549b,
+    inset -1px -1px 0 #2b2140;
+}
+
+/* Inside a pocket dimension the room itself says where you are: the canvas
+   takes a violet cast and the workspace window wears a purple frame. The
+   frame is an overlay (not a border) so the canvas keeps its exact size,
+   and it sits under the z-30 toolbars but over the board's own layers. */
+.factory-flow-board--pocket-view {
+  background-color: #261d38;
+}
+
+.factory-flow-board--pocket-view::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 3px #8d6fd1,
+    inset 0 0 0 5px #241b33,
+    inset 0 0 52px rgba(141, 111, 209, 0.3);
+}
+
 .flow-port--bind {
   background: var(--port-bind-bg);
   border-color: var(--port-bind-edge);
@@ -1002,3 +1031,4 @@ img {
 .factory-flow-board--calm .board-edit-chrome {
   display: none;
 }
+
