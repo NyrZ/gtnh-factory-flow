@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
-import { getCommunityDb, isCommunityConfigured } from "@/lib/server/community";
+import {
+  getCommunityDb,
+  getSessionUser,
+  isAdminRequest,
+  isCommunityConfigured,
+} from "@/lib/server/community";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Returns the full plan JSON and counts the download. */
-export async function POST(_request: Request, { params }: { params: Promise<{ planId: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ planId: string }> }) {
   if (!isCommunityConfigured()) {
     return NextResponse.json({ error: "Community hub is not configured." }, { status: 503 });
   }
@@ -16,12 +21,20 @@ export async function POST(_request: Request, { params }: { params: Promise<{ pl
 
     const { data, error } = await db
       .from("community_plans")
-      .select("plan,downloads,name")
+      .select("plan,downloads,name,is_public,user_id")
       .eq("id", planId)
       .single();
 
     if (error || !data) {
       return NextResponse.json({ error: "Plan not found." }, { status: 404 });
+    }
+
+    // Unpublished posts download only for their owner (and the site admin).
+    if (data.is_public === false && !isAdminRequest(request)) {
+      const sessionUser = await getSessionUser(request);
+      if (data.user_id !== sessionUser?.id && !sessionUser?.is_admin) {
+        return NextResponse.json({ error: "Plan not found." }, { status: 404 });
+      }
     }
 
     await db

@@ -87,6 +87,10 @@ export async function GET(request: Request) {
         return NextResponse.json({ plans: [], total: 0, page: 1, pageSize, gameVersions: [] });
       }
       query = query.eq("user_id", sessionUser.id);
+    } else {
+      // The public shelf: unpublished posts exist only on their owner's
+      // Mine shelf.
+      query = query.eq("is_public", true);
     }
 
     const { column, ascending } = SORT_COLUMNS[sort];

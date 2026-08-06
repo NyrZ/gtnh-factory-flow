@@ -22,8 +22,8 @@ import {
   deleteCommunityPlan,
   downloadCommunityPlan,
   listCommunityPlans,
+  patchCommunityPlan,
   tagPlanWithCommunityId,
-  updateCommunityPlanTags,
   voteCommunityPlan,
 } from "@/lib/community/client";
 import type { CommunityPlanSort, CommunityPlanSummary } from "@/lib/community/types";
@@ -144,6 +144,12 @@ export function SetupsPanel() {
   const needsAccount = scope === "mine" && !username;
   const isLoading = !needsAccount && (!isCurrent || shelf.page !== activePage);
   const hasMore = isCurrent && shelf.plans.length < shelf.total;
+  // The tag dropdown offers whatever the loaded rows wear (plus the active
+  // tag itself, so a hand-typed #tag still shows as selected).
+  const activeTag = search.startsWith("#") ? search.slice(1).trim() : "";
+  const tagOptions = [
+    ...new Set([...plans.flatMap((plan) => plan.tags ?? []), ...(activeTag ? [activeTag] : [])]),
+  ].sort();
 
   const patchPlan = (
     planId: string,
@@ -242,10 +248,36 @@ export function SetupsPanel() {
 
   const saveTags = async (plan: CommunityPlanSummary, tags: string[]) => {
     try {
-      await updateCommunityPlanTags(plan.id, tags);
+      await patchCommunityPlan(plan.id, { tags });
       patchPlan(plan.id, (entry) => ({ ...entry, tags }));
     } catch (tagError) {
       setError(tagError instanceof Error ? tagError.message : "Saving tags failed.");
+    }
+  };
+
+  // The globe on an owned row: same gesture as blueprints. Private posts
+  // keep their votes and downloads; they just leave the public shelf.
+  const setVisibility = async (plan: CommunityPlanSummary) => {
+    const next = !plan.isPublic;
+    try {
+      await patchCommunityPlan(plan.id, { isPublic: next });
+      if (scope === "network" && !next) {
+        setShelf((current) =>
+          current
+            ? {
+                ...current,
+                total: Math.max(0, current.total - 1),
+                plans: current.plans.filter((entry) => entry.id !== plan.id),
+              }
+            : current,
+        );
+      } else {
+        patchPlan(plan.id, (entry) => ({ ...entry, isPublic: next }));
+      }
+    } catch (publishError) {
+      setError(
+        publishError instanceof Error ? publishError.message : "Changing visibility failed.",
+      );
     }
   };
 
@@ -275,20 +307,9 @@ export function SetupsPanel() {
   return (
     <>
       <div className="mx-2 mt-2 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
+        {/* Mine | Public, the same words in the same order as the blueprint
+            shelf. The panel still OPENS on Public: browsing is the point. */}
         <div className="grid grid-cols-2 gap-1">
-          <button
-            type="button"
-            onClick={() => setScope("network")}
-            className={[
-              "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
-              scope === "network"
-                ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
-                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-            ].join(" ")}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            Network
-          </button>
           <button
             type="button"
             onClick={() => setScope("mine")}
@@ -301,6 +322,19 @@ export function SetupsPanel() {
           >
             <User className="h-3.5 w-3.5" />
             Mine
+          </button>
+          <button
+            type="button"
+            onClick={() => setScope("network")}
+            className={[
+              "flex h-7 items-center justify-center gap-1.5 rounded-[4px] border text-xs font-medium",
+              scope === "network"
+                ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
+            ].join(" ")}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Public
           </button>
         </div>
         <label className="mt-2 flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
@@ -325,7 +359,24 @@ export function SetupsPanel() {
             </button>
           ) : null}
         </label>
+        {/* Tags on the left, sort on the right: the dropdown spares typing
+            #tag into the search, though that still works too. */}
         <div className="mt-2 flex items-center gap-1">
+          <select
+            value={activeTag}
+            onChange={(event) =>
+              setQuery(event.target.value ? `#${event.target.value}` : "")
+            }
+            aria-label="Filter by tag"
+            className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
+          >
+            <option value="">All tags</option>
+            {tagOptions.map((tag) => (
+              <option key={tag} value={tag}>
+                #{tag}
+              </option>
+            ))}
+          </select>
           <select
             value={sort}
             onChange={(event) => setSort(event.target.value as CommunityPlanSort)}
@@ -376,6 +427,7 @@ export function SetupsPanel() {
                   onOpenAsPocket={() => void openAsPocket(plan)}
                   onCopyLink={() => void copyLink(plan)}
                   onDelete={() => void remove(plan)}
+                  onToggleVisibility={() => void setVisibility(plan)}
                   onSaveTags={(tags) => void saveTags(plan, tags)}
                   onTag={(tag) => setQuery(`#${tag}`)}
                 />
@@ -462,7 +514,6 @@ function TierBadge({ tier }: { tier?: CommunityPlanSummary["highestTier"] }) {
         color: color.text,
         textShadow: `1px 1px 0 ${color.shadow}`,
       }}
-      title={`Machines up to ${tier}`}
     >
       {tier}
     </span>
@@ -479,6 +530,7 @@ function SetupRow({
   onOpenAsPocket,
   onCopyLink,
   onDelete,
+  onToggleVisibility,
   onSaveTags,
   onTag,
 }: {
@@ -491,6 +543,7 @@ function SetupRow({
   onOpenAsPocket: () => void;
   onCopyLink: () => void;
   onDelete: () => void;
+  onToggleVisibility: () => void;
   onSaveTags: (tags: string[]) => void;
   onTag: (tag: string) => void;
 }) {
@@ -528,14 +581,20 @@ function SetupRow({
         }
       }}
     >
-      <MinecraftTooltip label={plan.name} content={renderSetupDetails(plan)}>
-        {/* The name owns the row: vote and action hardware run one size
-            smaller than blueprints' so titles stop truncating at 300px. */}
-        <div className="flex items-center gap-1">
+      {/* Tooltips are per-element: every button explains ITSELF on hover
+          (what it is, what pressing it does), and the setup's stat card
+          only opens from the name and the fact strip — never both at once. */}
+      <div className="flex items-center gap-1">
+        <MinecraftTooltip
+          label={
+            plan.myVote === 1
+              ? "Upvoted\nClick to take your vote back"
+              : "Upvote\nLifts this setup up the Top sort"
+          }
+        >
           <button
             type="button"
             onClick={onVote}
-            title={plan.myVote === 1 ? "Upvoted. Click to retract" : "Upvote"}
             aria-label={`Upvote ${plan.name}`}
             className={[
               "flex h-5 shrink-0 items-center gap-0.5 rounded-[4px] border px-1 text-[10px] font-bold tabular-nums",
@@ -547,13 +606,16 @@ function SetupRow({
             <ArrowBigUp className="h-3 w-3" />
             {plan.score}
           </button>
+        </MinecraftTooltip>
+        <MinecraftTooltip label={plan.name} content={renderSetupDetails(plan)}>
           <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
             {plan.name}
           </span>
+        </MinecraftTooltip>
+        <MinecraftTooltip label={"Copy link\nOpens this setup in a friend's planner"}>
           <button
             type="button"
             onClick={onCopyLink}
-            title="Copy a link that opens this setup in a friend's planner"
             aria-label={`Copy a link to ${plan.name}`}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
           >
@@ -563,8 +625,35 @@ function SetupRow({
               <Link2 className="h-3 w-3" />
             )}
           </button>
-          {canManage ? (
-            <>
+        </MinecraftTooltip>
+        {canManage ? (
+          <>
+            <MinecraftTooltip
+              label={
+                plan.isPublic
+                  ? "Public\nOn the shelf for everyone. Click to make it private"
+                  : "Private\nOnly you see it. Click to publish"
+              }
+            >
+              <button
+                type="button"
+                onClick={onToggleVisibility}
+                aria-label={
+                  plan.isPublic ? `Make ${plan.name} private` : `Publish ${plan.name}`
+                }
+                className={[
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
+                  plan.isPublic
+                    ? "border-emerald-600 bg-emerald-500/15 text-emerald-300 hover:border-neutral-500 hover:text-neutral-300"
+                    : "border-neutral-700 bg-[#17191d] text-neutral-500 hover:border-emerald-600 hover:text-emerald-300",
+                ].join(" ")}
+              >
+                <Globe className="h-3 w-3" />
+              </button>
+            </MinecraftTooltip>
+            <MinecraftTooltip
+              label={tagEditor ? "Save tags\nCloses the editor" : "Edit tags\nClosing saves"}
+            >
               <button
                 type="button"
                 onClick={() =>
@@ -572,7 +661,6 @@ function SetupRow({
                     ? closeTagEditor()
                     : setTagEditor({ draft: plan.tags ?? [], input: "" })
                 }
-                title={tagEditor ? "Save tags" : "Edit tags"}
                 aria-label={`Edit tags for ${plan.name}`}
                 className={[
                   "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
@@ -583,22 +671,24 @@ function SetupRow({
               >
                 <Tags className="h-3 w-3" />
               </button>
+            </MinecraftTooltip>
+            <MinecraftTooltip label={"Take it down\nDeletes the post for everyone"}>
               <button
                 type="button"
                 onClick={onDelete}
-                title="Take this post down"
                 aria-label={`Take down ${plan.name}`}
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-red-500 hover:text-red-400"
               >
                 <Trash2 className="h-3 w-3" />
               </button>
-            </>
-          ) : null}
+            </MinecraftTooltip>
+          </>
+        ) : null}
+        <MinecraftTooltip label={"Load as a pocket\nLands on this board as one card"}>
           <button
             type="button"
             disabled={isBusy}
             onClick={onOpenAsPocket}
-            title="Drop onto this board as one pocket card"
             aria-label={`Load setup ${plan.name} as a pocket`}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-[#8d6fd1] enabled:hover:text-[#c9b8ec] disabled:opacity-50"
           >
@@ -608,11 +698,12 @@ function SetupRow({
               <Package className="h-3 w-3" />
             )}
           </button>
+        </MinecraftTooltip>
+        <MinecraftTooltip label={"Open the setup\nBecomes its own design tab"}>
           <button
             type="button"
             disabled={isBusy}
             onClick={onOpen}
-            title="Open as its own design tab"
             aria-label={`Open setup ${plan.name}`}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
           >
@@ -622,32 +713,31 @@ function SetupRow({
               <FolderOpen className="h-3 w-3" />
             )}
           </button>
-        </div>
-        <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] tabular-nums text-neutral-500">
-          <TierBadge tier={plan.highestTier} />
+        </MinecraftTooltip>
+      </div>
+      <div className="mt-0.5 flex items-center gap-2 pl-0.5 text-[10px] tabular-nums text-neutral-500">
+        {plan.highestTier ? (
+          <MinecraftTooltip label={`Machines up to ${plan.highestTier}`}>
+            <TierBadge tier={plan.highestTier} />
+          </MinecraftTooltip>
+        ) : (
+          <TierBadge />
+        )}
+        <MinecraftTooltip content={renderSetupDetails(plan)}>
           {plan.authorName ? (
-            <span className="truncate text-neutral-400" title={`By ${plan.authorName}`}>
-              {plan.authorName}
-            </span>
+            <span className="truncate text-neutral-400">{plan.authorName}</span>
           ) : null}
-          <span className="shrink-0" title={`Shared ${new Date(plan.createdAt).toLocaleString()}`}>
-            {formatRelativeDate(plan.createdAt)}
-          </span>
+          <span className="shrink-0">{formatRelativeDate(plan.createdAt)}</span>
           {plan.machineCount > 0 ? (
-            <span
-              className="flex shrink-0 items-center gap-0.5"
-              title={`${plan.machineCount} machines configured`}
-            >
+            <span className="flex shrink-0 items-center gap-0.5">
               <Cog className="h-3 w-3" /> {plan.machineCount}
             </span>
           ) : null}
-          <span
-            className="ml-auto flex shrink-0 items-center gap-0.5"
-            title={`Opened ${plan.downloads} time${plan.downloads === 1 ? "" : "s"}`}
-          >
+          <span className="ml-auto flex shrink-0 items-center gap-0.5">
             <Download className="h-3 w-3" /> {plan.downloads}
           </span>
-        </div>
+        </MinecraftTooltip>
+      </div>
         {tagEditor ? (
           <div className="mt-1 flex flex-wrap items-center gap-1 rounded-[4px] border border-cyan-700 bg-[#17191d] p-1.5">
             {tagEditor.draft.map((tag) => (
@@ -686,7 +776,6 @@ function SetupRow({
         ) : (
           <TagChips tags={plan.tags ?? []} onTag={onTag} className="pl-0.5" />
         )}
-      </MinecraftTooltip>
     </li>
   );
 }

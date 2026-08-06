@@ -108,15 +108,15 @@ export async function updateCommunityPlan(
   return parseJsonOrThrow<{ id: string }>(response);
 }
 
-/** Relabels a post in place; the plan JSON never leaves the server. */
-export async function updateCommunityPlanTags(
+/** Light in-place edits (tags, publish state); the plan JSON never moves. */
+export async function patchCommunityPlan(
   planId: string,
-  tags: string[],
+  fields: { tags?: string[]; isPublic?: boolean },
 ): Promise<{ id: string }> {
   const response = await fetch(`/api/community/plans/${encodeURIComponent(planId)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tags }),
+    body: JSON.stringify(fields),
   });
   return parseJsonOrThrow<{ id: string }>(response);
 }

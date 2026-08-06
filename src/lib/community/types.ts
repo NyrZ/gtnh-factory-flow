@@ -35,6 +35,8 @@ export interface CommunityPlanSummary extends CommunityPlanStats {
   datasetVersionId: string;
   /** Author-curated tags, normalized lowercase — same rules as blueprints. */
   tags: string[];
+  /** On the network. Private posts live only on the owner's Mine shelf. */
+  isPublic: boolean;
   upvotes: number;
   downvotes: number;
   score: number;

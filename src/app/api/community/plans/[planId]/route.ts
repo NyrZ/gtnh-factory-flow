@@ -46,12 +46,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ plan
       return NextResponse.json({ error: "Plan not found." }, { status: 404 });
     }
 
+    const sessionUser = await getSessionUser(request);
+    // Unpublished posts exist only for their owner (and the site admin).
+    if (
+      data.is_public === false &&
+      data.user_id !== sessionUser?.id &&
+      !sessionUser?.is_admin &&
+      !isAdminRequest(request)
+    ) {
+      return NextResponse.json({ error: "Plan not found." }, { status: 404 });
+    }
+
     await db
       .from("community_plans")
       .update({ views: data.views + 1 })
       .eq("id", planId);
-
-    const sessionUser = await getSessionUser(request);
     const plan = rowToPlanSummary({ ...data, views: data.views + 1 }, sessionUser?.id);
     if (deviceId) {
       await attachMyVotes([plan], makeActorKey(request, deviceId));
@@ -86,6 +95,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
       datasetVersionId?: unknown;
       plan?: unknown;
       tags?: unknown;
+      isPublic?: unknown;
     };
 
     const sessionUser = await getSessionUser(request);
@@ -144,6 +154,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ plan
       const tags = normalizeBlueprintTags(body.tags);
       update.tags = tags;
       update.tags_text = tags.join(" ");
+    }
+
+    if (typeof body.isPublic === "boolean") {
+      update.is_public = body.isPublic;
     }
 
     if (body.plan !== undefined) {

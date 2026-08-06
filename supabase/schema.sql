@@ -58,6 +58,12 @@ create index if not exists community_plans_tier_idx on community_plans (highest_
 -- copy the app maintains so ilike search reaches into tags.
 alter table community_plans add column if not exists tags jsonb not null default '[]'::jsonb;
 alter table community_plans add column if not exists tags_text text not null default '';
+-- Unpublish without deleting: private posts stay on the owner's Mine shelf,
+-- keeping votes and downloads. Defaults true so existing posts stay visible.
+alter table community_plans add column if not exists is_public boolean not null default true;
+
+create index if not exists community_plans_public_idx
+  on community_plans (is_public, created_at desc);
 
 create table if not exists community_votes (
   plan_id uuid not null references community_plans (id) on delete cascade,

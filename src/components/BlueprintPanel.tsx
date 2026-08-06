@@ -353,6 +353,15 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
     blueprintMatchesSearch(blueprint, query),
   );
   const isFiltering = query.trim().length > 0;
+  // Tag dropdown choices: everything the collection wears, plus the active
+  // tag itself so a hand-typed #tag still shows as selected.
+  const activeTag = query.trim().startsWith("#") ? query.trim().slice(1).trim() : "";
+  const tagOptions = [
+    ...new Set([
+      ...blueprints.flatMap((blueprint) => blueprint.tags ?? []),
+      ...(activeTag ? [activeTag] : []),
+    ]),
+  ].sort();
 
   return (
     <>
@@ -378,7 +387,21 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
             </button>
           ) : null}
         </label>
+        {/* Tags left, sort right — the same two dropdowns as everywhere. */}
         <div className="mt-2 flex items-center gap-1">
+          <select
+            value={activeTag}
+            onChange={(event) => setQuery(event.target.value ? `#${event.target.value}` : "")}
+            aria-label="Filter my blueprints by tag"
+            className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
+          >
+            <option value="">All tags</option>
+            {tagOptions.map((tag) => (
+              <option key={tag} value={tag}>
+                #{tag}
+              </option>
+            ))}
+          </select>
           <select
             value={sort}
             onChange={(event) => setSort(event.target.value as BlueprintSort)}
@@ -430,9 +453,9 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                   key={blueprint.id}
                   className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500"
                 >
-                  {/* display:contents wrapper — the I/O reveal opens from
-                      anywhere on the row, not just the name. */}
-                  <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
+                  {/* Tooltips are per-element: every button explains ITSELF,
+                      and the I/O stat card opens from the name and the fact
+                      strip — never both at once. */}
                   <div className="flex items-center gap-1">
                     {renamingId === blueprint.id ? (
                       <input
@@ -452,97 +475,126 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         className="h-6 min-w-0 flex-1 rounded-[4px] border border-cyan-600 bg-[#17191d] px-1.5 text-[13px] text-neutral-100 outline-none"
                       />
                     ) : (
+                      <MinecraftTooltip
+                        content={
+                          <div>
+                            <div className="mb-1 text-[11px] text-slate-400">
+                              Click places it on the board
+                            </div>
+                            {renderBlueprintIo(blueprint)}
+                          </div>
+                        }
+                      >
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void place(blueprint.id)}
+                          aria-label={`Place blueprint ${blueprint.name} on the board`}
+                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                        >
+                          {isBusy ? (
+                            <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
+                          ) : (
+                            <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
+                          )}
+                          <span className="truncate text-[13px] leading-5 text-neutral-100">
+                            {blueprint.name}
+                          </span>
+                        </button>
+                      </MinecraftTooltip>
+                    )}
+                    <MinecraftTooltip
+                      label={
+                        overwriteArmId === blueprint.id
+                          ? "Overwrite armed\nPick a pocket on the board, or click to cancel"
+                          : "Overwrite from the board\nA pocket you pick becomes this blueprint. Votes stay"
+                      }
+                    >
                       <button
                         type="button"
                         disabled={isBusy}
-                        onClick={() => void place(blueprint.id)}
-                        title="Place this blueprint on the board"
-                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                        onClick={() =>
+                          setOverwriteArmId(
+                            overwriteArmId === blueprint.id ? undefined : blueprint.id,
+                          )
+                        }
+                        aria-label={`Overwrite blueprint ${blueprint.name} from the board`}
+                        className={[
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
+                          overwriteArmId === blueprint.id
+                            ? "border-amber-500 bg-amber-500/15 text-amber-300"
+                            : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-amber-600 hover:text-amber-300",
+                        ].join(" ")}
                       >
-                        {isBusy ? (
-                          <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
-                        ) : (
-                          <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
-                        )}
-                        <span className="truncate text-[13px] leading-5 text-neutral-100">
-                          {blueprint.name}
-                        </span>
+                        <Save className="h-3 w-3" />
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() =>
-                        setOverwriteArmId(
-                          overwriteArmId === blueprint.id ? undefined : blueprint.id,
-                        )
-                      }
-                      title="Save a pocket from the board over this blueprint (votes and downloads survive)"
-                      aria-label={`Overwrite blueprint ${blueprint.name} from the board`}
-                      className={[
-                        "shrink-0 rounded-[4px] p-0.5",
-                        overwriteArmId === blueprint.id
-                          ? "text-amber-300"
-                          : "text-neutral-600 hover:text-amber-300",
-                      ].join(" ")}
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => {
-                        setRenamingId(blueprint.id);
-                        setRenameDraft(blueprint.name);
-                      }}
-                      title="Rename this blueprint"
-                      aria-label={`Rename blueprint ${blueprint.name}`}
-                      className="shrink-0 rounded-[4px] p-0.5 text-neutral-600 hover:text-neutral-200"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() =>
+                    </MinecraftTooltip>
+                    <MinecraftTooltip label={"Rename\nEnter saves, Esc backs out"}>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => {
+                          setRenamingId(blueprint.id);
+                          setRenameDraft(blueprint.name);
+                        }}
+                        aria-label={`Rename blueprint ${blueprint.name}`}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    </MinecraftTooltip>
+                    <MinecraftTooltip
+                      label={
                         taggingId === blueprint.id
-                          ? closeTagEditor(blueprint.id)
-                          : openTagEditor(blueprint)
+                          ? "Save tags\nCloses the editor"
+                          : "Edit tags\nClosing saves"
                       }
-                      title="Edit tags (closing saves)"
-                      aria-label={`Edit tags for blueprint ${blueprint.name}`}
-                      className={[
-                        "shrink-0 rounded-[4px] p-0.5",
-                        taggingId === blueprint.id
-                          ? "text-cyan-300"
-                          : "text-neutral-600 hover:text-cyan-300",
-                      ].join(" ")}
                     >
-                      <Tags className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => void publish(blueprint.id, !blueprint.isPublic)}
-                      title={
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() =>
+                          taggingId === blueprint.id
+                            ? closeTagEditor(blueprint.id)
+                            : openTagEditor(blueprint)
+                        }
+                        aria-label={`Edit tags for blueprint ${blueprint.name}`}
+                        className={[
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
+                          taggingId === blueprint.id
+                            ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
+                            : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-cyan-600 hover:text-cyan-300",
+                        ].join(" ")}
+                      >
+                        <Tags className="h-3 w-3" />
+                      </button>
+                    </MinecraftTooltip>
+                    <MinecraftTooltip
+                      label={
                         blueprint.isPublic
-                          ? "Published to the network. Click to unpublish"
-                          : "Publish to the network"
+                          ? "Public\nOn the shelf for everyone. Click to make it private"
+                          : "Private\nOnly you see it. Click to publish"
                       }
-                      aria-label={
-                        blueprint.isPublic
-                          ? `Unpublish blueprint ${blueprint.name}`
-                          : `Publish blueprint ${blueprint.name}`
-                      }
-                      className={[
-                        "shrink-0 rounded-[4px] p-0.5",
-                        blueprint.isPublic
-                          ? "text-emerald-400 hover:text-neutral-400"
-                          : "text-neutral-600 hover:text-emerald-400",
-                      ].join(" ")}
                     >
-                      <Globe className="h-3.5 w-3.5" />
-                    </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void publish(blueprint.id, !blueprint.isPublic)}
+                        aria-label={
+                          blueprint.isPublic
+                            ? `Unpublish blueprint ${blueprint.name}`
+                            : `Publish blueprint ${blueprint.name}`
+                        }
+                        className={[
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
+                          blueprint.isPublic
+                            ? "border-emerald-600 bg-emerald-500/15 text-emerald-300 hover:border-neutral-500 hover:text-neutral-300"
+                            : "border-neutral-700 bg-[#17191d] text-neutral-500 hover:border-emerald-600 hover:text-emerald-300",
+                        ].join(" ")}
+                      >
+                        <Globe className="h-3 w-3" />
+                      </button>
+                    </MinecraftTooltip>
                     {confirming ? (
                       <button
                         type="button"
@@ -555,16 +607,19 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         Delete?
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteId(blueprint.id)}
-                        onBlur={() => setConfirmDeleteId(undefined)}
-                        title="Delete this blueprint (a published copy leaves the network, votes and all)"
-                        aria-label={`Delete blueprint ${blueprint.name}`}
-                        className="shrink-0 rounded-[4px] p-0.5 text-neutral-600 hover:text-red-400"
+                      <MinecraftTooltip
+                        label={"Delete\nA published copy leaves the network too, votes and all"}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(blueprint.id)}
+                          onBlur={() => setConfirmDeleteId(undefined)}
+                          aria-label={`Delete blueprint ${blueprint.name}`}
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-red-500 hover:text-red-400"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </MinecraftTooltip>
                     )}
                   </div>
                   {overwriteArmId === blueprint.id ? (
@@ -664,6 +719,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                   )}
                   {/* Facts as icon pairs, words in the hover — text rows kept
                       truncating to three dots in a 300px column. */}
+                  <MinecraftTooltip content={renderBlueprintIo(blueprint)}>
                   <div className="mt-0.5 flex items-center gap-2.5 pl-5 text-[10px] tabular-nums text-neutral-500">
                     <span title={`Saved ${new Date(blueprint.createdAt).toLocaleString()}`}>
                       {formatRelativeDate(blueprint.createdAt)}
@@ -743,6 +799,16 @@ function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
     }
   };
 
+  // The tag dropdown offers whatever the loaded shelf wears, plus the active
+  // tag itself so a hand-typed #tag still shows as selected.
+  const activeTag = query.trim().startsWith("#") ? query.trim().slice(1).trim() : "";
+  const tagOptions = [
+    ...new Set([
+      ...publicBlueprints.flatMap((blueprint) => blueprint.tags ?? []),
+      ...(activeTag ? [activeTag] : []),
+    ]),
+  ].sort();
+
   return (
     <>
       <ControlsCard>
@@ -767,24 +833,36 @@ function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
             </button>
           ) : null}
         </label>
+        {/* Tags left, sort right — the same two dropdowns as the Setups
+            shelf, so no reaching for #tag in the search unless you want to. */}
         <div className="mt-2 flex items-center gap-1">
-          {(Object.entries(PUBLIC_BLUEPRINT_SORTS) as Array<[PublicBlueprintSort, string]>).map(
-            ([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setPublicSort(value)}
-                className={[
-                  "h-7 min-w-0 flex-1 truncate rounded-[4px] border px-1 text-xs font-medium",
-                  publicSort === value
-                    ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
-                    : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-                ].join(" ")}
-              >
-                {label}
-              </button>
-            ),
-          )}
+          <select
+            value={activeTag}
+            onChange={(event) => setQuery(event.target.value ? `#${event.target.value}` : "")}
+            aria-label="Filter public blueprints by tag"
+            className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
+          >
+            <option value="">All tags</option>
+            {tagOptions.map((tag) => (
+              <option key={tag} value={tag}>
+                #{tag}
+              </option>
+            ))}
+          </select>
+          <select
+            value={publicSort}
+            onChange={(event) => setPublicSort(event.target.value as PublicBlueprintSort)}
+            aria-label="Sort public blueprints"
+            className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
+          >
+            {(Object.entries(PUBLIC_BLUEPRINT_SORTS) as Array<[PublicBlueprintSort, string]>).map(
+              ([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ),
+            )}
+          </select>
         </div>
       </ControlsCard>
 
@@ -860,59 +938,60 @@ function PublicBlueprintRow({
         }
       }}
     >
-      {/* display:contents wrapper — the I/O reveal opens from anywhere on
-          the row, not just the name. */}
-      <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={onUpvote}
-          title={blueprint.myVote === 1 ? "Upvoted. Click to retract" : "Upvote"}
-          aria-label={`Upvote ${blueprint.name}`}
-          className={[
-            "flex shrink-0 items-center gap-0.5 rounded-[4px] border px-1 py-0.5 text-[11px] font-bold tabular-nums",
+      {/* Tooltips are per-element: buttons explain themselves, the I/O stat
+          card opens from the name and the fact strip — never both at once. */}
+      <div className="flex items-center gap-1">
+        <MinecraftTooltip
+          label={
             blueprint.myVote === 1
-              ? "border-emerald-600 bg-emerald-500/15 text-emerald-300"
-              : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-emerald-600 hover:text-emerald-300",
-          ].join(" ")}
+              ? "Upvoted\nClick to take your vote back"
+              : "Upvote\nLifts this blueprint up the Top sort"
+          }
         >
-          <ArrowBigUp className="h-3.5 w-3.5" />
-          {blueprint.upvotes}
-        </button>
-        <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
-          {blueprint.name}
-        </span>
-        <button
-          type="button"
-          disabled={isBusy}
-          onClick={onPlace}
-          title="Download onto your board"
-          aria-label={`Download blueprint ${blueprint.name}`}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
-        >
-          {isBusy ? (
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin text-emerald-300" />
-          ) : (
-            <Download className="h-3.5 w-3.5" />
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={onUpvote}
+            aria-label={`Upvote ${blueprint.name}`}
+            className={[
+              "flex h-5 shrink-0 items-center gap-0.5 rounded-[4px] border px-1 text-[10px] font-bold tabular-nums",
+              blueprint.myVote === 1
+                ? "border-emerald-600 bg-emerald-500/15 text-emerald-300"
+                : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-emerald-600 hover:text-emerald-300",
+            ].join(" ")}
+          >
+            <ArrowBigUp className="h-3 w-3" />
+            {blueprint.upvotes}
+          </button>
+        </MinecraftTooltip>
+        <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
+          <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
+            {blueprint.name}
+          </span>
+        </MinecraftTooltip>
+        <MinecraftTooltip label={"Place on your board\nDouble-clicking the row works too"}>
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={onPlace}
+            aria-label={`Download blueprint ${blueprint.name}`}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
+          >
+            {isBusy ? (
+              <LoaderCircle className="h-3 w-3 animate-spin text-emerald-300" />
+            ) : (
+              <Download className="h-3 w-3" />
+            )}
+          </button>
+        </MinecraftTooltip>
       </div>
       {/* Facts as icon pairs, words in the hover — text rows kept truncating
           to three dots in a 300px column. */}
+      <MinecraftTooltip content={renderBlueprintIo(blueprint)}>
       <div className="mt-0.5 flex items-center gap-2.5 pl-0.5 text-[10px] tabular-nums text-neutral-500">
         {blueprint.authorName ? (
-          <span className="truncate text-neutral-400" title={`By ${blueprint.authorName}`}>
-            {blueprint.authorName}
-          </span>
+          <span className="truncate text-neutral-400">{blueprint.authorName}</span>
         ) : null}
-        <span
-          className="shrink-0"
-          title={
-            blueprint.publishedAt
-              ? `Published ${new Date(blueprint.publishedAt).toLocaleString()}`
-              : ""
-          }
-        >
+        <span className="shrink-0">
           {formatRelativeDate(blueprint.publishedAt ?? blueprint.createdAt)}
         </span>
         <span
@@ -936,8 +1015,8 @@ function PublicBlueprintRow({
           <Download className="h-3 w-3" /> {blueprint.downloads}
         </span>
       </div>
-      <TagChips tags={blueprint.tags ?? []} onTag={onTag} className="pl-0.5" />
       </MinecraftTooltip>
+      <TagChips tags={blueprint.tags ?? []} onTag={onTag} className="pl-0.5" />
     </li>
   );
 }

@@ -161,7 +161,7 @@ export async function checkRateLimit(
 
 /** Columns returned for plan listings (everything except the plan JSON). */
 export const PLAN_SUMMARY_COLUMNS =
-  "id,name,description,game_version,dataset_version,tags,needs,outputs," +
+  "id,name,description,game_version,dataset_version,tags,is_public,needs,outputs," +
   "total_eu_t,machine_count,node_count,storage_count,edge_count,highest_tier," +
   "highest_tier_index,upvotes,downvotes,score,downloads,views,created_at,user_id,author_name";
 
@@ -172,6 +172,7 @@ export interface PlanRow {
   game_version: string;
   dataset_version: string;
   tags: string[] | null;
+  is_public: boolean | null;
   needs: PlanResourceStat[];
   outputs: PlanResourceStat[];
   total_eu_t: number;
@@ -201,6 +202,7 @@ export function rowToPlanSummary(row: PlanRow, sessionUserId?: string): Communit
     gameVersion: row.game_version,
     datasetVersionId: row.dataset_version,
     tags: row.tags ?? [],
+    isPublic: row.is_public ?? true,
     needs: row.needs ?? [],
     outputs: row.outputs ?? [],
     totalEuT: row.total_eu_t,
