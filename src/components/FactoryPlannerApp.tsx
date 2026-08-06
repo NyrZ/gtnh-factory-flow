@@ -203,9 +203,9 @@ export function FactoryPlannerApp() {
   return (
     <div className="flex h-screen min-h-[720px] flex-col bg-canvas text-fg">
       <AppHeader page="editor" />
-      {/* 368/264: the left column carries the blueprint shelves now and needs
-          the room; the inspector reads fine a fifth narrower. */}
-      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[368px_minmax(0,1fr)_264px]">
+      {/* 312/277: the browser column reads fine slimmer, which buys the board
+          room; the inspector gets a touch more so stat rows stop wrapping. */}
+      <main className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[312px_minmax(0,1fr)_277px]">
         {/* Each column carries its own header row, all the same height, so the
             three line up where the full-width bar used to be. */}
         {/* The browser owns its own header row, so no wrapper here — it stays a
