@@ -360,6 +360,9 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                   key={blueprint.id}
                   className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500"
                 >
+                  {/* display:contents wrapper — the I/O reveal opens from
+                      anywhere on the row, not just the name. */}
+                  <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
                   <div className="flex items-center gap-1">
                     {renamingId === blueprint.id ? (
                       <input
@@ -379,27 +382,22 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                         className="h-6 min-w-0 flex-1 rounded-[4px] border border-cyan-600 bg-[#17191d] px-1.5 text-[13px] text-neutral-100 outline-none"
                       />
                     ) : (
-                      <MinecraftTooltip
-                        label={blueprint.name}
-                        content={renderBlueprintIo(blueprint)}
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void place(blueprint.id)}
+                        title="Place this blueprint on the board"
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                       >
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => void place(blueprint.id)}
-                          title="Place this blueprint on the board"
-                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                        >
-                          {isBusy ? (
-                            <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
-                          ) : (
-                            <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
-                          )}
-                          <span className="truncate text-[13px] leading-5 text-neutral-100">
-                            {blueprint.name}
-                          </span>
-                        </button>
-                      </MinecraftTooltip>
+                        {isBusy ? (
+                          <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-300" />
+                        ) : (
+                          <MapPinPlus className="h-3.5 w-3.5 shrink-0 text-neutral-500 group-hover:text-cyan-300" />
+                        )}
+                        <span className="truncate text-[13px] leading-5 text-neutral-100">
+                          {blueprint.name}
+                        </span>
+                      </button>
                     )}
                     <button
                       type="button"
@@ -543,6 +541,7 @@ function MineShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
                       </span>
                     ) : null}
                   </div>
+                  </MinecraftTooltip>
                 </li>
               );
             })}
@@ -696,6 +695,9 @@ function PublicBlueprintRow({
 }) {
   return (
     <li className="group rounded-[4px] border border-neutral-700 bg-[#25272c] px-1.5 py-1 hover:border-neutral-500">
+      {/* display:contents wrapper — the I/O reveal opens from anywhere on
+          the row, not just the name. */}
+      <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
       <div className="flex items-center gap-1.5">
         <button
           type="button"
@@ -712,11 +714,9 @@ function PublicBlueprintRow({
           <ArrowBigUp className="h-3.5 w-3.5" />
           {blueprint.upvotes}
         </button>
-        <MinecraftTooltip label={blueprint.name} content={renderBlueprintIo(blueprint)}>
-          <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
-            {blueprint.name}
-          </span>
-        </MinecraftTooltip>
+        <span className="block min-w-0 flex-1 truncate text-[13px] leading-5 text-neutral-100">
+          {blueprint.name}
+        </span>
         <button
           type="button"
           disabled={isBusy}
@@ -771,6 +771,7 @@ function PublicBlueprintRow({
           <Download className="h-3 w-3" /> {blueprint.downloads}
         </span>
       </div>
+      </MinecraftTooltip>
     </li>
   );
 }
