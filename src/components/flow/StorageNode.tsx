@@ -281,13 +281,14 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         </MinecraftTooltip>
         <div
           className={[
-            // header 24 + name 16 + well 94 + this 14 fills the card's 148px
-            // interior exactly.
-            "storage-net-line h-3.5 text-center text-[11px] font-bold leading-[14px] tabular-nums",
+            // header 20 + name 16 + well 94 + this 18 fills the card's 148px
+            // interior exactly. No "Net" word: the sign and the colour already
+            // say it, and the number is the thing worth reading.
+            "storage-net-line h-[18px] text-center text-[14px] font-bold leading-[18px] tabular-nums",
             net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
           ].join(" ")}
         >
-          Net {net >= 0 ? "+" : ""}
+          {net >= 0 ? "+" : ""}
           {formatCompactRate(net, storage.kind)}
         </div>
       </div>
@@ -321,7 +322,7 @@ function StorageHeader({
       // relative z-40: the invisible wire handles (z-30) blanket the card,
       // and without a higher stacking position they swallow every click
       // aimed at the delete/clone buttons underneath.
-      className="storage-node-header relative z-40 flex h-6 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]"
+      className="storage-node-header relative z-40 flex h-5 items-center gap-1 border-b-2 px-1 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]"
       style={{
         borderColor: `color-mix(in srgb, ${tint} 55%, #262b34)`,
         background: `color-mix(in srgb, ${tint} 32%, #0a0c10)`,
