@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.17.0",
+    date: "2026-08-06",
+    headline: "The question mark in the corner now explains every button",
+    notes: [
+      "Hover the ? bottom left and each toolbar card lists its buttons one by one, next to the very icon each one wears. No more guessing which is which.",
+      "The crop farm, the trash can and the custom rate tap get a line each. So do all seven view switches, both card faces, and every paint and note tool.",
+      "The left column says what its three tabs are for: Items, Blueprints and Setups.",
+      "The undo, clean, import and export buttons up top were never explained at all. They are now.",
+      "The whole sheet went from bright cyan to a soft blue grey, so it reads as notes over your board instead of shouting at you.",
+    ],
+  },
+  {
     version: "1.16.0",
     date: "2026-08-06",
     headline: "Double click a resource to fly to the machine that makes it",
