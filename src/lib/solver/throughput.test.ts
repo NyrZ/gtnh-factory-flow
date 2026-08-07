@@ -811,7 +811,7 @@ describe("calculateThroughput", () => {
         {
           id: "extractor-recipe",
           name: "Large Fluid Extractor",
-          machineType: "Large Fluid Extractor",
+          machineType: "Test Fluid Source",
           minimumTier: "EV",
           durationTicks: 20,
           eut: 739,
@@ -894,7 +894,7 @@ describe("calculateThroughput", () => {
         {
           id: "woodtar-source-recipe",
           name: "Wood Tar Source",
-          machineType: "Large Fluid Extractor",
+          machineType: "Test Fluid Source",
           minimumTier: "EV",
           durationTicks: 20,
           eut: 739,
@@ -904,7 +904,7 @@ describe("calculateThroughput", () => {
         {
           id: "mega-distillation-recipe",
           name: "Mega Distillation Tower",
-          machineType: "Mega Distillation Tower",
+          machineType: "Test Parallel Consumer",
           minimumTier: "EV",
           durationTicks: 20,
           eut: 1024,

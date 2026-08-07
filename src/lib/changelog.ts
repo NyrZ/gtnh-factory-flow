@@ -16,6 +16,30 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.22.0",
+    date: "2026-08-07",
+    headline: "Machine numbers now come from a checked list, not from reading tooltips",
+    notes: [
+      "The planner used to work out what coils and casings do by reading each machine's tooltip text. That guessed wrong often enough to matter, so around 45 multiblocks now use figures checked against the game's own code instead.",
+      "Speed, power discount, parallels and overclock behaviour are all covered for those machines. Everything else keeps working exactly as before.",
+      "Some numbers will move. Where they do, the new one is the one your factory will actually hit.",
+      "Thanks to ShadowTheAge, whose open source GTNH calculator these figures are taken from.",
+      "Found a rate that looks wrong? The Report Bug button in the header is now hard to miss, and it asks for a link to your published setup so it can be checked against your actual board.",
+    ],
+  },
+  {
+    version: "1.21.1",
+    date: "2026-08-07",
+    headline: "Machines with parallels no longer claim impossible output",
+    notes: [
+      "Parallels are paid for with power before any speed bonus from a higher tier. A chem plant with titanium pipe casings running nitrobenzene on IV spends all of it on its six parallels, so it now shows 2,000 L/s instead of 32,000 L/s, which is what the machine really does.",
+      "Feeding a machine a higher tier only speeds it up if there is power left over once every parallel is running. Below that, extra voltage does nothing, exactly as in game.",
+      "A machine can only run as many parallels as its power will carry. Six parallels of a 480 EU/t recipe need 2,880 EU/t, so on HV you get one.",
+      "The chem plant, pyrolyse oven, oil cracker and coke oven were being paid a heat bonus meant for the blast furnace, and ran up to four times too fast. Only the blast furnace, Volcanus and the Exothermic Hearth get that bonus now.",
+      "If a plan of yours drops after this update, the old number was wrong and the new one is what you will actually build.",
+    ],
+  },
+  {
     version: "1.21.0",
     date: "2026-08-06",
     headline: "Pocket cards now read like machine cards",
