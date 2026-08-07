@@ -16,7 +16,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "1.17.0",
+    version: "1.18.0",
     date: "2026-08-06",
     headline: "No more phantom shortages of a hundred-thousandth",
     notes: [
@@ -28,6 +28,18 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Hovering a resource no longer pops up the browser's own tooltip trailing your cursor down the list.",
       "A resource chart only shows a number while you are pointing at a point on it, since the row above already says what it is right now.",
       "A very long name still ends in an ellipsis when even the widened row cannot fit it.",
+    ],
+  },
+  {
+    version: "1.17.0",
+    date: "2026-08-06",
+    headline: "The question mark in the corner now explains every button",
+    notes: [
+      "Hover the ? bottom left and each toolbar card lists its buttons one by one, next to the very icon each one wears. No more guessing which is which.",
+      "The crop farm, the trash can and the custom rate tap get a line each. So do all seven view switches, both card faces, and every paint and note tool.",
+      "The left column says what its three tabs are for: Items, Blueprints and Setups.",
+      "The undo, clean, import and export buttons up top were never explained at all. They are now.",
+      "The whole sheet went from bright cyan to a soft blue grey, so it reads as notes over your board instead of shouting at you.",
     ],
   },
   {

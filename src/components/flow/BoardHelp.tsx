@@ -1,4 +1,29 @@
 import {
+  Anchor,
+  Box,
+  Cable,
+  Ellipsis,
+  Download,
+  Factory,
+  Gauge,
+  Grid3x3,
+  Layers,
+  MoveUpRight,
+  Paintbrush,
+  Palette,
+  Presentation,
+  Search,
+  Sprout,
+  Square,
+  Tag,
+  Trash,
+  Trash2,
+  Type,
+  Undo2,
+  Upload,
+  type LucideIcon,
+} from "lucide-react";
+import {
   Fragment,
   memo,
   useCallback,
@@ -12,10 +37,11 @@ import { createPortal } from "react-dom";
 /**
  * The board's help corner: a "?" where the zoom buttons used to live.
  * Hovering it lays a glance sheet over the whole window: every toolbar and
- * panel gets a dashed ring, a solid arrow, and a terse card saying what
- * lives there, and a tips card above the button covers the gestures no
- * button reveals (wiring, pockets, waypoint dots). Pure glance layer:
- * pointer-events stay off, and moving away folds the whole thing up again.
+ * panel gets a dashed ring, a solid arrow, and a card naming EVERY button in
+ * it — the same icon you see on the board, beside what pressing it does. A
+ * tips card above the button covers the gestures no button reveals (wiring,
+ * pockets, waypoint dots). Pure glance layer: pointer-events stay off, and
+ * moving away folds the whole thing up again.
  *
  * The sheet portals to <body>: the board, the browser and the inspector each
  * sit in their own stacking contexts, so a scrim rendered inside the board
@@ -47,7 +73,18 @@ const ARROW_HEAD = 12;
 /** Long enough to cross the gap from the button to the tips card. */
 const HIDE_GRACE_MS = 160;
 
-const CYAN = "#67e8f9";
+/**
+ * The whole sheet is one soft blue-grey. Loud enough to read over a dimmed
+ * board, quiet enough that eight cards at once do not shout.
+ */
+const ACCENT = "#93a4bb";
+const ACCENT_DIM = "rgba(147, 164, 187, 0.5)";
+
+/**
+ * One line of a card: the button's own icon (or a text chip, for the ones
+ * that are text), and what it does.
+ */
+type HelpRow = { icon?: LucideIcon; chip?: string; text: string };
 
 const CALLOUTS: Array<{
   anchor: string;
@@ -58,29 +95,44 @@ const CALLOUTS: Array<{
   /** Slide along the anchor's edge, in px, after align. */
   shift?: number;
   title: string;
-  rows: string[];
+  rows: HelpRow[];
 }> = [
   {
+    // One card for the whole column: its three tabs, then how the item
+    // search is meant to flow. Two cards up here fought the Designs card
+    // for the same corner.
     anchor: "browser",
     side: "right",
     align: "center",
-    title: "Item browser",
+    title: "The left column",
     rows: [
-      "Every item and fluid",
-      "Click one, pick a recipe",
-      "The machine lands on the board",
-      "Blueprints: saved chunks",
-      "Setups: everyone's factories",
+      { icon: Search, text: "Items: every item and fluid in the pack" },
+      { icon: Layers, text: "Blueprints: chunks you saved, and everyone else's" },
+      { icon: Factory, text: "Setups: whole factories people have shared" },
+      { text: "Search an item, click it, pick a recipe" },
+      { text: "The machine lands on the board" },
+      { text: "Hover any row for what it needs and makes" },
     ],
   },
   {
-    anchor: "tabs",
+    // The top-right band is three deep (header buttons, paint row, view
+    // row), so this card slides right until it clears the paint ring and
+    // rides over the inspector's dimmed head instead. Rows stay short to
+    // keep it narrow enough for that gap. The design tabs get their line
+    // here rather than a card of their own: every spot below them is a
+    // toolbar, and a card there covered one.
+    anchor: "plan-actions",
     side: "below",
-    align: "center",
-    // Slid left into the corridor between the build ring and the paint card.
-    shift: -125,
-    title: "Designs",
-    rows: ["One tab, one board", "+ starts fresh"],
+    align: "end",
+    shift: 150,
+    title: "This plan",
+    rows: [
+      { icon: Undo2, text: "Undo and redo" },
+      { icon: Trash2, text: "Clean the board" },
+      { icon: Upload, text: "Import a plan" },
+      { icon: Download, text: "Export it out" },
+      { text: "Tabs left: one tab, one board" },
+    ],
   },
   {
     anchor: "build",
@@ -88,8 +140,14 @@ const CALLOUTS: Array<{
     align: "start",
     // Dropped below the designs card's band; the longer arrow reads better.
     offset: 50,
-    title: "Board tools",
-    rows: ["Undo and redo", "Add crop farm, trash, rate tap", "/s /m /h sets the time unit"],
+    title: "Build tools",
+    rows: [
+      { icon: Undo2, text: "Undo, and redo beside it (Ctrl+Z)" },
+      { icon: Sprout, text: "Crop farm: pick a crop, it grows at the right rate" },
+      { icon: Trash, text: "Trash can: wire spare output in, it stops counting" },
+      { icon: Gauge, text: "Custom rate: dial any number in or out by hand" },
+      { chip: "/s", text: "Per second, minute or hour, everywhere at once" },
+    ],
   },
   {
     anchor: "paint",
@@ -97,18 +155,29 @@ const CALLOUTS: Array<{
     align: "start",
     // Pushed further out so the card clears the view row's ring below.
     offset: 56,
-    title: "Dress it up",
-    rows: ["Paint cards any colour", "Boxes, arrows, text notes", "Bin deletes what you click"],
+    title: "Dressing it up",
+    rows: [
+      { icon: Paintbrush, text: "Pick a colour, then click cards to paint them" },
+      { icon: Square, text: "Draw a box around a section" },
+      { icon: MoveUpRight, text: "Draw an arrow" },
+      { icon: Type, text: "Drop a text note" },
+      { icon: Trash2, text: "Bin: click anything to delete it" },
+    ],
   },
   {
     anchor: "view",
     side: "below",
     align: "end",
-    title: "View switches",
+    title: "How it looks",
     rows: [
-      "Looks only, never the plan",
-      "Line colour, width, dashes, tags",
-      "Wire docking, calm colours",
+      { text: "These change the view, never the plan" },
+      { icon: Grid3x3, text: "Background: dots, lines, crosses or none" },
+      { icon: Palette, text: "Colour wires by how much they carry" },
+      { icon: Cable, text: "Thicken wires by how much they carry" },
+      { icon: Ellipsis, text: "Marching dashes show which way things flow" },
+      { icon: Tag, text: "Rate labels on the wires" },
+      { icon: Anchor, text: "Wires dock anywhere, or at fixed ports" },
+      { icon: Presentation, text: "Calm colours: drops the alarm reds" },
     ],
   },
   {
@@ -116,7 +185,10 @@ const CALLOUTS: Array<{
     side: "above",
     align: "end",
     title: "Card faces",
-    rows: ["Box: what a machine is", "Gauge: how hard it runs"],
+    rows: [
+      { icon: Box, text: "What each card IS: its machine, big when zoomed out" },
+      { icon: Gauge, text: "How hard it runs: red idle, green flat out" },
+    ],
   },
   {
     anchor: "inspector",
@@ -124,10 +196,11 @@ const CALLOUTS: Array<{
     align: "center",
     title: "Plan totals",
     rows: [
-      "NEED: bring in from outside",
-      "OUTPUT: leaves the plan",
-      "INTERNAL: made and used here",
-      "Hover a row: lights the board",
+      { text: "NEED: you must bring this in" },
+      { text: "OUTPUT: this leaves the plan" },
+      { text: "INTERNAL: made and used here" },
+      { text: "Hover a row to light up the board" },
+      { text: "Select cards to total just those" },
     ],
   },
 ];
@@ -136,6 +209,7 @@ const TIPS: Array<{ chip: string; result: string }> = [
   { chip: "Drag a slot", result: "wires it to another card" },
   { chip: "Drop on empty", result: "becomes a storage drawer" },
   { chip: "Shift+drag", result: "box-selects cards" },
+  { chip: "Shift+click", result: "adds one to the selection" },
   { chip: "Ctrl+G", result: "packs them into a pocket" },
   { chip: "Dbl-click pocket", result: "steps inside, Esc backs out" },
   { chip: "Ctrl+C/X/V", result: "copy, cut, paste" },
@@ -145,9 +219,9 @@ const TIPS: Array<{ chip: string; result: string }> = [
 ];
 
 const CARD_CLASS =
-  "absolute border-2 border-cyan-300 bg-[#10141b] font-mono text-neutral-100 shadow-[6px_6px_0_rgba(0,0,0,0.6)]";
+  "absolute border border-[#48546857] bg-[#151a21] font-mono text-[#dbe3ec] shadow-[6px_6px_0_rgba(0,0,0,0.55)]";
 const TITLE_CLASS =
-  "bg-cyan-300 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#0b1015]";
+  "border-b border-[#48546857] bg-[#1e2630] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#aebccd]";
 
 function toHelpRect(rect: DOMRect): HelpRect {
   return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
@@ -263,22 +337,51 @@ function CalloutArrow({
   // The head aims at the anchor, so it leads on the anchor-facing end.
   const head: CSSProperties =
     side === "below"
-      ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `${ARROW_HEAD}px solid ${CYAN}` }
+      ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `${ARROW_HEAD}px solid ${ACCENT}` }
       : side === "above"
-        ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderTop: `${ARROW_HEAD}px solid ${CYAN}` }
+        ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderTop: `${ARROW_HEAD}px solid ${ACCENT}` }
         : side === "right"
-          ? { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderRight: `${ARROW_HEAD}px solid ${CYAN}` }
-          : { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderLeft: `${ARROW_HEAD}px solid ${CYAN}` };
+          ? { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderRight: `${ARROW_HEAD}px solid ${ACCENT}` }
+          : { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderLeft: `${ARROW_HEAD}px solid ${ACCENT}` };
   const headFirst = side === "below" || side === "right";
+  const stem: CSSProperties = vertical
+    ? { width: 3, backgroundColor: ACCENT }
+    : { height: 3, backgroundColor: ACCENT };
   return (
     <span
       className={["absolute flex items-center", vertical ? "flex-col" : "flex-row"].join(" ")}
       style={wrapper}
     >
       {headFirst ? <span className="h-0 w-0" style={head} /> : null}
-      <span className={vertical ? "w-[3px] flex-1 bg-cyan-300" : "h-[3px] flex-1 bg-cyan-300"} />
+      <span className="flex-1" style={stem} />
       {headFirst ? null : <span className="h-0 w-0" style={head} />}
     </span>
+  );
+}
+
+/** One card line: the button's own icon (or a text chip), then the words. */
+function HelpRowLine({ row }: { row: HelpRow }) {
+  const Icon = row.icon;
+  return (
+    <li className="flex items-center gap-2">
+      <span className="flex h-4 w-5 shrink-0 items-center justify-center">
+        {Icon ? (
+          <Icon className="h-3.5 w-3.5" style={{ color: ACCENT }} />
+        ) : row.chip ? (
+          <span
+            className="text-[10px] font-black leading-none"
+            style={{ color: ACCENT }}
+          >
+            {row.chip}
+          </span>
+        ) : (
+          <span className="text-[10px] leading-none" style={{ color: ACCENT_DIM }}>
+            ▸
+          </span>
+        )}
+      </span>
+      <span className="whitespace-nowrap">{row.text}</span>
+    </li>
   );
 }
 
@@ -307,8 +410,9 @@ function HelpGlanceSheet({
         return (
           <Fragment key={callout.anchor}>
             <div
-              className="absolute border-2 border-dashed border-cyan-300/90"
+              className="absolute border border-dashed"
               style={{
+                borderColor: ACCENT_DIM,
                 left: rect.left - RING_PAD,
                 top: rect.top - RING_PAD,
                 width: rect.right - rect.left + RING_PAD * 2,
@@ -322,12 +426,9 @@ function HelpGlanceSheet({
                 length={CALLOUT_GAP + (callout.offset ?? 0)}
               />
               <p className={TITLE_CLASS}>{callout.title}</p>
-              <ul className="flex flex-col gap-1 p-2.5 pt-2 text-[12px] leading-snug">
+              <ul className="flex flex-col gap-1.5 p-2.5 pt-2 text-[12px] leading-snug">
                 {callout.rows.map((row) => (
-                  <li key={row} className="flex gap-1.5">
-                    <span className="shrink-0 text-cyan-300">▸</span>
-                    <span className="whitespace-nowrap">{row}</span>
-                  </li>
+                  <HelpRowLine key={row.text} row={row} />
                 ))}
               </ul>
             </div>
@@ -340,8 +441,9 @@ function HelpGlanceSheet({
               the sheet grew from stays readable. Hover still lands on the
               real button underneath. */}
           <div
-            className="absolute flex items-center justify-center border-2 border-cyan-300 bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
+            className="absolute flex items-center justify-center border-2 bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
             style={{
+              borderColor: ACCENT,
               left: button.left,
               top: button.top,
               width: button.right - button.left,
@@ -354,11 +456,14 @@ function HelpGlanceSheet({
             className={`${CARD_CLASS} pointer-events-auto`}
             style={{ left: button.left, bottom: vh - button.top + 8 }}
           >
-            <p className={TITLE_CLASS}>Good to know</p>
+            <p className={TITLE_CLASS}>Moves worth knowing</p>
             <div className="grid grid-cols-[auto_1fr] items-center gap-x-2.5 gap-y-1.5 p-2.5 pt-2">
               {TIPS.map((tip) => (
                 <Fragment key={tip.chip}>
-                  <span className="justify-self-start border border-cyan-300/70 bg-[#152030] px-1.5 py-[1px] text-[10px] font-bold leading-[14px] text-cyan-200">
+                  <span
+                    className="justify-self-start border bg-[#1b2430] px-1.5 py-[1px] text-[10px] font-bold leading-[14px]"
+                    style={{ borderColor: ACCENT_DIM, color: "#b9c7d8" }}
+                  >
                     {tip.chip}
                   </span>
                   <span className="whitespace-nowrap text-[12px] leading-snug">{tip.result}</span>
