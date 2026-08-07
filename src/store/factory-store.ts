@@ -10,6 +10,7 @@ import {
   applyRecipeInputOverrides,
   crossKindInputOverrideAmount,
 } from "@/lib/model/recipe-input-overrides";
+import type { AlternativeCycleFace } from "@/lib/nei/alternative-cycle";
 import { createCropFarmPlaceholderRecipe } from "@/lib/model/passive-production";
 import {
   createCustomRatePlaceholderRecipe,
@@ -174,7 +175,7 @@ interface FactoryStore {
   addNodeForRecipeObject: (
     recipe: Recipe,
     resource?: RecipeInputContextResource,
-    options?: { machineHandlerId?: string },
+    options?: { machineHandlerId?: string; inputPicks?: RecipeInputPicks },
   ) => void;
   addConnectedNodeForRecipe: (
     recipeId: string,
@@ -2216,7 +2217,11 @@ function addRecipeNodeToState(
   state: FactoryStore,
   recipe: Recipe,
   resource?: RecipeInputContextResource,
-  options?: { colorTag?: FactoryNodeColorTag; machineHandlerId?: string },
+  options?: {
+    colorTag?: FactoryNodeColorTag;
+    machineHandlerId?: string;
+    inputPicks?: RecipeInputPicks;
+  },
 ): Partial<FactoryStore> {
   const index = state.project.nodes.length;
   const viewportPosition = state.flowViewportCenter
@@ -2237,7 +2242,10 @@ function addRecipeNodeToState(
     parallel: 1,
     machineHandlerId: spawnHandler?.id,
     overclockTier: spawnHandler?.minimumTier ?? recipe.minimumTier,
-    recipeInputOverrides: resource ? buildRecipeInputOverrides(recipe, resource) : undefined,
+    recipeInputOverrides: mergeRecipeInputOverrides(
+      resource ? buildRecipeInputOverrides(recipe, resource) : undefined,
+      buildRecipeInputPickOverrides(recipe, options?.inputPicks),
+    ),
     colorTag: options?.colorTag,
     enabled: true,
     position:
@@ -2313,6 +2321,69 @@ function addConnectedRecipeNodeToState(
     selectedRecipeId: recipe.id,
     lastResult: calculateThroughput(project),
   });
+}
+
+/**
+ * The item each cycling input slot was showing when the node was added, keyed by
+ * input index.
+ *
+ * A slot that rotates through an oredict's members has to commit to one of them
+ * on the board, because a node asks for a definite thing. Whatever face was
+ * visible at the moment the player clicked is that commitment, whether they
+ * scrolled to it deliberately or let it land there.
+ */
+export type RecipeInputPicks = Record<number, AlternativeCycleFace>;
+
+function buildRecipeInputPickOverrides(
+  recipe: Recipe,
+  picks: RecipeInputPicks | undefined,
+): FactoryNode["recipeInputOverrides"] {
+  if (!picks) {
+    return undefined;
+  }
+
+  const overrides: NonNullable<FactoryNode["recipeInputOverrides"]> = {};
+  for (const [key, face] of Object.entries(picks)) {
+    const index = Number(key);
+    const input = recipe.inputs[index];
+    if (!input || !face) {
+      continue;
+    }
+
+    overrides[key] = {
+      ...input,
+      kind: face.kind,
+      id: face.id,
+      // A face's own `amount` is a per-unit ratio, not a stack size, so the
+      // recipe's requirement is restated through the shared helper rather than
+      // spread over.
+      amount: crossKindInputOverrideAmount(input, face.kind, face),
+      displayName: face.displayName ?? input.displayName,
+      iconPath: face.iconPath ?? input.iconPath,
+      iconAtlas: face.iconAtlas ?? input.iconAtlas,
+      dominantColor: face.dominantColor ?? input.dominantColor,
+      tooltip: face.tooltip ?? input.tooltip,
+      modId: face.modId ?? input.modId,
+      alternatives: undefined,
+    };
+  }
+
+  return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+
+function mergeRecipeInputOverrides(
+  base: FactoryNode["recipeInputOverrides"],
+  picks: FactoryNode["recipeInputOverrides"],
+): FactoryNode["recipeInputOverrides"] {
+  if (!base) {
+    return picks;
+  }
+  if (!picks) {
+    return base;
+  }
+  // A deliberately scrolled slot outranks the resource the browser was opened
+  // from; they only ever collide on the same slot when both name it.
+  return { ...base, ...picks };
 }
 
 function buildRecipeInputOverrides(

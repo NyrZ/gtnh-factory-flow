@@ -545,7 +545,7 @@ function getExplicitSlotFrames(
     "output:aspect": [...resources.aspectOutputs],
   };
 
-  return slots
+  const frames: NeiSlotFrame[] = slots
     .filter((slot) => slot.kind === "item" || slot.kind === "fluid" || slot.kind === "aspect")
     .map((slot) => {
       const poolKey = `${slot.side}:${slot.kind}` as keyof typeof pools;
@@ -564,6 +564,26 @@ function getExplicitSlotFrames(
         y: slot.y,
       };
     });
+
+  // Exported slot positions win, but an ingredient that carries none must still
+  // be drawn. Ore dictionary inputs have no `neiSlot` at all, so matching on
+  // position alone dropped every one of them and a shaped crafting recipe
+  // rendered as an empty grid. Whatever the first pass could not place falls
+  // into the leftover frames of its own pool, in order.
+  for (const frame of frames) {
+    if (frame.resource) {
+      continue;
+    }
+    const pool = pools[`${frame.side}:${frame.kind}` as keyof typeof pools];
+    const entry = pool.shift();
+    if (!entry) {
+      continue;
+    }
+    frame.resource = entry.resource;
+    frame.resourceIndex = entry.resourceIndex;
+  }
+
+  return frames;
 }
 
 function getProgressBarsForRecipeMap(

@@ -1,9 +1,26 @@
 "use client";
 
-import type { ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import type { ResourceAmount } from "@/lib/model/types";
 import type { NeiPositionedSlot } from "@/lib/nei/layout";
 import type { NeiItemCommand } from "@/lib/nei-renderer/core/commands";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import { useAlternativeCycleScope } from "@/components/nei/AlternativeCycleScope";
+import {
+  applyAlternativeCycleFace,
+  getAlternativeCycleFaces,
+  getAlternativeCycleTick,
+  getServerAlternativeCycleTick,
+  subscribeToAlternativeCycle,
+  type AlternativeCycleFace,
+} from "@/lib/nei/alternative-cycle";
 import { renderStackResourceToResourceAmount, stackToLegacySlot } from "./NeiRecipeSurface";
 
 interface StackViewProps {
@@ -23,7 +40,122 @@ export function NeiItemView(props: StackViewProps) {
   return <StackIconButton {...props} />;
 }
 
-export function StackIconButton({
+export function StackIconButton(props: StackViewProps) {
+  const slot = stackToLegacySlot(props.command);
+  const resource: ResourceAmount & { chance?: number; consumed?: boolean } = {
+    ...renderStackResourceToResourceAmount(props.command.stack.resource),
+    chance: props.command.stack.chance,
+    consumed: props.command.stack.consumed,
+  };
+
+  const scope = useAlternativeCycleScope();
+  // Only inputs cycle. An output is what the recipe actually produces, so
+  // rotating it would be a lie rather than a choice.
+  const faces = scope && slot?.side === "input" ? getAlternativeCycleFaces(resource) : [];
+
+  if (scope && slot && faces.length > 1) {
+    return (
+      <CyclingStackIcon
+        {...props}
+        slot={slot}
+        resource={resource}
+        faces={faces}
+        resourceIndex={slot.resourceIndex}
+      />
+    );
+  }
+
+  return <SlotButton {...props} slot={slot} resource={resource} />;
+}
+
+/**
+ * A slot whose oredict input rotates through the items it accepts, the way NEI
+ * does in game.
+ *
+ * Hovering holds the current face so it can be read without moving; scrolling
+ * with shift steps through the faces and locks the slot to the one chosen.
+ * Only slots that actually have alternatives mount this component, so the clock
+ * subscription costs nothing on the ordinary case.
+ */
+function CyclingStackIcon({
+  slot,
+  resource,
+  faces,
+  resourceIndex,
+  ...props
+}: StackViewProps & {
+  slot: NeiPositionedSlot;
+  resource: ResourceAmount & { chance?: number; consumed?: boolean };
+  faces: AlternativeCycleFace[];
+  resourceIndex: number;
+}) {
+  const scope = useAlternativeCycleScope();
+  const tick = useSyncExternalStore(
+    subscribeToAlternativeCycle,
+    getAlternativeCycleTick,
+    getServerAlternativeCycleTick,
+  );
+  const [heldIndex, setHeldIndex] = useState<number>();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const lockedIndex = scope?.locked[resourceIndex];
+  const faceIndex = (lockedIndex ?? heldIndex ?? tick) % faces.length;
+  const face = faces[faceIndex];
+  const displayResource = applyAlternativeCycleFace(resource, face);
+
+  // Read by the wheel listener, which is attached once and must not close over
+  // a stale index.
+  const faceIndexRef = useRef(faceIndex);
+  faceIndexRef.current = faceIndex;
+
+  const { report } = scope ?? {};
+  useEffect(() => {
+    report?.(resourceIndex, face);
+    return () => report?.(resourceIndex, undefined);
+  }, [face, report, resourceIndex]);
+
+  const lock = scope?.lock;
+  useEffect(() => {
+    const element = buttonRef.current;
+    if (!element || !lock) {
+      return;
+    }
+
+    // Attached natively rather than through `onWheel` because React registers
+    // wheel handlers passively, where `preventDefault` is ignored. Without it
+    // shift+scroll would cycle the slot AND scroll the list sideways.
+    const onWheel = (event: WheelEvent) => {
+      // Plain scroll belongs to the list. The browser is a dense grid of slots,
+      // so the cursor sits over one most of the time and hijacking it would
+      // make the list barely scrollable.
+      if (!event.shiftKey) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const delta = event.deltaY !== 0 ? event.deltaY : event.deltaX;
+      const step = delta > 0 ? 1 : -1;
+      lock(resourceIndex, (faceIndexRef.current + step + faces.length) % faces.length);
+    };
+
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [faces.length, lock, resourceIndex]);
+
+  return (
+    <SlotButton
+      {...props}
+      slot={slot}
+      resource={displayResource}
+      buttonRef={buttonRef}
+      alternativeState={lockedIndex === undefined ? "cycling" : "locked"}
+      onMouseEnter={() => setHeldIndex(faceIndex)}
+      onMouseLeave={() => setHeldIndex(undefined)}
+    />
+  );
+}
+
+function SlotButton({
   command,
   scale,
   iconPixelSize,
@@ -34,21 +166,31 @@ export function StackIconButton({
   suppressConsumedState,
   getSlotZIndex,
   slotTooltip = true,
-}: StackViewProps) {
-  const slot = stackToLegacySlot(command);
-  const resource = {
-    ...renderStackResourceToResourceAmount(command.stack.resource),
-    chance: command.stack.chance,
-    consumed: command.stack.consumed,
-  };
+  slot,
+  resource,
+  buttonRef,
+  alternativeState,
+  onMouseEnter,
+  onMouseLeave,
+}: StackViewProps & {
+  slot: NeiPositionedSlot | undefined;
+  resource: ResourceAmount & { chance?: number; consumed?: boolean };
+  buttonRef?: RefObject<HTMLButtonElement | null>;
+  alternativeState?: "cycling" | "locked";
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+}) {
   const shouldSuppressSlotHover = slot ? suppressSlotHover?.(slot) : false;
   const shouldSuppressConsumedState = slot ? suppressConsumedState?.(slot) : false;
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       tabIndex={slot ? 0 : -1}
       {...(slot ? getSlotConnectionAttributes?.(slot) : undefined)}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       onClick={(event) => {
         if (!slot || !onSlotClick) return;
         event.stopPropagation();
@@ -85,6 +227,7 @@ export function StackIconButton({
         iconPixelSize={iconPixelSize ?? command.width * scale}
         tooltip={slotTooltip}
         showConsumedState={!shouldSuppressConsumedState}
+        alternativeState={alternativeState}
         bare
       />
     </button>

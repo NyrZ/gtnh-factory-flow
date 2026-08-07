@@ -3734,3 +3734,123 @@ describe("pocket dimensions", () => {
     expect(pasted?.pocketId).toBe(pocketId);
   });
 });
+
+describe("cycled input picks", () => {
+  const CIRCUIT_RECIPE = {
+    id: "assembler-lv-machine",
+    name: "Assembler: LV Machine Hull",
+    machineType: "Assembler",
+    minimumTier: "LV",
+    durationTicks: 200,
+    eut: 30,
+    inputs: [
+      {
+        kind: "item" as const,
+        id: "oredict:circuitBasic",
+        amount: 2,
+        displayName: "Ore Dictionary: circuitBasic",
+        alternatives: [
+          { kind: "item" as const, id: "gregtech:circuit@1", displayName: "Electronic Circuit" },
+          {
+            kind: "item" as const,
+            id: "gregtech:circuit@2",
+            displayName: "Integrated Logic Circuit",
+          },
+        ],
+      },
+      { kind: "item" as const, id: "gregtech:plate@steel", amount: 4, displayName: "Steel Plate" },
+    ],
+    outputs: [{ kind: "item" as const, id: "gregtech:hull@lv", amount: 1 }],
+  };
+
+  beforeEach(() => {
+    useFactoryStore.getState().setProject({
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "input-picks-test",
+      name: "Input picks test",
+      fuelProfiles: [],
+      recipes: [],
+      nodes: [],
+      edges: [],
+    });
+  });
+
+  it("pins the slot to the face that was showing when the node was added", () => {
+    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
+      inputPicks: {
+        0: {
+          kind: "item",
+          id: "gregtech:circuit@2",
+          displayName: "Integrated Logic Circuit",
+          amount: 1,
+        },
+      },
+    });
+
+    const node = useFactoryStore.getState().project.nodes[0];
+    expect(node?.recipeInputOverrides?.["0"]).toEqual(
+      expect.objectContaining({
+        id: "gregtech:circuit@2",
+        displayName: "Integrated Logic Circuit",
+        alternatives: undefined,
+      }),
+    );
+    // The recipe still asks for two of them: a face carries a per-unit ratio,
+    // not a stack size.
+    expect(node?.recipeInputOverrides?.["0"]?.amount).toBe(2);
+  });
+
+  it("leaves the shared recipe generic so other nodes are unaffected", () => {
+    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
+      inputPicks: {
+        0: { kind: "item", id: "gregtech:circuit@2", displayName: "Integrated Logic Circuit" },
+      },
+    });
+
+    expect(useFactoryStore.getState().project.recipes[0]?.inputs[0]).toEqual(
+      expect.objectContaining({ id: "oredict:circuitBasic" }),
+    );
+  });
+
+  it("does not touch slots that were never cycled", () => {
+    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
+      inputPicks: {
+        0: { kind: "item", id: "gregtech:circuit@1", displayName: "Electronic Circuit" },
+      },
+    });
+
+    expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides?.["1"]).toBeUndefined();
+  });
+
+  it("writes no overrides at all when nothing cycled", () => {
+    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
+      inputPicks: {},
+    });
+
+    expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides).toBeUndefined();
+  });
+
+  it("lets a scrolled slot outrank the resource the browser was opened from", () => {
+    useFactoryStore.getState().addNodeForRecipeObject(
+      CIRCUIT_RECIPE,
+      { kind: "item", id: "gregtech:circuit@1", displayName: "Electronic Circuit", mode: "uses" },
+      {
+        inputPicks: {
+          0: { kind: "item", id: "gregtech:circuit@2", displayName: "Integrated Logic Circuit" },
+        },
+      },
+    );
+
+    expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides?.["0"]).toEqual(
+      expect.objectContaining({ id: "gregtech:circuit@2" }),
+    );
+  });
+
+  it("ignores a pick for a slot the recipe does not have", () => {
+    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
+      inputPicks: { 7: { kind: "item", id: "gregtech:circuit@2" } },
+    });
+
+    expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides).toBeUndefined();
+  });
+});

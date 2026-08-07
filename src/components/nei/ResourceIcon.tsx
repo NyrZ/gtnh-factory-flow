@@ -37,6 +37,11 @@ interface ResourceIconProps {
   tooltip?: boolean;
   iconPixelSize?: number;
   showConsumedState?: boolean;
+  /**
+   * Set on slots that rotate through an oredict's members. `locked` means a
+   * player scrolled the slot and it has stopped on one item.
+   */
+  alternativeState?: "cycling" | "locked";
 }
 
 const sizeClasses = {
@@ -56,6 +61,7 @@ function ResourceIconComponent({
   tooltip = true,
   iconPixelSize,
   showConsumedState = true,
+  alternativeState,
 }: ResourceIconProps) {
   const icon = (
     <div
@@ -86,8 +92,15 @@ function ResourceIconComponent({
       ) : null}
 
       {resource && shouldShowAlternativeMarker(resource) ? (
-        <span className="absolute left-0 bottom-0 font-mono text-[9px] font-black leading-none text-[#55ffff] drop-shadow-[1px_1px_0_#000]">
-          +
+        <span
+          className={[
+            "absolute left-0 bottom-0 font-mono text-[9px] font-black leading-none drop-shadow-[1px_1px_0_#000]",
+            // Amber reads as "you set this" against the cyan the rest of the
+            // slot chrome uses for "there is more here".
+            alternativeState === "locked" ? "text-[#ffaa00]" : "text-[#55ffff]",
+          ].join(" ")}
+        >
+          {alternativeState === "locked" ? "■" : "+"}
         </span>
       ) : null}
 
@@ -106,7 +119,9 @@ function ResourceIconComponent({
   // Built only on the tooltip path. It used to run for every icon regardless,
   // including the hundreds rendered with `tooltip={false}`, which threw away a
   // multi-pass string build per icon per render.
-  return <MinecraftTooltip label={buildTooltipLabel(resource)}>{icon}</MinecraftTooltip>;
+  return (
+    <MinecraftTooltip label={buildTooltipLabel(resource, alternativeState)}>{icon}</MinecraftTooltip>
+  );
 }
 
 /**
@@ -132,7 +147,10 @@ function isFluidCellAlternative(
   );
 }
 
-function buildTooltipLabel(resource: ResourceIconProps["resource"]) {
+function buildTooltipLabel(
+  resource: ResourceIconProps["resource"],
+  alternativeState?: ResourceIconProps["alternativeState"],
+) {
   if (!resource) {
     return undefined;
   }
@@ -170,7 +188,16 @@ function buildTooltipLabel(resource: ResourceIconProps["resource"]) {
         )}${visibleAlternatives.length > 12 ? `, +${visibleAlternatives.length - 12} more` : ""}`
     : undefined;
 
-  return [...baseLines, alternativesLine, chanceLine, consumedLine].filter(Boolean).join("\n");
+  const cycleLine =
+    alternativeState === "locked"
+      ? "Set to this one. Shift+scroll to change."
+      : alternativeState === "cycling"
+        ? "Shift+scroll to pick one."
+        : undefined;
+
+  return [...baseLines, alternativesLine, cycleLine, chanceLine, consumedLine]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function isBeeSpeciesResource(resource: Pick<ResourceAmount, "id">) {

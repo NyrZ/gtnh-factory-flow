@@ -29,7 +29,11 @@ import {
   resourceMatchesInput,
 } from "@/lib/model";
 import { useFactoryStore } from "@/store/factory-store";
-import type { TierFilter } from "@/store/factory-store";
+import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
+import {
+  AlternativeCycleScope,
+  useAlternativeCycleFacesRef,
+} from "@/components/nei/AlternativeCycleScope";
 import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -309,7 +313,11 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   );
 
   const handleAddRecipe = useCallback(
-    async (recipeSummary: RecipeSummary, machineHandlerId?: string) => {
+    async (
+      recipeSummary: RecipeSummary,
+      machineHandlerId?: string,
+      inputPicks?: RecipeInputPicks,
+    ) => {
       const currentState = useFactoryStore.getState();
       const currentResource = currentState.recipeBrowserResource
         ? {
@@ -327,7 +335,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         recipeSummary,
       );
       const recipe = await getFullRecipe(recipeSummary.id, Boolean(currentResource));
-      addNodeForRecipe(recipe, contextResource, { machineHandlerId });
+      addNodeForRecipe(recipe, contextResource, { machineHandlerId, inputPicks });
       clearResourceBrowser();
     },
     [activeResource, addNodeForRecipe, browserMode, clearResourceBrowser, getFullRecipe],
@@ -1238,7 +1246,11 @@ function RecipeBookOverlay({
   selectedRecipeId?: string;
   maxTier: TierFilter;
   onMaxTierChange: (tier: TierFilter) => void;
-  onAdd: (recipe: RecipeSummary, machineHandlerId?: string) => void | Promise<void>;
+  onAdd: (
+    recipe: RecipeSummary,
+    machineHandlerId?: string,
+    inputPicks?: RecipeInputPicks,
+  ) => void | Promise<void>;
   onAddConnected?: (recipeId: string) => void | Promise<void>;
   onBrowseResource: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
   onRecipeMapChange: (recipeMap: string) => void;
@@ -1566,7 +1578,11 @@ function VirtualRecipeResultList({
   pageSize: number;
   selectedRecipeId?: string;
   onSelectRecipe: (recipeId: string) => void;
-  onAdd: (recipe: RecipeSummary, machineHandlerId?: string) => void | Promise<void>;
+  onAdd: (
+    recipe: RecipeSummary,
+    machineHandlerId?: string,
+    inputPicks?: RecipeInputPicks,
+  ) => void | Promise<void>;
   onAddConnected?: (recipeId: string) => void | Promise<void>;
   onSlotBrowse: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
   contextResource?: PreviewContextResource;
@@ -1683,7 +1699,11 @@ const RecipeResultCard = memo(function RecipeResultCard({
   recipe: RecipeSummary;
   selected: boolean;
   onSelectRecipe: (recipeId: string) => void;
-  onAdd: (recipe: RecipeSummary, machineHandlerId?: string) => void | Promise<void>;
+  onAdd: (
+    recipe: RecipeSummary,
+    machineHandlerId?: string,
+    inputPicks?: RecipeInputPicks,
+  ) => void | Promise<void>;
   onAddConnected?: (recipeId: string) => void | Promise<void>;
   onSlotBrowse?: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
   contextResource?: PreviewContextResource;
@@ -1692,10 +1712,19 @@ const RecipeResultCard = memo(function RecipeResultCard({
     () => contextualizePreviewRecipe(summaryToPreviewRecipe(recipe), contextResource),
     [contextResource, recipe],
   );
+  // Written by the cycling slots on every face change and read only here, on
+  // click, so a rotating card never re-renders on the clock.
+  const facesRef = useAlternativeCycleFacesRef();
+  const currentPicks = useCallback(
+    () => Object.fromEntries(facesRef.current) as RecipeInputPicks,
+    [facesRef],
+  );
+
   return (
+    <AlternativeCycleScope facesRef={facesRef}>
     <article
       onClick={() => onSelectRecipe(recipe.id)}
-      onDoubleClick={() => void onAdd(recipe)}
+      onDoubleClick={() => void onAdd(recipe, undefined, currentPicks())}
       className={[
         "relative cursor-pointer transition",
         selected ? "ring-1 ring-cyan-400" : "",
@@ -1711,7 +1740,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
             if (onAddConnected) {
               onAddConnected(recipe.id);
             } else {
-              onAdd(recipe);
+              onAdd(recipe, undefined, currentPicks());
             }
           }}
           className="absolute right-1 top-1 z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center border border-neutral-600 bg-[#1b1d21] text-neutral-200 hover:border-cyan-400 hover:text-cyan-100"
@@ -1730,6 +1759,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
         />
       </div>
     </article>
+    </AlternativeCycleScope>
   );
 });
 

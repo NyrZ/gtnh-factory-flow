@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.29.0",
+    date: "2026-08-07",
+    headline: "Slots that take any of several items now show them, and let you choose",
+    notes: [
+      "A recipe that accepts any plank, any basic circuit or any dye now shows those slots the way the game does: the item rolls through everything the slot will take, about one a second.",
+      "Hover a rolling slot to hold it still and read it. Shift+scroll to step through the list yourself, which stops the roll and settles on your pick. The corner mark turns from a cyan plus to an orange square once a slot is set.",
+      "Adding the recipe uses whatever each slot was showing at that moment, so you can either aim for the one you want or just take what comes up.",
+      "These slots used to render completely empty, so there was no way to see what a recipe would accept, let alone pick. Shaped crafting recipes in particular looked like blank grids.",
+    ],
+  },
+  {
     version: "1.28.0",
     date: "2026-08-07",
     headline: "A machine can feed itself",
