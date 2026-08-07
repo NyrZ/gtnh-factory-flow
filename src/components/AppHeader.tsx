@@ -5,6 +5,7 @@ import { APP_VERSION } from "@/lib/version";
 import { AccountMenu } from "./community/AccountMenu";
 import { BoardActions } from "./BoardActions";
 import { ChangelogDialog } from "./ChangelogDialog";
+import { HeaderLinks } from "./HeaderLinks";
 
 /**
  * The one top bar for the whole app: title, version chip, board actions,
@@ -32,6 +33,8 @@ export function AppHeader() {
       </h1>
       {isChangelogOpen ? <ChangelogDialog onClose={() => setChangelogOpen(false)} /> : null}
       <div className="flex items-center gap-2">
+        <HeaderLinks />
+        <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
         <BoardActions />
         <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
         <AccountMenu />

@@ -1,0 +1,31 @@
+name: Idea or feature request
+description: Suggest something the planner should be able to do.
+title: "[Idea]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like the planner to do?
+      placeholder: |
+        Let me collapse a group of machines into a single card so a big
+        board stays readable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to get done?
+      description: What you are doing when you want this, and how you work around it today. This usually matters more than the specific solution.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Planner version
+      description: The `v` chip in the top left of the planner.
+      placeholder: "1.20.0"
+    validations:
+      required: false

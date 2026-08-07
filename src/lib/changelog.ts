@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.20.0",
+    date: "2026-08-06",
+    headline: "Three new buttons in the header",
+    notes: [
+      "The code, the Discord thread and a bug report are now one click away, up beside the import and export buttons.",
+      "Reporting a bug opens a short form that asks the right questions instead of an empty box, and it already knows which planner version you are on.",
+      "You can drag an exported plan straight into that form. The picture carries your whole board, so whatever went wrong can be opened and seen exactly as you had it.",
+    ],
+  },
+  {
     version: "1.19.1",
     date: "2026-08-06",
     headline: "Calm mode now tidies pocket cards too",
