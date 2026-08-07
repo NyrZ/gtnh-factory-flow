@@ -16,6 +16,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.16.0",
+    date: "2026-08-06",
+    headline: "Double click a resource to fly to the machine that makes it",
+    notes: [
+      "Double click any resource and the board flies to a machine that uses it, centred and back at normal zoom. Double click again to step to the next one.",
+      "Machines carrying the resource you are pointing at now glow and breathe, so they stand out on a busy board instead of just wearing a thin outline. They light up zoomed out too.",
+      "Clicking a resource no longer locks the highlight on. Point at it to light the board, look away and it goes out.",
+      "Hover a resource and it widens out over the board, so long names are readable in full.",
+      "The charts moved: each starred resource now carries its own graph right underneath it, and there is a new button to hide or show all of them at once.",
+      "Hover a graph to read what the number was at any point in its history.",
+      "The resource panel got wider, and its rates now follow the per second, per minute and per hour switch like the rest of the board.",
+      "Starred resources cannot be hidden. Starring something that was hidden brings it straight back.",
+      "Selected machines wear the same purple as the selection panel, instead of cyan.",
+      "Graphs step aside while you have a selection: the history follows your whole plan, not each selection you might make.",
+    ],
+  },
+  {
     version: "1.15.0",
     date: "2026-08-06",
     headline: "Hide what you do not care about, watch what you do",

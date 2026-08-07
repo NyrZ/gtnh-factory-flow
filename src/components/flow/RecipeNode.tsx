@@ -501,7 +501,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
         isCompareOpen ? "recipe-node-popup-open" : "",
-        selected ? "ring-2 ring-cyan-300" : "",
+        selected ? "ring-2 ring-purple-500" : "",
         isSearchHighlighted ? "ring-4 ring-sky-300" : "",
         isInspectorHighlighted ? "resource-glow" : "",
         exceedsMaxTier && !calmMode ? "ring-4 ring-red-500" : "",

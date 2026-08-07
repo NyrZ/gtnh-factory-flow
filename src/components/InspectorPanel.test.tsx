@@ -203,13 +203,26 @@ describe("InspectorPanel", () => {
     expect(screen.getByText(/Nothing left over/)).toBeDefined();
   });
 
-  it("selects a resource so the canvas can highlight it", () => {
+  it("lights a resource on the canvas while it is pointed at", () => {
+    seedResult({ externalInputs: [makeBalance(1, { deficitPerSecond: 240 })] });
+
+    render(<InspectorPanel />);
+    const row = screen.getByText("Resource 1").closest("[data-resource-row]")!;
+
+    fireEvent.mouseEnter(row);
+    expect(useFactoryStore.getState().hoveredFlowResourceKey).toBe("item:resource_1");
+  });
+
+  it("does not latch a resource on when it is clicked", () => {
+    // Clicking used to lock the highlight on, which left the board blinking
+    // until the row was found again and clicked off. Pointing is the whole
+    // gesture now.
     seedResult({ externalInputs: [makeBalance(1, { deficitPerSecond: 240 })] });
 
     render(<InspectorPanel />);
     fireEvent.click(screen.getByText("Resource 1").closest("button")!);
 
-    expect(useFactoryStore.getState().selectedFlowResourceKey).toBe("item:resource_1");
+    expect(useFactoryStore.getState().selectedFlowResourceKey).toBeUndefined();
   });
 
   describe("scoped to a board selection", () => {

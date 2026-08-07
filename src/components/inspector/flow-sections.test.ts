@@ -12,7 +12,7 @@ import {
   type ResourceMarks,
 } from "./flow-sections";
 
-const HEIGHTS = { header: 30, item: 48, empty: 38 };
+const HEIGHTS = { header: 30, item: 48, empty: 38, chart: 60 };
 
 function makeBalance(overrides: Partial<ResourceBalance> = {}): ResourceBalance {
   return {
@@ -244,14 +244,15 @@ describe("applyResourceMarks", () => {
     ).toEqual([iron]);
   });
 
-  it("shows a favourite even when it is also hidden", () => {
-    // Starring something says "keep this in front of me", which has to outrank
-    // a hide set weeks ago, or the star would silently do nothing.
+  it("hides a starred resource if one ever ends up in both lists", () => {
+    // Cannot happen through the UI - starring unhides, and a starred row has
+    // no hide button - so this only pins down that there is no tie-break here.
+    // The two marks are kept exclusive where they are WRITTEN, not read.
     const marked = applyResourceMarks(
       items,
       marks({ hidden: new Set(["fluid:water"]), favourites: new Set(["fluid:water"]) }),
     );
 
-    expect(marked).toEqual([water, iron, copper]);
+    expect(marked).toEqual([iron, copper]);
   });
 });

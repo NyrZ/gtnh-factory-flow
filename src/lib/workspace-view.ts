@@ -64,7 +64,15 @@ function readWorkspaceView(): WorkspaceView {
     const keys = (value: unknown) =>
       Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 
+    // A starred resource is never hidden (see toggleResourceFavourite), so a
+    // key in both lists is a blob from a build that allowed it. Settle it here
+    // rather than in every reader: the star wins, once, on the way in.
+    const favouriteResourceKeys = keys(parsed.favouriteResourceKeys);
+    const starred = new Set(favouriteResourceKeys);
+
     return {
+      favouriteResourceKeys,
+      hiddenResourceKeys: keys(parsed.hiddenResourceKeys).filter((key) => !starred.has(key)),
       leftPanelOpen: flag(parsed.leftPanelOpen, DEFAULT_WORKSPACE_VIEW.leftPanelOpen),
       rightPanelOpen: flag(parsed.rightPanelOpen, DEFAULT_WORKSPACE_VIEW.rightPanelOpen),
       showHiddenResources: flag(
@@ -73,8 +81,6 @@ function readWorkspaceView(): WorkspaceView {
       ),
       favouritesOnly: flag(parsed.favouritesOnly, DEFAULT_WORKSPACE_VIEW.favouritesOnly),
       trendsOpen: flag(parsed.trendsOpen, DEFAULT_WORKSPACE_VIEW.trendsOpen),
-      hiddenResourceKeys: keys(parsed.hiddenResourceKeys),
-      favouriteResourceKeys: keys(parsed.favouriteResourceKeys),
     };
   } catch {
     return DEFAULT_WORKSPACE_VIEW;
@@ -135,9 +141,22 @@ export function toggleResourceHidden(resourceKey: string) {
   });
 }
 
+/**
+ * Star or unstar a resource. Starring one that was hidden UNHIDES it.
+ *
+ * A starred resource is unhideable: its row offers no hide button, and this is
+ * the one path that could put a resource in both lists at once. Rather than
+ * teach every reader to break the tie, the two states are kept mutually
+ * exclusive at the point they are written - so "hidden" always means hidden,
+ * with no exceptions to remember.
+ */
 export function toggleResourceFavourite(resourceKey: string) {
   const current = getSnapshot();
+  const favouriteResourceKeys = toggleKey(current.favouriteResourceKeys, resourceKey);
   writeWorkspaceView({
-    favouriteResourceKeys: toggleKey(current.favouriteResourceKeys, resourceKey),
+    favouriteResourceKeys,
+    hiddenResourceKeys: favouriteResourceKeys.includes(resourceKey)
+      ? current.hiddenResourceKeys.filter((key) => key !== resourceKey)
+      : current.hiddenResourceKeys,
   });
 }

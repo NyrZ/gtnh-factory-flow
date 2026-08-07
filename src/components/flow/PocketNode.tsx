@@ -83,7 +83,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
     <div
       className={[
         "group relative font-mono text-white",
-        selected ? "ring-2 ring-fuchsia-300" : "",
+        selected ? "ring-2 ring-purple-500" : "",
       ].join(" ")}
       style={{ width: POCKET_NODE_WIDTH }}
       onDoubleClick={(event) => {

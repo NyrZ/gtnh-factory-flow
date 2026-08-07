@@ -281,6 +281,14 @@ interface FactoryStore {
   /** The board's live selection, published for panels outside the canvas. */
   selectedBoardIds: string[];
   setSelectedBoardIds: (ids: string[]) => void;
+  /**
+   * A panel asked the board to fly to one card and centre it. The token makes
+   * the same card requestable twice running - cycling through the machines
+   * that share a resource lands back on the first one, and that has to move
+   * the viewport again rather than look broken.
+   */
+  boardFocusRequest?: { nodeId: string; token: number };
+  focusBoardNode: (nodeId: string) => void;
   connectNodes: (
     sourceNodeId: string,
     targetNodeId: string,
@@ -449,6 +457,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   activePocketId: undefined,
   pendingBoardSelectionIds: undefined,
   selectedBoardIds: [],
+  boardFocusRequest: undefined,
   lastResult: calculateThroughput(initialProject),
   rateUnit: "second",
   setRateUnit: (unit) => {
@@ -1788,6 +1797,14 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       }
       return { selectedBoardIds: ids };
     });
+  },
+  focusBoardNode: (nodeId) => {
+    set((state) => ({
+      boardFocusRequest: {
+        nodeId,
+        token: (state.boardFocusRequest?.token ?? 0) + 1,
+      },
+    }));
   },
   connectNodes: (sourceNodeId, targetNodeId, resource) => {
     get().connectNodesBatch([{ sourceNodeId, targetNodeId, resource }]);

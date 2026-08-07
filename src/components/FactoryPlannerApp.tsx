@@ -211,9 +211,10 @@ export function FactoryPlannerApp() {
   return (
     <div className="flex h-screen min-h-[720px] flex-col bg-canvas text-fg">
       <AppHeader />
-      {/* 344/277: the browser column carries three iconed tabs and the setup
-          shelf now, so it gets a touch more than the old 312; the inspector
-          keeps its width so stat rows don't wrap. A closed column drops to a
+      {/* 344/332: the browser column carries three iconed tabs and the setup
+          shelf, so it gets a touch more than the old 312; the resource column
+          went from 277 to fit a rate, a name and the mark buttons on one line
+          without the name truncating to nothing. A closed column drops to a
           rail wide enough for one button, so the way back is always on screen
           and the board never has to give the width back to a hover target. */}
       <main
@@ -222,7 +223,7 @@ export function FactoryPlannerApp() {
           gridTemplateColumns: [
             workspace.leftPanelOpen ? "344px" : `${RAIL_WIDTH}px`,
             "minmax(0,1fr)",
-            workspace.rightPanelOpen ? "277px" : `${RAIL_WIDTH}px`,
+            workspace.rightPanelOpen ? "332px" : `${RAIL_WIDTH}px`,
           ].join(" "),
         }}
       >
