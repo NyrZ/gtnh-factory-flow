@@ -30,6 +30,7 @@ import {
 import { snapPositionToGrid } from "@/lib/board-grid";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useCommunityUser } from "@/components/community/auth";
+import { ControlsCard } from "@/components/ControlsCard";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
 import {
@@ -335,14 +336,6 @@ export function placePayload(payload: BoardClipboardPayload): string[] {
   return pastedIds;
 }
 
-/** The controls card: scope tabs on top, the active shelf's own tools under. */
-function ControlsCard({ children }: { children: ReactNode }) {
-  return (
-    <div className="mx-2 mt-2 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
-      {children}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // MINE: the private collection, with publishing.

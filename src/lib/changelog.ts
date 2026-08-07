@@ -16,6 +16,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.20.1",
+    date: "2026-08-06",
+    headline: "The item search sits in the same box as the other two tabs",
+    notes: [
+      "Items now keeps its search and filters in the rounded panel that Blueprints and Setups already used, so all three tabs match.",
+    ],
+  },
+  {
     version: "1.20.0",
     date: "2026-08-06",
     headline: "Three new buttons in the header",

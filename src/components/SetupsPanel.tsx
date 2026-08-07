@@ -36,6 +36,7 @@ import { OPEN_SETUPS_EVENT, takePendingSetupsScope, type SetupsScope } from "@/l
 import { useCommunityUser } from "@/components/community/auth";
 import { SharePlanDialog } from "@/components/community/SharePlanDialog";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
+import { ControlsCard } from "@/components/ControlsCard";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useDesignStore } from "@/store/design-store";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
@@ -362,7 +363,7 @@ export function SetupsPanel() {
 
   return (
     <>
-      <div className="mx-2 mt-2 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
+      <ControlsCard>
         {/* Share on the left, then Mine | Public: the same row shape as the
             blueprint shelf. The panel still OPENS on Public: browsing is
             the point. */}
@@ -464,7 +465,7 @@ export function SetupsPanel() {
             ))}
           </select>
         </div>
-      </div>
+      </ControlsCard>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {error ? <p className="mb-1.5 px-0.5 text-[11px] text-red-400">{error}</p> : null}

@@ -36,6 +36,7 @@ import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { OPEN_SETUPS_EVENT } from "@/lib/setups-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
+import { ControlsCard } from "./ControlsCard";
 import { BlueprintPanel } from "./BlueprintPanel";
 import { SetupsPanel } from "./SetupsPanel";
 import { machineArtPixels } from "./flow/MachinePicker";
@@ -660,7 +661,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           <SetupsPanel />
         ) : (
           <>
-        <div className="border-b border-neutral-800 px-3 py-3">
+        {/* The same card the blueprint and setup shelves put their search and
+            filters in. Bare, this tab's controls read as a different kind of
+            thing from the other two, when they are the same thing. */}
+        <ControlsCard>
           <label className="flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
             <Search className="h-4 w-4 text-neutral-500" />
             <input
@@ -750,7 +754,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
               <option value="recipes">Most recipes</option>
             </select>
           </div>
-        </div>
+        </ControlsCard>
 
         <div className="min-h-0 flex-1 overflow-hidden p-3">
           {!dataset && isDatasetLoading ? (
