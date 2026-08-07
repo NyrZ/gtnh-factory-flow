@@ -363,10 +363,40 @@ export const fuelProfileSchema = z
     path: ["euPerLiter"],
   });
 
+/**
+ * The author's workspace arrangement, carried by shared setups only.
+ *
+ * Every field is optional and loosely typed on purpose. This has to survive a
+ * round trip through `factoryProjectSchema.parse` (which strips what it does
+ * not know) and the server's own re-validation, and a plan saved by a newer
+ * build must not be rejected wholesale because it mentions a view setting this
+ * one has never heard of. Unknown values are dropped when the view is APPLIED,
+ * where the real constants live, rather than being policed here.
+ */
+export const planViewStateSchema = z.object({
+  canvasPattern: z.string().optional(),
+  lineHeatMode: z.boolean().optional(),
+  lineThicknessMode: z.boolean().optional(),
+  freeDockMode: z.boolean().optional(),
+  lineLabelsMode: z.boolean().optional(),
+  linePulseMode: z.boolean().optional(),
+  calmMode: z.boolean().optional(),
+  glanceMode: z.string().optional(),
+  rateUnit: z.enum(["second", "minute", "hour"]).optional(),
+  leftPanelOpen: z.boolean().optional(),
+  rightPanelOpen: z.boolean().optional(),
+  showHiddenResources: z.boolean().optional(),
+  favouritesOnly: z.boolean().optional(),
+  trendsOpen: z.boolean().optional(),
+  hiddenResourceKeys: z.array(z.string()).optional(),
+  favouriteResourceKeys: z.array(z.string()).optional(),
+});
+
 export const factoryProjectSchema = z.object({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   id: z.string().min(1),
   name: z.string().min(1),
+  view: planViewStateSchema.optional(),
   targetRate: targetRateSchema.optional(),
   recipes: z.array(recipeSchema),
   nodes: z.array(factoryNodeSchema),

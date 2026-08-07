@@ -31,6 +31,7 @@ import {
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
+import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import { OPEN_SETUPS_EVENT, takePendingSetupsScope, type SetupsScope } from "@/lib/setups-tab";
 import { useCommunityUser } from "@/components/community/auth";
 import { SharePlanDialog } from "@/components/community/SharePlanDialog";
@@ -207,6 +208,11 @@ export function SetupsPanel() {
         JSON.stringify(tagPlanWithCommunityId(planJson, plan.id)),
       );
       await useDesignStore.getState().importProjectAsDesign(project, project.name || plan.name);
+      // Opening a setup means seeing it the way its author set it up. Only
+      // here, not in the pocket drop below: that one merges into the board you
+      // are already working on, and rearranging your workspace around an
+      // import would be an ambush.
+      applyPlanView(project.view);
       patchPlan(plan.id, (entry) => ({ ...entry, downloads: entry.downloads + 1 }));
       setError(undefined);
     } catch (openError) {
@@ -290,7 +296,11 @@ export function SetupsPanel() {
     try {
       const project = useFactoryStore.getState().project;
       await patchCommunityPlan(plan.id, {
-        plan: JSON.parse(serializeFactoryProject(project)) as unknown,
+        // Overwriting re-shares the workspace too, so an updated post does not
+        // quietly keep the arrangement from whenever it was first published.
+        plan: JSON.parse(
+          serializeFactoryProject({ ...project, view: capturePlanView() }),
+        ) as unknown,
       });
       setError(undefined);
       setRefreshTick((tick) => tick + 1);

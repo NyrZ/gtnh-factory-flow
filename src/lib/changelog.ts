@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.19.0",
+    date: "2026-08-06",
+    headline: "A shared setup now arrives set up the way you left it",
+    notes: [
+      "Sharing a setup saves how you had everything arranged, and opening someone else's puts it back exactly like that.",
+      "That covers your starred resources and their charts, what you had hidden, whether hidden mode was on, and whether you were reading rates per second, per minute or per hour.",
+      "It also covers the board: the background pattern, calm mode, the wire colour, thickness, label and flow settings, which card face you were on, and which side columns were open.",
+      "Updating one of your own posts re-saves the arrangement too, so it never keeps the one from whenever you first published it.",
+      "None of this touches your own designs. Switching between your tabs leaves your settings exactly where you put them, and dropping a setup onto the board you are working on will not rearrange anything.",
+      "Older setups that were shared before this simply open with your own settings, as they always did.",
+    ],
+  },
+  {
     version: "1.18.0",
     date: "2026-08-06",
     headline: "No more phantom shortages of a hundred-thousandth",

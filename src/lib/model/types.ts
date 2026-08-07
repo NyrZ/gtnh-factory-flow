@@ -373,10 +373,48 @@ export interface FuelProfile {
   notes?: string;
 }
 
+/**
+ * How the author had the workspace set up when they shared a plan.
+ *
+ * Board view settings and resource marks are normally personal taste kept in
+ * localStorage, deliberately outside the project so your grid pattern does not
+ * ride along into everyone else's board (see `board-view.ts`). A SHARED SETUP
+ * is the exception: the author arranged the view to make their build readable
+ * - starred the resources worth watching, hid the noise, picked a rate unit -
+ * and that arrangement is part of what they are handing over.
+ *
+ * So it rides in the plan, but it is only ever APPLIED when a shared setup is
+ * opened. Switching between your own designs never touches your live settings,
+ * which is the case the original rule was protecting.
+ *
+ * Every field is optional: an older plan simply has nothing to say, and the
+ * viewer's own settings stand.
+ */
+export interface PlanViewState {
+  canvasPattern?: string;
+  lineHeatMode?: boolean;
+  lineThicknessMode?: boolean;
+  freeDockMode?: boolean;
+  lineLabelsMode?: boolean;
+  linePulseMode?: boolean;
+  calmMode?: boolean;
+  glanceMode?: string;
+  rateUnit?: "second" | "minute" | "hour";
+  leftPanelOpen?: boolean;
+  rightPanelOpen?: boolean;
+  showHiddenResources?: boolean;
+  favouritesOnly?: boolean;
+  trendsOpen?: boolean;
+  hiddenResourceKeys?: string[];
+  favouriteResourceKeys?: string[];
+}
+
 export interface FactoryProject {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
   id: string;
   name: string;
+  /** Only shared setups carry this; see PlanViewState. */
+  view?: PlanViewState;
   targetRate?: TargetRate;
   recipes: Recipe[];
   nodes: FactoryNode[];

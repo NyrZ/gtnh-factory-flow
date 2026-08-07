@@ -6,11 +6,17 @@ import { useSyncExternalStore } from "react";
  * Board view preferences: how the canvas looks, whether drags snap, and which
  * of the read-only display modes are on.
  *
- * These are personal taste, not part of the plan — a design shared with
- * someone else must not carry your grid setting or arrive with the heatmap
- * switched on. So they live in localStorage rather than in the project, and
+ * These are personal taste, not part of the plan — switching between your own
+ * designs must not carry your grid setting from one to the next or turn the
+ * heatmap on. So they live in localStorage rather than in the project, and
  * outside the Zustand store so they can be read straight out of localStorage
  * without an effect.
+ *
+ * SHARING a setup is the one exception. The author arranged the view to make
+ * their build readable, so a snapshot of these settings is captured into the
+ * uploaded plan and applied when someone opens it — see `plan-view.ts`. That
+ * is a one-shot copy at share time and at open time; nothing here is ever
+ * read from or written to a project the user is merely working on.
  *
  * Read through useSyncExternalStore: localStorage does not exist during SSR,
  * so the server renders the defaults and the browser swaps in the saved values
@@ -156,4 +162,9 @@ export function writeBoardView(patch: Partial<BoardView>) {
 
 export function useBoardView(): BoardView {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/** The same value the hook returns, for callers outside React. */
+export function readBoardViewSnapshot(): BoardView {
+  return getSnapshot();
 }

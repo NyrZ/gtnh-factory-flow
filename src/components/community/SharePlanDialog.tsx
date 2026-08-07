@@ -11,6 +11,7 @@ import {
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
 import type { CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { serializeFactoryProject } from "@/lib/import-export";
+import { capturePlanView } from "@/lib/plan-view";
 import { openSetupsTab } from "@/lib/setups-tab";
 import { useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
@@ -109,7 +110,14 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
         description,
         gameVersion: datasetVersion?.gtnhVersion ?? "",
         datasetVersionId: selectedDatasetVersionId ?? "",
-        plan: JSON.parse(serializeFactoryProject(project)) as unknown,
+        // The workspace goes with the plan: the author arranged the board and
+        // the resource panel to make this build readable, and that arrangement
+        // is part of what they are sharing. Captured at the moment of sharing
+        // rather than carried on the project, so it can never leak into the
+        // designs they are only working on.
+        plan: JSON.parse(
+          serializeFactoryProject({ ...project, view: capturePlanView() }),
+        ) as unknown,
         tags: finalTags,
         icon,
       };

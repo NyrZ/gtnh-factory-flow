@@ -8,4 +8,4 @@
  * The chip opens the changelog, so every bump needs an entry in
  * `src/lib/changelog.ts` written for players, not for developers.
  */
-export const APP_VERSION = "1.18.0";
+export const APP_VERSION = "1.19.0";

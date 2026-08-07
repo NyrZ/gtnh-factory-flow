@@ -13,6 +13,7 @@ import {
 import { loadResourceHistory, useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
 import { recordResourceTrend, resetResourceTrends } from "@/lib/resource-trends";
+import { applyPlanView } from "@/lib/plan-view";
 import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
@@ -92,6 +93,9 @@ export function FactoryPlannerApp() {
             await useDesignStore
               .getState()
               .importProjectAsDesign(project, project.name || "Shared setup");
+            // A shared link opens the setup the way its author arranged it,
+            // same as opening one from the shelf.
+            applyPlanView(project.view);
           };
 
           try {

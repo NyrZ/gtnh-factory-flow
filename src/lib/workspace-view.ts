@@ -6,12 +6,11 @@ import { useSyncExternalStore } from "react";
  * Workspace preferences: which of the three columns are open, and how the
  * resource panel is filtered.
  *
- * Same reasoning as `board-view.ts`, and the same mechanism. These are
- * personal taste rather than part of a plan - a design shared with someone
- * else must not arrive with your side panels shut or your hidden resources
- * hidden - so they live in localStorage, outside any store, and are read
+ * Same reasoning as `board-view.ts`, and the same mechanism: personal taste
+ * rather than part of a plan, kept in localStorage outside any store and read
  * through useSyncExternalStore so the server can render defaults without a
- * hydration mismatch.
+ * hydration mismatch. Sharing a setup is the same one exception - see
+ * `plan-view.ts`.
  *
  * Hidden and favourite resources are keyed by `ResourceKey` (`item:iron_ingot`)
  * and kept across designs on purpose: someone who never wants to see Water
@@ -125,6 +124,11 @@ export function writeWorkspaceView(patch: Partial<WorkspaceView>) {
 
 export function useWorkspaceView(): WorkspaceView {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/** The same value the hook returns, for callers outside React. */
+export function readWorkspaceViewSnapshot(): WorkspaceView {
+  return getSnapshot();
 }
 
 /** Flip one resource in or out of a saved key list. */
