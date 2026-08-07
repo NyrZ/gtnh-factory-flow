@@ -569,8 +569,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         data-node-glance-root=""
         // recipe-node-window: the painted rectangle, as opposed to the shell's
         // box (which includes the unpainted tab zone). Anything that outlines
-        // "the card" belongs here — see the dead-loop glow in globals.css.
-        ref={deadLoopPhaseRef}
+        // "the card" belongs here — see the dead-loop ring in globals.css.
         className="recipe-node-window relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]"
         style={
           nodeColor
@@ -581,6 +580,19 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             : undefined
         }
       >
+      {/* The ring's mark, and the reason it is an ELEMENT rather than the
+          window's ::after: a pseudo-element's box is only as trustworthy as
+          the selector that made it, and this one kept coming out around the
+          SHELL — the whole box, tab zone included — so the ring enclosed the
+          machine tabs and the bare canvas behind them, and the card read as
+          floating inside a rectangle that was not its own. A child of the
+          window has the window's box by construction; there is no selector
+          left to get wrong. It draws nothing but its own glow, takes no
+          pointer events, and carries no text, so it is invisible to
+          everything except the eye. */}
+      {verdict.kind === "dead-loop" ? (
+        <div ref={deadLoopPhaseRef} aria-hidden className="dead-loop-ring" />
+      ) : null}
       {/* The smart view: what this card leads with zoomed out. Identity mode
           (the default) is WHAT it is — machine icon, count and name, with the
           I/O rates revealed on hover by pure CSS. Status mode is the old

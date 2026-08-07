@@ -780,16 +780,19 @@ img {
 
    Two things decide where this is allowed to live.
 
-   It goes on the WINDOW, not the shell. The shell is the whole box, tab zone
-   included, and the tab zone is deliberately unpainted so the machine tabs
-   protrude over bare canvas. A glow around the shell therefore draws a
-   rectangle around empty space above the card, and the card reads as floating
-   inside a box that is not its own.
+   It goes inside the WINDOW, not on the shell. The shell is the whole box,
+   tab zone included, and the tab zone is deliberately unpainted so the machine
+   tabs protrude over bare canvas. A glow around the shell draws a rectangle
+   around empty space above the card, and the card reads as floating inside a
+   box that is not its own — which is exactly what kept happening while this
+   was a pseudo-element hung off a descendant selector.
 
-   And it goes on a pseudo-element, not on the window itself. The window's 2px
-   frame and bevel ARE its box-shadow, so animating box-shadow on it would
-   paint the frame away for the duration. The overlay owns the glow and the
-   window keeps its frame. */
+   So it is its own element now (`.dead-loop-ring`, see RecipeNode.tsx), a
+   child of the window: its box IS the card's box by construction, with no
+   selector left to get wrong. It stays a separate element rather than moving
+   onto the window itself because the window's 2px frame and bevel ARE its
+   box-shadow, and animating box-shadow there would paint the frame away for
+   the duration. The overlay owns the glow; the window keeps its frame. */
 /* The ring's WIDTH is constant and only its colour and halo move.
 
    Everything on the board is drawn through React Flow's zoom transform, so a
@@ -813,8 +816,7 @@ img {
   }
 }
 
-.recipe-node-shell[data-verdict="dead-loop"] .recipe-node-window::after {
-  content: "";
+.dead-loop-ring {
   position: absolute;
   inset: 0;
   z-index: 3;
@@ -825,6 +827,16 @@ img {
   animation: dead-loop-breathe 2.6s ease-in-out infinite;
 }
 
+/* The glance step hides every child of a card's glance root, which this now
+   is one of. The ring is the exception it was written to have: zoomed out is
+   where a ring MOST needs saying, because the card has stopped saying
+   anything else. Same specificity as the hide rule, and after it, so it wins.
+   (This is why the mark used to be a pseudo-element — `> *` cannot reach one.
+   An element that says so out loud beats a box in the wrong place.) */
+.factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .dead-loop-ring {
+  visibility: visible;
+}
+
 /* Zoomed out, 3px of a card is worth less than a device pixel and the ring is
    competing with a whole board. The card's contents are hidden at this level
    anyway, so the ring can afford to be the loud thing on it.
@@ -832,9 +844,7 @@ img {
    swapping animation-name restarts the animation, which would re-scatter the
    phase of every card in the ring on each zoom across the threshold. Changing
    a custom property re-resolves the running keyframes in place. */
-.factory-flow-board[data-detail-level="glance"]
-  .recipe-node-shell[data-verdict="dead-loop"]
-  .recipe-node-window::after {
+.factory-flow-board[data-detail-level="glance"] .dead-loop-ring {
   --dead-loop-ring: 8px;
   --dead-loop-halo: 26px;
   --dead-loop-halo-lit: 56px;
@@ -843,7 +853,7 @@ img {
 /* Reduced motion and the presentation toggle both want the mark without the
    movement: hold it at the bright end rather than dropping the signal. */
 @media (prefers-reduced-motion: reduce) {
-  .recipe-node-shell[data-verdict="dead-loop"] .recipe-node-window::after {
+  .dead-loop-ring {
     animation: none;
     box-shadow:
       0 0 0 var(--dead-loop-ring) #ff6b6b,
@@ -851,7 +861,7 @@ img {
   }
 }
 
-.factory-flow-board--calm .recipe-node-shell[data-verdict="dead-loop"] .recipe-node-window::after {
+.factory-flow-board--calm .dead-loop-ring {
   animation: none;
   box-shadow: 0 0 0 var(--dead-loop-ring) #7b8b9c;
 }
