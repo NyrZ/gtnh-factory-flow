@@ -65,6 +65,19 @@ export const RESOURCE_HISTORY_STORAGE_KEY = "gtnh-factory-flow.resource-history.
 const RESOURCE_HISTORY_LIMIT = 30;
 const PROJECT_HISTORY_LIMIT = 100;
 
+/**
+ * A move the board's camera has been asked to make from outside the canvas.
+ *
+ * `centre` lands on a single card at 1:1 - reading one machine. `fit` zooms
+ * out until every named card is on screen at once, and an empty `nodeIds`
+ * under `fit` means the whole board.
+ */
+export interface BoardCameraRequest {
+  mode: "centre" | "fit";
+  nodeIds: string[];
+  token: number;
+}
+
 interface FactoryStore {
   project: FactoryProject;
   undoHistory: FactoryProject[];
@@ -282,13 +295,24 @@ interface FactoryStore {
   selectedBoardIds: string[];
   setSelectedBoardIds: (ids: string[]) => void;
   /**
-   * A panel asked the board to fly to one card and centre it. The token makes
-   * the same card requestable twice running - cycling through the machines
-   * that share a resource lands back on the first one, and that has to move
-   * the viewport again rather than look broken.
+   * A panel asked the board to move its camera. The token makes the same move
+   * requestable twice running - cycling through the machines that share a
+   * resource lands back on the first one, and that has to move the viewport
+   * again rather than look broken.
    */
-  boardFocusRequest?: { nodeId: string; token: number };
+  boardFocusRequest?: BoardCameraRequest;
+  /** Fly to one card, centre it, and land at 1:1 however far out the user was. */
   focusBoardNode: (nodeId: string) => void;
+  /**
+   * Frame `nodeIds`, or everything on the board when they are omitted: the
+   * board zooms out as far as it has to for the lot to fit.
+   *
+   * This is how a plan that arrives from somewhere else lands on screen. A
+   * shared setup carries its author's positions and nothing about where their
+   * camera was, so opening one built thousands of cells from the origin used
+   * to leave the viewer looking at blank canvas.
+   */
+  frameBoardNodes: (nodeIds?: string[]) => void;
   connectNodes: (
     sourceNodeId: string,
     targetNodeId: string,
@@ -1801,7 +1825,17 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   focusBoardNode: (nodeId) => {
     set((state) => ({
       boardFocusRequest: {
-        nodeId,
+        mode: "centre",
+        nodeIds: [nodeId],
+        token: (state.boardFocusRequest?.token ?? 0) + 1,
+      },
+    }));
+  },
+  frameBoardNodes: (nodeIds) => {
+    set((state) => ({
+      boardFocusRequest: {
+        mode: "fit",
+        nodeIds: nodeIds ?? [],
         token: (state.boardFocusRequest?.token ?? 0) + 1,
       },
     }));

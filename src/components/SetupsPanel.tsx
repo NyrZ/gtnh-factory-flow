@@ -242,6 +242,9 @@ export function SetupsPanel() {
         const pocketId = state.compactSelectionIntoPocket(pastedIds, plan.name);
         if (pocketId) {
           state.setPendingBoardSelection([pocketId]);
+          // The whole setup is one card now, so the camera settles on that
+          // card rather than on the spread it was a moment ago.
+          state.frameBoardNodes([pocketId]);
         }
       }
 

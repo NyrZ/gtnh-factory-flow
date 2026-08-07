@@ -332,6 +332,10 @@ export function placePayload(payload: BoardClipboardPayload): string[] {
   if (pastedIds.length > 0) {
     // Arrives selected, ready to drag into place — same handoff as paste.
     state.setPendingBoardSelection(pastedIds);
+    // And the camera closes in on it. It lands centred on the view, but a
+    // board being read from far out would show what arrived as a speck, and a
+    // board zoomed right in would only show a corner of it.
+    state.frameBoardNodes(pastedIds);
   }
   return pastedIds;
 }

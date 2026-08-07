@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.26.0",
+    date: "2026-08-07",
+    headline: "Open a setup and the board goes to it",
+    notes: [
+      "Open someone else's setup and the board now flies to their factory and zooms out until all of it is on screen. People build a long way from where you happen to be looking, so opening one used to drop you on empty canvas with the whole thing off the edge.",
+      "Importing a plan file lands the same way.",
+      "Drop a setup onto your board as a pocket and the camera settles on the new card. Same for placing a blueprint: you see what just arrived, however far out you were reading the board.",
+      "The board zooms out further than it used to, so even a very large factory fits on one screen.",
+    ],
+  },
+  {
     version: "1.25.0",
     date: "2026-08-07",
     headline: "The board now tells you when machines are stuck in a loop",

@@ -63,6 +63,7 @@ export function BoardActions() {
   const canUndo = useFactoryStore((state) => state.undoHistory.length > 0);
   const canRedo = useFactoryStore((state) => state.redoHistory.length > 0);
   const setProject = useFactoryStore((state) => state.setProject);
+  const frameBoardNodes = useFactoryStore((state) => state.frameBoardNodes);
   const setProjectImporting = useFactoryStore((state) => state.setProjectImporting);
   const cleanBoard = useFactoryStore((state) => state.cleanBoard);
   const undo = useFactoryStore((state) => state.undo);
@@ -117,8 +118,12 @@ export function BoardActions() {
         cloneImportedProject(parseFactoryProjectJson(text)),
       );
 
+      // An imported plan was built on someone else's board, so its cards can
+      // sit anywhere at all: the camera goes to them rather than leaving the
+      // viewer on blank canvas.
       if (!selectedDatasetVersion) {
         setProject(importedProject);
+        frameBoardNodes();
         console.warn(
           "Plan imported without an active GTNH dataset; embedded recipe data was kept.",
         );
@@ -130,6 +135,7 @@ export function BoardActions() {
         selectedDatasetVersion,
       );
       setProject(refreshImportedProjectEdges(hydration.project));
+      frameBoardNodes();
 
       if (hydration.missingRecipes.length) {
         console.warn(

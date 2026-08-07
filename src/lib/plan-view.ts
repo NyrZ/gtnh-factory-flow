@@ -47,14 +47,29 @@ export function capturePlanView(): PlanViewState {
 }
 
 /**
- * Put the author's arrangement on screen.
+ * Put the author's arrangement, and the setup itself, on screen.
  *
- * Only ever called when a shared setup is OPENED. Values the running build
- * does not recognise are dropped rather than written through, so a plan from a
- * newer version cannot leave the board in a state with no control that undoes
- * it. Absent fields leave the viewer's own setting alone.
+ * Only ever called when a shared setup is OPENED.
  */
 export function applyPlanView(view: PlanViewState | undefined): void {
+  applyViewSettings(view);
+
+  // Last, so the panel toggles above have already given the board its width.
+  //
+  // A shared plan carries its author's card positions and nothing at all about
+  // where their camera was, and plenty of factories are built thousands of
+  // cells from the origin. Opening one used to drop the viewer wherever they
+  // happened to be looking, with the whole build off the edge of the board.
+  useFactoryStore.getState().frameBoardNodes();
+}
+
+/**
+ * The view settings themselves. Values the running build does not recognise
+ * are dropped rather than written through, so a plan from a newer version
+ * cannot leave the board in a state with no control that undoes it. Absent
+ * fields leave the viewer's own setting alone.
+ */
+function applyViewSettings(view: PlanViewState | undefined): void {
   if (!view) {
     return;
   }

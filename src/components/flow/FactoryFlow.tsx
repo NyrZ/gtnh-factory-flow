@@ -112,10 +112,20 @@ import {
   ANNOTATION_MIN_BOX,
   ANNOTATION_MIN_TEXT,
   BOARD_GRID,
-  RECIPE_NODE_WIDTH,
   STORAGE_NODE_HEIGHT,
   STORAGE_NODE_WIDTH,
 } from "@/lib/board-grid";
+import {
+  BOARD_CAMERA_DURATION,
+  BOARD_CAMERA_MAX_ZOOM,
+  BOARD_CAMERA_PADDING,
+  BOARD_MAX_ZOOM,
+  BOARD_MIN_ZOOM,
+  cardRect,
+  framingRect,
+  rectCentre,
+  zoomForRect,
+} from "./board-camera";
 import { RecipeNode, type RecipeFlowNode } from "./RecipeNode";
 import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE, flowRampColor } from "./node-colors";
 import {
@@ -1557,39 +1567,6 @@ export function FactoryFlow() {
     });
   }, [nodesFromProject, setPendingBoardSelection]);
 
-  /**
-   * A resource row was double-clicked: fly the board to that card, centre it,
-   * and land at 1:1 so it arrives readable however far out the user was.
-   *
-   * Runs off a token rather than the id alone, so stepping through the cards
-   * that share a resource still moves when the ring wraps back to the card the
-   * viewport is already on.
-   */
-  const boardFocusRequest = useFactoryStore((state) => state.boardFocusRequest);
-  const servedFocusTokenRef = useRef(boardFocusRequest?.token ?? 0);
-  useEffect(() => {
-    if (!boardFocusRequest || boardFocusRequest.token === servedFocusTokenRef.current) {
-      return;
-    }
-    servedFocusTokenRef.current = boardFocusRequest.token;
-
-    const instance = flowInstanceRef.current;
-    const node = instance?.getNode(boardFocusRequest.nodeId);
-    if (!instance || !node) {
-      return;
-    }
-
-    // Measured size when React Flow has one; the published card sizes are the
-    // fallback for a card that has never been on screen, which is exactly the
-    // case when flying somewhere off-viewport.
-    const width = node.measured?.width ?? node.width ?? RECIPE_NODE_WIDTH;
-    const height = node.measured?.height ?? node.height ?? STORAGE_NODE_HEIGHT;
-    instance.setCenter(node.position.x + width / 2, node.position.y + height / 2, {
-      zoom: 1,
-      duration: 420,
-    });
-  }, [boardFocusRequest]);
-
   // Switching pulse mode off has to empty the canvas registry: the edges stay
   // mounted and simply stop publishing, so without this the last frame's
   // dashes would march on forever.
@@ -1634,6 +1611,99 @@ export function FactoryFlow() {
   );
   const flowNodesRef = useRef(flowNodes);
   flowNodesRef.current = flowNodes;
+  const nodesFromProjectRef = useRef(nodesFromProject);
+  nodesFromProjectRef.current = nodesFromProject;
+
+  /**
+   * Where the cards are, and how big they are, for a camera move.
+   *
+   * Positions come from `nodesFromProject`, not from React Flow's own node
+   * state, because a camera move is most often asked for in the same commit
+   * that put the cards there - a setup opening, a pocket compacting - and
+   * React Flow's copy is one render behind at that moment. Sizes are looked up
+   * separately, by id, from the cards React Flow HAS rendered; the rest fall
+   * back to the grid's own card sizes (see board-camera.ts).
+   */
+  const cameraCards = useCallback((nodeIds?: string[]) => {
+    const wanted = nodeIds && nodeIds.length > 0 ? new Set(nodeIds) : undefined;
+    const cards = wanted
+      ? nodesFromProjectRef.current.filter((node) => wanted.has(node.id))
+      : nodesFromProjectRef.current;
+    const measuredById = new Map(
+      flowNodesRef.current.map((node) => [node.id, node.measured] as const),
+    );
+    return { cards, measuredById };
+  }, []);
+
+  /**
+   * Move the camera until `nodeIds` - or the whole board, when they are
+   * omitted - is on screen, zooming out as far as it takes.
+   */
+  const frameBoardCards = useCallback(
+    (nodeIds?: string[]) => {
+      const instance = flowInstanceRef.current;
+      const board = boardRef.current;
+      if (!instance || !board) {
+        return;
+      }
+
+      const { cards, measuredById } = cameraCards(nodeIds);
+      const rect = framingRect(cards, measuredById);
+      const size = board.getBoundingClientRect();
+      if (!rect || size.width === 0 || size.height === 0) {
+        return;
+      }
+
+      const centre = rectCentre(rect);
+      void instance.setCenter(centre.x, centre.y, {
+        zoom: zoomForRect(rect, size, {
+          padding: BOARD_CAMERA_PADDING,
+          minZoom: BOARD_MIN_ZOOM,
+          maxZoom: BOARD_CAMERA_MAX_ZOOM,
+        }),
+        duration: BOARD_CAMERA_DURATION,
+      });
+    },
+    [cameraCards],
+  );
+
+  /**
+   * A panel asked the board to move: fly to one card and centre it (a
+   * double-clicked resource row), or zoom out until a set of cards - or a
+   * whole freshly opened plan - fits.
+   *
+   * Runs off a token rather than the ids alone, so stepping through the cards
+   * that share a resource still moves when the ring wraps back to the card the
+   * viewport is already on.
+   */
+  const boardFocusRequest = useFactoryStore((state) => state.boardFocusRequest);
+  const servedFocusTokenRef = useRef(boardFocusRequest?.token ?? 0);
+  useEffect(() => {
+    if (!boardFocusRequest || boardFocusRequest.token === servedFocusTokenRef.current) {
+      return;
+    }
+    servedFocusTokenRef.current = boardFocusRequest.token;
+
+    if (boardFocusRequest.mode === "fit") {
+      frameBoardCards(boardFocusRequest.nodeIds);
+      return;
+    }
+
+    const instance = flowInstanceRef.current;
+    const { cards, measuredById } = cameraCards(boardFocusRequest.nodeIds);
+    const card = cards[0];
+    if (!instance || !card) {
+      return;
+    }
+
+    // One card, at 1:1, so it arrives readable however far out the user was.
+    const centre = rectCentre(cardRect(card, measuredById.get(card.id)));
+    void instance.setCenter(centre.x, centre.y, {
+      zoom: 1,
+      duration: BOARD_CAMERA_DURATION,
+    });
+  }, [boardFocusRequest, cameraCards, frameBoardCards]);
+
   // Publish the obstacle set for route avoidance from state, not the DOM: with
   // `onlyRenderVisibleElements` the DOM only holds on-screen nodes, so a
   // DOM-derived obstacle set changed on every pan and invalidated every cached
@@ -3254,19 +3324,14 @@ export function FactoryFlow() {
       return;
     }
     previousPocketRef.current = activePocketId;
-    const frame = requestAnimationFrame(() => {
-      void flowInstanceRef.current?.fitView({ padding: 0.2, duration: 320 });
-    });
+    const frame = requestAnimationFrame(() => frameBoardCards());
     return () => cancelAnimationFrame(frame);
-  }, [activePocketId]);
+  }, [activePocketId, frameBoardCards]);
 
-  const handleShowNodes = useCallback((nodeIds: string[]) => {
-    void flowInstanceRef.current?.fitView({
-      nodes: nodeIds.map((id) => ({ id })),
-      padding: 0.35,
-      duration: 420,
-    });
-  }, []);
+  const handleShowNodes = useCallback(
+    (nodeIds: string[]) => frameBoardCards(nodeIds),
+    [frameBoardCards],
+  );
 
   // Stable references keep the memoized PaintToolbar from re-rendering on the
   // per-frame FactoryFlow renders a node drag produces.
@@ -3609,8 +3674,9 @@ export function FactoryFlow() {
         // the pane, upstream of React's synthetic events — stopPropagation
         // in the dot handlers can never reach it, so it goes off wholesale.
         zoomOnDoubleClick={false}
-        minZoom={0.15}
-        maxZoom={1.8}
+        // The same floor and ceiling a framing move is clamped to.
+        minZoom={BOARD_MIN_ZOOM}
+        maxZoom={BOARD_MAX_ZOOM}
         // React Flow's default ("basic") raises every edge to at least the
         // z-index of its two endpoint nodes, so an edge can never be told to
         // pass BEHIND a node it connects to — which is why asking for -1 did
