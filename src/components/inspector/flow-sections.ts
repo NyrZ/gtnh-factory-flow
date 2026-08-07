@@ -8,8 +8,6 @@ export type FlowSectionTone = "need" | "output" | "internal";
 export interface FlowSection {
   id: FlowSectionId;
   label: string;
-  /** Shown next to the count so the group explains itself without a legend. */
-  hint: string;
   empty: string;
   tone: FlowSectionTone;
   /** Sign applied to the headline rate. Needs read negative, outputs positive. */

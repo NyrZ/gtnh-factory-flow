@@ -33,7 +33,6 @@ function makeSection(id: FlowSectionId, items: ResourceBalance[]): FlowSection {
   return {
     id,
     label: id,
-    hint: "",
     empty: `no ${id}`,
     tone: id,
     sign: id === "need" ? -1 : id === "output" ? 1 : 0,
