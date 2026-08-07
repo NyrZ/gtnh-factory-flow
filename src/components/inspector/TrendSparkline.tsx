@@ -160,21 +160,31 @@ export function TrendSparkline({
         }}
       />
 
-      {/* The readout. Follows the crosshair while pointing, and falls back to
-          the latest value so the chart always states a number. */}
-      <span
-        className="pointer-events-none absolute right-0 top-0 rounded bg-surface-sunken/85 px-1 text-[10px] font-bold tabular-nums"
-        style={{ color: stroke }}
-      >
-        {readValue > 0 ? "+" : readValue < 0 ? "−" : ""}
-        {formatCompact(Math.abs(readValue) * multiplier)}
-        <span className="opacity-70">{unit}</span>
-      </span>
-      <span className="pointer-events-none absolute left-0 top-0 text-[10px] tabular-nums text-fg-muted">
-        {hoverIndex === undefined
-          ? `${series.length} edits`
-          : `edit ${readIndex + 1}/${series.length}`}
-      </span>
+      {/*
+        The readout appears only while a past point is being pointed at. Left
+        up all the time it just restated the row above it: at rest the chart's
+        last point IS the resource's current rate, so the number was always the
+        same one, twice.
+      */}
+      {hoverIndex === undefined ? (
+        <span className="pointer-events-none absolute left-0 top-0 text-[10px] tabular-nums text-fg-muted">
+          {series.length} edits
+        </span>
+      ) : (
+        <span
+          className="pointer-events-none absolute top-0 -translate-x-1/2 whitespace-nowrap rounded bg-surface-sunken/90 px-1 text-[10px] font-bold tabular-nums"
+          // Follows the crosshair, clamped inside the box so it cannot hang off
+          // either end.
+          style={{
+            left: `${Math.min(88, Math.max(12, toX(readIndex)))}%`,
+            color: stroke,
+          }}
+        >
+          {readValue > 0 ? "+" : readValue < 0 ? "−" : ""}
+          {formatCompact(Math.abs(readValue) * multiplier)}
+          <span className="opacity-70">{unit}</span>
+        </span>
+      )}
     </div>
   );
 }

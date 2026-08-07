@@ -16,6 +16,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.17.0",
+    date: "2026-08-06",
+    headline: "No more phantom shortages of a hundred-thousandth",
+    notes: [
+      "A resource that one machine makes and another eats in equal measure now reads as balanced, instead of sometimes turning up under Need or Output with a number like -0.0000012.",
+      "Those came from rounding, not from anything wrong with your plan, and they got bigger the bigger your rates were. They are gone at every scale now.",
+      "Real shortages and real spare output are untouched.",
+      "Rates in the resource list now sit right against the edge of the panel instead of stopping short.",
+      "The Need, Output and Internal headings dropped their explanatory lines.",
+      "Hovering a resource no longer pops up the browser's own tooltip trailing your cursor down the list.",
+      "A resource chart only shows a number while you are pointing at a point on it, since the row above already says what it is right now.",
+      "A very long name still ends in an ellipsis when even the widened row cannot fit it.",
+    ],
+  },
+  {
     version: "1.16.0",
     date: "2026-08-06",
     headline: "Double click a resource to fly to the machine that makes it",
