@@ -5,10 +5,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDesignStore } from "@/store/design-store";
 
-const MENU_WIDTH = 160;
+const MENU_WIDTH = 190;
 
 /** How far one arrow press travels — roughly one tab. */
 const SCROLL_STEP = 160;
+
+/** Which destructive item is one click from firing, if any. */
+type ArmedAction = "delete" | "right" | "left" | "others";
 
 interface OpenMenu {
   id: string;
@@ -28,17 +31,18 @@ export function DesignTabs() {
   const copyDesign = useDesignStore((state) => state.copyDesign);
   const renameDesign = useDesignStore((state) => state.renameDesign);
   const removeDesign = useDesignStore((state) => state.removeDesign);
+  const removeDesigns = useDesignStore((state) => state.removeDesigns);
 
   const [renamingId, setRenamingId] = useState<string>();
   const [openMenu, setOpenMenu] = useState<OpenMenu>();
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string>();
+  const [armed, setArmed] = useState<ArmedAction>();
   const [overflow, setOverflow] = useState({ left: false, right: false });
   const scrollerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => {
     setOpenMenu(undefined);
-    setConfirmDeleteId(undefined);
+    setArmed(undefined);
   };
 
   const syncOverflow = useCallback(() => {
@@ -125,7 +129,7 @@ export function DesignTabs() {
                   key={design.id}
                   data-design-id={design.id}
                   className={[
-                    "group flex h-7 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
+                    "group flex h-6 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
                     isActive
                       ? "border-cyan-500 bg-surface-raised text-fg"
                       : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
@@ -167,7 +171,7 @@ export function DesignTabs() {
                       // overflow container clips absolutely-positioned children
                       // whatever their z-index.
                       const rect = event.currentTarget.getBoundingClientRect();
-                      setConfirmDeleteId(undefined);
+                      setArmed(undefined);
                       setOpenMenu({
                         id: design.id,
                         name: design.name,
@@ -208,8 +212,15 @@ export function DesignTabs() {
       {openMenu ? (
         <DesignMenu
           menu={openMenu}
-          confirmingDelete={confirmDeleteId === openMenu.id}
+          armed={armed}
+          // Counted off the tab ORDER, so "to the right" means what the user
+          // can see rather than anything about when a design was made.
+          neighbours={splitNeighbours(
+            designs.map((design) => design.id),
+            openMenu.id,
+          )}
           onClose={closeMenu}
+          onArm={setArmed}
           onRename={() => {
             setRenamingId(openMenu.id);
             closeMenu();
@@ -218,9 +229,12 @@ export function DesignTabs() {
             void copyDesign(openMenu.id);
             closeMenu();
           }}
-          onRequestDelete={() => setConfirmDeleteId(openMenu.id)}
-          onConfirmDelete={() => {
+          onDelete={() => {
             void removeDesign(openMenu.id);
+            closeMenu();
+          }}
+          onCloseMany={(ids) => {
+            void removeDesigns(ids, openMenu.id);
             closeMenu();
           }}
         />
@@ -235,20 +249,24 @@ export function DesignTabs() {
  */
 function DesignMenu({
   menu,
-  confirmingDelete,
+  armed,
+  neighbours,
   onClose,
+  onArm,
   onRename,
   onDuplicate,
-  onRequestDelete,
-  onConfirmDelete,
+  onDelete,
+  onCloseMany,
 }: {
   menu: OpenMenu;
-  confirmingDelete: boolean;
+  armed?: ArmedAction;
+  neighbours: { left: string[]; right: string[]; others: string[] };
   onClose: () => void;
+  onArm: (action: ArmedAction) => void;
   onRename: () => void;
   onDuplicate: () => void;
-  onRequestDelete: () => void;
-  onConfirmDelete: () => void;
+  onDelete: () => void;
+  onCloseMany: (ids: string[]) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -295,16 +313,94 @@ function DesignMenu({
     >
       <MenuItem label="Rename" onClick={onRename} />
       <MenuItem label="Duplicate" onClick={onDuplicate} />
-      {confirmingDelete ? (
-        <MenuItem label="Delete — confirm" tone="danger" onClick={onConfirmDelete} />
+
+      {/*
+        Every item below closes designs for good, so each one arms on the first
+        click and fires on the second — two steps rather than a native confirm
+        dialog, because closing cannot be undone and the second click lands
+        where the first did. The count is in the label: "Close 6 to the right"
+        is a very different proposition from "Close 1", and the whole point of
+        these is that one click takes several tabs with it.
+
+        An item with nothing to close is left out rather than shown disabled;
+        on the first or last tab half this menu would otherwise be dead text.
+      */}
+      {neighbours.right.length > 0 ? (
+        <BulkCloseItem
+          label="Close all to the right"
+          count={neighbours.right.length}
+          armed={armed === "right"}
+          onArm={() => onArm("right")}
+          onFire={() => onCloseMany(neighbours.right)}
+        />
+      ) : null}
+      {neighbours.left.length > 0 ? (
+        <BulkCloseItem
+          label="Close all to the left"
+          count={neighbours.left.length}
+          armed={armed === "left"}
+          onArm={() => onArm("left")}
+          onFire={() => onCloseMany(neighbours.left)}
+        />
+      ) : null}
+      {neighbours.others.length > 0 ? (
+        <BulkCloseItem
+          label="Close others"
+          count={neighbours.others.length}
+          armed={armed === "others"}
+          onArm={() => onArm("others")}
+          onFire={() => onCloseMany(neighbours.others)}
+        />
+      ) : null}
+
+      {armed === "delete" ? (
+        <MenuItem label="Delete — confirm" tone="danger" onClick={onDelete} />
       ) : (
-        // Two steps rather than a native confirm dialog: deleting a design
-        // cannot be undone, and the second click lands where the first did.
-        <MenuItem label="Delete" tone="danger" onClick={onRequestDelete} />
+        <MenuItem label="Delete" tone="danger" onClick={() => onArm("delete")} />
       )}
     </div>,
     document.body,
   );
+}
+
+/** One armed-then-fires close, with its count in the label. */
+function BulkCloseItem({
+  label,
+  count,
+  armed,
+  onArm,
+  onFire,
+}: {
+  label: string;
+  count: number;
+  armed: boolean;
+  onArm: () => void;
+  onFire: () => void;
+}) {
+  return (
+    <MenuItem
+      label={armed ? `Close ${count} — confirm` : `${label} (${count})`}
+      tone={armed ? "danger" : undefined}
+      onClick={armed ? onFire : onArm}
+    />
+  );
+}
+
+/**
+ * Which tabs sit either side of one tab, by tab order.
+ *
+ * The anchor is never in any of the three lists: the menu belongs to that tab,
+ * so the one thing every item here leaves standing is the tab it opened from.
+ */
+function splitNeighbours(ids: string[], anchorId: string) {
+  const index = ids.indexOf(anchorId);
+  if (index < 0) {
+    return { left: [], right: [], others: [] };
+  }
+
+  const left = ids.slice(0, index);
+  const right = ids.slice(index + 1);
+  return { left, right, others: [...left, ...right] };
 }
 
 /**

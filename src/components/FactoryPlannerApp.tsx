@@ -214,7 +214,7 @@ export function FactoryPlannerApp() {
 
   return (
     <div className="flex h-screen min-h-[720px] flex-col bg-canvas text-fg">
-      <AppHeader />
+      <AppHeader onLoadDatasetVersion={loadDatasetVersion} />
       {/* 344/332: the browser column carries three iconed tabs and the setup
           shelf, so it gets a touch more than the old 312; the resource column
           went from 277 to fit a rate, a name and the mark buttons on one line

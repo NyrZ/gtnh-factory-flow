@@ -26,6 +26,18 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
   {
+    version: "1.19.2",
+    date: "2026-08-06",
+    headline: "Close a whole run of tabs at once",
+    notes: [
+      "The tab menu can now close everything to the right, everything to the left, or every other tab, and each one says how many it will take.",
+      "Closing tabs cannot be undone, so each of those asks once before it goes ahead.",
+      "Game version moved up to the top bar, next to the app version, and its dropdown is wider so the name fits.",
+      "Design tabs are a little shorter, so they sit closer to the text.",
+      "The arrow that folds the left column away now sits on the far left, matching the one on the right.",
+    ],
+  },
+  {
     version: "1.19.1",
     date: "2026-08-06",
     headline: "Calm mode now tidies pocket cards too",

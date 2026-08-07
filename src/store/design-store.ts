@@ -43,6 +43,16 @@ interface DesignStore {
   renameDesign: (id: string, name: string) => Promise<void>;
   removeDesign: (id: string) => Promise<void>;
   /**
+   * Close a run of tabs in one go.
+   *
+   * Not `removeDesign` in a loop: that re-reads the whole library and settles
+   * the active design after every single delete, so closing eight tabs would
+   * hand the canvas around eight times on the way. `keepActiveId` is the tab
+   * the menu was opened from, which always survives, so the canvas lands there
+   * when the active design is among the closed.
+   */
+  removeDesigns: (ids: string[], keepActiveId?: string) => Promise<void>;
+  /**
    * Saves `project` into `designId`.
    *
    * The design is named rather than read from state at call time: autosave is
@@ -238,6 +248,48 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     }
 
     set({ designs: summaries });
+  },
+
+  removeDesigns: async (ids, keepActiveId) => {
+    const doomed = new Set(ids);
+    doomed.delete(keepActiveId ?? "");
+    if (doomed.size === 0) {
+      return;
+    }
+
+    const { activeDesignId } = get();
+    for (const id of doomed) {
+      await deleteDesign(id);
+    }
+
+    let summaries = sortDesigns(await listDesignSummaries());
+    if (summaries.length === 0) {
+      // The strip is never empty, same as closing the last design one at a time.
+      const seeded = createDesignRecord(createEmptyProject(), UNTITLED_DESIGN_NAME);
+      await writeDesign(seeded);
+      summaries = [seeded];
+      writeActiveDesignId(seeded.id);
+      set({ designs: summaries, activeDesignId: seeded.id });
+      showProject(seeded.project);
+      return;
+    }
+
+    if (!activeDesignId || !doomed.has(activeDesignId)) {
+      // The canvas is showing a design that survived, so it stays put and
+      // nothing has to be loaded.
+      set({ designs: summaries });
+      return;
+    }
+
+    const nextId = summaries.some((design) => design.id === keepActiveId)
+      ? keepActiveId!
+      : summaries[0].id;
+    const next = await readDesign(nextId);
+    writeActiveDesignId(nextId);
+    set({ designs: summaries, activeDesignId: nextId });
+    if (next) {
+      showProject(next.project);
+    }
   },
 
   saveActiveProject: async (designId, project) => {

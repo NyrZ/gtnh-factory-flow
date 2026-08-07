@@ -1,24 +1,19 @@
 "use client";
 
 import { useFactoryStore } from "@/store/factory-store";
-import { writeWorkspaceView } from "@/lib/workspace-view";
 
 interface AppIdentityProps {
   onLoadDatasetVersion: (versionId: string) => void;
 }
 
 /**
- * Game-version picker, at the head of the recipe browser panel.
+ * Game-version picker, in the top bar beside the app version chip.
  *
- * Rendered inside the panel's own `<aside>` rather than as a sibling above it.
- * As a sibling it was a separate box that had to be kept the same width and the
- * same colour as the panel by hand — and it was neither, because the browser is
- * hardcoded dark chrome while this used theme tokens. Inside, it is the panel's
- * first row and inherits both for free.
- *
- * The version belongs beside the browser rather than on a global bar: it decides
- * which pack's recipes exist at all, so it is a property of the catalogue below
- * it, not of the plan on the board.
+ * It used to head the recipe browser column, on the grounds that it decides
+ * which pack's recipes exist and so belongs beside the catalogue. It reads
+ * better up here: the two version numbers a player might confuse sit together,
+ * the top bar had the room going spare, and the browser column gets a whole
+ * row of its height back for the list.
  */
 export function AppIdentity({ onLoadDatasetVersion }: AppIdentityProps) {
   const manifest = useFactoryStore((state) => state.datasetManifest);
@@ -26,54 +21,29 @@ export function AppIdentity({ onLoadDatasetVersion }: AppIdentityProps) {
   const isDatasetLoading = useFactoryStore((state) => state.isDatasetLoading);
 
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-neutral-800 px-3 py-2">
-      {/* The app title lives in the global header row now; this panel head
-          only carries the dataset picker and the button that shuts the column. */}
-      <label
-        className="flex min-w-0 flex-1 items-center gap-2"
-        title="Which GTNH pack version every recipe is loaded from. Changing it reloads the recipe list and re-resolves the recipes already on your board."
+    <label
+      className="flex items-center gap-1.5"
+      title="Which GTNH pack version every recipe is loaded from. Changing it reloads the recipe list and re-resolves the recipes already on your board."
+    >
+      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+        Game
+      </span>
+      <select
+        value={selectedDatasetVersionId ?? ""}
+        disabled={isDatasetLoading || !manifest?.versions.length}
+        onChange={(event) => onLoadDatasetVersion(event.target.value)}
+        className="h-6 max-w-[220px] rounded-[4px] border border-line-strong bg-surface-sunken px-1.5 text-xs font-normal normal-case tracking-normal text-fg outline-none disabled:cursor-not-allowed disabled:text-fg-muted"
       >
-        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-          Game version
-        </span>
-        <select
-          value={selectedDatasetVersionId ?? ""}
-          disabled={isDatasetLoading || !manifest?.versions.length}
-          onChange={(event) => onLoadDatasetVersion(event.target.value)}
-          className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1.5 text-xs normal-case tracking-normal text-neutral-200 disabled:cursor-not-allowed disabled:text-neutral-500"
-        >
-          {manifest?.versions.length ? (
-            manifest.versions.map((version) => (
-              <option key={version.id} value={version.id}>
-                {version.gtnhVersion} ({version.channel})
-              </option>
-            ))
-          ) : (
-            <option value="">No versions</option>
-          )}
-        </select>
-      </label>
-      {/* The column's own close button, at the top of the column it closes.
-          The rail it leaves behind carries the way back. */}
-      <button
-        type="button"
-        onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
-        title="Hide this column and give the board the room"
-        aria-label="Hide the items, blueprints and setups column"
-        className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          className="h-3.5 w-3.5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M10 3L5 8l5 5" />
-        </svg>
-      </button>
-    </div>
+        {manifest?.versions.length ? (
+          manifest.versions.map((version) => (
+            <option key={version.id} value={version.id}>
+              {version.gtnhVersion} ({version.channel})
+            </option>
+          ))
+        ) : (
+          <option value="">No versions</option>
+        )}
+      </select>
+    </label>
   );
 }
