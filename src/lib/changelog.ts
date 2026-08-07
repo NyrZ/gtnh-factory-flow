@@ -20,10 +20,11 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-07",
     headline: "Slots that take any of several items now show them, and let you choose",
     notes: [
-      "A recipe that accepts any plank, any basic circuit or any dye now shows those slots the way the game does: the item rolls through everything the slot will take, about one a second.",
-      "Hover a rolling slot to hold it still and read it. Shift+scroll to step through the list yourself, which stops the roll and settles on your pick. The corner mark turns from a cyan plus to an orange square once a slot is set.",
-      "Adding the recipe uses whatever each slot was showing at that moment, so you can either aim for the one you want or just take what comes up.",
-      "These slots used to render completely empty, so there was no way to see what a recipe would accept, let alone pick. Shaped crafting recipes in particular looked like blank grids.",
+      "A slot marked Any LV Circuit, or one that takes any plank or any dye, now behaves the way it does in game: the item rolls through everything the slot will actually accept, about one a second.",
+      "Hover a rolling slot to hold it still and read it. The tooltip lists everything it takes. Shift+scroll to step through them yourself, which stops the roll and settles on your pick, and the corner mark turns from a cyan plus to an orange square once a slot is set.",
+      "Adding the recipe uses whatever each slot was showing at that moment, so you can either aim for the one you want or just take what comes up. Either way the machine lands on your board asking for a real item instead of a stand-in.",
+      "Slots like these used to give nothing away. An Any LV Circuit slot named a placeholder you cannot craft and never said which circuits would do, and in shaped crafting recipes the squares were simply blank.",
+      "A slot that needs one exact item is untouched, and still asks for exactly that.",
     ],
   },
   {

@@ -72,6 +72,51 @@ describe("getAlternativeCycleFaces", () => {
   it("does not rotate a slot with nothing to rotate to", () => {
     expect(getAlternativeCycleFaces({ kind: "item", id: "minecraft:stone" })).toEqual([]);
   });
+
+  it("treats a named stand-in as a placeholder, not one of its own faces", () => {
+    // GTNH ships "Any LV Circuit" as a real item that means a set.
+    const faces = getAlternativeCycleFaces({
+      kind: "item",
+      id: "dreamcraft:circuitlv",
+      displayName: "Any LV Circuit",
+      alternatives: [
+        { kind: "item", id: "gregtech:circuit@1", displayName: "Electronic Circuit" },
+        { kind: "item", id: "gregtech:circuit@2", displayName: "Integrated Logic Circuit" },
+      ],
+    });
+
+    expect(faces.map((face) => face.displayName)).toEqual([
+      "Electronic Circuit",
+      "Integrated Logic Circuit",
+    ]);
+  });
+
+  it("never rotates one placeholder onto another", () => {
+    // An ore dictionary group lists the stand-in beside the real items.
+    const faces = getAlternativeCycleFaces({
+      kind: "item",
+      id: "oredict:circuitBasic",
+      displayName: "Ore Dictionary: circuitBasic",
+      alternatives: [
+        { kind: "item", id: "gregtech:circuit@1", displayName: "Electronic Circuit" },
+        { kind: "item", id: "dreamcraft:circuitlv", displayName: "Any LV Circuit" },
+        { kind: "item", id: "minecraft:planks@32767", displayName: "Oak Planks" },
+      ],
+    });
+
+    expect(faces.map((face) => face.displayName)).toEqual(["Electronic Circuit"]);
+  });
+
+  it("gives a single-member placeholder that member, so the slot is not blank", () => {
+    const faces = getAlternativeCycleFaces({
+      kind: "item",
+      id: "oredict:somethingRare",
+      displayName: "Ore Dictionary: somethingRare",
+      alternatives: [{ kind: "item", id: "mod:only", displayName: "Only Member" }],
+    });
+
+    expect(faces.map((face) => face.displayName)).toEqual(["Only Member"]);
+  });
 });
 
 describe("applyAlternativeCycleFace", () => {

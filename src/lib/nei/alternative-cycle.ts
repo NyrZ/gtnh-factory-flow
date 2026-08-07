@@ -1,5 +1,5 @@
 import type { ResourceAmount } from "@/lib/model/types";
-import { isOreDictionaryResource } from "@/lib/model/resources";
+import { isVirtualChoiceResource } from "@/lib/model/resources";
 
 /** How long each face of a cycling slot is shown, matching NEI's own rotation. */
 export const ALTERNATIVE_CYCLE_INTERVAL_MS = 1500;
@@ -124,16 +124,22 @@ export function advanceAlternativeCycleForTests(steps = 1) {
  */
 export function getAlternativeCycleFaces(resource: CycleResource): AlternativeCycleFace[] {
   const sameKind = (resource.alternatives ?? []).filter(
-    (alternative) => alternative.kind === resource.kind,
+    (alternative) =>
+      alternative.kind === resource.kind &&
+      // One placeholder must never be a face of another: an ore dictionary
+      // group lists "Any LV Circuit" beside the real circuits, and rotating
+      // onto it would show a stand-in where an item should be.
+      !isVirtualChoiceResource(alternative),
   );
   if (sameKind.length === 0) {
     return [];
   }
 
-  // An oredict entry is a placeholder, never a real item you could hold, so it
-  // is not one of the faces: NEI shows only the concrete members. A concrete
+  // A placeholder is never a real item you could hold, so it is not one of its
+  // own faces: NEI shows only the concrete members. This covers ore dictionary
+  // entries and GTNH's "Any LV Circuit" style stand-ins alike. A concrete
   // resource that merely has substitutes stays in its own rotation.
-  const faces = isOreDictionaryResource(resource)
+  const faces = isVirtualChoiceResource(resource)
     ? sameKind
     : [
         {
@@ -149,7 +155,10 @@ export function getAlternativeCycleFaces(resource: CycleResource): AlternativeCy
         ...sameKind,
       ];
 
-  return faces.length > 1 ? faces : [];
+  // A placeholder with a single member still returns it: the stand-in has no
+  // art of its own, so painting that one member is the only way the slot shows
+  // anything at all. Callers rotate only when there is more than one.
+  return faces;
 }
 
 /**

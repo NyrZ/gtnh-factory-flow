@@ -65,6 +65,18 @@ export function StackIconButton(props: StackViewProps) {
     );
   }
 
+  // A stand-in with exactly one member has nothing to rotate through, but it
+  // still has no art of its own, so it borrows that member's.
+  if (faces.length === 1) {
+    return (
+      <SlotButton
+        {...props}
+        slot={slot}
+        resource={applyAlternativeCycleFace(resource, faces[0])}
+      />
+    );
+  }
+
   return <SlotButton {...props} slot={slot} resource={resource} />;
 }
 

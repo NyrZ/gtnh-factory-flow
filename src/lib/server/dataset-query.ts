@@ -11,7 +11,13 @@ import type {
   RecipeMapIconEntry,
   RecipeSummary,
 } from "@/lib/datasets/types";
-import type { MachineTier, Recipe, RecipeOutput, ResourceAmount } from "@/lib/model/types";
+import type {
+  MachineTier,
+  Recipe,
+  RecipeOutput,
+  ResourceAlternative,
+  ResourceAmount,
+} from "@/lib/model/types";
 import {
   enrichPassiveProductionRecipe,
   getFilledCellFluidEquivalent,
@@ -53,6 +59,7 @@ interface LoadedRecipeIndex {
   indexes?: QueryIndexes;
   resourceIndexes?: ResourceQueryIndexes;
   resourcesByKey?: Map<string, DatasetResource | DatasetResourceIndexEntry>;
+  choiceAlternativesByKey?: Map<string, ResourceAlternative[]>;
   recipeMapIconCandidates?: RecipeMapIconCandidate[];
   recipeMapIconCache?: Map<string, DatasetResourceIndexEntry | undefined>;
   recipeMapIconEntriesByMap?: Map<string, RecipeMapIconEntry>;
@@ -705,7 +712,9 @@ export async function getDatasetRecipe(
       resourcesByKey,
     ),
     machineHandlers: hydrateMachineHandlers(enrichedRecipe.machineHandlers, resourcesByKey),
-    inputs: enrichedRecipe.inputs.map((resource) => hydrateResource(resource, resourcesByKey)),
+    inputs: enrichedRecipe.inputs.map((resource) =>
+      hydrateResource(resource, resourcesByKey, getChoiceAlternativesByKey(catalog)),
+    ),
     outputs: enrichedRecipe.outputs.map((resource) => hydrateResource(resource, resourcesByKey)),
   };
 }
@@ -1023,7 +1032,9 @@ function hydrateRecipeSummary(recipe: RecipeSummary, catalog: LoadedRecipeIndex)
       resourcesByKey,
     ),
     machineHandlers: hydrateMachineHandlers(enrichedRecipe.machineHandlers, resourcesByKey),
-    inputs: enrichedRecipe.inputs.map((resource) => hydrateResource(resource, resourcesByKey)),
+    inputs: enrichedRecipe.inputs.map((resource) =>
+      hydrateResource(resource, resourcesByKey, getChoiceAlternativesByKey(catalog)),
+    ),
     outputs: enrichedRecipe.outputs.map((resource) => hydrateResource(resource, resourcesByKey)),
   };
 }
@@ -1031,10 +1042,17 @@ function hydrateRecipeSummary(recipe: RecipeSummary, catalog: LoadedRecipeIndex)
 function hydrateResource<T extends ResourceAmount>(
   resource: T,
   resourcesByKey: Map<string, DatasetResource | DatasetResourceIndexEntry>,
+  choiceAlternatives?: Map<string, ResourceAlternative[]>,
 ): T {
   const indexed = resourcesByKey.get(`${resource.kind}:${resource.id}`);
+  // A placeholder input gets the group it stands for even when the catalog has
+  // no other metadata for it, so this runs before the missing-entry bail-out.
+  const choice =
+    !resource.alternatives?.length && isVirtualChoiceResource(resource)
+      ? choiceAlternatives?.get(`${resource.kind}:${resource.id}`)
+      : undefined;
   if (!indexed) {
-    return resource;
+    return choice?.length ? { ...resource, alternatives: choice } : resource;
   }
   return {
     ...resource,
@@ -1047,7 +1065,9 @@ function hydrateResource<T extends ResourceAmount>(
       resource.iconAtlas?.dominantColor ??
       indexed.iconAtlas?.dominantColor,
     alternatives:
-      resource.alternatives ?? ("alternatives" in indexed ? indexed.alternatives : undefined),
+      resource.alternatives ??
+      ("alternatives" in indexed ? indexed.alternatives : undefined) ??
+      choice,
   };
 }
 
@@ -1148,7 +1168,11 @@ async function getRecipeSummariesByIndexMap(
       for (const recipeIndex of indexes) {
         const recipe = recipes[recipeIndex - shard.start];
         if (recipe) {
-          const summary = toRecipeSummary(recipe, getCatalogResourcesByKey(catalog));
+          const summary = toRecipeSummary(
+            recipe,
+            getCatalogResourcesByKey(catalog),
+            getChoiceAlternativesByKey(catalog),
+          );
           catalog.hydratedRecipeSummaries ??= new Map();
           catalog.hydratedRecipeSummaries.set(recipeIndex, summary);
           summariesByIndex.set(recipeIndex, summary);
@@ -1183,6 +1207,7 @@ function getHydratedRecipeSummary(
 function toRecipeSummary(
   recipe: Recipe,
   resourcesByKey: Map<string, DatasetResource | DatasetResourceIndexEntry>,
+  choiceAlternatives?: Map<string, ResourceAlternative[]>,
 ): RecipeSummary {
   const enrichedRecipe = enrichPassiveProductionRecipe(recipe);
   return {
@@ -1199,7 +1224,9 @@ function toRecipeSummary(
       enrichedRecipe.machineConfigControls,
       resourcesByKey,
     ),
-    inputs: enrichedRecipe.inputs.map((resource) => hydrateResource(resource, resourcesByKey)),
+    inputs: enrichedRecipe.inputs.map((resource) =>
+      hydrateResource(resource, resourcesByKey, choiceAlternatives),
+    ),
     outputs: enrichedRecipe.outputs.map((resource) => hydrateResource(resource, resourcesByKey)),
     source: enrichedRecipe.source?.recipeMap
       ? { recipeMap: enrichedRecipe.source.recipeMap }
@@ -1249,6 +1276,66 @@ function getCatalogResourcesByKey(
     catalog.resourcesByKey.set(key, existing ? mergeCatalogResource(existing, resource) : resource);
   }
   return catalog.resourcesByKey;
+}
+
+/**
+ * What each "any of these" placeholder actually stands for.
+ *
+ * GTNH ships real items whose whole job is to mean a set: "Any LV Circuit" is a
+ * placeholder, not something you hold. Recipes reference those directly, and
+ * the exported resource for one carries no member list, so a slot demanding
+ * "Any LV Circuit" could not say which circuits it would take.
+ *
+ * The membership already exists in the other direction: each `oredict:` group
+ * lists its members, and the placeholder is one of them. This inverts that once
+ * per catalog so a placeholder can be expanded back into its group.
+ *
+ * Deliberately restricted to placeholders. A recipe asking for a specific
+ * Electronic Circuit shares an ore dictionary group with four other circuits
+ * but does NOT accept them, and claiming otherwise would quietly license a
+ * factory that cannot be built.
+ */
+export function getChoiceAlternativesByKey(
+  catalog: LoadedRecipeIndex,
+): Map<string, ResourceAlternative[]> {
+  if (catalog.choiceAlternativesByKey) {
+    return catalog.choiceAlternativesByKey;
+  }
+
+  const byKey = new Map<string, ResourceAlternative[]>();
+  for (const candidate of getCatalogResourcesByKey(catalog).values()) {
+    if (candidate.kind !== "item" || !isOreDictionaryResource(candidate)) {
+      continue;
+    }
+    const members = candidate.alternatives ?? [];
+    if (members.length < 2) {
+      continue;
+    }
+
+    for (const member of members) {
+      if (!isVirtualChoiceResource(member)) {
+        continue;
+      }
+      const key = `${member.kind}:${member.id}`;
+      const existing = byKey.get(key) ?? [];
+      for (const sibling of members) {
+        // A placeholder is never one of its own faces, and one placeholder
+        // must not expand into another.
+        if (isVirtualChoiceResource(sibling)) {
+          continue;
+        }
+        if (!existing.some((entry) => entry.kind === sibling.kind && entry.id === sibling.id)) {
+          existing.push(sibling);
+        }
+      }
+      if (existing.length > 0) {
+        byKey.set(key, existing);
+      }
+    }
+  }
+
+  catalog.choiceAlternativesByKey = byKey;
+  return byKey;
 }
 
 function mergeCatalogResource(
