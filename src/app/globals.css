@@ -778,46 +778,93 @@ img {
    Slow on purpose (2.6s): fast enough to notice at a glance, slow enough not
    to nag while you work on the board.
 
-   One box-shadow on one element per card, so this costs a composited layer
-   per card in the ring and nothing else. */
+   Two things decide where this is allowed to live.
+
+   It goes on the WINDOW, not the shell. The shell is the whole box, tab zone
+   included, and the tab zone is deliberately unpainted so the machine tabs
+   protrude over bare canvas. A glow around the shell therefore draws a
+   rectangle around empty space above the card, and the card reads as floating
+   inside a box that is not its own.
+
+   And it goes on a pseudo-element, not on the window itself. The window's 2px
+   frame and bevel ARE its box-shadow, so animating box-shadow on it would
+   paint the frame away for the duration. The overlay owns the glow and the
+   window keeps its frame. */
+/* The ring's WIDTH is constant and only its colour and halo move.
+
+   Everything on the board is drawn through React Flow's zoom transform, so a
+   CSS pixel here is `zoom` device pixels on screen. An animation that thinned
+   the ring from 3px to 2px looked like a gentle breath at 100% and, at a zoom
+   of 0.2, swung it from 0.6 to 0.4 of a device pixel — under the threshold
+   where the compositor has anything left to draw. The mark did not dim, it
+   disappeared and came back, which reads as a rendering fault rather than as
+   a pulse. Nothing that has to survive zoom-out may animate its size. */
 @keyframes dead-loop-breathe {
   0%,
   100% {
     box-shadow:
-      0 0 0 2px #a83b3b,
-      0 0 10px 1px rgba(200, 60, 60, 0.28);
+      0 0 0 var(--dead-loop-ring) #a83b3b,
+      0 0 var(--dead-loop-halo) 1px rgba(200, 60, 60, 0.25);
   }
   50% {
     box-shadow:
-      0 0 0 3px #ff6b6b,
-      0 0 22px 5px rgba(255, 90, 90, 0.55);
+      0 0 0 var(--dead-loop-ring) #ff6b6b,
+      0 0 var(--dead-loop-halo-lit) 6px rgba(255, 90, 90, 0.6);
   }
 }
 
-.recipe-node-shell[data-verdict="dead-loop"] {
+.recipe-node-shell[data-verdict="dead-loop"] .recipe-node-window::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  --dead-loop-ring: 3px;
+  --dead-loop-halo: 10px;
+  --dead-loop-halo-lit: 24px;
   animation: dead-loop-breathe 2.6s ease-in-out infinite;
+}
+
+/* Zoomed out, 3px of a card is worth less than a device pixel and the ring is
+   competing with a whole board. The card's contents are hidden at this level
+   anyway, so the ring can afford to be the loud thing on it.
+   Sizes ride custom properties rather than a second @keyframes on purpose:
+   swapping animation-name restarts the animation, which would re-scatter the
+   phase of every card in the ring on each zoom across the threshold. Changing
+   a custom property re-resolves the running keyframes in place. */
+.factory-flow-board[data-detail-level="glance"]
+  .recipe-node-shell[data-verdict="dead-loop"]
+  .recipe-node-window::after {
+  --dead-loop-ring: 8px;
+  --dead-loop-halo: 26px;
+  --dead-loop-halo-lit: 56px;
 }
 
 /* Reduced motion and the presentation toggle both want the mark without the
    movement: hold it at the bright end rather than dropping the signal. */
 @media (prefers-reduced-motion: reduce) {
-  .recipe-node-shell[data-verdict="dead-loop"] {
+  .recipe-node-shell[data-verdict="dead-loop"] .recipe-node-window::after {
     animation: none;
     box-shadow:
-      0 0 0 3px #ff6b6b,
-      0 0 18px 4px rgba(255, 90, 90, 0.4);
+      0 0 0 var(--dead-loop-ring) #ff6b6b,
+      0 0 var(--dead-loop-halo-lit) 4px rgba(255, 90, 90, 0.4);
   }
 }
 
-.factory-flow-board--calm .recipe-node-shell[data-verdict="dead-loop"] {
+.factory-flow-board--calm .recipe-node-shell[data-verdict="dead-loop"] .recipe-node-window::after {
   animation: none;
-  box-shadow: 0 0 0 2px #7b8b9c;
+  box-shadow: 0 0 0 var(--dead-loop-ring) #7b8b9c;
 }
 
 /* The ring's wires, on the SAME clock as its cards: the whole circle has to
-   breathe as one shape, or it reads as unrelated things blinking. Both
-   animations are 2.6s and start from the page's timeline, so they stay in
-   step without any shared state. */
+   breathe as one shape, or it reads as unrelated things blinking.
+
+   Matching the 2.6s period is necessary but NOT sufficient. A CSS animation's
+   clock starts when it is applied to the element, so cards and wires that
+   mount at different moments — scrolled into view, recycled by React Flow,
+   pulled into the ring by a fresh solve — each run their own cycle and drift
+   apart permanently. Every mark in a ring is pinned to the document timeline
+   in JS instead; see animation-phase.ts. */
 @keyframes dead-loop-wire-breathe {
   0%,
   100% {

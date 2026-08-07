@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.27.1",
+    date: "2026-08-07",
+    headline: "Dead loop markers sit right and blink together",
+    notes: [
+      "The red ring was drawn around the whole card including the machine tabs above it, so any machine with a tab strip looked like it was floating inside a box. It now hugs the card itself.",
+      "Machines in the same loop blink in time again. They used to drift apart depending on when each one came on screen, which made a ring read as unrelated things flashing.",
+      "Zoomed out, the ring thinned to nothing at the dim end of each blink and looked like it was flickering. It keeps its width now, and gets thicker the further out you go.",
+    ],
+  },
+  {
     version: "1.27.0",
     date: "2026-08-07",
     headline: "The Blueprints tab is now the Pockets tab",

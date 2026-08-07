@@ -91,6 +91,7 @@ import {
   type RailPort,
 } from "./node-verdict";
 import { describeDeathSpiral } from "./death-spiral";
+import { useSharedAnimationPhase } from "./animation-phase";
 import {
   edgeTouchesResource,
   explainPlug,
@@ -481,6 +482,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     ? (machineHandlers.find((handler) => handler.id === previewHandlerId) ?? selectedMachineHandler)
     : selectedMachineHandler;
   const isPreviewing = hasMachinePicker && previewHandler.id !== selectedMachineHandler.id;
+  const deadLoopPhaseRef = useSharedAnimationPhase<HTMLDivElement>(
+    verdict.kind === "dead-loop",
+    "dead-loop-breathe",
+  );
 
   // Outputs end in coupling chips at the node's right edge — inside the
   // card, like inputs — so the node's box is the machine's box again and
@@ -562,7 +567,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // reads as a card. The tab zone hides via its own rule in globals.css
         // (it is the shell's child, outside this root).
         data-node-glance-root=""
-        className="relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]"
+        // recipe-node-window: the painted rectangle, as opposed to the shell's
+        // box (which includes the unpainted tab zone). Anything that outlines
+        // "the card" belongs here — see the dead-loop glow in globals.css.
+        ref={deadLoopPhaseRef}
+        className="recipe-node-window relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]"
         style={
           nodeColor
             ? {
