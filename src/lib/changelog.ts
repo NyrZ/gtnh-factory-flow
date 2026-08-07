@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.16.1",
+    date: "2026-08-06",
+    headline: "No more phantom shortages of a hundred-thousandth",
+    notes: [
+      "A resource that one machine makes and another eats in equal measure now reads as balanced, instead of sometimes turning up under Need or Output with a number like -0.0000012.",
+      "Those came from rounding, not from anything wrong with your plan, and they got bigger the bigger your rates were. They are gone at every scale now.",
+      "Real shortages and real spare output are untouched.",
+    ],
+  },
+  {
     version: "1.16.0",
     date: "2026-08-06",
     headline: "Double click a resource to fly to the machine that makes it",
