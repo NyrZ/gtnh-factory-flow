@@ -762,12 +762,87 @@ img {
   --state-accent: #ffd76a;
 }
 
-.recipe-node-shell[data-verdict="bottleneck"] {
+.recipe-node-shell[data-verdict="bottleneck"],
+.recipe-node-shell[data-verdict="dead-loop"] {
   --state-wash: #5d2323;
   --state-edge: #c34c4c;
   --state-bar: var(--rail-bar-bad);
   --state-badge: #c22525;
   --state-accent: #ff9c9c;
+}
+
+/* A ring is the one state you cannot read off a single card: the machine is
+   fine, its neighbour is fine, and the FAULT is the circle they stand in. So
+   it gets the one thing a static mark cannot do — every card in the ring
+   breathes on the same slow clock, and the eye joins them up by itself.
+   Slow on purpose (2.6s): fast enough to notice at a glance, slow enough not
+   to nag while you work on the board.
+
+   One box-shadow on one element per card, so this costs a composited layer
+   per card in the ring and nothing else. */
+@keyframes dead-loop-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px #a83b3b,
+      0 0 10px 1px rgba(200, 60, 60, 0.28);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px #ff6b6b,
+      0 0 22px 5px rgba(255, 90, 90, 0.55);
+  }
+}
+
+.recipe-node-shell[data-verdict="dead-loop"] {
+  animation: dead-loop-breathe 2.6s ease-in-out infinite;
+}
+
+/* Reduced motion and the presentation toggle both want the mark without the
+   movement: hold it at the bright end rather than dropping the signal. */
+@media (prefers-reduced-motion: reduce) {
+  .recipe-node-shell[data-verdict="dead-loop"] {
+    animation: none;
+    box-shadow:
+      0 0 0 3px #ff6b6b,
+      0 0 18px 4px rgba(255, 90, 90, 0.4);
+  }
+}
+
+.factory-flow-board--calm .recipe-node-shell[data-verdict="dead-loop"] {
+  animation: none;
+  box-shadow: 0 0 0 2px #7b8b9c;
+}
+
+/* The ring's wires, on the SAME clock as its cards: the whole circle has to
+   breathe as one shape, or it reads as unrelated things blinking. Both
+   animations are 2.6s and start from the page's timeline, so they stay in
+   step without any shared state. */
+@keyframes dead-loop-wire-breathe {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+.dead-loop-wire {
+  animation: dead-loop-wire-breathe 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dead-loop-wire {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+.factory-flow-board--calm .dead-loop-wire {
+  animation: none;
+  opacity: 0.35;
+  stroke: #7b8b9c;
 }
 
 /* Hovering the usage cell lights the marks that produced that word. No gating

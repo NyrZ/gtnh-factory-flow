@@ -486,6 +486,8 @@ type ResourceEdgeData = {
     isSupplyCapped: boolean;
   };
   isFlowHighlighted?: boolean;
+  /** This wire is part of a ring that has wound down and cannot restart. */
+  isDeadLoop?: boolean;
   /**
    * Collapsed-pocket channels: convergence keeps several flat wires crossing
    * one boundary with the same resource, but the card advertises ONE channel
@@ -1769,6 +1771,9 @@ export function FactoryFlow() {
     // A machine merely idle for lack of demand keeps a ceiling of 1 - hooking
     // up a new consumer genuinely would speed it up.
     const supplyCeilings = new Map<string, number>();
+    // Built once for the whole edge pass, not once per edge: the index itself
+    // is cached per solve, but the lookup below runs for every wire.
+    const deathSpiralEdges = findDeathSpirals(project, result).byEdge;
     const ceilingFor = (sourceId: string) => {
       let ceiling = supplyCeilings.get(sourceId);
       if (ceiling === undefined) {
@@ -2147,6 +2152,10 @@ export function FactoryFlow() {
           routeIndex: edgeIndex,
           bundle: edgeBundles.get(edge.id),
           isFlowHighlighted,
+          // O(1) off the per-solve index. The ring's own wires carry the mark
+          // so the circle reads as one shape rather than as N red cards that
+          // happen to sit near each other.
+          isDeadLoop: deathSpiralEdges.has(edge.id),
           // Flow mode: how big this line is on its own kind's scale, 0 (the
           // quietest line on the board) to 1 (the busiest). The edge draws
           // marching dashes over itself when this is set.
@@ -3761,39 +3770,30 @@ const DeathSpiralNotice = memo(function DeathSpiralNotice({
   const story = describeDeathSpiral(spiral);
 
   return (
-    <div className="nodrag pointer-events-auto absolute bottom-3 left-3 z-30 max-w-[340px] border-2 border-[#c34c4c] bg-[#2b1c1c]/95 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
-      <div className="flex items-center justify-between border-b border-[#7a3636] px-2 py-1">
-        <span className="font-bold tracking-[0.5px] text-[#ff9c9c]">DEAD LOOP</span>
-        <button
-          type="button"
-          onClick={() => setDismissedId(spiral.id)}
-          title="Dismiss"
-          aria-label="Dismiss this notice"
-          className="flex h-5 w-5 items-center justify-center border border-[#7a3636] text-[#e0b3b3] hover:bg-[#4a2424]"
-        >
-          ×
-        </button>
-      </div>
-      <div className="flex flex-col gap-1.5 px-2 py-2 leading-[15px]">
-        <p className="font-bold text-white">{story.title}</p>
-        <p className="text-[#e6d2d2]">{story.what}</p>
-        <p className="text-[#c9b0b0]">{story.why}</p>
-        <p className="border-t border-[#7a3636] pt-1.5 text-[#ffd7a0]">{story.fix}</p>
-        <div className="flex items-center gap-2 pt-0.5">
-          <button
-            type="button"
-            onClick={() => onShow(spiral.machineIds)}
-            className="border border-[#c34c4c] bg-[#4a2424] px-2 py-1 font-bold text-[#ffd0d0] hover:bg-[#63302f]"
-          >
-            Show me
-          </button>
-          {spirals.length > 1 ? (
-            <span className="text-[#b89a9a]">
-              and {spirals.length - 1} more loop{spirals.length > 2 ? "s" : ""}
-            </span>
-          ) : null}
-        </div>
-      </div>
+    <div className="nodrag pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 border-2 border-[#c34c4c] bg-[#2b1c1c]/95 px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
+      <span className="shrink-0 font-bold tracking-[0.5px] text-[#ff9c9c]">DEAD LOOP</span>
+      <span className="text-[#e6d2d2]">{story.short}</span>
+      {spirals.length > 1 ? (
+        <span className="shrink-0 text-[#b89a9a]">
+          +{spirals.length - 1} more
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => onShow(spiral.machineIds)}
+        className="shrink-0 border border-[#c34c4c] bg-[#4a2424] px-2 py-0.5 font-bold text-[#ffd0d0] hover:bg-[#63302f]"
+      >
+        Show me
+      </button>
+      <button
+        type="button"
+        onClick={() => setDismissedId(spiral.id)}
+        title="Dismiss"
+        aria-label="Dismiss this notice"
+        className="flex h-5 w-5 shrink-0 items-center justify-center border border-[#7a3636] text-[#e0b3b3] hover:bg-[#4a2424]"
+      >
+        ×
+      </button>
     </div>
   );
 });
@@ -5298,6 +5298,25 @@ function ResourceEdgeComponent({
               so one per edge repainted the entire board every frame. */}
         </>
       )}
+      {/* A wire going round a dead ring, breathing on the same clock as the
+          cards it joins. This is the ONE animated path allowed on the edge
+          layer, and only because a spiral is a handful of wires in one place:
+          the damage rect is the ring, not the board. (Contrast the marching
+          dashes, which every edge wanted at once — see edge-pulse.ts for why
+          those had to move to a canvas.) Opacity only, no geometry, so the
+          route is untouched and nothing reroutes. */}
+      {data?.isDeadLoop ? (
+        <path
+          className="dead-loop-wire"
+          d={routedEdge.path}
+          fill="none"
+          stroke="#ff6b6b"
+          strokeWidth={coreStrokeWidth + 4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ pointerEvents: "none" }}
+        />
+      ) : null}
       {/* Direction chevrons, one near each end when the marching dashes are
           off: the source's says "flow leaves here", the target's "flow lands
           here". Both are pulled back off the cards — the last stretch of a

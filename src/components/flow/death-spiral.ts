@@ -35,6 +35,8 @@ export interface DeathSpiral {
   nodeIds: string[];
   /** Machine members only — what the copy counts. */
   machineIds: string[];
+  /** The wires that make up the ring — both ends inside it. */
+  edgeIds: string[];
   /** Display names of the goods that travel round the ring. */
   resourceNames: string[];
   /** Something outside the ring is wired into it. */
@@ -122,11 +124,16 @@ function stronglyConnectedComponents(
 export interface DeathSpiralIndex {
   /** Node id -> the spiral it is trapped in. */
   byNode: Map<string, DeathSpiral>;
+  /**
+   * Edge id -> the spiral it goes round. O(1), because the edge renderer asks
+   * this once per edge and anything heavier there is O(edges) per frame.
+   */
+  byEdge: Map<string, DeathSpiral>;
   /** Every distinct spiral on the board, biggest first. */
   spirals: DeathSpiral[];
 }
 
-const EMPTY_INDEX: DeathSpiralIndex = { byNode: new Map(), spirals: [] };
+const EMPTY_INDEX: DeathSpiralIndex = { byNode: new Map(), byEdge: new Map(), spirals: [] };
 
 // Keyed on object identity, like the board's other per-solve indexes: the
 // solver hands out a fresh result per tick, so a stale index cannot outlive
@@ -189,6 +196,7 @@ export function findDeathSpirals(
   }
 
   const byNode = new Map<string, DeathSpiral>();
+  const byEdge = new Map<string, DeathSpiral>();
   const spirals: DeathSpiral[] = [];
 
   for (const component of stronglyConnectedComponents(graphNodes, outgoing)) {
@@ -228,6 +236,7 @@ export function findDeathSpirals(
     }
 
     const resourceNames = new Set<string>();
+    const edgeIds: string[] = [];
     let hasExternalSource = false;
     let externalInflow = 0;
     const externalSourceNames = new Set<string>();
@@ -235,6 +244,7 @@ export function findDeathSpirals(
       const targetInside = members.has(edge.target);
       const sourceInside = members.has(edge.source);
       if (targetInside && sourceInside) {
+        edgeIds.push(edge.id);
         const key = makeResourceKey(edge.resourceKind, edge.resourceId);
         const flow =
           result.nodes[edge.source]?.outputs[key as keyof (typeof result.nodes)[string]["outputs"]];
@@ -259,6 +269,7 @@ export function findDeathSpirals(
       id: machineIds[0]!,
       nodeIds: [...component].sort(),
       machineIds,
+      edgeIds,
       resourceNames: [...resourceNames].sort(),
       hasExternalSource,
       externalSourceDry: hasExternalSource && externalInflow <= RATE_EPSILON,
@@ -269,10 +280,13 @@ export function findDeathSpirals(
     for (const id of component) {
       byNode.set(id, spiral);
     }
+    for (const id of edgeIds) {
+      byEdge.set(id, spiral);
+    }
   }
 
   spirals.sort((left, right) => right.machineIds.length - left.machineIds.length);
-  const index: DeathSpiralIndex = { byNode, spirals };
+  const index: DeathSpiralIndex = { byNode, byEdge, spirals };
   cache.set(project, { result, index });
   return index;
 }
@@ -285,6 +299,8 @@ export function findDeathSpirals(
  */
 export function describeDeathSpiral(spiral: DeathSpiral): {
   title: string;
+  /** One line, for the board notice. The long version lives on the cards. */
+  short: string;
   what: string;
   why: string;
   fix: string;
@@ -300,6 +316,12 @@ export function describeDeathSpiral(spiral: DeathSpiral): {
 
   return {
     title: count === 1 ? "This loop cannot start itself" : "These machines are stuck in a loop",
+    // The board notice is a nudge, not a lecture: name it, size it, and give
+    // the one move. Anyone who wants the reasoning hovers a card.
+    short:
+      count === 1
+        ? "A machine feeds itself and has stopped. Feed it from outside to start it."
+        : `${count} machines feed each other in a ring and have all stopped. Feed any one of them to start it.`,
     what: `${machines} in a ring, passing ${goods} round it. Every one of them sits at 0%.`,
     why: "More leaves the ring than comes back round it, so every lap starts with less than the last one and it winds down to nothing. That happens whether the recipes lose a little each time or something taps the ring for its own use. Nothing outside puts the difference back, and a ring cannot start itself from empty.",
     fix: spiral.externalSourceDry
