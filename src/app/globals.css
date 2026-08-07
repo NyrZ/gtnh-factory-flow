@@ -827,13 +827,32 @@ img {
   animation: dead-loop-breathe 2.6s ease-in-out infinite;
 }
 
-/* The glance step hides every child of a card's glance root, which this now
-   is one of. The ring is the exception it was written to have: zoomed out is
-   where a ring MOST needs saying, because the card has stopped saying
-   anything else. Same specificity as the hide rule, and after it, so it wins.
-   (This is why the mark used to be a pseudo-element — `> *` cannot reach one.
-   An element that says so out loud beats a box in the wrong place.) */
-.factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .dead-loop-ring {
+/* Selection, the over-tier warning and a search hit: the same overlay trick,
+   on the card's box rather than the shell's, so none of them draws a rectangle
+   around the machine tabs. The rings themselves are written inline from
+   RecipeNode, because their widths stack and only the component knows which
+   are showing; this rule owns nothing but the box.
+
+   One above the dead-loop ring. A selected card in a dead ring was showing
+   nothing but red — a 2px purple line inside a breathing 24px red halo is not
+   a line anyone can see — and the click that selected it has to land visibly.
+   The red still says its piece: the purple only covers the ring's first 2px,
+   and the halo outside it is untouched. */
+.card-outline {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* The glance step hides every child of a card's glance root, which these now
+   are. They are the exception it was written to have: zoomed out is where a
+   ring MOST needs saying, because the card has stopped saying anything else.
+   Same specificity as the hide rule, and after it, so it wins.
+   (This is why the dead-loop mark used to be a pseudo-element — `> *` cannot
+   reach one. An element that says so out loud beats a box in the wrong place.) */
+.factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .dead-loop-ring,
+.factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .card-outline {
   visibility: visible;
 }
 

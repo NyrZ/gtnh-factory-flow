@@ -486,6 +486,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     verdict.kind === "dead-loop",
     "dead-loop-breathe",
   );
+  // The outlines the card is wearing, innermost first. They STACK rather than
+  // override: each ring starts where the one inside it stopped, so a card that
+  // is selected AND over tier says both. Selection is innermost, which is also
+  // the ring painted on top — clicking a card has to show that it landed, and
+  // a 2px line inside a breathing red dead-loop glow was being lost in it.
+  const cardOutlineRings = [
+    ...(selected ? [{ width: 2, color: "#a855f7" }] : []),
+    ...(exceedsMaxTier && !calmMode ? [{ width: 4, color: "#ef4444" }] : []),
+    ...(isSearchHighlighted ? [{ width: 4, color: "#7dd3fc" }] : []),
+  ];
 
   // Outputs end in coupling chips at the node's right edge — inside the
   // card, like inputs — so the node's box is the machine's box again and
@@ -504,14 +514,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // deliberately unpainted: the frame and background live on the window
         // div below, so the tabs protrude over bare canvas. The router still
         // measures the shell, which is what keeps wires out of the tab zone.
+        // Nothing that OUTLINES the card belongs on this element: the shell's
+        // box includes the tab zone, so a ring here draws around the machine
+        // tabs and the bare canvas behind them. Every outline lives on the
+        // window instead — see cardOutlineRings and the dead-loop ring.
         "recipe-node-shell group relative font-mono text-[var(--mc-ink)]",
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
         isCompareOpen ? "recipe-node-popup-open" : "",
-        selected ? "ring-2 ring-purple-500" : "",
-        isSearchHighlighted ? "ring-4 ring-sky-300" : "",
-        isInspectorHighlighted ? "resource-glow" : "",
-        exceedsMaxTier && !calmMode ? "ring-4 ring-red-500" : "",
       ].join(" ")}
       style={{
         // Every recipe card is the same 18 cells wide. Width used to be
@@ -570,7 +580,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // recipe-node-window: the painted rectangle, as opposed to the shell's
         // box (which includes the unpainted tab zone). Anything that outlines
         // "the card" belongs here — see the dead-loop ring in globals.css.
-        className="recipe-node-window relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]"
+        // The resource glow is an `outline`, not a box-shadow, so it rides the
+        // window directly without touching the frame this element draws.
+        className={[
+          "recipe-node-window relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]",
+          isInspectorHighlighted ? "resource-glow" : "",
+        ].join(" ")}
         style={
           nodeColor
             ? {
@@ -592,6 +607,29 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           everything except the eye. */}
       {verdict.kind === "dead-loop" ? (
         <div ref={deadLoopPhaseRef} aria-hidden className="dead-loop-ring" />
+      ) : null}
+      {/* Selection, the over-tier warning and a search hit, on the card's own
+          box for the same reason the ring above is. One element and one
+          box-shadow list: shadows paint first-on-top and each spread is
+          cumulative, so the list reads outwards from the card edge and the
+          innermost ring is also the one nothing can cover. Above the dead-loop
+          ring in z, so a selected card in a ring still shows it is selected —
+          the red keeps its breathing halo outside the purple. */}
+      {cardOutlineRings.length > 0 ? (
+        <div
+          aria-hidden
+          className="card-outline"
+          style={{
+            boxShadow: cardOutlineRings
+              .map((ring, index) => {
+                const spread = cardOutlineRings
+                  .slice(0, index + 1)
+                  .reduce((total, entry) => total + entry.width, 0);
+                return `0 0 0 ${spread}px ${ring.color}`;
+              })
+              .join(", "),
+          }}
+        />
       ) : null}
       {/* The smart view: what this card leads with zoomed out. Identity mode
           (the default) is WHAT it is — machine icon, count and name, with the

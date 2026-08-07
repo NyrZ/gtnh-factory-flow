@@ -16,11 +16,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "1.27.2",
+    version: "1.27.3",
     date: "2026-08-07",
-    headline: "The dead loop ring now hugs the card",
+    headline: "Every outline sits on the card, and selection always shows",
     notes: [
-      "On a machine with a row of machine tabs above it, the red ring was drawn around the tabs as well, so the card looked like it was sitting inside a box with empty space along the top. The ring is on the card itself now, whatever the machine.",
+      "On a machine with a row of machine tabs above it, outlines were drawn around the tabs as well, so the card looked like it was sitting inside a box with empty space along the top. The red dead loop ring, the purple selection ring, the search glow and the over-tier warning all hug the card itself now.",
+      "Selecting a machine in a dead loop shows the purple ring again. The red was drowning it, and a click that does not visibly land is a click you make twice.",
+      "Outlines stack instead of hiding each other. A card that is selected and over tier wears both, purple inside red, so nothing is lost by picking it up.",
     ],
   },
   {
