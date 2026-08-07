@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.19.1",
+    date: "2026-08-06",
+    headline: "Calm mode now tidies pocket cards too",
+    notes: [
+      "With calm colours on, a pocket card drops its buttons like every other card and just shows its name across the top.",
+      "The delete, clone, open, save and unpack buttons come straight back when you turn calm colours off.",
+      "Double-clicking a pocket still opens it, and the card and its wires do not move.",
+    ],
+  },
+  {
     version: "1.19.0",
     date: "2026-08-06",
     headline: "A shared setup now arrives set up the way you left it",

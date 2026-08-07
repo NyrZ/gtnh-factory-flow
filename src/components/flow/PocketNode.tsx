@@ -11,6 +11,7 @@ import { useBlueprintStore } from "@/store/blueprint-store";
 import { makeResourceHandleId } from "./resource-handles";
 import { formatSlotRateOrNull } from "./flow-explainers";
 import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
+import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
 import type { PocketPortSummary, PocketSummary } from "./pocket-summary";
 
@@ -44,6 +45,11 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const renamePocket = useFactoryStore((state) => state.renamePocket);
   const deleteBoardSelection = useFactoryStore((state) => state.deleteBoardSelection);
   const [draftName, setDraftName] = useState<string | undefined>(undefined);
+  // Presentation mode: the head row loses its edit chrome, exactly as a
+  // machine card's does. A rename half-typed when the mode flips goes back to
+  // being a plain name bar rather than stranding an input on a calm board.
+  const { calmMode } = useBoardView();
+  const isRenaming = draftName !== undefined && !calmMode;
 
   const inputs = summary?.inputs ?? [];
   const outputs = summary?.outputs ?? [];
@@ -114,54 +120,78 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
           {/* One head row, exactly two cells tall, like every machine card:
               delete/clone/open on the left like every card's edit chrome, the
               name in the middle, and the two "send it away" actions — shelve
-              as blueprint, unpack — on the right. */}
-          <div className="grid h-[40px] min-w-0 grid-cols-[24px_24px_24px_minmax(0,1fr)_24px_24px] items-center gap-1">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                deleteBoardSelection({ nodeIds: [pocket.id] });
-              }}
-              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-red-700"
-              title="Delete this pocket (everything inside goes with it)"
-              aria-label={`Delete pocket ${pocket.name}`}
-            >
-              {/* Drawn rather than a "-" glyph: at this size Monocraft's
-                  metrics baseline-align the hyphen low instead of centring. */}
-              <span aria-hidden className="block h-[2px] w-[8px] bg-white" />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                duplicatePocket();
-              }}
-              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-              title="Clone this pocket dimension (everything inside comes along)"
-              aria-label={`Clone pocket ${pocket.name}`}
-            >
-              <Copy aria-hidden className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                enterPocket(pocket.id);
-              }}
-              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-              title="Open this pocket dimension (or double-click the card)"
-              aria-label={`Open pocket ${pocket.name}`}
-            >
-              <Expand aria-hidden className="h-3.5 w-3.5" />
-            </button>
-            {draftName === undefined ? (
+              as blueprint, unpack — on the right. Calm mode drops all six and
+              gives the whole row to the name, the same trade a machine card
+              makes; the row stays 40px either way, so the ports below keep
+              their grid lines. */}
+          <div
+            className={[
+              "grid h-[40px] min-w-0 items-center gap-1",
+              calmMode
+                ? "grid-cols-[minmax(0,1fr)]"
+                : "grid-cols-[24px_24px_24px_minmax(0,1fr)_24px_24px]",
+            ].join(" ")}
+          >
+            {!calmMode ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    deleteBoardSelection({ nodeIds: [pocket.id] });
+                  }}
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-red-700"
+                  title="Delete this pocket (everything inside goes with it)"
+                  aria-label={`Delete pocket ${pocket.name}`}
+                >
+                  {/* Drawn rather than a "-" glyph: at this size Monocraft's
+                      metrics baseline-align the hyphen low instead of centring. */}
+                  <span aria-hidden className="block h-[2px] w-[8px] bg-white" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    duplicatePocket();
+                  }}
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  title="Clone this pocket dimension (everything inside comes along)"
+                  aria-label={`Clone pocket ${pocket.name}`}
+                >
+                  <Copy aria-hidden className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    enterPocket(pocket.id);
+                  }}
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  title="Open this pocket dimension (or double-click the card)"
+                  aria-label={`Open pocket ${pocket.name}`}
+                >
+                  <Expand aria-hidden className="h-3.5 w-3.5" />
+                </button>
+              </>
+            ) : null}
+            {!isRenaming ? (
               <div
                 className="minecraft-title flex h-6 min-w-0 items-center border-2 border-[#241b33] bg-[#5e4a85] px-2 text-[13px] leading-[18px] shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140]"
-                title={`${pocket.name} — double-click the name to rename, double-click the card to open`}
-                onDoubleClick={(event) => {
-                  event.stopPropagation();
-                  setDraftName(pocket.name);
-                }}
+                title={
+                  calmMode
+                    ? `${pocket.name} — double-click the card to open`
+                    : `${pocket.name} — double-click the name to rename, double-click the card to open`
+                }
+                onDoubleClick={
+                  // Renaming is editing, so calm mode lets the double-click
+                  // fall through to the card and just open the dimension.
+                  calmMode
+                    ? undefined
+                    : (event) => {
+                        event.stopPropagation();
+                        setDraftName(pocket.name);
+                      }
+                }
               >
                 <span className="mx-auto min-w-0 truncate">✦ {pocket.name}</span>
               </div>
@@ -183,30 +213,34 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                 className="nodrag h-6 min-w-0 border-2 border-[#8d6fd1] bg-[#241b33] px-1 text-[13px] leading-none text-white outline-none"
               />
             )}
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                saveAsBlueprint();
-              }}
-              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-              title={`Save "${pocket.name}" to my blueprints (sign in required)`}
-              aria-label={`Save pocket ${pocket.name} as a blueprint`}
-            >
-              <Save aria-hidden className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                dissolvePocket(pocket.id);
-              }}
-              className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-              title="Unpack: spill everything back onto this board"
-              aria-label={`Unpack pocket ${pocket.name}`}
-            >
-              <PackageOpen aria-hidden className="h-3.5 w-3.5" />
-            </button>
+            {!calmMode ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    saveAsBlueprint();
+                  }}
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  title={`Save "${pocket.name}" to my blueprints (sign in required)`}
+                  aria-label={`Save pocket ${pocket.name} as a blueprint`}
+                >
+                  <Save aria-hidden className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    dissolvePocket(pocket.id);
+                  }}
+                  className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
+                  title="Unpack: spill everything back onto this board"
+                  aria-label={`Unpack pocket ${pocket.name}`}
+                >
+                  <PackageOpen aria-hidden className="h-3.5 w-3.5" />
+                </button>
+              </>
+            ) : null}
           </div>
 
           {/* The rails ARE the node, exactly like a machine card: what the
