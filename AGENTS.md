@@ -79,6 +79,24 @@ gh run watch <run-id> --exit-status
 
 ## Machine Configs And Multiblocks
 
+- Machine BEHAVIOUR (speed, EU discount, parallels, overclock style) comes from
+  the curated table in `src/lib/machines/machine-table.ts`, transcribed from
+  ShadowTheAge's MIT calculator (`https://github.com/ShadowTheAge/gtnh`,
+  `src/machines.ts`), which was verified against the mod source machine by
+  machine. The table wins over anything the dataset scraped. Machines absent
+  from it fall back to the dataset, so partial coverage is safe.
+  - Do NOT add entries by guessing. Transcribe from the reference and note the
+    two indexing differences: their voltage tiers start at LV = 0 (ours at
+    ULV = 0, so their `voltageTier + 1` is our ordinal), and their `speed` is a
+    throughput multiplier while we store a duration multiplier (`1 / speed`).
+  - Tooltip scraping in `tools/dataset-pipeline/scripts/machine-configs.mjs`
+    still supplies the control DEFINITIONS (which knobs exist, their icons and
+    tier lists). It should no longer be trusted for effect VALUES: it once
+    stamped a heat capacity on every coil, which handed four machines
+    overclocks they do not get.
+- Parallels are paid for with power BEFORE overclocks, and only the leftover
+  voltage buys overclock steps. See `src/lib/solver/overclock.ts`. Only the
+  Electric Blast Furnace, Volcanus and the Exothermic Hearth overclock on heat.
 - Machine config controls are structured data, not frontend hardcoding. Use `machineConfigControls`.
 - Existing supported tier effects include:
   - `parallelMultiplier`

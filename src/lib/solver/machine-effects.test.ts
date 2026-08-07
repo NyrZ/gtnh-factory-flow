@@ -14,7 +14,9 @@ describe("voltage-scaled parallels", () => {
   const recipeWithControl = (tier: Record<string, number>): Recipe => ({
     id: "test",
     name: "test",
-    machineType: "Zhuhai - Fishing Port",
+    // Deliberately a machine the curated table does not cover, so these cases
+    // exercise the dataset-driven fallback rather than a table entry.
+    machineType: "Test Voltage Parallel Multiblock",
     minimumTier: "LV",
     durationTicks: 20,
     eut: 8,

@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.22.0",
+    date: "2026-08-07",
+    headline: "Machine numbers now come from a checked list, not from reading tooltips",
+    notes: [
+      "The planner used to work out what coils and casings do by reading each machine's tooltip text. That guessed wrong often enough to matter, so around 45 multiblocks now use figures checked against the game's own code instead.",
+      "Speed, power discount, parallels and overclock behaviour are all covered for those machines. Everything else keeps working exactly as before.",
+      "Some numbers will move. Where they do, the new one is the one your factory will actually hit.",
+      "Thanks to ShadowTheAge, whose open source GTNH calculator these figures are taken from.",
+    ],
+  },
+  {
     version: "1.21.1",
     date: "2026-08-07",
     headline: "Machines with parallels no longer claim impossible output",

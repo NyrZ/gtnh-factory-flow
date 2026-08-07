@@ -16,6 +16,7 @@ import {
   getMachineParallelMultiplier,
   isMegaApiaryMachineType,
 } from "./machine-effects";
+import { getMachineBehaviour } from "@/lib/machines/machine-table";
 
 const VOLTAGE_TIER_INDEX_MV = 2;
 import { isIndustrialApiaryMachineType } from "@/lib/model/passive-production";
@@ -132,12 +133,17 @@ export function getOverclockedRecipeStats(
     0,
     getVoltageTierIndex(tier) - getVoltageTierIndex(getVoltageTierForEuT(parallelEuT)),
   );
-  const steps = Math.min(overclockSteps, affordableSteps);
+  const style = getMachineBehaviour(effectiveRecipe.machineType)?.overclock;
+  const steps = style === "none" ? 0 : Math.min(overclockSteps, affordableSteps);
   const heatSteps = Math.min(steps, heatOverclock.heatOverclockSteps);
   const regularSteps = steps - heatSteps;
-  // Machines that state perfect overclocks in their tooltip quarter the
-  // duration on every step instead of halving it.
-  const perfectSteps = effectiveRecipe.machineProfile?.perfectOverclock ? regularSteps : 0;
+  // Perfect overclockers quarter the duration on every step instead of
+  // halving it, so a step costs 4x the power for 4x the speed and the total
+  // energy is unchanged.
+  const isPerfect =
+    style === "perfect" ||
+    (style === undefined && effectiveRecipe.machineProfile?.perfectOverclock === true);
+  const perfectSteps = isPerfect ? regularSteps : 0;
 
   return {
     tier,
@@ -213,17 +219,10 @@ function getHeatOverclockStats(
  * depends on the recipe map. On the chem plant that number is the machine
  * casing tier, so treating it as a heat requirement handed out free overclocks.
  */
-const HEAT_OVERCLOCK_MACHINES = new Set([
-  "blast furnace",
-  "electric blast furnace",
-  "volcanus",
-  "exothermic hearth",
-]);
-
 function isHeatOverclockMachine(machineType: string | undefined): boolean {
   // Match the machine, never the recipe map: an Industrial Arc Furnace running
   // a blast furnace recipe overclocks on its electrodes, not on heat.
-  return machineType ? HEAT_OVERCLOCK_MACHINES.has(normalizeRecipeMapName(machineType)) : false;
+  return getMachineBehaviour(machineType)?.overclock === "heat";
 }
 
 function isFixedTimeTierDrivenOutputRecipe(

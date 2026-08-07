@@ -19,16 +19,56 @@ import {
   isBeeFrameSlotControlId,
   isBeeProductionRecipe,
 } from "@/lib/model/passive-production";
+import { getRunVoltageTier, getVoltageTierIndex, getVoltageTierMaxEuT } from "@/lib/model/tiers";
 import {
-  getRunVoltageTier,
-  getVoltageTierIndex,
-  getVoltageTierMaxEuT,
-} from "@/lib/model/tiers";
+  getMachineBehaviour,
+  resolveCoefficient,
+  type MachineContext,
+} from "@/lib/machines/machine-table";
 import type { FactoryNode, MachineTier, Recipe, RecipeOutput } from "@/lib/model/types";
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
 
 const TGS_BASE_OUTPUT_MULTIPLIER = 5;
+
+/** What the machine table needs to read off a recipe. */
+type MachineEffectRecipe = Pick<
+  Recipe,
+  "machineType" | "source" | "nei" | "machineConfigControls"
+> &
+  Partial<Pick<Recipe, "minimumTier" | "eut" | "metadata">>;
+
+/** What it needs off the node the user configured. */
+type MachineEffectNode = Pick<FactoryNode, "machineConfigTiers" | "coilTier"> &
+  Partial<Pick<FactoryNode, "overclockTier">>;
+
+/**
+ * Reads the machine config tiers a node has selected as the zero-based indices
+ * the curated machine table is written against.
+ */
+export function buildMachineContext(
+  recipe: MachineEffectRecipe,
+  node: MachineEffectNode,
+): MachineContext {
+  const controls = [
+    ...getRecipeMachineConfigTierControls(recipe, node),
+    ...(getRecipeCoilTierControl(recipe, node) ? [getRecipeCoilTierControl(recipe, node)!] : []),
+  ];
+
+  return {
+    tier: (controlId) => {
+      const control = controls.find((entry) => entry.id === controlId);
+      if (!control) {
+        return 0;
+      }
+      return Math.max(
+        0,
+        control.tiers.findIndex((entry) => entry.key === control.current.key),
+      );
+    },
+    voltageTier: getVoltageTierIndex(getRunVoltageTier(recipe as Recipe, node.overclockTier)),
+  };
+}
 
 export function getMachineOutputMultiplier(
   recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls" | "metadata">,
@@ -209,11 +249,8 @@ function getTreeGrowthSimulatorToolMultiplier(
 }
 
 export function getMachineParallelMultiplier(
-  recipe: Pick<
-    Recipe,
-    "machineType" | "source" | "nei" | "machineConfigControls" | "minimumTier" | "eut"
-  >,
-  node: Pick<FactoryNode, "machineConfigTiers" | "overclockTier" | "coilTier">,
+  recipe: MachineEffectRecipe,
+  node: MachineEffectNode,
 ): number {
   // GT++ "Voltage Tier * n Parallels" scales with the tier the machine runs
   // at; the GT tier ordinal counts ULV as 0, LV as 1, and so on.
@@ -222,18 +259,21 @@ export function getMachineParallelMultiplier(
     1,
     getVoltageTierIndex(runTier as Parameters<typeof getVoltageTierIndex>[0]),
   );
-  const structural = getRecipeMachineConfigTierControls(recipe, node).reduce(
-    (multiplier, control) => {
-      const fixed = control.current.parallelMultiplier ?? 1;
-      const perTier = control.current.parallelPerVoltageTier;
-      const base = control.current.parallelVoltageBase ?? 0;
-      const scaled = Number.isFinite(perTier)
-        ? Math.max(1, Math.floor(base + (perTier as number) * tierOrdinal))
-        : 1;
-      return multiplier * fixed * scaled;
-    },
-    1,
-  );
+  const behaviour = getMachineBehaviour(recipe.machineType);
+  const structural = behaviour
+    ? Math.max(
+        1,
+        Math.floor(resolveCoefficient(behaviour.parallels, buildMachineContext(recipe, node), 1)),
+      )
+    : getRecipeMachineConfigTierControls(recipe, node).reduce((multiplier, control) => {
+        const fixed = control.current.parallelMultiplier ?? 1;
+        const perTier = control.current.parallelPerVoltageTier;
+        const base = control.current.parallelVoltageBase ?? 0;
+        const scaled = Number.isFinite(perTier)
+          ? Math.max(1, Math.floor(base + (perTier as number) * tierOrdinal))
+          : 1;
+        return multiplier * fixed * scaled;
+      }, 1);
 
   return Math.min(structural, getPoweredParallelLimit(recipe, node));
 }
@@ -246,10 +286,7 @@ export function getMachineParallelMultiplier(
  * A chem plant with titanium pipe casings offers six parallels, but a 480
  * EU/t recipe on an HV hatch (512 EU/t) can only run one of them.
  */
-function getPoweredParallelLimit(
-  recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls" | "eut">,
-  node: Pick<FactoryNode, "machineConfigTiers" | "overclockTier" | "coilTier">,
-): number {
+function getPoweredParallelLimit(recipe: MachineEffectRecipe, node: MachineEffectNode): number {
   const available = getVoltageTierMaxEuT(getRunVoltageTier(recipe as Recipe, node.overclockTier));
   if (!Number.isFinite(available)) {
     return Number.POSITIVE_INFINITY;
@@ -266,8 +303,8 @@ function getPoweredParallelLimit(
 }
 
 export function getMachineDurationMultiplier(
-  recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls" | "metadata">,
-  node: Pick<FactoryNode, "coilTier" | "machineConfigTiers">,
+  recipe: MachineEffectRecipe,
+  node: MachineEffectNode,
 ): number {
   const cropStats = getCropsNhStats(recipe);
   if (cropStats) {
@@ -282,6 +319,14 @@ export function getMachineDurationMultiplier(
     return ticks / referenceTicks;
   }
 
+  // The curated table states speed as a throughput multiplier, so a machine
+  // that runs at 200% divides the duration by two.
+  const behaviour = getMachineBehaviour(recipe.machineType);
+  if (behaviour) {
+    const speed = resolveCoefficient(behaviour.speed, buildMachineContext(recipe, node), 1);
+    return speed > 0 ? 1 / speed : 1;
+  }
+
   const coilControl = getRecipeCoilTierControl(recipe, node);
   const coilMultiplier = coilControl?.current.durationMultiplier ?? 1;
   const configMultiplier = getRecipeMachineConfigTierControls(recipe, node).reduce(
@@ -292,9 +337,14 @@ export function getMachineDurationMultiplier(
 }
 
 export function getMachineEutMultiplier(
-  recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls">,
-  node: Pick<FactoryNode, "coilTier" | "machineConfigTiers">,
+  recipe: MachineEffectRecipe,
+  node: MachineEffectNode,
 ): number {
+  const behaviour = getMachineBehaviour(recipe.machineType);
+  if (behaviour) {
+    return resolveCoefficient(behaviour.power, buildMachineContext(recipe, node), 1);
+  }
+
   const coilControl = getRecipeCoilTierControl(recipe, node);
   const coilMultiplier = coilControl?.current.eutMultiplier ?? 1;
   const controls = getRecipeMachineConfigTierControls(recipe, node);
