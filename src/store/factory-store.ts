@@ -2199,7 +2199,6 @@ function canConnectPendingSlots(
   const output = first.side === "output" ? firstResource : secondResource;
 
   return (
-    first.nodeId !== second.nodeId &&
     first.side !== second.side &&
     first.kind === second.kind &&
     resourceMatchesInput(output, input)

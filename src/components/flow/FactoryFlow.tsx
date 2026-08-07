@@ -803,10 +803,18 @@ function resolveGridRouteEndpoints(
   // the window's true edge; side docks simply start below it.
   const topInset = snap(getDockTopInset(nodeId));
 
+  // A machine wired into itself always uses fixed ports, whatever the anchor
+  // toggle says. In free mode both ends of that wire offer the same card's
+  // whole perimeter, and the cheapest way to get from a card to itself is to
+  // not move: both ends pick one dock and the loop collapses to a stub. The
+  // real input and output rows give it two genuinely different ends, so the
+  // wire has to travel around the card and reads as the loop it is.
+  const isSelfLoop = input.sourceNodeId === input.targetNodeId;
+
   // Fixed-port mode (the anchor toggle, off): wires attach the classic way —
   // machine inputs on the left at their port row, outputs on the right, and
   // storage/trash cards on whichever side centre routes best.
-  if (!publishedGridFreeDock) {
+  if (!publishedGridFreeDock || isSelfLoop) {
     const isSlot = end === "source" ? input.sourceSlotEndpoint : input.targetSlotEndpoint;
     if (isSlot) {
       const handleId = end === "source" ? input.sourceHandleId : input.targetHandleId;
@@ -2064,7 +2072,11 @@ export function FactoryFlow() {
       // The project edge itself is never touched — this is all view.
       const sourceRep = pocketView.representativeOf(edge.source);
       const targetRep = pocketView.representativeOf(edge.target);
-      if (!sourceRep || !targetRep || sourceRep === targetRep) {
+      // Both ends on one card means the wire is interior to a collapsed pocket
+      // and has nothing to draw between — UNLESS it is a machine wired into
+      // itself and standing as itself, which is a loop the board must show.
+      const isSelfLoop = edge.source === edge.target && sourceRep === edge.source;
+      if (!sourceRep || !targetRep || (sourceRep === targetRep && !isSelfLoop)) {
         return [];
       }
       const sourceIsPocket = sourceRep !== edge.source;
@@ -2383,7 +2395,11 @@ export function FactoryFlow() {
       }> = [];
       for (const source of sourceIds) {
         for (const target of targetIds) {
-          if (source === target) {
+          // A pocket fan-out can land both ends on one member — that pair is
+          // an artefact of the expansion, not a wire anybody asked for. A self
+          // pair the user actually aimed (the same card named on both ends) is
+          // a real loop and has to survive.
+          if (source === target && sourceNodeId !== targetNodeId) {
             continue;
           }
 
@@ -7343,7 +7359,6 @@ function isCompatibleDraggedResourceTarget(
   }
 
   return (
-    draggedResource.nodeId !== targetHandle.nodeId &&
     draggedResource.side !== targetHandle.side &&
     (targetHandle.side === "input"
       ? resourceMatchesInput(draggedResource, targetResource)
@@ -7554,10 +7569,6 @@ function findNodeDropTarget(
   nodeId: string,
   draggedResource: DraggedResourceConnection,
 ): ResolvedResourceHandle | undefined {
-  if (nodeId === draggedResource.nodeId) {
-    return undefined;
-  }
-
   const side: ResourceHandleSide = draggedResource.side === "output" ? "input" : "output";
   const accepts = (candidate: Pick<ResourceAmount, "kind" | "id" | "alternatives">) =>
     side === "input"
@@ -7667,10 +7678,10 @@ function paintNodeDropFit(
       continue;
     }
 
-    // The card the wire is coming from and the backdrops stay out of it
-    // entirely — no wash, and no snapping the pipe to them. They are still
-    // marked so the per-frame pass has nothing left to look at.
-    if (id === draggedResource.nodeId || isAnnotationNodeElement(element)) {
+    // Backdrops stay out of it entirely — no wash, and no snapping the pipe
+    // to them. They are still marked so the per-frame pass has nothing left
+    // to look at.
+    if (isAnnotationNodeElement(element)) {
       element.dataset.dropFit = "none";
       continue;
     }
@@ -7679,6 +7690,15 @@ function paintNodeDropFit(
     if (target === undefined) {
       target = findNodeDropTarget(project, id, draggedResource) ?? null;
       activeDropTargets.set(id, target);
+    }
+
+    // A machine that eats what it makes can be wired into itself, so the card
+    // the wire came from is a real candidate now. It only ever reads green:
+    // washing your own card red on every drag that goes nowhere near it would
+    // be the board shouting about a wire you never aimed there.
+    if (id === draggedResource.nodeId && !target) {
+      element.dataset.dropFit = "none";
+      continue;
     }
 
     const verdict = target ? "yes" : "no";

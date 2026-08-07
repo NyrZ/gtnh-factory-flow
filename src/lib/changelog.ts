@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.28.0",
+    date: "2026-08-07",
+    headline: "A machine can feed itself",
+    notes: [
+      "Plenty of machines put out the same item they take in. You can now wire one straight back into itself: drag from the output and drop it anywhere on the same machine, or aim at its own input slot. The wire loops around the card so the round trip is easy to see.",
+      "The board always knew how to work these out, it just would not let you draw one. A loop that makes more than it eats keeps itself running. A loop that loses a little each pass winds down to nothing and wears the red dead loop ring, the same as a ring built from several machines.",
+      "Setting machine counts automatically used to run away on a machine that loses a little of the item it feeds itself, asking for an impossible number of machines. It settles properly now.",
+    ],
+  },
+  {
     version: "1.27.3",
     date: "2026-08-07",
     headline: "Every outline sits on the card, and selection always shows",
