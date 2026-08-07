@@ -3,15 +3,20 @@
 import { useState } from "react";
 import { APP_VERSION } from "@/lib/version";
 import { AccountMenu } from "./community/AccountMenu";
+import { AppIdentity } from "./AppIdentity";
 import { BoardActions } from "./BoardActions";
 import { ChangelogDialog } from "./ChangelogDialog";
 
+interface AppHeaderProps {
+  onLoadDatasetVersion: (versionId: string) => void;
+}
+
 /**
- * The one top bar for the whole app: title, version chip, board actions,
- * account. The old Community page folded into the sidebar's Setups tab, so
- * there is no page switch up here anymore.
+ * The one top bar for the whole app: title, version chip, game version, board
+ * actions, account. The old Community page folded into the sidebar's Setups
+ * tab, so there is no page switch up here anymore.
  */
-export function AppHeader() {
+export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
   const [isChangelogOpen, setChangelogOpen] = useState(false);
 
   return (
@@ -29,6 +34,12 @@ export function AppHeader() {
         >
           v{APP_VERSION}
         </button>
+        {/* The pack picker rides up here beside the app version rather than at
+            the head of the browser column. Two versions that are easy to
+            confuse now sit together and read as a pair, and the column below
+            gets a whole row of its height back. */}
+        <span className="ml-3 h-5 w-px bg-line" aria-hidden />
+        <AppIdentity onLoadDatasetVersion={onLoadDatasetVersion} />
       </h1>
       {isChangelogOpen ? <ChangelogDialog onClose={() => setChangelogOpen(false)} /> : null}
       <div className="flex items-center gap-2">

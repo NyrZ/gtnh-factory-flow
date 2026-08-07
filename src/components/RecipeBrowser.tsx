@@ -35,7 +35,7 @@ import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { OPEN_SETUPS_EVENT } from "@/lib/setups-tab";
-import { AppIdentity } from "./AppIdentity";
+import { writeWorkspaceView } from "@/lib/workspace-view";
 import { BlueprintPanel } from "./BlueprintPanel";
 import { SetupsPanel } from "./SetupsPanel";
 import { machineArtPixels } from "./flow/MachinePicker";
@@ -579,7 +579,35 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         data-help-anchor="browser"
         className="relative z-40 flex h-full min-h-[360px] flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100"
       >
-        <AppIdentity onLoadDatasetVersion={onLoadDatasetVersion} />
+        {/*
+          The column's own head row. It carried the game-version picker until
+          that went up to the top bar; the row stays because it is what holds
+          the tabs below level with the board's toolbar rather than riding up
+          against the window chrome. The fold-away button sits on the outer
+          edge, mirroring the resource panel's on the right.
+        */}
+        <div className="flex h-11 shrink-0 items-center border-b border-neutral-800 px-2">
+          <button
+            type="button"
+            onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
+            title="Hide this column and give the board the room"
+            aria-label="Hide the items, blueprints and setups column"
+            className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M10 3L5 8l5 5" />
+            </svg>
+          </button>
+        </div>
+
         {/* The master switch: item search, the blueprint library, or the
             setups network — whole column each. Flat tabs, not buttons. Three
             iconed labels need every trick to breathe: the column runs 344px,
