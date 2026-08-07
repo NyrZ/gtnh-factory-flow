@@ -19,7 +19,11 @@ import {
   isBeeFrameSlotControlId,
   isBeeProductionRecipe,
 } from "@/lib/model/passive-production";
-import { getVoltageTierIndex } from "@/lib/model/tiers";
+import {
+  getRunVoltageTier,
+  getVoltageTierIndex,
+  getVoltageTierMaxEuT,
+} from "@/lib/model/tiers";
 import type { FactoryNode, MachineTier, Recipe, RecipeOutput } from "@/lib/model/types";
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
@@ -205,8 +209,11 @@ function getTreeGrowthSimulatorToolMultiplier(
 }
 
 export function getMachineParallelMultiplier(
-  recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls" | "minimumTier">,
-  node: Pick<FactoryNode, "machineConfigTiers" | "overclockTier">,
+  recipe: Pick<
+    Recipe,
+    "machineType" | "source" | "nei" | "machineConfigControls" | "minimumTier" | "eut"
+  >,
+  node: Pick<FactoryNode, "machineConfigTiers" | "overclockTier" | "coilTier">,
 ): number {
   // GT++ "Voltage Tier * n Parallels" scales with the tier the machine runs
   // at; the GT tier ordinal counts ULV as 0, LV as 1, and so on.
@@ -215,15 +222,47 @@ export function getMachineParallelMultiplier(
     1,
     getVoltageTierIndex(runTier as Parameters<typeof getVoltageTierIndex>[0]),
   );
-  return getRecipeMachineConfigTierControls(recipe, node).reduce((multiplier, control) => {
-    const fixed = control.current.parallelMultiplier ?? 1;
-    const perTier = control.current.parallelPerVoltageTier;
-    const base = control.current.parallelVoltageBase ?? 0;
-    const scaled = Number.isFinite(perTier)
-      ? Math.max(1, Math.floor(base + (perTier as number) * tierOrdinal))
-      : 1;
-    return multiplier * fixed * scaled;
-  }, 1);
+  const structural = getRecipeMachineConfigTierControls(recipe, node).reduce(
+    (multiplier, control) => {
+      const fixed = control.current.parallelMultiplier ?? 1;
+      const perTier = control.current.parallelPerVoltageTier;
+      const base = control.current.parallelVoltageBase ?? 0;
+      const scaled = Number.isFinite(perTier)
+        ? Math.max(1, Math.floor(base + (perTier as number) * tierOrdinal))
+        : 1;
+      return multiplier * fixed * scaled;
+    },
+    1,
+  );
+
+  return Math.min(structural, getPoweredParallelLimit(recipe, node));
+}
+
+/**
+ * How many parallels the supplied voltage can actually pay for.
+ *
+ * Parallels multiply EU/t one-for-one, so a machine only reaches its
+ * structural parallel count when the energy hatch can carry the whole draw.
+ * A chem plant with titanium pipe casings offers six parallels, but a 480
+ * EU/t recipe on an HV hatch (512 EU/t) can only run one of them.
+ */
+function getPoweredParallelLimit(
+  recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls" | "eut">,
+  node: Pick<FactoryNode, "machineConfigTiers" | "overclockTier" | "coilTier">,
+): number {
+  const available = getVoltageTierMaxEuT(getRunVoltageTier(recipe as Recipe, node.overclockTier));
+  if (!Number.isFinite(available)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  // Energy discounts land before parallels, so a discounted recipe fits more
+  // of them into the same hatch.
+  const recipeEuT = Math.abs(recipe.eut ?? 0) * getMachineEutMultiplier(recipe, node);
+  if (!(recipeEuT > 0)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.max(1, Math.floor(available / recipeEuT));
 }
 
 export function getMachineDurationMultiplier(

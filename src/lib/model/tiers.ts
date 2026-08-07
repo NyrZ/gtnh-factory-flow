@@ -48,3 +48,47 @@ export function isVoltageTierAbove(
 ): boolean {
   return getVoltageTierIndex(tier) > getVoltageTierIndex(maxTier);
 }
+
+/** EU/t a single energy hatch of this tier delivers - the machine's power budget. */
+export function getVoltageTierMaxEuT(tier: Exclude<MachineTier, "DEMO">): number {
+  return GT_VOLTAGE_TIERS.find((entry) => entry.tier === tier)?.maxEuT ?? Number.POSITIVE_INFINITY;
+}
+
+export function resolveVoltageTier(
+  value: string | undefined,
+  defaultTier: Exclude<MachineTier, "DEMO">,
+): Exclude<MachineTier, "DEMO"> {
+  const tier = GT_OVERCLOCK_TIERS.find((entry) => entry.tier === value)?.tier;
+  if (tier) {
+    return tier;
+  }
+
+  if (value === "MAX") {
+    return getHighestFiniteVoltageTier();
+  }
+
+  return defaultTier === "MAX" ? getHighestFiniteVoltageTier() : defaultTier;
+}
+
+/** The lowest voltage that can run this recipe at all: its structural gate or its EU/t draw. */
+export function getRecipeMinimumVoltageTier(
+  recipe: Pick<Recipe, "eut" | "minimumTier">,
+): Exclude<MachineTier, "DEMO"> {
+  const powerTier = getRecipePowerTier(recipe);
+  const declaredMinimum = resolveVoltageTier(recipe.minimumTier, powerTier);
+
+  return getVoltageTierIndex(declaredMinimum) >= getVoltageTierIndex(powerTier)
+    ? declaredMinimum
+    : powerTier;
+}
+
+/** The voltage the machine actually runs at: the requested tier, floored at the recipe's minimum. */
+export function getRunVoltageTier(
+  recipe: Pick<Recipe, "eut" | "minimumTier">,
+  requestedTier: string | undefined,
+): Exclude<MachineTier, "DEMO"> {
+  const minimumTier = getRecipeMinimumVoltageTier(recipe);
+  const requested = resolveVoltageTier(requestedTier, minimumTier);
+
+  return getVoltageTierIndex(requested) < getVoltageTierIndex(minimumTier) ? minimumTier : requested;
+}

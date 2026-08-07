@@ -2820,6 +2820,10 @@ function createImplicitParallelTerminalStorageDemandProject(): FactoryProject {
       makeNode("parallel-source", "parallel-source-recipe", 0),
       {
         ...makeNode("parallel-consumer", "parallel-consumer-recipe", 320),
+        // 256 parallels of a 1 EU/t recipe draw 256 EU/t, so the machine needs
+        // an HV hatch to run them all. HV has no headroom left over for an
+        // overclock, which keeps the ratio under test at a clean 256:1.
+        overclockTier: "HV",
         machineConfigTiers: { machineParallel: "x256" },
       },
     ],
