@@ -90,6 +90,7 @@ import {
   type NodeVerdict,
   type RailPort,
 } from "./node-verdict";
+import { describeDeathSpiral } from "./death-spiral";
 import {
   edgeTouchesResource,
   explainPlug,
@@ -1125,6 +1126,10 @@ function verdictWord(verdict: NodeVerdict, isCustomRate: boolean): VerdictWord {
       return { word: "blocked", tone: "blocked" };
     case "bottleneck":
       return { word: "bottleneck", tone: "bottleneck" };
+    // Red, like a bottleneck, and for the same reason: this is a place the
+    // chain of blame STOPS. Any machine in the ring is a valid place to act.
+    case "dead-loop":
+      return { word: "dead loop", tone: "bottleneck" };
     case "demand-set":
       return verdict.pct <= 0.05
         ? { word: "unused", tone: "fine" }
@@ -1301,6 +1306,8 @@ function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string 
       return `Waiting on ${verdict.binding?.displayName ?? "an input"}`;
     case "bottleneck":
       return isCustomRate ? "Asked for more than the dialed rate" : "Asked for more than it makes";
+    case "dead-loop":
+      return verdict.spiral ? describeDeathSpiral(verdict.spiral).title : "Stuck in a loop";
     case "demand-set":
       return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Downstream sets the speed";
     case "balanced":
@@ -1350,6 +1357,13 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
         ? `${deficit.hungryOutputs} of ${deficit.pluggedOutputs} wired outputs go unfilled, ${missing} short on ${deficit.displayName}.`
         : `${missing} short on ${deficit.displayName}.`;
     }
+    case "dead-loop": {
+      if (!verdict.spiral) {
+        return undefined;
+      }
+      const story = describeDeathSpiral(verdict.spiral);
+      return `${story.what} ${story.why}`;
+    }
     case "demand-set":
       return verdict.headroomPct && verdict.headroomPct > 0
         ? `Nothing downstream wants the other ${formatPct(verdict.headroomPct)}%.`
@@ -1370,6 +1384,9 @@ function verdictHoverFix(
   machineCount: number,
   isCustomRate: boolean,
 ): { heading: string; body: string } | undefined {
+  if (verdict.kind === "dead-loop" && verdict.spiral) {
+    return { heading: "How to start it", body: describeDeathSpiral(verdict.spiral).fix };
+  }
   // Starved costs nobody anything, so it gets no fix note at all: a card with
   // nothing to answer for must not hand out homework.
   if (verdict.kind === "blocked") {

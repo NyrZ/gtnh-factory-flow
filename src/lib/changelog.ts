@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.25.0",
+    date: "2026-08-07",
+    headline: "The board now tells you when machines are stuck in a loop",
+    notes: [
+      "Wire a set of machines so they feed each other in a ring, and if more leaves the ring than comes back round it, every machine in it falls to 0%. That is what would happen in game, and the planner was already right about it. It just never said why.",
+      "Now it says so. Any machine caught in a dead ring reads DEAD LOOP, and a note on the board explains what is happening, why, and how to start it: put a source or a stocked barrel on any machine in the ring.",
+      "This catches rings of any size, a machine wired back into itself, and rings that would hold on their own until something taps them for a couple of items a second.",
+      "It stays quiet about rings that work. A ring that makes enough to keep itself going is a good build and gets no warning.",
+      "Watch for this the moment you close the last wire on a loop. An input with nothing wired to it is assumed hand fed, so a ring can look perfectly healthy right up until you connect it and it has to supply itself.",
+    ],
+  },
+  {
     version: "1.24.0",
     date: "2026-08-07",
     headline: "Machines only go red when they are the thing to fix",

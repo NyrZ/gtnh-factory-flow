@@ -162,6 +162,7 @@ import {
   reuseObjectIdentity,
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
+import { describeDeathSpiral, findDeathSpirals } from "./death-spiral";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
 import {
   isWiringConnection,
@@ -3250,6 +3251,14 @@ export function FactoryFlow() {
     return () => cancelAnimationFrame(frame);
   }, [activePocketId]);
 
+  const handleShowNodes = useCallback((nodeIds: string[]) => {
+    void flowInstanceRef.current?.fitView({
+      nodes: nodeIds.map((id) => ({ id })),
+      padding: 0.35,
+      duration: 420,
+    });
+  }, []);
+
   // Stable references keep the memoized PaintToolbar from re-rendering on the
   // per-frame FactoryFlow renders a node drag produces.
   const handlePaintModeChange = useCallback(
@@ -3712,10 +3721,82 @@ export function FactoryFlow() {
       />
       <SmartViewToolbar glanceMode={boardView.glanceMode} onModeChange={handleGlanceModeChange} />
       <HopMapLegend />
+      <DeathSpiralNotice onShow={handleShowNodes} />
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
     </div>
   );
 }
+
+/**
+ * The one board-level thing worth interrupting for: a ring of machines that
+ * has wound down to a standstill and cannot restart itself.
+ *
+ * It earns a notice where other problems do not, because a spiral is the only
+ * failure whose cause is nowhere in particular. A bottleneck is ON a card, so
+ * the card can say it. A ring's cause is the ring, and every card in it can
+ * only point at the next one, so at a hundred machines the board reads as a
+ * field of zeros with no author. Hence: state the ring once, in one place,
+ * and say plainly that the planner is right and the game would do this too.
+ *
+ * Dismissal is keyed to the ring's identity, so waving this one away does not
+ * silence the NEXT spiral you build.
+ */
+const DeathSpiralNotice = memo(function DeathSpiralNotice({
+  onShow,
+}: {
+  onShow: (nodeIds: string[]) => void;
+}) {
+  const project = useFactoryStore((state) => state.project);
+  const lastResult = useFactoryStore((state) => state.lastResult);
+  const [dismissedId, setDismissedId] = useState<string | undefined>(undefined);
+  const spirals = useMemo(
+    () => findDeathSpirals(project, lastResult).spirals,
+    [project, lastResult],
+  );
+
+  const spiral = spirals[0];
+  if (!spiral || dismissedId === spiral.id) {
+    return null;
+  }
+  const story = describeDeathSpiral(spiral);
+
+  return (
+    <div className="nodrag pointer-events-auto absolute bottom-3 left-3 z-30 max-w-[340px] border-2 border-[#c34c4c] bg-[#2b1c1c]/95 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
+      <div className="flex items-center justify-between border-b border-[#7a3636] px-2 py-1">
+        <span className="font-bold tracking-[0.5px] text-[#ff9c9c]">DEAD LOOP</span>
+        <button
+          type="button"
+          onClick={() => setDismissedId(spiral.id)}
+          title="Dismiss"
+          aria-label="Dismiss this notice"
+          className="flex h-5 w-5 items-center justify-center border border-[#7a3636] text-[#e0b3b3] hover:bg-[#4a2424]"
+        >
+          ×
+        </button>
+      </div>
+      <div className="flex flex-col gap-1.5 px-2 py-2 leading-[15px]">
+        <p className="font-bold text-white">{story.title}</p>
+        <p className="text-[#e6d2d2]">{story.what}</p>
+        <p className="text-[#c9b0b0]">{story.why}</p>
+        <p className="border-t border-[#7a3636] pt-1.5 text-[#ffd7a0]">{story.fix}</p>
+        <div className="flex items-center gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={() => onShow(spiral.machineIds)}
+            className="border border-[#c34c4c] bg-[#4a2424] px-2 py-1 font-bold text-[#ffd0d0] hover:bg-[#63302f]"
+          >
+            Show me
+          </button>
+          {spirals.length > 1 ? (
+            <span className="text-[#b89a9a]">
+              and {spirals.length - 1} more loop{spirals.length > 2 ? "s" : ""}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 /**
  * The smart-view switch, bottom right: what a zoomed-out card leads with.

@@ -8,6 +8,7 @@ import type {
   ThroughputResult,
 } from "@/lib/model/types";
 import { isRecipeInputConsumed, makeResourceKey } from "@/lib/model";
+import { findDeathSpirals, type DeathSpiral } from "./death-spiral";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
 import { collectTrashNodeIds } from "@/lib/model/trash";
 import { makeResourceHandleId } from "./resource-handles";
@@ -35,8 +36,12 @@ type ProjectEdge = FactoryProject["edges"][number];
  * that hands every asker what it asked for is FINE, whatever its percent
  * reads. Only an unmet ask is a problem, and only when the inputs are already
  * covered is this card the place to fix it. Follow BLOCKED cards upstream and
- * you always arrive at a bottleneck, a starving loop, or a dialled source —
- * so the red cards are the whole to-do list.
+ * you always arrive at a bottleneck, a dialled source, or a DEAD LOOP — so
+ * the red cards are the whole to-do list.
+ *
+ * That walk only terminates because `dead-loop` exists. In a ring, A blames
+ * B, B blames C and C blames A, so without a state that names the ring the
+ * advice chases itself forever. See death-spiral.ts.
  */
 export type NodeVerdictKind =
   | "off"
@@ -45,6 +50,7 @@ export type NodeVerdictKind =
   | "starved"
   | "blocked"
   | "bottleneck"
+  | "dead-loop"
   | "demand-set"
   | "balanced";
 
@@ -127,6 +133,8 @@ export interface NodeVerdict {
   };
   /** Demand-set: percentage points the node could climb if asked. */
   headroomPct?: number;
+  /** Dead-loop: the ring this card is trapped in, and who else is in it. */
+  spiral?: DeathSpiral;
 }
 
 /** Half a percent: below this, converged solver states are just float noise. */
@@ -372,6 +380,14 @@ export function deriveNodeVerdict(
   const outgoing = project.edges.filter((edge) => edge.source === nodeId);
   if (incoming.length === 0 && outgoing.length === 0) {
     return { kind: "unwired", pct };
+  }
+
+  // A dead ring outranks every other reading. Its members ARE starved and
+  // ARE blocking each other, so the ordinary path would have each one point
+  // at the next and never name the thing they are all standing in.
+  const spiral = findDeathSpirals(project, result).byNode.get(nodeId);
+  if (spiral) {
+    return { kind: "dead-loop", pct, spiral };
   }
 
   const deficit = findWorstOutputDeficit(project, result, nodeResult, nodeId, outgoing);
