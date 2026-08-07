@@ -2,7 +2,12 @@ import type { EdgeThroughput, FactoryProject, ThroughputResult } from "@/lib/mod
 import { formatCompact, formatNumberWithThousands, formatRate, makeResourceKey } from "@/lib/model";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { parseResourceHandleId } from "./resource-handles";
-import { honestEdgeAskPerSecond, type NodeVerdict, type RailPort } from "./node-verdict";
+import {
+  honestEdgeAskPerSecond,
+  isSupplyShort,
+  type NodeVerdict,
+  type RailPort,
+} from "./node-verdict";
 
 const PLUG_STATE_WORD = {
   hungry: "HUNGRY",
@@ -22,9 +27,15 @@ const PLUG_DUMP_WORD = {
   store: "STORE",
 } as const;
 
+/**
+ * A plug takes the colour of the card it sits on, because it is the same
+ * fact: a short plug on a fed machine IS the bottleneck (red, act here), and
+ * a short plug on a supply-short one IS what makes that card blocked (amber,
+ * act upstream). One colour per card, whatever surface is carrying it.
+ */
 const PLUG_STATE_TONE = {
-  hungry: "amber",
-  blocked: "red",
+  hungry: "red",
+  blocked: "amber",
   fed: "green",
   dump: "dim",
 } as const;
@@ -209,7 +220,8 @@ export function buildPortBreakdown(
 
 export interface PortStory {
   stateWord: string;
-  tone: "red" | "amber" | "green" | "steel" | "dim";
+  /** `gold` is the quiet one: short, but costing nobody anything. */
+  tone: "red" | "amber" | "gold" | "green" | "steel" | "dim";
   /** The number rows under the bar: label → value. */
   rows: Array<{ k: string; v: string }>;
   /** Per-line list ("Supplied by 2 lines" / "Feeding 3 lines"). */
@@ -324,7 +336,7 @@ export function explainPlug(
       break;
     case "blocked":
       lines = [`${coveredPct}% = asked ${fmt(plug.askPerSecond)}, this puts in ${fmt(plug.getPerSecond)}.`];
-      action = { text: "→ This machine is starving — fix its red input first.", tone: "fix" };
+      action = { text: "→ This machine is short itself — fix its marked input first.", tone: "fix" };
       break;
     case "fed":
       lines = [`100% = every ask met (${fmt(plug.askPerSecond)}).`];
@@ -388,24 +400,36 @@ function explainOutputPort(
     };
   }
 
-  if (verdict.kind === "starved") {
+  if (isSupplyShort(verdict.kind)) {
+    const tone = verdict.kind === "blocked" ? "amber" : "gold";
+    const bindingName = verdict.binding?.displayName ?? "an ingredient";
+
+    // Starved: the machine runs slow and not one asker minds. Report the
+    // speed, name what sets it, and offer no fix — there is nothing to fix.
+    if (verdict.kind === "starved") {
+      return {
+        stateWord: "SLOWED",
+        tone,
+        rows: [],
+        lines: [`At ${formatPct(verdict.pct)}% — ${bindingName} sets that. Nothing is waiting on it.`],
+      };
+    }
+
     if (wanted > nameplate * (1 + TOL)) {
       return {
         stateWord: "SQUEEZED",
-        tone: "red",
+        tone,
         rows: [],
-        lines: [`At ${formatPct(verdict.pct)}% (starving) — and plugs want ${fmt(wanted)}, over its ${fmt(nameplate)} max.`],
-        action: { text: "→ Fix the red input first; add machines after.", tone: "fix" },
+        lines: [`At ${formatPct(verdict.pct)}% on ${bindingName} — and plugs want ${fmt(wanted)}, over its ${fmt(nameplate)} max.`],
+        action: { text: "→ Fix the marked input first; add machines after.", tone: "fix" },
       };
     }
     return {
       stateWord: "SLOWED",
-      tone: "red",
+      tone,
       rows: [],
-      lines: [
-        `At ${formatPct(verdict.pct)}% — ${verdict.binding?.displayName ?? "an ingredient"} is the bottleneck (red input).`,
-      ],
-      action: { text: "→ Fix the red input; this follows.", tone: "fix" },
+      lines: [`At ${formatPct(verdict.pct)}% — ${bindingName} runs short, so this does too.`],
+      action: { text: "→ Fix the marked input; this follows.", tone: "fix" },
     };
   }
 
@@ -484,12 +508,13 @@ function explainInputPort(
   }
 
   if (
-    verdict.kind === "starved" &&
+    isSupplyShort(verdict.kind) &&
     (verdict.binding?.resourceKey === port.key ||
       verdict.binding?.tiedKeys?.includes(port.key) === true)
   ) {
     const binding = verdict.binding;
     const upstream = binding.upstream;
+    const blocked = verdict.kind === "blocked";
     const tieNote = binding.tiedWithNames?.length
       ? ` Tied with ${
           binding.resourceKey === port.key
@@ -497,9 +522,13 @@ function explainInputPort(
             : [binding.displayName, ...binding.tiedWithNames.filter((name) => name !== port.displayName)].join(", ")
         } — the figures can't split them.`
       : "";
-    const whyLine = `Bottleneck: gets ${fmt(binding.suppliedPerSecond)} of ${fmt(binding.neededPerSecond)} — machine at ${formatPct(verdict.pct)}%.${tieNote}`;
+    const whyLine = `Gets ${fmt(binding.suppliedPerSecond)} of ${fmt(binding.neededPerSecond)} — machine at ${formatPct(verdict.pct)}%.${
+      blocked ? "" : " Nothing downstream is waiting on it."
+    }${tieNote}`;
+    // Where it comes from is worth knowing either way; only on a blocked card
+    // is it homework, so the quiet state gets the quiet tone.
     const action: PortStory["action"] = {
-      tone: "fix",
+      tone: blocked ? "fix" : "note",
       text:
         upstream?.kind === "loop"
           ? "→ Fed by its own loop — prime it from a buffer."
@@ -513,10 +542,17 @@ function explainInputPort(
                   ? `→ ${upstream.name} at ${formatPct(upstream.pct)}% — it's starving too, fix above it.`
                   : "→ Add more of the machine making it.",
     };
-    return { stateWord: "BOTTLENECK", tone: "red", rows: [], lineRows, lines: [whyLine], action };
+    return {
+      stateWord: blocked ? "BLOCKED" : "STARVED",
+      tone: blocked ? "amber" : "gold",
+      rows: [],
+      lineRows,
+      lines: [whyLine],
+      action,
+    };
   }
 
-  if (verdict.kind === "starved") {
+  if (isSupplyShort(verdict.kind)) {
     const bindingName = verdict.binding?.displayName ?? "another ingredient";
     const bufferFed = !Number.isFinite(couldPct);
     return {

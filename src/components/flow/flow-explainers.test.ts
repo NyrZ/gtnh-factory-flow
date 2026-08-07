@@ -386,7 +386,7 @@ describe("explainPlug — the asker's side", () => {
 
     expect(rails.outputs[0]!.plug?.state).toBe("blocked");
     expect(story.stateWord).toBe("BLOCKED UPSTREAM");
-    expect(story.action?.text).toContain("fix its red input first");
+    expect(story.action?.text).toContain("fix its marked input first");
   });
 
   it("keeps buffer-only plugs calm", () => {

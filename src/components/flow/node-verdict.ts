@@ -19,18 +19,43 @@ type ProjectEdge = FactoryProject["edges"][number];
  * from the solver's three separate facts (utilization, what the inputs would
  * allow, what downstream asks), plus the cause and the concrete next action.
  *
- * Color doctrine: the verdict color means "where to act", never "how big the
- * number is". Starved = act upstream, choke = act on this node, demand-set =
- * no action anywhere (healthy part load), balanced = done.
+ * Two independent questions decide it, both measured against this card's own
+ * full blast at its current machine count:
+ *
+ *   are the inputs short?   `capableUtilization` < 1
+ *   is anyone going without? a `deficit` on some output
+ *
+ *                 | nobody waiting | someone waiting
+ *   inputs fine   | balanced /     | BOTTLENECK
+ *                 | demand-set     | (add machines HERE)
+ *   inputs short  | STARVED        | BLOCKED
+ *                 | (nothing to do)| (the fix is upstream)
+ *
+ * The doctrine that follows: running below 100% is not a fault. A machine
+ * that hands every asker what it asked for is FINE, whatever its percent
+ * reads. Only an unmet ask is a problem, and only when the inputs are already
+ * covered is this card the place to fix it. Follow BLOCKED cards upstream and
+ * you always arrive at a bottleneck, a starving loop, or a dialled source —
+ * so the red cards are the whole to-do list.
  */
 export type NodeVerdictKind =
   | "off"
   | "no-recipe"
   | "unwired"
   | "starved"
-  | "choke"
+  | "blocked"
+  | "bottleneck"
   | "demand-set"
   | "balanced";
+
+/**
+ * The two supply-short states. Both mean "the inputs, not this card, set the
+ * speed", so every reader that used to test the old single `starved` kind
+ * wants this instead.
+ */
+export function isSupplyShort(kind: NodeVerdictKind): boolean {
+  return kind === "starved" || kind === "blocked";
+}
 
 /** The machine (or buffer) to go fix on a starved line, with its own state. */
 export interface UpstreamCulprit {
@@ -56,7 +81,7 @@ export interface NodeVerdict {
   kind: NodeVerdictKind;
   /** Clamped display percentage, 0-100. */
   pct: number;
-  /** Starved: the input that pins the machine below what's asked of it. */
+  /** Starved/blocked: the input that pins the machine below what's asked. */
   binding?: {
     resourceKey: string;
     kind: ResourceKind;
@@ -78,7 +103,7 @@ export interface NodeVerdict {
     tiedKeys?: string[];
     tiedWithNames?: string[];
   };
-  /** Choke: the worst unmet downstream ask across this node's outputs. */
+  /** The worst unmet ask across this node's outputs — someone goes without. */
   deficit?: {
     resourceKey: string;
     kind: ResourceKind;
@@ -352,30 +377,114 @@ export function deriveNodeVerdict(
   const deficit = findWorstOutputDeficit(project, result, nodeResult, nodeId, outgoing);
 
   if (utilization >= 1 - VERDICT_EPSILON) {
-    return deficit ? { kind: "choke", pct, deficit } : { kind: "balanced", pct };
+    return deficit ? { kind: "bottleneck", pct, deficit } : { kind: "balanced", pct };
   }
 
   // Below full speed there is always a cause. Downstream owns it only when
   // demand is the strictly smaller limit; a tie means something upstream
   // ultimately caps the line, so the arrow should point that way.
   if (demand < capable - VERDICT_EPSILON && demand < 1 - VERDICT_EPSILON) {
-    // "Demand-set" with a real deficit is the damped ask lying to this node:
+    // Demand-set WITH a real deficit is the damped ask lying to this node:
     // downstream is genuinely hungry, the machine has headroom, and the
-    // solver just isn't relaying the pull. That's a can't-keep-up seat —
-    // adding machines (or tiers) here is what actually moves it.
+    // solver just isn't relaying the pull. Its inputs are covered, so this
+    // card is where the fix goes — a bottleneck like any other.
     if (deficit) {
-      return { kind: "choke", pct, deficit };
+      return { kind: "bottleneck", pct, deficit };
     }
     const headroomPct = Math.max(0, Math.round((Math.min(capable, 1) - utilization) * 1000) / 10);
     return { kind: "demand-set", pct, headroomPct };
   }
 
+  // Supply-limited. Whether that MATTERS is a separate question, and the
+  // answer is whether anyone is going without: a machine feeding a drawer,
+  // a trash can or nothing at all is short on ingredients and short on
+  // nobody, which is not a fault to paint red at the top of the board.
   return {
-    kind: "starved",
+    kind: deficit ? "blocked" : "starved",
     pct,
     binding: findBindingInput(project, result, nodeResult, nodeId, incoming),
     deficit,
   };
+}
+
+/**
+ * Asks that arrive without a wire: this node's own target output, and its
+ * share of the plan's target rate. The player IS a taker — a node that misses
+ * the rate you dialled for it has someone going without, and reading it as
+ * "starved, nothing waiting" would go quiet on exactly the card you are
+ * watching. Mirrors `applyProjectTarget` in the solver (only producers with no
+ * outgoing line for the resource carry a share of the plan target) so the two
+ * cannot disagree about who is on the hook.
+ *
+ * Built once per (project, result) — the walk is O(nodes + edges) and the
+ * lookup that follows is O(1), because this is called once per node.
+ */
+const targetAskIndexCache = new WeakMap<
+  FactoryProject,
+  { result: ThroughputResult | undefined; index: Map<string, Map<string, number>> }
+>();
+
+function getTargetAskIndex(
+  project: FactoryProject,
+  result: ThroughputResult | undefined,
+): Map<string, Map<string, number>> {
+  const cached = targetAskIndexCache.get(project);
+  if (cached && cached.result === result) {
+    return cached.index;
+  }
+
+  const index = new Map<string, Map<string, number>>();
+  const add = (nodeId: string, key: string, amountPerSecond: number) => {
+    if (amountPerSecond <= RATE_EPSILON) {
+      return;
+    }
+    let byKey = index.get(nodeId);
+    if (!byKey) {
+      byKey = new Map();
+      index.set(nodeId, byKey);
+    }
+    byKey.set(key, Math.max(byKey.get(key) ?? 0, amountPerSecond));
+  };
+
+  const targetRate = project.targetRate;
+  const targetKey = targetRate
+    ? makeResourceKey(targetRate.kind, targetRate.resourceId)
+    : undefined;
+  const wiredOut = new Set<string>();
+  if (targetKey !== undefined) {
+    for (const edge of project.edges) {
+      if (makeResourceKey(edge.resourceKind, edge.resourceId) === targetKey) {
+        wiredOut.add(edge.source);
+      }
+    }
+  }
+
+  const targetRateNodes: string[] = [];
+  for (const node of project.nodes) {
+    if (node.targetOutput) {
+      add(
+        node.id,
+        makeResourceKey(node.targetOutput.kind, node.targetOutput.resourceId),
+        node.targetOutput.amountPerSecond,
+      );
+    }
+    if (
+      targetKey !== undefined &&
+      !wiredOut.has(node.id) &&
+      result?.nodes[node.id]?.outputs[targetKey] !== undefined
+    ) {
+      targetRateNodes.push(node.id);
+    }
+  }
+  if (targetKey !== undefined && targetRate && targetRateNodes.length > 0) {
+    const share = targetRate.amountPerSecond / targetRateNodes.length;
+    for (const nodeId of targetRateNodes) {
+      add(nodeId, targetKey, share);
+    }
+  }
+
+  targetAskIndexCache.set(project, { result, index });
+  return index;
 }
 
 function findWorstOutputDeficit(
@@ -409,6 +518,20 @@ function findWorstOutputDeficit(
     const key = makeResourceKey(edge.resourceKind, edge.resourceId);
     missingByKey.set(key, (missingByKey.get(key) ?? 0) + missing);
     wantedByKey.set(key, (wantedByKey.get(key) ?? 0) + wanted);
+  }
+
+  // Targets are asks with no wire behind them. Folded in with MAX, not sum,
+  // exactly as the solver reads them: "make at least this much", never "this
+  // much on top of the lines".
+  const utilization = clamp01(nodeResult.utilization, 0);
+  for (const [key, ask] of getTargetAskIndex(project, result).get(nodeId) ?? []) {
+    const nameplate =
+      nodeResult.outputs[key as keyof typeof nodeResult.outputs]?.amountPerSecond ?? 0;
+    wantedByKey.set(key, Math.max(wantedByKey.get(key) ?? 0, ask));
+    const missing = Math.max(0, ask - nameplate * utilization);
+    if (missing > RATE_EPSILON) {
+      missingByKey.set(key, Math.max(missingByKey.get(key) ?? 0, missing));
+    }
   }
 
   let worst: { key: string; missing: number } | undefined;
@@ -693,8 +816,9 @@ function findUpstreamCulprit(
  */
 export interface PortPlug {
   /**
-   * hungry  = askers want more and THIS machine is the one to grow (amber)
-   * blocked = askers want more but this machine is starving itself (red)
+   * hungry  = askers want more and THIS machine is the one to grow
+   * blocked = askers want more but this machine is short itself, so the fix
+   *           is upstream of it
    * fed     = every asker gets what it asks for (green)
    * dump    = only dead ends attached — a trash can, or buffers nothing ever
    *           draws from — so there is no ask to satisfy, just a place flow
@@ -910,7 +1034,7 @@ export function buildRailPorts(
       const wantedByLines = machineAsk + storageGet;
 
       const isBinding =
-        verdict.kind === "starved" &&
+        isSupplyShort(verdict.kind) &&
         (verdict.binding?.resourceKey === key || verdict.binding?.tiedKeys?.includes(key) === true);
       const askRate = nameplate * Math.min(demand, 1);
 
@@ -944,7 +1068,7 @@ export function buildRailPorts(
         // The chip is the MACHINE's story only: at full speed it reads green
         // no matter how loudly the plugs beg — "everything here is amazing,
         // it's the plug that says where's my stuff". One machine, one color.
-        if (verdict.kind === "starved") {
+        if (isSupplyShort(verdict.kind)) {
           tone = "slowed";
         } else if (verdict.kind === "demand-set") {
           tone = "calm";
@@ -962,14 +1086,15 @@ export function buildRailPorts(
         const hungry =
           demanders > 0 && ask > get + Math.max(RATE_EPSILON, ask * VERDICT_EPSILON);
         plug = {
-          // Blocked only when this machine is genuinely starving (fix its
-          // red input first). Anything else with a hungry plug — full speed
-          // OR damped-ask headroom — is an act-HERE seat: hungry.
+          // The plug's state and the card's word are the same fact seen from
+          // the two ends: a short plug on a supply-short machine IS what
+          // makes that machine blocked, and a short plug on a fed one IS
+          // what makes it the bottleneck. They can never disagree.
           state:
             demanders === 0
               ? "dump"
               : hungry
-                ? verdict.kind === "starved"
+                ? isSupplyShort(verdict.kind)
                   ? "blocked"
                   : "hungry"
                 : "fed",

@@ -252,7 +252,7 @@ describe("deriveNodeVerdict", () => {
     expect(verdict.binding?.resourceKey).toBe("item:lim");
   });
 
-  it("reads choke with the unmet ask and machines to add", () => {
+  it("reads bottleneck with the unmet ask and machines to add", () => {
     const proj = project({
       recipes: [
         { id: "r", name: "PE", machineType: "LCR", minimumTier: "HV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
@@ -276,7 +276,7 @@ describe("deriveNodeVerdict", () => {
     );
 
     const verdict = deriveNodeVerdict(proj, result, "N");
-    expect(verdict.kind).toBe("choke");
+    expect(verdict.kind).toBe("bottleneck");
     expect(verdict.deficit?.missingPerSecond).toBeCloseTo(124, 4);
     // 216/s across 4 machines = 54/s each; 124 short needs 3 more.
     expect(verdict.deficit?.machinesToAdd).toBe(3);
@@ -315,7 +315,7 @@ describe("deriveNodeVerdict", () => {
     );
 
     const verdict = deriveNodeVerdict(proj, result, "Tower");
-    expect(verdict.kind).toBe("choke");
+    expect(verdict.kind).toBe("bottleneck");
     expect(verdict.deficit?.missingPerSecond).toBeCloseTo(26.857, 3);
     expect(verdict.deficit?.machinesToAdd).toBe(6);
 
@@ -482,6 +482,85 @@ describe("deriveNodeVerdict", () => {
     );
 
     expect(deriveNodeVerdict(proj, result, "N").kind).toBe("starved");
+  });
+
+  // The starved/blocked split: the SAME supply shortage, told twice. What
+  // separates them is whether it costs anybody anything, which is the whole
+  // reason one is worth a click and the other is not.
+  const shortMachine = () =>
+    project({
+      recipes: [
+        { id: "r", name: "M", machineType: "M", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+        { id: "src", name: "Maker", machineType: "Maker", minimumTier: "ULV", durationTicks: 20, eut: 1, inputs: [], outputs: [] },
+      ] as unknown as FactoryProject["recipes"],
+      storages: [{ id: "T", kind: "item", resourceId: "pe" }] as unknown as FactoryProject["storages"],
+      nodes: [machineNode("N"), machineNode("S", "src"), machineNode("C")],
+    });
+
+  const shortResult = (edges: Record<string, EdgeThroughput>) =>
+    throughput(
+      {
+        N: nodeResult({
+          utilization: 0.4,
+          capableUtilization: 0.4,
+          demandUtilization: 1,
+          inputs: { "item:res": flow("item", "res", 10) },
+          outputs: { "item:pe": flow("item", "pe", 100) },
+        }),
+      },
+      { eIn: edgeResult({ transferredPerSecond: 4, availablePerSecond: 4, constraint: "supply" }), ...edges },
+    );
+
+  it("stays quiet when the shortage costs nobody anything (starved)", () => {
+    // Short on its ingredient, but everything it makes goes to a drawer. The
+    // tank takes whatever arrives, so not one asker is going without.
+    const proj = shortMachine();
+    proj.edges = [edge("eIn", "S", "N", "res"), edge("eTank", "N", "T", "pe")];
+    const result = shortResult({ eTank: edgeResult({ transferredPerSecond: 40, demandPerSecond: 100 }) });
+
+    const verdict = deriveNodeVerdict(proj, result, "N");
+    expect(verdict.kind).toBe("starved");
+    expect(verdict.deficit).toBeUndefined();
+    // The cause is still named — quiet is not silent.
+    expect(verdict.binding?.resourceKey).toBe("item:res");
+  });
+
+  it("escalates the same shortage to blocked once someone goes without", () => {
+    const proj = shortMachine();
+    proj.edges = [edge("eIn", "S", "N", "res"), edge("eOut", "N", "C", "pe")];
+    const result = shortResult({
+      eOut: edgeResult({
+        transferredPerSecond: 40,
+        demandPerSecond: 40,
+        nameplateDemandPerSecond: 100,
+        constraint: "supply",
+      }),
+    });
+
+    const verdict = deriveNodeVerdict(proj, result, "N");
+    expect(verdict.kind).toBe("blocked");
+    expect(verdict.binding?.resourceKey).toBe("item:res");
+    expect(verdict.deficit?.missingPerSecond).toBeCloseTo(60, 4);
+  });
+
+  it("counts a missed target output as somebody going without", () => {
+    // Nothing is wired to take the output, so the edge scan finds no hunger —
+    // but the player dialled a target and is not getting it. Reading this as
+    // "starved, nothing waiting" would go quiet on the one card being watched.
+    const proj = shortMachine();
+    proj.edges = [edge("eIn", "S", "N", "res")];
+    proj.nodes = [
+      machineNode("N", "r", {
+        targetOutput: { kind: "item", resourceId: "pe", amountPerSecond: 100 },
+      }),
+      machineNode("S", "src"),
+    ];
+    const result = shortResult({});
+
+    const verdict = deriveNodeVerdict(proj, result, "N");
+    expect(verdict.kind).toBe("blocked");
+    // Makes 100/s at full blast but only runs at 40%, so 60/s never appears.
+    expect(verdict.deficit?.missingPerSecond).toBeCloseTo(60, 4);
   });
 
   it("reads balanced, unwired, and off", () => {

@@ -86,6 +86,7 @@ import {
   buildLimitLadder,
   buildRailPorts,
   deriveNodeVerdict,
+  isSupplyShort,
   type NodeVerdict,
   type RailPort,
 } from "./node-verdict";
@@ -1102,38 +1103,48 @@ function GlanceIoRow({ port }: { port: RailPort }) {
   );
 }
 
-/** One word for the node's state, and where the fix lives. */
+/**
+ * One word for the node's state, and how loudly it is worth saying.
+ *
+ * The ladder is the point: plain ink for a card with nothing to answer for,
+ * then muted gold, amber and red as the answer gets more urgent. A machine at
+ * 40% that hands every asker what it asked for has done nothing wrong and
+ * reads as quietly as one at 100% — the percent is a speed, not a grade.
+ */
 interface VerdictWord {
   word: string;
-  /** red = something upstream holds this down. amber = fix is on this card. */
-  tone: "short" | "over" | "calm";
+  /** fine = nothing to do. Then: nobody waiting, waiting on upstream, ACT. */
+  tone: "fine" | "starved" | "blocked" | "bottleneck";
 }
 
 function verdictWord(verdict: NodeVerdict, isCustomRate: boolean): VerdictWord {
   switch (verdict.kind) {
     case "starved":
-      return { word: "bottleneck", tone: "short" };
-    case "choke":
-      return { word: "over-asked", tone: "over" };
+      return { word: "starved", tone: "starved" };
+    case "blocked":
+      return { word: "blocked", tone: "blocked" };
+    case "bottleneck":
+      return { word: "bottleneck", tone: "bottleneck" };
     case "demand-set":
       return verdict.pct <= 0.05
-        ? { word: "unused", tone: "calm" }
-        : { word: isCustomRate ? "under the dial" : "on demand", tone: "calm" };
+        ? { word: "unused", tone: "fine" }
+        : { word: isCustomRate ? "under the dial" : "on demand", tone: "fine" };
     case "balanced":
-      return { word: isCustomRate ? "at the dial" : "full", tone: "calm" };
+      return { word: isCustomRate ? "at the dial" : "full", tone: "fine" };
     case "unwired":
-      return { word: isCustomRate ? "no wires" : "hand-fed", tone: "calm" };
+      return { word: isCustomRate ? "no wires" : "hand-fed", tone: "fine" };
     case "off":
-      return { word: "off", tone: "calm" };
+      return { word: "off", tone: "fine" };
     case "no-recipe":
-      return { word: "no recipe", tone: "calm" };
+      return { word: "no recipe", tone: "fine" };
   }
 }
 
 const VERDICT_WORD_CLASS: Record<VerdictWord["tone"], string> = {
-  short: "font-bold text-[var(--verdict-short-ink)]",
-  over: "font-bold text-[var(--verdict-over-ink)]",
-  calm: "text-[var(--mc-ink-muted)]",
+  fine: "text-[var(--mc-ink-muted)]",
+  starved: "font-bold text-[var(--verdict-starved-ink)]",
+  blocked: "font-bold text-[var(--verdict-blocked-ink)]",
+  bottleneck: "font-bold text-[var(--verdict-bottleneck-ink)]",
 };
 
 /**
@@ -1268,10 +1279,10 @@ function VerdictHoverContent({
               <span className="min-w-0 flex-1">{rung.label}</span>
             </div>
           ))}
-          {/* Only a bottleneck can be "cleared" — on an over-asked node the
-              wall it stands on is its own machine count, and "clear that" would
-              be advice to delete the machines. */}
-          {next && ladder[0]?.now && verdict.kind === "starved" ? (
+          {/* Only a supply wall can be "cleared" — on a bottleneck the wall it
+              stands on is its own machine count, and "clear that" would be
+              advice to delete the machines. */}
+          {next && ladder[0]?.now && isSupplyShort(verdict.kind) ? (
             <div className="mt-0.5 text-[10px] leading-[14px] text-slate-400">
               Clear that and this lands at {formatPct(next.pct)}%, held by {next.label}.
             </div>
@@ -1285,8 +1296,10 @@ function VerdictHoverContent({
 function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string {
   switch (verdict.kind) {
     case "starved":
-      return `${verdict.binding?.displayName ?? "An input"} is the bottleneck`;
-    case "choke":
+      return `Short on ${verdict.binding?.displayName ?? "an input"}`;
+    case "blocked":
+      return `Waiting on ${verdict.binding?.displayName ?? "an input"}`;
+    case "bottleneck":
       return isCustomRate ? "Asked for more than the dialed rate" : "Asked for more than it makes";
     case "demand-set":
       return verdict.pct <= 0.05 ? "Nothing draws from this yet" : "Downstream sets the speed";
@@ -1303,7 +1316,8 @@ function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string 
 
 function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string | undefined {
   switch (verdict.kind) {
-    case "starved": {
+    case "starved":
+    case "blocked": {
       const binding = verdict.binding;
       if (!binding) {
         return undefined;
@@ -1313,9 +1327,20 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
       const tied = binding.tiedWithNames?.length
         ? ` Tied with ${binding.tiedWithNames.join(", ")} — raise either.`
         : "";
-      return `Gets ${supplied}, wants ${needed} at full speed.${tied}`;
+      // The two states differ in one thing only: whether the shortage costs
+      // anybody anything. Say which, because that is the whole reason one is
+      // worth a click and the other is not.
+      const cost =
+        verdict.kind === "starved"
+          ? " Nothing is waiting on it, so nothing here is broken."
+          : ` ${
+              verdict.deficit
+                ? `${formatSlotRate(verdict.deficit.missingPerSecond, verdict.deficit.kind)} of ${verdict.deficit.displayName} goes unmade because of it.`
+                : "Downstream goes short because of it."
+            }`;
+      return `Gets ${supplied}, wants ${needed} at full speed.${cost}${tied}`;
     }
-    case "choke": {
+    case "bottleneck": {
       const deficit = verdict.deficit;
       if (!deficit) {
         return undefined;
@@ -1345,7 +1370,9 @@ function verdictHoverFix(
   machineCount: number,
   isCustomRate: boolean,
 ): { heading: string; body: string } | undefined {
-  if (verdict.kind === "starved") {
+  // Starved costs nobody anything, so it gets no fix note at all: a card with
+  // nothing to answer for must not hand out homework.
+  if (verdict.kind === "blocked") {
     const upstream = verdict.binding?.upstream;
     if (!upstream) {
       return { heading: "Where to act", body: "Upstream, on the short line." };
@@ -1368,9 +1395,15 @@ function verdictHoverFix(
       : upstream.hasHeadroom || upstream.atFullSpeed
         ? " Add machines there, or a higher tier."
         : " Follow the chain up.";
-    return { heading: "Where to act", body: `${state}${count}` };
+    // A blocked card can ALSO be under-built: the shortfall measured from its
+    // own full blast is what upstream can never fix for it. Saying so stops
+    // the second surprise after the first fix lands.
+    const alsoHere = verdict.deficit?.machinesToAdd
+      ? ` Even fed, this still needs +${verdict.deficit.machinesToAdd} of its own.`
+      : "";
+    return { heading: "Where to act", body: `${state}${count}${alsoHere}` };
   }
-  if (verdict.kind === "choke") {
+  if (verdict.kind === "bottleneck") {
     const deficit = verdict.deficit;
     if (isCustomRate) {
       return {
@@ -2096,6 +2129,7 @@ function CustomRatePanel({
 const STORY_TONE_TEXT: Record<PortStory["tone"], string> = {
   red: "text-red-300",
   amber: "text-amber-300",
+  gold: "text-yellow-200/80",
   green: "text-emerald-300",
   steel: "text-slate-300",
   dim: "text-slate-400",
@@ -2104,6 +2138,7 @@ const STORY_TONE_TEXT: Record<PortStory["tone"], string> = {
 const STORY_TONE_FILL: Record<PortStory["tone"], string> = {
   red: "#e05252",
   amber: "#e0a63a",
+  gold: "#b0aa66",
   green: "#3fbf6f",
   steel: "#8aa0b8",
   dim: "#5a6a80",

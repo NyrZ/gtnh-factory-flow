@@ -622,7 +622,6 @@ img {
 }
 
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
-.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
   outline: none;
@@ -701,20 +700,20 @@ img {
 }
 
 /* ===== Node verdict strip + port rails ===================================
-   Verdict color means "where to act": starved = act upstream (red), choke =
-   act on this node (amber), demand-set = healthy part load (steel, no
-   action), balanced = done (green). Never "how big the number is". */
+   A card has exactly one reason, and everything wrong on that card is painted
+   in that reason's colour. The ladder is how much it costs, not how big the
+   number is:
+
+     fine        plain ink   every asker got what it asked for
+     starved     muted gold  inputs are short and nobody is waiting
+     blocked     amber       inputs are short and somebody IS waiting
+     bottleneck  red         inputs are fine, it just can't keep up: act here
+
+   Gold sits BELOW amber deliberately. On a dark panel yellow is the highest
+   luminance hue going, so a "pale" yellow shouts louder than the amber it is
+   meant to defer to; the quiet state has to be desaturated and dimmed, not
+   lightened. */
 :root {
-  --verdict-starved-bg: #9c2121;
-  --verdict-starved-edge: #5b0f0f;
-  --verdict-choke-bg: #a06a00;
-  --verdict-choke-edge: #5e3e00;
-  --verdict-demand-bg: #4a5a6c;
-  --verdict-demand-edge: #28323d;
-  --verdict-balanced-bg: #22733a;
-  --verdict-balanced-edge: #123f1f;
-  --verdict-off-bg: #4a4a4a;
-  --verdict-off-edge: #3d3d3d;
   --rail-bar-track: #3c3c3c;
   --rail-bar-ok: #3fae5c;
   --rail-bar-bad: #cf3333;
@@ -722,38 +721,66 @@ img {
   --rail-bar-calm: #7b8b9c;
   /* Port states are washes behind a slot, so they sit just off the panel face
      rather than being pale tints of the hue. */
-  --port-bind-bg: #5d2323;
-  --port-bind-edge: #c34c4c;
   --port-hot-bg: #57451b;
   --port-hot-edge: #c99b2e;
   --port-fed-bg: #1f4a28;
   --port-fed-edge: #4cae62;
-  /* The REASON word is the same red as the bar of the input it blames — two
-     marks about one problem should not be two different reds. */
-  --verdict-short-ink: #e05252;
-  --verdict-over-ink: #e0a63a;
+  --verdict-starved-ink: #b3ae76;
+  --verdict-blocked-ink: #e0a63a;
+  --verdict-bottleneck-ink: #e05252;
 }
 
-/* Hovering the usage cell lights the reason for THAT number — and only that
-   reason. A node running at 2% is held down by its binding input; the
-   over-asked coupling on the same card is a different complaint and must stay
-   dark, or the highlight answers a question nobody asked. So the shell's
-   data-verdict gates which side lights: starved → the binding inputs, choke →
-   the hungry couplings, anything else → both. Pure CSS — hover must never
+/* The card's alert channel: one colour set, chosen once by the reason, read
+   by every mark on the card (binding input wash, slowed bars, short plugs,
+   badges, carets). This is what makes the marks and the word agree by
+   construction — there is no second place to get a colour from. */
+.recipe-node-shell {
+  --state-wash: var(--mc-71);
+  --state-edge: var(--mc-47);
+  --state-bar: var(--rail-bar-calm);
+  --state-badge: #4a5a6c;
+  --state-accent: #cfd6e0;
+}
+
+/* Starved sits at ~55° — near enough true yellow to read as a different
+   SIGNAL from the amber next door (~39°), not as a paler version of it. Kept
+   desaturated so it stays the quietest mark on the board: this state costs
+   nobody anything, and the colour should not imply otherwise. */
+.recipe-node-shell[data-verdict="starved"] {
+  --state-wash: #403e29;
+  --state-edge: #87844f;
+  --state-bar: #b0aa66;
+  --state-badge: #736f38;
+  --state-accent: #cfcb93;
+}
+
+.recipe-node-shell[data-verdict="blocked"] {
+  --state-wash: #57451b;
+  --state-edge: #c99b2e;
+  --state-bar: var(--rail-bar-hot);
+  --state-badge: #cf8e00;
+  --state-accent: #ffd76a;
+}
+
+.recipe-node-shell[data-verdict="bottleneck"] {
+  --state-wash: #5d2323;
+  --state-edge: #c34c4c;
+  --state-bar: var(--rail-bar-bad);
+  --state-badge: #c22525;
+  --state-accent: #ff9c9c;
+}
+
+/* Hovering the usage cell lights the marks that produced that word. No gating
+   any more: a card has one reason, so everything marked on it IS that reason,
+   and lighting all of it is lighting the answer. Pure CSS — hover must never
    rebuild a node. */
-.recipe-node-shell:not([data-verdict="choke"]):has(.flow-usage-stat:hover) .flow-port--bind,
-.recipe-node-shell:not([data-verdict="starved"]):has(.flow-usage-stat:hover) .flow-port--hot,
-.recipe-node-shell:not([data-verdict="starved"]):has(.flow-usage-stat:hover) .flow-plug--hungry,
-.recipe-node-shell:not([data-verdict="starved"]):has(.flow-usage-stat:hover) .flow-plug--blocked {
-  outline: 3px solid var(--usage-lit-edge, var(--port-bind-edge));
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
+  outline: 3px solid var(--state-edge);
   outline-offset: 1px;
   filter: brightness(1.2) saturate(1.15);
   z-index: 12;
-}
-
-.recipe-node-shell:not([data-verdict="starved"]):has(.flow-usage-stat:hover) .flow-port--hot,
-.recipe-node-shell:not([data-verdict="starved"]):has(.flow-usage-stat:hover) .flow-plug--hungry {
-  --usage-lit-edge: var(--port-hot-edge);
 }
 
 .flow-port {
@@ -810,9 +837,13 @@ img {
     inset 0 0 52px rgba(141, 111, 209, 0.3);
 }
 
+/* The input that sets the speed. Which colour it wears is the CARD's answer,
+   not the port's: gold when nobody is waiting on the shortage, amber when
+   somebody is. The mark always means the same thing — "this is the one" — so
+   it can take the card's urgency without ever changing meaning. */
 .flow-port--bind {
-  background: var(--port-bind-bg);
-  border-color: var(--port-bind-edge);
+  background: var(--state-wash);
+  border-color: var(--state-edge);
 }
 
 .flow-port--hot {
@@ -873,7 +904,7 @@ img {
 }
 
 .flow-port--bind .flow-port-caret {
-  border-bottom-color: #ff7a7a;
+  border-bottom-color: var(--state-accent);
 }
 
 .flow-port-burst {
@@ -890,13 +921,13 @@ img {
 
 .flow-port--bind .flow-port-burst,
 .flow-port--slowed .flow-port-burst {
-  border-color: #c22525;
-  background: rgba(194, 37, 37, 0.28);
-  color: #ff9c9c;
+  border-color: var(--state-edge);
+  background: var(--state-wash);
+  color: var(--state-accent);
 }
 
 .flow-port--bind .flow-port-bar > i {
-  background: var(--rail-bar-bad);
+  background: var(--state-bar);
 }
 
 .flow-port--hot .flow-port-bar > i {
@@ -907,10 +938,11 @@ img {
   background: var(--rail-bar-calm);
 }
 
-/* Outputs of a starving machine run slow through no fault of their own:
-   red fill says "slowed", the neutral chip says "the problem isn't here". */
+/* Outputs of a supply-short machine run slow through no fault of their own:
+   the card's colour says how much that costs, the neutral chip says the
+   problem isn't here. */
 .flow-port--slowed .flow-port-bar > i {
-  background: var(--rail-bar-bad);
+  background: var(--state-bar);
 }
 
 /* Dashes marching source -> target inside the stroke. The offset counts DOWN
@@ -990,20 +1022,19 @@ img {
   min-width: 2px;
 }
 
-.flow-plug--hungry {
-  background: var(--port-hot-bg);
-  border-color: var(--port-hot-edge);
-}
-.flow-plug--hungry .flow-plug-track > i {
-  background: var(--rail-bar-hot);
+/* Hungry and blocked are the same shortfall told from the two ends: hungry
+   means this card is the one to grow (so it wears the card's red), blocked
+   means it is short itself (so it wears the card's amber). Both read the one
+   channel, which is why the plug and the REASON word can never disagree. */
+.flow-plug--hungry,
+.flow-plug--blocked {
+  background: var(--state-wash);
+  border-color: var(--state-edge);
 }
 
-.flow-plug--blocked {
-  background: var(--port-bind-bg);
-  border-color: var(--port-bind-edge);
-}
+.flow-plug--hungry .flow-plug-track > i,
 .flow-plug--blocked .flow-plug-track > i {
-  background: var(--rail-bar-bad);
+  background: var(--state-bar);
 }
 
 .flow-plug--fed {
@@ -1052,7 +1083,7 @@ img {
 }
 
 .flow-port--bind .flow-port-badge {
-  background: #c22525;
+  background: var(--state-badge);
 }
 
 .flow-port--hot .flow-port-badge {
@@ -1093,35 +1124,41 @@ img {
   --rail-bar-ok: #7b8b9c;
   --rail-bar-bad: #7b8b9c;
   --rail-bar-hot: #7b8b9c;
-  --port-bind-bg: var(--mc-71);
-  --port-bind-edge: var(--mc-47);
   --port-hot-bg: var(--mc-71);
   --port-hot-edge: var(--mc-47);
   --port-fed-bg: var(--mc-71);
   --port-fed-edge: var(--mc-47);
 }
 
-/* The REASON word and the zoomed-out percent keep their card's own ink. */
-.factory-flow-board--calm .recipe-node-shell {
-  --verdict-short-ink: var(--mc-ink);
-  --verdict-over-ink: var(--mc-ink);
+/* Every card's alert channel steps down to steel at once — the marks stay
+   exactly where they were, they just stop shouting. The REASON word and the
+   zoomed-out percent keep their card's own ink. */
+.factory-flow-board--calm .recipe-node-shell,
+.factory-flow-board--calm .recipe-node-shell[data-verdict="starved"],
+.factory-flow-board--calm .recipe-node-shell[data-verdict="blocked"],
+.factory-flow-board--calm .recipe-node-shell[data-verdict="bottleneck"] {
+  --state-wash: var(--mc-71);
+  --state-edge: var(--mc-47);
+  --state-bar: #7b8b9c;
+  --state-badge: #4a5a6c;
+  --state-accent: #cfd6e0;
+  --verdict-starved-ink: var(--mc-ink);
+  --verdict-blocked-ink: var(--mc-ink);
+  --verdict-bottleneck-ink: var(--mc-ink);
 }
 
-/* The hardcoded accents: want carets, ×N bursts, SHORT/ASKED badges. */
-.factory-flow-board--calm .flow-port-caret,
-.factory-flow-board--calm .flow-port--bind .flow-port-caret {
+/* The accents that don't read the channel: the default want caret and the
+   ×N burst on an otherwise neutral port. */
+.factory-flow-board--calm .flow-port-caret {
   border-bottom-color: #cfd6e0;
 }
 
-.factory-flow-board--calm .flow-port-burst,
-.factory-flow-board--calm .flow-port--bind .flow-port-burst,
-.factory-flow-board--calm .flow-port--slowed .flow-port-burst {
+.factory-flow-board--calm .flow-port-burst {
   border-color: #8b95a3;
   background: rgba(90, 102, 118, 0.35);
   color: #dfe5ee;
 }
 
-.factory-flow-board--calm .flow-port--bind .flow-port-badge,
 .factory-flow-board--calm .flow-port--hot .flow-port-badge {
   background: #4a5a6c;
 }
@@ -1134,10 +1171,9 @@ img {
   border-color: color-mix(in srgb, var(--recipe-node-tint-border) 62%, var(--mc-47));
 }
 
-/* The usage-hover teaching link stays, in steel: with the port edge vars
-   calmed to near-black the outline would all but vanish. */
+/* The usage-hover teaching link stays, in steel: with the alert channel calmed
+   to near-black the outline would all but vanish. */
 .factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
-.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--hot,
 .factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
 .factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
   outline-color: #9db0c4;

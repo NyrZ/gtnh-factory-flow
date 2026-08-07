@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.24.0",
+    date: "2026-08-07",
+    headline: "Machines only go red when they are the thing to fix",
+    notes: [
+      "Running below 100% is not a fault. A machine that hands every machine it feeds exactly what was asked now reads as fine, whatever its percent says.",
+      "Starved, in soft yellow, means it is short on an ingredient but nothing is waiting on it. There is nothing to do.",
+      "Blocked, in amber, means it is short and something downstream goes without because of it. The fix is further up the chain, and the hover says where.",
+      "Bottleneck, in red, means everything it needs arrives and it still cannot keep up. That is the card to add machines to. Follow the amber cards upstream and you always land on a red one.",
+      "A machine that misses a rate you set for it now counts as something going without, rather than reading as merely short.",
+    ],
+  },
+  {
     version: "1.23.0",
     date: "2026-08-07",
     headline: "New parts to pick, and 61 machines now on checked numbers",
