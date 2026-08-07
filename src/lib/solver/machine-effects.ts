@@ -55,9 +55,11 @@ export function buildMachineContext(
     ...(getRecipeCoilTierControl(recipe, node) ? [getRecipeCoilTierControl(recipe, node)!] : []),
   ];
 
+  const find = (controlId: string) => controls.find((entry) => entry.id === controlId);
+
   return {
     tier: (controlId) => {
-      const control = controls.find((entry) => entry.id === controlId);
+      const control = find(controlId);
       if (!control) {
         return 0;
       }
@@ -65,6 +67,20 @@ export function buildMachineContext(
         0,
         control.tiers.findIndex((entry) => entry.key === control.current.key),
       );
+    },
+    value: (controlId) => {
+      const control = find(controlId);
+      if (!control) {
+        return 0;
+      }
+      // Count knobs key their options by the number itself.
+      const parsed = Number(control.current.key);
+      return Number.isFinite(parsed)
+        ? parsed
+        : Math.max(
+            0,
+            control.tiers.findIndex((entry) => entry.key === control.current.key),
+          );
     },
     voltageTier: getVoltageTierIndex(getRunVoltageTier(recipe as Recipe, node.overclockTier)),
   };

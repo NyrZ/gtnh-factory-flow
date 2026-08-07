@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.23.0",
+    date: "2026-08-07",
+    headline: "New parts to pick, and 61 machines now on checked numbers",
+    notes: [
+      "Machines that were missing a part you can choose have one now: arc furnace electrodes, cutting factory sawblades, electromagnets, anvils, item pipe casings, containment blocks, maceration upgrade chips, laser amperage and more. Pick the part and the rates follow.",
+      "61 multiblocks now use figures checked against the game's code rather than read off tooltip text, up from about 45.",
+      "The Industrial Arc Furnace was treated as a blast furnace and ran far too fast. It now runs on its electrodes, which is what actually drives it.",
+      "Steam machines and the fusion reactors are not converted yet and are unchanged.",
+    ],
+  },
+  {
     version: "1.22.0",
     date: "2026-08-07",
     headline: "Machine numbers now come from a checked list, not from reading tooltips",

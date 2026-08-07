@@ -47,7 +47,13 @@ function speedCoilControl(): MachineConfigControl {
         durationMultiplier: 2 / 3,
         resource: coilResource(),
       },
-      { key: "tpv", label: "TPV-Alloy", heat: 4501, durationMultiplier: 0.5, resource: coilResource() },
+      {
+        key: "tpv",
+        label: "TPV-Alloy",
+        heat: 4501,
+        durationMultiplier: 0.5,
+        resource: coilResource(),
+      },
     ],
   };
 }
@@ -119,8 +125,7 @@ describe("GT overclocking", () => {
     // TPV-Alloy coils run the chem plant at 200% speed: 600 ticks becomes 300.
     expect(stats.durationTicks).toBe(300);
 
-    const nitrobenzenePerSecond =
-      (5000 * parallels * TICKS_PER_SECOND) / stats.durationTicks;
+    const nitrobenzenePerSecond = (5000 * parallels * TICKS_PER_SECOND) / stats.durationTicks;
     expect(nitrobenzenePerSecond).toBe(2000);
   });
 
@@ -186,9 +191,14 @@ describe("GT overclocking", () => {
       { overclockTier: "EV", coilTier: "naquadah" },
     );
 
-    expect(stats.overclockSteps).toBe(2);
-    expect(stats.durationTicks).toBe(1000 / 4);
-    expect(stats.eut).toBe(120 * 16);
+    // Graphite electrodes: 2x speed, 4 parallels, and overclocks worth 2x
+    // rather than the 4x a heat overclock would have paid. Four parallels of
+    // 120 EU/t fill an HV hatch, leaving one step of EV headroom.
+    expect(stats.overclockSteps).toBe(1);
+    expect(stats.durationTicks).toBe((1000 / 2) * 0.5);
+    expect(stats.eut).toBe(120 * 2);
+    // No heat discount was applied: that is the blast furnace's, not this one's.
+    expect(stats.eut % 1).toBe(0);
   });
 
   it("still grants heat overclocks to the blast furnace family", () => {

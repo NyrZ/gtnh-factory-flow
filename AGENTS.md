@@ -89,6 +89,27 @@ gh run watch <run-id> --exit-status
     two indexing differences: their voltage tiers start at LV = 0 (ours at
     ULV = 0, so their `voltageTier + 1` is our ordinal), and their `speed` is a
     throughput multiplier while we store a duration multiplier (`1 / speed`).
+  - EVERY entry is machine-checked against
+    `src/lib/machines/__fixtures__/reference-coefficients.json`, which is the
+    reference's own definitions evaluated over a grid of tiers and choices.
+    `machine-table.test.ts` documents how to regenerate it. Add an entry, run
+    that test, and it will tell you if the transcription is wrong. Two earlier
+    hand-ports had silent errors that this caught.
+  - A table entry may declare `controls`, which are ordinary
+    `MachineConfigControl`s merged over the dataset's, so a machine can offer a
+    knob the dataset has none for (electrodes, sawblades, anvils) and the
+    existing config UI renders it unchanged.
+  - `ctx.tier(id)` is the option's position; `ctx.value(id)` is the number
+    behind a count knob (laser amperage, parallels). The reference states some
+    choices as raw counts with a minimum, and its formulas read the count, so
+    those must use `value`.
+  - Still on scraped data, deliberately: the 18 steam machines (some of our
+    steam handlers already bake their speed into `durationTicks`, so applying
+    the reference's `speed` too would double-count), the 11 fusion reactors
+    (need `fixedVoltageTier` and their own overclock), and the machines whose
+    coefficients read recipe metadata or the recipe type (Nano Forge, PCB
+    Factory, Naquadah Fuel Refinery, Component Assembly Line, Dangote
+    Distillus, Precise Auto-Assembler, QFT, Eye of Harmony).
   - Tooltip scraping in `tools/dataset-pipeline/scripts/machine-configs.mjs`
     still supplies the control DEFINITIONS (which knobs exist, their icons and
     tier lists). It should no longer be trusted for effect VALUES: it once

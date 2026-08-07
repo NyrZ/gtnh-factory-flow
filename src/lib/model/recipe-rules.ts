@@ -5,6 +5,7 @@ import type {
   MachineHandler,
   Recipe,
 } from "./types";
+import { getMachineTableControls } from "@/lib/machines/machine-table";
 
 export interface MachineConfigTierControl {
   id: string;
@@ -133,26 +134,44 @@ export function getRecipeCoilTierControl(
   recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls">,
   node: { coilTier?: string },
 ) {
-  const importedControl = findMachineConfigControl(recipe, "heatingCoil");
-  return importedControl
-    ? resolveMachineConfigTierControl(importedControl, node.coilTier)
-    : undefined;
+  const control =
+    getMachineTableControls(recipe.machineType).find((entry) => entry.id === "heatingCoil") ??
+    findMachineConfigControl(recipe, "heatingCoil");
+  return control ? resolveMachineConfigTierControl(control, node.coilTier) : undefined;
 }
 
 export function getRecipeMachineConfigTierControls(
   recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls">,
   node: Pick<FactoryNode, "machineConfigTiers">,
 ): MachineConfigTierControl[] {
-  const importedControls = recipe.machineConfigControls
-    ?.filter((control) => control.id !== "heatingCoil")
+  const controls = mergeMachineConfigControls(
+    recipe.machineConfigControls ?? [],
+    getMachineTableControls(recipe.machineType),
+  );
+
+  return controls
+    .filter((control) => control.id !== "heatingCoil")
     .map((control) =>
       resolveMachineConfigTierControl(control, node.machineConfigTiers?.[control.id]),
     )
     .filter((control): control is MachineConfigTierControl => Boolean(control));
-  if (importedControls?.length) {
-    return importedControls;
+}
+
+/**
+ * The curated machine table wins over anything the dataset scraped, and adds
+ * knobs the dataset has no control for at all. Dataset controls the table does
+ * not mention are kept, so a machine can be partly covered.
+ */
+function mergeMachineConfigControls(
+  fromDataset: MachineConfigControl[],
+  fromTable: MachineConfigControl[],
+): MachineConfigControl[] {
+  if (fromTable.length === 0) {
+    return fromDataset;
   }
-  return [];
+
+  const tableIds = new Set(fromTable.map((control) => control.id));
+  return [...fromDataset.filter((control) => !tableIds.has(control.id)), ...fromTable];
 }
 
 export function getAdjacentMachineConfigTier(

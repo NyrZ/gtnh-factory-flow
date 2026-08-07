@@ -10,13 +10,20 @@ import {
   getRecipeSpecialValue,
 } from "@/lib/model/recipe-rules";
 import {
+  buildMachineContext,
   getBeeMegaApiaryTierEutMultiplier,
   getMachineDurationMultiplier,
   getMachineEutMultiplier,
   getMachineParallelMultiplier,
   isMegaApiaryMachineType,
 } from "./machine-effects";
-import { getMachineBehaviour } from "@/lib/machines/machine-table";
+import {
+  getMachineBehaviour,
+  HEAT_OVERCLOCK,
+  OVERCLOCK,
+  resolveOverclockSpec,
+  type OverclockRule,
+} from "@/lib/machines/machine-table";
 
 const VOLTAGE_TIER_INDEX_MV = 2;
 import { isIndustrialApiaryMachineType } from "@/lib/model/passive-production";
@@ -133,17 +140,15 @@ export function getOverclockedRecipeStats(
     0,
     getVoltageTierIndex(tier) - getVoltageTierIndex(getVoltageTierForEuT(parallelEuT)),
   );
-  const style = getMachineBehaviour(effectiveRecipe.machineType)?.overclock;
-  const steps = style === "none" ? 0 : Math.min(overclockSteps, affordableSteps);
-  const heatSteps = Math.min(steps, heatOverclock.heatOverclockSteps);
-  const regularSteps = steps - heatSteps;
-  // Perfect overclockers quarter the duration on every step instead of
-  // halving it, so a step costs 4x the power for 4x the speed and the total
-  // energy is unchanged.
-  const isPerfect =
-    style === "perfect" ||
-    (style === undefined && effectiveRecipe.machineProfile?.perfectOverclock === true);
-  const perfectSteps = isPerfect ? regularSteps : 0;
+  const affordable = Math.min(overclockSteps, affordableSteps);
+  const rule = resolveOverclockRule(effectiveRecipe, node, heatOverclock.heatOverclockSteps);
+
+  // Perfect steps are taken first, then normal ones. A perfect step divides
+  // duration by the rule's multiplier and raises EU/t by the same, so the
+  // total energy is unchanged; a normal step halves duration for 4x EU/t.
+  const perfectSteps = Math.min(rule.maxPerfect, affordable);
+  const normalSteps = Math.min(rule.maxNormal, affordable - perfectSteps);
+  const steps = perfectSteps + normalSteps;
 
   return {
     tier,
@@ -151,13 +156,41 @@ export function getOverclockedRecipeStats(
     overclockSteps: steps,
     durationTicks: Math.max(
       1,
-      (effectiveRecipe.durationTicks /
-        4 ** (heatSteps + perfectSteps) /
-        2 ** (regularSteps - perfectSteps)) *
+      (effectiveRecipe.durationTicks / rule.multiplier ** perfectSteps / 2 ** normalSteps) *
         durationMultiplier,
     ),
-    eut: effectiveRecipe.eut * heatOverclock.heatDiscountMultiplier * eutMultiplier * 4 ** steps,
+    eut:
+      effectiveRecipe.eut *
+      heatOverclock.heatDiscountMultiplier *
+      eutMultiplier *
+      rule.multiplier ** perfectSteps *
+      4 ** normalSteps,
   };
+}
+
+/**
+ * Which overclock rule applies: the curated table's, the heat machines' rule
+ * derived from coil heat, or the dataset's perfect-overclock flag for machines
+ * the table does not cover yet.
+ */
+function resolveOverclockRule(
+  recipe: OverclockRecipeInput,
+  node: Pick<FactoryNode, "machineConfigTiers" | "coilTier" | "overclockTier">,
+  heatOverclockSteps: number,
+): OverclockRule {
+  const behaviour = getMachineBehaviour(recipe.machineType);
+  const spec = behaviour
+    ? resolveOverclockSpec(behaviour, buildMachineContext(recipe as Recipe, node))
+    : undefined;
+
+  if (spec === HEAT_OVERCLOCK) {
+    // Coil heat above the recipe's requirement buys perfect steps, then normal.
+    return OVERCLOCK.perfectThenNormal(heatOverclockSteps);
+  }
+  if (spec) {
+    return spec;
+  }
+  return recipe.machineProfile?.perfectOverclock ? OVERCLOCK.perfect() : OVERCLOCK.normal();
 }
 
 function getHeatOverclockStats(
