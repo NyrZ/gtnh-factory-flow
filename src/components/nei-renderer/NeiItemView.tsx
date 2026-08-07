@@ -116,9 +116,12 @@ function CyclingStackIcon({
   const displayResource = applyAlternativeCycleFace(resource, face);
 
   // Read by the wheel listener, which is attached once and must not close over
-  // a stale index.
+  // a stale index. Written in an effect rather than during render; effects have
+  // flushed long before anyone can spin a wheel over the slot.
   const faceIndexRef = useRef(faceIndex);
-  faceIndexRef.current = faceIndex;
+  useEffect(() => {
+    faceIndexRef.current = faceIndex;
+  }, [faceIndex]);
 
   const { report } = scope ?? {};
   useEffect(() => {
