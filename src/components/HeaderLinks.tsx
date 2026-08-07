@@ -10,8 +10,7 @@ const GITHUB_URL = "https://github.com/jackwrichards/gtnh-factory-flow";
  * thread inside the pack's own server, not a server invite, so it only opens
  * for people who are already in there.
  */
-const DISCORD_THREAD_URL =
-  "https://discord.com/channels/181078474394566657/1531402304530682036";
+const DISCORD_THREAD_URL = "https://discord.com/channels/181078474394566657/1531402304530682036";
 
 /**
  * Straight into the bug report form rather than a blank issue box, with the
@@ -24,10 +23,10 @@ const BUG_REPORT_URL = `${GITHUB_URL}/issues/new?template=bug_report.yml&version
 )}`;
 
 /**
- * Source, chat and bug report, sitting in the header beside the board actions.
+ * Source and chat, sitting in the header beside the board actions.
  *
- * These are the three places someone goes when the planner is not doing what
- * they want, so they live together and read as one group.
+ * The bug report used to be a third icon here and read as one more thing to
+ * ignore. It carries its own label now and sits further right, on its own.
  */
 export function HeaderLinks() {
   return (
@@ -38,10 +37,26 @@ export function HeaderLinks() {
       <HeaderLink href={DISCORD_THREAD_URL} label="Planner thread in the GTNH Discord">
         <DiscordMark />
       </HeaderLink>
-      <HeaderLink href={BUG_REPORT_URL} label="Report a bug">
-        <Bug className="h-3.5 w-3.5" />
-      </HeaderLink>
     </div>
+  );
+}
+
+/**
+ * Reporting a bug is the one thing here worth interrupting someone for, so it
+ * is the only header control that carries a colour and a word.
+ */
+export function ReportBugButton() {
+  return (
+    <a
+      href={BUG_REPORT_URL}
+      target="_blank"
+      rel="noreferrer noopener"
+      title="Report a bug"
+      className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-red-800 bg-red-950 px-2 text-xs font-semibold text-red-300 hover:border-red-600 hover:bg-red-900 hover:text-red-200"
+    >
+      <Bug className="h-3.5 w-3.5" aria-hidden />
+      Report Bug
+    </a>
   );
 }
 

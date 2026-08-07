@@ -24,6 +24,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Speed, power discount, parallels and overclock behaviour are all covered for those machines. Everything else keeps working exactly as before.",
       "Some numbers will move. Where they do, the new one is the one your factory will actually hit.",
       "Thanks to ShadowTheAge, whose open source GTNH calculator these figures are taken from.",
+      "Found a rate that looks wrong? The Report Bug button in the header is now hard to miss, and it asks for a link to your published setup so it can be checked against your actual board.",
     ],
   },
   {

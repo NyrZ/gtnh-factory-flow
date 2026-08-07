@@ -6,7 +6,7 @@ import { AccountMenu } from "./community/AccountMenu";
 import { AppIdentity } from "./AppIdentity";
 import { BoardActions } from "./BoardActions";
 import { ChangelogDialog } from "./ChangelogDialog";
-import { HeaderLinks } from "./HeaderLinks";
+import { HeaderLinks, ReportBugButton } from "./HeaderLinks";
 
 interface AppHeaderProps {
   onLoadDatasetVersion: (versionId: string) => void;
@@ -48,6 +48,7 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
         <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
         <BoardActions />
         <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
+        <ReportBugButton />
         <AccountMenu />
       </div>
     </header>
