@@ -96,10 +96,97 @@
   --glow-halo: rgba(255, 202, 84, 0.8);
 }
 
+/* The pointed-at resource row, redrawn wide over the board. It grows out of
+   the width the real row had, which is measured when the pointer arrives and
+   handed over as --row-start-width, so the panel can be any width and the
+   animation still starts exactly where the row it replaces ended. Appearing at
+   full size read as a popup rather than as the row itself widening. */
+.resource-row-expand {
+  animation: resource-row-expand 130ms ease-out;
+}
+
+@keyframes resource-row-expand {
+  from {
+    width: var(--row-start-width, 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resource-row-expand {
+    animation: none;
+  }
+}
+
 .resource-glow {
   outline: 3px solid var(--glow-line);
   outline-offset: 3px;
   filter: drop-shadow(0 0 10px var(--glow-halo));
+  /* The wash below is positioned against the card. */
+  position: relative;
+}
+
+/* An outline alone loses a card in a crowd: on a busy board the eye reads
+   fill, not frame. So a lit card also WASHES in the glow colour and breathes,
+   which is the one thing nothing else on the board does — colour tags, the
+   heatmap and the selection ring are all static, so movement cannot be
+   confused with any of them.
+
+   The wash is a pseudo-element animating OPACITY only. Animating the card's
+   own background would repaint the card and everything in it every frame, on
+   every match at once; a compositor-only opacity fade on one absolutely
+   positioned layer costs nothing per node. */
+.resource-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glow-halo);
+  /* Above the card's own surfaces, below its ports and buttons, and never a
+     click target. */
+  pointer-events: none;
+  z-index: 2;
+  animation: resource-breathe 1.15s ease-in-out infinite;
+}
+
+@keyframes resource-breathe {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.38;
+  }
+}
+
+/* Zoomed out, a card is already a big glowing item face. The wash there has to
+   fight the LED look rather than sit under it, so it goes harder and the
+   outline gets thicker — at that distance a 3px frame is a hairline. */
+.factory-flow-board[data-detail-level="glance"] .resource-glow {
+  outline-width: 6px;
+  outline-offset: 4px;
+}
+
+.factory-flow-board[data-detail-level="glance"] .resource-glow::after {
+  animation-name: resource-breathe-led;
+}
+
+@keyframes resource-breathe-led {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Whoever asked for reduced motion gets the strong wash without the breathing:
+   the point is "this card, here", and a steady tint says that too. */
+@media (prefers-reduced-motion: reduce) {
+  .resource-glow::after {
+    animation: none;
+    opacity: 0.3;
+  }
 }
 
 /* Pulled into a hovered port's flow scope: lit, but quieter than the direct

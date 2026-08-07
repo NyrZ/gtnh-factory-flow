@@ -16,6 +16,38 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.16.0",
+    date: "2026-08-06",
+    headline: "Double click a resource to fly to the machine that makes it",
+    notes: [
+      "Double click any resource and the board flies to a machine that uses it, centred and back at normal zoom. Double click again to step to the next one.",
+      "Machines carrying the resource you are pointing at now glow and breathe, so they stand out on a busy board instead of just wearing a thin outline. They light up zoomed out too.",
+      "Clicking a resource no longer locks the highlight on. Point at it to light the board, look away and it goes out.",
+      "Hover a resource and it widens out over the board, so long names are readable in full.",
+      "The charts moved: each starred resource now carries its own graph right underneath it, and there is a new button to hide or show all of them at once.",
+      "Hover a graph to read what the number was at any point in its history.",
+      "The resource panel got wider, and its rates now follow the per second, per minute and per hour switch like the rest of the board.",
+      "Starred resources cannot be hidden. Starring something that was hidden brings it straight back.",
+      "Selected machines wear the same purple as the selection panel, instead of cyan.",
+      "Graphs step aside while you have a selection: the history follows your whole plan, not each selection you might make.",
+    ],
+  },
+  {
+    version: "1.15.0",
+    date: "2026-08-06",
+    headline: "Hide what you do not care about, watch what you do",
+    notes: [
+      "Hover any resource and two buttons appear: a star to watch it, an eye to hide it.",
+      "Hidden resources drop out of the list. The eye button at the top brings them back greyed out, so you can find one and unhide it.",
+      "Starred resources float to the top of their group and keep a star beside the name.",
+      "New Watching panel at the foot of the list: every starred resource gets its own chart.",
+      "The charts run along your edits, not along the clock. Each change that moves a number adds a point, so after an edit that shifted fifty things you can see which of them went up and which went down.",
+      "Each chart shows spare above the line and short below it, with the change since the chart started.",
+      "Both side columns fold away now. Use the arrow beside Game version on the left, or the one in the resources toolbar on the right, and a thin strip stays behind to bring them back.",
+      "Your stars, your hidden resources and your folded columns are remembered between visits.",
+    ],
+  },
+  {
     version: "1.14.0",
     date: "2026-08-06",
     headline: "Select part of your factory, see what just that part needs",

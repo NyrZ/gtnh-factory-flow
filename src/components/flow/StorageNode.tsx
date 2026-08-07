@@ -168,7 +168,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
       data-storage-resource-id={storage.resourceId}
       className={[
         "group relative text-[#e8e9ee]",
-        selected ? "ring-2 ring-cyan-300" : "",
+        selected ? "ring-2 ring-purple-500" : "",
         isFlowScopeLit && !isHighlighted ? "flow-scope-glow" : "",
         isHighlighted ? "resource-glow" : "",
       ].join(" ")}

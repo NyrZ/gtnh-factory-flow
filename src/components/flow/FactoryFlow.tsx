@@ -112,6 +112,7 @@ import {
   ANNOTATION_MIN_BOX,
   ANNOTATION_MIN_TEXT,
   BOARD_GRID,
+  RECIPE_NODE_WIDTH,
   STORAGE_NODE_HEIGHT,
   STORAGE_NODE_WIDTH,
 } from "@/lib/board-grid";
@@ -1531,6 +1532,39 @@ export function FactoryFlow() {
       return changed ? next : current;
     });
   }, [nodesFromProject, setPendingBoardSelection]);
+
+  /**
+   * A resource row was double-clicked: fly the board to that card, centre it,
+   * and land at 1:1 so it arrives readable however far out the user was.
+   *
+   * Runs off a token rather than the id alone, so stepping through the cards
+   * that share a resource still moves when the ring wraps back to the card the
+   * viewport is already on.
+   */
+  const boardFocusRequest = useFactoryStore((state) => state.boardFocusRequest);
+  const servedFocusTokenRef = useRef(boardFocusRequest?.token ?? 0);
+  useEffect(() => {
+    if (!boardFocusRequest || boardFocusRequest.token === servedFocusTokenRef.current) {
+      return;
+    }
+    servedFocusTokenRef.current = boardFocusRequest.token;
+
+    const instance = flowInstanceRef.current;
+    const node = instance?.getNode(boardFocusRequest.nodeId);
+    if (!instance || !node) {
+      return;
+    }
+
+    // Measured size when React Flow has one; the published card sizes are the
+    // fallback for a card that has never been on screen, which is exactly the
+    // case when flying somewhere off-viewport.
+    const width = node.measured?.width ?? node.width ?? RECIPE_NODE_WIDTH;
+    const height = node.measured?.height ?? node.height ?? STORAGE_NODE_HEIGHT;
+    instance.setCenter(node.position.x + width / 2, node.position.y + height / 2, {
+      zoom: 1,
+      duration: 420,
+    });
+  }, [boardFocusRequest]);
 
   // Switching pulse mode off has to empty the canvas registry: the edges stay
   // mounted and simply stop publishing, so without this the last frame's

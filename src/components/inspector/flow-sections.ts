@@ -1,4 +1,5 @@
-import type { ResourceBalance } from "@/lib/model/types";
+import { makeResourceKey } from "@/lib/model/resources";
+import type { FactoryProject, ResourceBalance } from "@/lib/model/types";
 
 export type FlowSectionId = "need" | "output" | "internal";
 
@@ -21,6 +22,9 @@ export interface FlowSection {
 export type FlowRow =
   | { type: "header"; key: string; section: FlowSection; collapsed: boolean }
   | { type: "item"; key: string; section: FlowSection; balance: ResourceBalance }
+  // A starred resource carries its chart in the row directly beneath it, so a
+  // watched figure and its history read as one block while the list scrolls.
+  | { type: "chart"; key: string; section: FlowSection; balance: ResourceBalance }
   | { type: "empty"; key: string; section: FlowSection };
 
 /**
@@ -59,6 +63,48 @@ export function filterFlowBalances(items: ResourceBalance[], filter: string) {
   });
 }
 
+export interface ResourceMarks {
+  hidden: ReadonlySet<string>;
+  favourites: ReadonlySet<string>;
+  /** Hidden rows stay listed, greyed, instead of dropping out. */
+  showHidden: boolean;
+  /** Everything except favourites drops out. */
+  favouritesOnly: boolean;
+}
+
+/**
+ * Applies the user's own marks to one group: drops what they never want to
+ * see, then floats what they starred to the top.
+ *
+ * Order within each half is left alone - the solver already sorted by size,
+ * which is the ranking that matters once the starred rows are out of the way.
+ * Stable partition rather than a sort, so equal rows can never swap places
+ * between renders.
+ *
+ * No tie to break between the two marks: starring a resource unhides it and a
+ * starred row offers no hide button, so nothing can be both at once.
+ */
+export function applyResourceMarks(
+  items: ResourceBalance[],
+  marks: ResourceMarks,
+): ResourceBalance[] {
+  const starred: ResourceBalance[] = [];
+  const rest: ResourceBalance[] = [];
+
+  for (const balance of items) {
+    const isFavourite = marks.favourites.has(balance.key);
+    if (marks.favouritesOnly && !isFavourite) {
+      continue;
+    }
+    if (marks.hidden.has(balance.key) && !marks.showHidden) {
+      continue;
+    }
+    (isFavourite ? starred : rest).push(balance);
+  }
+
+  return starred.length === 0 ? rest : [...starred, ...rest];
+}
+
 /**
  * Flattens the sections into the row list the virtualiser walks.
  *
@@ -68,6 +114,7 @@ export function filterFlowBalances(items: ResourceBalance[], filter: string) {
 export function buildFlowRows(
   sections: FlowSection[],
   collapsed: Record<FlowSectionId, boolean>,
+  favourites: ReadonlySet<string> = new Set(),
 ): FlowRow[] {
   const rows: FlowRow[] = [];
   for (const section of sections) {
@@ -95,6 +142,14 @@ export function buildFlowRows(
         section,
         balance,
       });
+      if (favourites.has(balance.key)) {
+        rows.push({
+          type: "chart",
+          key: `chart:${section.id}:${balance.key}`,
+          section,
+          balance,
+        });
+      }
     }
   }
 
@@ -107,7 +162,7 @@ export function buildFlowRows(
  */
 export function measureFlowRows(
   rows: FlowRow[],
-  heights: { header: number; item: number; empty: number },
+  heights: { header: number; item: number; empty: number; chart: number },
 ) {
   const offsets = new Array<number>(rows.length + 1);
   let offset = 0;
@@ -137,4 +192,45 @@ export function findRowIndexAtOffset(offsets: number[], scrollTop: number) {
   }
 
   return result;
+}
+
+/**
+ * Every card on the board that touches one resource, in board order.
+ *
+ * Recipe cards match on their raw inputs and outputs, oredict alternatives
+ * included, which is the same test the board's own highlight uses - a row and
+ * the cards it lights up must never disagree about what counts as a match.
+ * Drawers and tanks match on the resource they hold.
+ *
+ * Order is the project's own card order rather than anything derived, so
+ * stepping through the matches twice walks the same ring both times.
+ */
+export function findResourceCardIds(project: FactoryProject, resourceKey: string): string[] {
+  const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
+  const ids: string[] = [];
+
+  for (const node of project.nodes) {
+    const recipe = recipesById.get(node.recipeId);
+    if (!recipe) {
+      continue;
+    }
+    const matches = [...recipe.inputs, ...recipe.outputs].some(
+      (resource) =>
+        makeResourceKey(resource.kind, resource.id) === resourceKey ||
+        resource.alternatives?.some(
+          (alternative) => makeResourceKey(alternative.kind, alternative.id) === resourceKey,
+        ),
+    );
+    if (matches) {
+      ids.push(node.id);
+    }
+  }
+
+  for (const storage of project.storages ?? []) {
+    if (makeResourceKey(storage.kind, storage.resourceId) === resourceKey) {
+      ids.push(storage.id);
+    }
+  }
+
+  return ids;
 }

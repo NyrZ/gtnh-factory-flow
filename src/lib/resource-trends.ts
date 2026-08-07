@@ -1,0 +1,128 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
+import type { ResourceBalance, ThroughputResult } from "./model/types";
+
+/**
+ * How every resource's balance has moved across your recent edits.
+ *
+ * The x axis is EDITS, not time. One edit can move fifty numbers at once, and
+ * the question worth answering afterwards is "which of them got better and
+ * which got worse" - a clock cannot answer that, and a plan sitting untouched
+ * for an hour has no story to tell.
+ *
+ * The recorded number is `netPerSecond`: produced minus consumed. It is the
+ * one figure whose meaning survives a resource changing groups, and it reads
+ * the same way everywhere - up is always better. Negative is a shortfall,
+ * positive is spare, and zero is the line a resource crosses when a plan
+ * starts covering its own demand.
+ *
+ * Every resource is recorded, not only the starred ones, so starring
+ * something mid-session shows the history it already has rather than starting
+ * from a blank chart.
+ */
+
+/** One edit's worth of balances: ResourceKey to netPerSecond. */
+export type TrendSample = Record<string, number>;
+
+/** Roughly a session's worth of edits. Old samples fall off the left. */
+export const TREND_HISTORY_LIMIT = 80;
+
+let samples: TrendSample[] = [];
+const listeners = new Set<() => void>();
+
+function emit() {
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+function sampleOf(resources: Record<string, ResourceBalance>): TrendSample {
+  const sample: TrendSample = {};
+  for (const balance of Object.values(resources)) {
+    sample[balance.key] = balance.netPerSecond;
+  }
+  return sample;
+}
+
+/**
+ * True when two samples say the same thing. Recomputes happen for reasons that
+ * are not edits at all (switching the rate unit re-solves purely to refresh
+ * formatting), and plenty of real edits - dragging a card, renaming it - move
+ * no numbers. Neither deserves a point on the chart.
+ */
+function sameSample(left: TrendSample, right: TrendSample): boolean {
+  const leftKeys = Object.keys(left);
+  if (leftKeys.length !== Object.keys(right).length) {
+    return false;
+  }
+  for (const key of leftKeys) {
+    const a = left[key];
+    const b = right[key];
+    // Absolute epsilon rather than relative: these are rates per second, and
+    // float dust from the equilibrium solver is orders of magnitude below
+    // anything a player changed on purpose.
+    if (b === undefined || Math.abs(a - b) > 0.000001) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Record one solve. No-ops when nothing moved. */
+export function recordResourceTrend(result: ThroughputResult) {
+  const next = sampleOf(result.resources);
+  const previous = samples[samples.length - 1];
+  if (previous && sameSample(previous, next)) {
+    return;
+  }
+
+  samples = [...samples, next].slice(-TREND_HISTORY_LIMIT);
+  emit();
+}
+
+/** Wipe the chart. Loading a different design starts a new story. */
+export function resetResourceTrends() {
+  if (samples.length === 0) {
+    return;
+  }
+  samples = [];
+  emit();
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getSnapshot(): TrendSample[] {
+  return samples;
+}
+
+/** The record as it stands, for callers outside React. */
+export function getResourceTrends(): TrendSample[] {
+  return samples;
+}
+
+const EMPTY: TrendSample[] = [];
+
+function getServerSnapshot(): TrendSample[] {
+  return EMPTY;
+}
+
+export function useResourceTrends(): TrendSample[] {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/**
+ * One resource's line, as far back as the record goes.
+ *
+ * A resource absent from a sample reads as 0 rather than as a gap: it genuinely
+ * was not in the plan at that edit, and a line dropping to zero is the honest
+ * picture of deleting the machine that made it.
+ */
+export function selectTrendSeries(history: TrendSample[], resourceKey: string): number[] {
+  return history.map((sample) => sample[resourceKey] ?? 0);
+}
