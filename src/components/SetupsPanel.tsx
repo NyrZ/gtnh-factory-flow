@@ -368,7 +368,7 @@ export function SetupsPanel() {
     <>
       <ControlsCard>
         {/* Share on the left, then Mine | Public: the same row shape as the
-            blueprint shelf. The panel still OPENS on Public: browsing is
+            pocket shelf. The panel still OPENS on Public: browsing is
             the point. */}
         <div className="flex gap-1">
           <MinecraftTooltip

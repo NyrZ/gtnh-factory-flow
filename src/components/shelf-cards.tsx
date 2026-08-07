@@ -8,7 +8,7 @@ import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 
 /**
- * Everything the Setups and Blueprints shelves render the same way: tag
+ * Everything the Setups and Pockets shelves render the same way: tag
  * chips, tier badges, the Needs/Makes stat sections, and the one hover
  * card a whole row reveals.
  */

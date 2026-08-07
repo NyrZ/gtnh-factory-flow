@@ -5,7 +5,6 @@ import {
   ChevronRight,
   Factory,
   GitBranchPlus,
-  Layers,
   LayoutGrid,
   List,
   Plus,
@@ -592,7 +591,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             type="button"
             onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
             title="Hide this column and give the board the room"
-            aria-label="Hide the items, blueprints and setups column"
+            aria-label="Hide the items, pockets and setups column"
             className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400"
           >
             <svg
@@ -609,7 +608,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           </button>
         </div>
 
-        {/* The master switch: item search, the blueprint library, or the
+        {/* The master switch: item search, the pocket shelf, or the
             setups network — whole column each. Flat tabs, not buttons. Three
             iconed labels need every trick to breathe: the column runs 344px,
             and the tabs wear 12px icons with 11px text, one size under the
@@ -638,8 +637,13 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
             ].join(" ")}
           >
-            <Layers className="h-3 w-3" />
-            Blueprints
+            {/* The pocket star, the same mark a pocket card wears in its name
+                row and at a glance. A stack icon said "some other kind of
+                thing"; every row on this shelf is a pocket. */}
+            <span aria-hidden className="text-[12px] leading-none">
+              ✦
+            </span>
+            Pockets
           </button>
           <button
             type="button"
@@ -661,7 +665,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           <SetupsPanel />
         ) : (
           <>
-        {/* The same card the blueprint and setup shelves put their search and
+        {/* The same card the pocket and setup shelves put their search and
             filters in. Bare, this tab's controls read as a different kind of
             thing from the other two, when they are the same thing. */}
         <ControlsCard>

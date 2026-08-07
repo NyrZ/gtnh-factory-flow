@@ -115,7 +115,7 @@ export function BlueprintPanel() {
     if (payload) {
       useBlueprintStore
         .getState()
-        .setSaveRequest({ payload, name: pocket?.name || "Pocket blueprint" });
+        .setSaveRequest({ payload, name: pocket?.name || "Pocket" });
     }
   }, []);
 
@@ -245,7 +245,7 @@ export function BlueprintPanel() {
             ? "Share a pocket\nSign in (top right) first"
             : isShareArmed
               ? "Picking\nClick a pocket on the board, or click again to cancel"
-              : "Share a pocket\nPick one on the board; it uploads to Mine as a new blueprint"
+              : "Share a pocket\nPick one on the board; it lands on your Mine shelf"
         }
       >
         <button
@@ -263,7 +263,7 @@ export function BlueprintPanel() {
               setShareArmed(true);
             }
           }}
-          aria-label="Share a pocket as a new blueprint"
+          aria-label="Share a pocket to my shelf"
           className={[
             "flex h-7 w-9 shrink-0 items-center justify-center rounded-[4px] border",
             isShareArmed
@@ -445,7 +445,7 @@ function MineShelf({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search my blueprints... (#tag)"
+            placeholder="Search my pockets... (#tag)"
             className="min-w-0 flex-1 bg-transparent outline-none"
           />
           {query ? (
@@ -453,7 +453,7 @@ function MineShelf({
               type="button"
               onClick={() => setQuery("")}
               title="Clear search"
-              aria-label="Clear blueprint search"
+              aria-label="Clear pocket search"
               className="text-neutral-500 hover:text-neutral-200"
             >
               <X className="h-4 w-4" />
@@ -465,7 +465,7 @@ function MineShelf({
           <select
             value={activeTag}
             onChange={(event) => setQuery(event.target.value ? `#${event.target.value}` : "")}
-            aria-label="Filter my blueprints by tag"
+            aria-label="Filter my pockets by tag"
             className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
           >
             <option value="">All tags</option>
@@ -478,7 +478,7 @@ function MineShelf({
           <select
             value={sort}
             onChange={(event) => setSort(event.target.value as BlueprintSort)}
-            aria-label="Sort blueprints"
+            aria-label="Sort pockets"
             className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
           >
             {Object.entries(BLUEPRINT_SORTS).map(([value, label]) => (
@@ -505,7 +505,7 @@ function MineShelf({
           </p>
         ) : isLoading && !hasLoaded ? (
           <p className="flex items-center gap-1.5 px-0.5 pt-1 text-[11px] text-neutral-500">
-            <LoaderCircle className="h-3 w-3 animate-spin" /> Loading your blueprints…
+            <LoaderCircle className="h-3 w-3 animate-spin" /> Loading your pockets…
           </p>
         ) : blueprints.length === 0 ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
@@ -514,7 +514,7 @@ function MineShelf({
           </p>
         ) : filtered.length === 0 && isFiltering ? (
           <p className="px-0.5 pt-1 text-[11px] leading-relaxed text-neutral-500">
-            No blueprints match.
+            No pockets match.
           </p>
         ) : (
           <ul className="flex flex-col gap-1">
@@ -570,14 +570,14 @@ function MineShelf({
                       label={
                         overwriteArmId === blueprint.id
                           ? "Overwrite armed\nPick a pocket on the board, or click to cancel"
-                          : "Overwrite from the board\nA pocket you pick becomes this blueprint. Votes stay"
+                          : "Overwrite from the board\nA pocket you pick replaces this one. Votes stay"
                       }
                     >
                       <button
                         type="button"
                         disabled={isBusy}
                         onClick={() => onOverwrite(blueprint)}
-                        aria-label={`Overwrite blueprint ${blueprint.name} from the board`}
+                        aria-label={`Overwrite pocket ${blueprint.name} from the board`}
                         className={[
                           "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
                           overwriteArmId === blueprint.id
@@ -596,7 +596,7 @@ function MineShelf({
                           setRenamingId(blueprint.id);
                           setRenameDraft(blueprint.name);
                         }}
-                        aria-label={`Rename blueprint ${blueprint.name}`}
+                        aria-label={`Rename pocket ${blueprint.name}`}
                         className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
                       >
                         <Pencil className="h-3 w-3" />
@@ -617,7 +617,7 @@ function MineShelf({
                             ? closeTagEditor(blueprint.id)
                             : openTagEditor(blueprint)
                         }
-                        aria-label={`Edit tags for blueprint ${blueprint.name}`}
+                        aria-label={`Edit tags for pocket ${blueprint.name}`}
                         className={[
                           "flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border",
                           taggingId === blueprint.id
@@ -673,7 +673,7 @@ function MineShelf({
                           type="button"
                           onClick={() => setConfirmDeleteId(blueprint.id)}
                           onBlur={() => setConfirmDeleteId(undefined)}
-                          aria-label={`Delete blueprint ${blueprint.name}`}
+                          aria-label={`Delete pocket ${blueprint.name}`}
                           className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:border-red-500 hover:text-red-400"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -687,7 +687,7 @@ function MineShelf({
                         type="button"
                         disabled={isBusy}
                         onClick={() => void place(blueprint.id)}
-                        aria-label={`Place blueprint ${blueprint.name} on the board`}
+                        aria-label={`Place pocket ${blueprint.name} on the board`}
                         className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
                       >
                         {isBusy ? (
@@ -811,7 +811,7 @@ function MineShelf({
       </div>
       {iconEditId ? (
         <IconPicker
-          title="Pick this blueprint's icon"
+          title="Pick this pocket's icon"
           suggestions={iconSuggestionsFromStats(
             blueprints.find((entry) => entry.id === iconEditId)?.needs,
             blueprints.find((entry) => entry.id === iconEditId)?.outputs,
@@ -902,7 +902,7 @@ function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
               type="button"
               onClick={() => setQuery("")}
               title="Clear search"
-              aria-label="Clear public blueprint search"
+              aria-label="Clear public pocket search"
               className="text-neutral-500 hover:text-neutral-200"
             >
               <X className="h-4 w-4" />
@@ -915,7 +915,7 @@ function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
           <select
             value={activeTag}
             onChange={(event) => setQuery(event.target.value ? `#${event.target.value}` : "")}
-            aria-label="Filter public blueprints by tag"
+            aria-label="Filter public pockets by tag"
             className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
           >
             <option value="">All tags</option>
@@ -928,7 +928,7 @@ function PublicShelf({ scopeTabs }: { scopeTabs: ReactNode }) {
           <select
             value={publicSort}
             onChange={(event) => setPublicSort(event.target.value as PublicBlueprintSort)}
-            aria-label="Sort public blueprints"
+            aria-label="Sort public pockets"
             className="h-7 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1 text-xs text-neutral-100 outline-none"
           >
             {(Object.entries(PUBLIC_BLUEPRINT_SORTS) as Array<[PublicBlueprintSort, string]>).map(
@@ -1022,7 +1022,7 @@ function PublicBlueprintRow({
           label={
             blueprint.myVote === 1
               ? "Upvoted\nClick to take your vote back"
-              : "Upvote\nLifts this blueprint up the Top sort"
+              : "Upvote\nLifts this pocket up the Top sort"
           }
         >
           <button
@@ -1049,7 +1049,7 @@ function PublicBlueprintRow({
             type="button"
             disabled={isBusy}
             onClick={onPlace}
-            aria-label={`Download blueprint ${blueprint.name}`}
+            aria-label={`Download pocket ${blueprint.name}`}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-500 enabled:hover:text-emerald-300 disabled:opacity-50"
           >
             {isBusy ? (

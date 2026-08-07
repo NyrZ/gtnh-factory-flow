@@ -238,7 +238,7 @@ export function FactoryPlannerApp() {
         {workspace.leftPanelOpen ? (
           <RecipeBrowser onLoadDatasetVersion={loadDatasetVersion} />
         ) : (
-          <PanelRail side="left" label="Items, blueprints and setups" />
+          <PanelRail side="left" label="Items, pockets and setups" />
         )}
         {/*
           The tab strip belongs to the canvas, not the window: designs switch
@@ -255,7 +255,7 @@ export function FactoryPlannerApp() {
           <PanelRail side="right" label="Resources" />
         )}
       </main>
-      {/* Every pocket-to-blueprint path (card save, share-a-pocket,
+      {/* Every pocket-to-shelf path (card save, share-a-pocket,
           overwrite) confirms through this one dialog. */}
       <BlueprintSaveDialog />
     </div>

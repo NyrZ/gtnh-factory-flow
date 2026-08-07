@@ -16,13 +16,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.27.0",
+    date: "2026-08-07",
+    headline: "The Blueprints tab is now the Pockets tab",
+    notes: [
+      "Everything on that shelf is a pocket: you save one from a pocket card and you place one back as a pocket card. Calling it a blueprint in between was a second name for the same thing.",
+      "So it says pocket now, everywhere it used to say blueprint, and the tab wears the pocket star instead of the stack of sheets.",
+      "Nothing moved and nothing was lost. Everything you saved is still there under the new name.",
+    ],
+  },
+  {
     version: "1.26.0",
     date: "2026-08-07",
     headline: "Open a setup and the board goes to it",
     notes: [
       "Open someone else's setup and the board now flies to their factory and zooms out until all of it is on screen. People build a long way from where you happen to be looking, so opening one used to drop you on empty canvas with the whole thing off the edge.",
       "Importing a plan file lands the same way.",
-      "Drop a setup onto your board as a pocket and the camera settles on the new card. Same for placing a blueprint: you see what just arrived, however far out you were reading the board.",
+      "Drop a setup onto your board as a pocket and the camera settles on the new card. Same for placing one off your pocket shelf: you see what just arrived, however far out you were reading the board.",
       "The board zooms out further than it used to, so even a very large factory fits on one screen.",
     ],
   },
@@ -104,7 +114,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-06",
     headline: "The item search sits in the same box as the other two tabs",
     notes: [
-      "Items now keeps its search and filters in the rounded panel that Blueprints and Setups already used, so all three tabs match.",
+      "Items now keeps its search and filters in the rounded panel that Pockets and Setups already used, so all three tabs match.",
     ],
   },
   {
@@ -174,7 +184,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: [
       "Hover the ? bottom left and each toolbar card lists its buttons one by one, next to the very icon each one wears. No more guessing which is which.",
       "The crop farm, the trash can and the custom rate tap get a line each. So do all seven view switches, both card faces, and every paint and note tool.",
-      "The left column says what its three tabs are for: Items, Blueprints and Setups.",
+      "The left column says what its three tabs are for: Items, Pockets and Setups.",
       "The undo, clean, import and export buttons up top were never explained at all. They are now.",
       "The whole sheet went from bright cyan to a soft blue grey, so it reads as notes over your board instead of shouting at you.",
     ],
@@ -228,19 +238,19 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-06",
     headline: "The community hub moved in next door",
     notes: [
-      "The Community page is gone. Everyone's shared factories now live in a Setups tab, right beside Items and Blueprints.",
+      "The Community page is gone. Everyone's shared factories now live in a Setups tab, right beside Items and Pockets.",
       "Browse, search, sort and upvote without leaving your board. Hover a setup to read its story: what it needs, what it makes.",
       "One click opens a setup as its own design tab, so it never lands on top of your work. Your own posts sit under Mine.",
       "Or drop a setup straight onto the board you have open: the box button lands the whole thing as one pocket card, wired and ready.",
-      "Setups wear tags now, just like blueprints: search with #tag, pick from the new tags dropdown, or tag your own posts from the shelf or the share dialog.",
+      "Setups wear tags now, just like pockets: search with #tag, pick from the new tags dropdown, or tag your own posts from the shelf or the share dialog.",
       "Every setup shows its top voltage tier in that tier's own colour, the same badge machines wear on the board.",
-      "Your own posts get a globe button, same as blueprints: click to take a setup private or publish it again. Private posts keep their votes and downloads.",
+      "Your own posts get a globe button, same as pockets: click to take a setup private or publish it again. Private posts keep their votes and downloads.",
       "The two shelves speak one language now: Mine and Public tabs, matching buttons, and every button explains itself when you hover it.",
-      "Both shelves grew a share button beside Mine and Public. On Setups it shares the board you have open. On Blueprints it asks for a pocket: click one and it lands on your shelf as a new blueprint.",
-      "Setups and blueprints can wear an item's face now: click the little square left of a name and pick an icon. The picker offers the build's own ins and outs first, with full search under them.",
-      "Saving a pocket as a blueprint confirms in one dialog: name, icon, tags, what it needs and makes, and a tick box to publish it the moment it saves. The pocket card's save button, the share flow and overwriting all land there.",
+      "Both shelves grew a share button beside Mine and Public. On Setups it shares the board you have open. On Pockets it asks for a pocket: click one and it lands on your shelf.",
+      "Setups and pockets can wear an item's face now: click the little square left of a name and pick an icon. The picker offers the build's own ins and outs first, with full search under them.",
+      "Saving a pocket to the shelf confirms in one dialog: name, icon, tags, what it needs and makes, and a tick box to publish it the moment it saves. The pocket card's save button, the share flow and overwriting all land there.",
       "Hover any row on either shelf and one card tells the whole story: the full name, who made it and when, cards and machines with the tier badge, the description, then what it needs on the left and what it makes on the right.",
-      "Blueprints show their top voltage tier too now, in the same coloured badge setups wear.",
+      "Pockets show their top voltage tier too now, in the same coloured badge setups wear.",
       "Your own setup rows grew a save button too: the tab you have open replaces the post's contents, after an are-you-sure that names both.",
       "The share dialog says plainly what you are posting: the open tab, its cards, machines and power, then the post's icon, name, description and tags.",
       "The header's share and link buttons retired. Sharing lives on the shelves now, and every row carries its own copy-link button.",
@@ -250,12 +260,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "1.12.0",
     date: "2026-08-06",
-    headline: "Pocket dimensions, a blueprint shelf, and a board that explains itself",
+    headline: "Pocket dimensions, a pocket shelf, and a board that explains itself",
     notes: [
       "Shift+drag a box around machines, then Ctrl+G: they compact into one pocket card carrying the group's ins and outs. Double-click it to step inside its own purple room. Esc steps back out.",
       "Pocket cards wire like machines: one port per resource at the boundary. Compacting warns first when it would pool supplies that came from different places.",
-      "A Blueprints tab now sits beside the item search: save a pocket as a blueprint, publish it, browse and vote on everyone else's, and place one straight onto your board.",
-      "Blueprints take tags and search by them. Rename in place, overwrite one from your board, and double-click a public row to download it.",
+      "A Pockets tab now sits beside the item search: save a pocket to it, publish it, browse and vote on everyone else's, and place one straight onto your board.",
+      "Pockets take tags and search by them. Rename in place, overwrite one from your board, and double-click a public row to download it.",
       "Drawers, tanks and trash cans went dark and wear their item's colour. Zoomed out, hovering one shows its item and rate.",
       "Zoomed way out the board becomes an LED wall: card faces glow their item's colour with bright rims, and wires light up gold to match.",
       "Box select got real: drag, then copy, cut, paste, delete and undo the whole selection at once.",

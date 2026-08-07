@@ -1611,8 +1611,14 @@ export function FactoryFlow() {
   );
   const flowNodesRef = useRef(flowNodes);
   flowNodesRef.current = flowNodes;
+  // Synced in an effect rather than during render, and declared ABOVE the
+  // camera effect below so this commit's cards are in the ref before that
+  // effect reads them - which is the whole point, since a camera move is
+  // usually asked for in the very commit that put the cards there.
   const nodesFromProjectRef = useRef(nodesFromProject);
-  nodesFromProjectRef.current = nodesFromProject;
+  useEffect(() => {
+    nodesFromProjectRef.current = nodesFromProject;
+  }, [nodesFromProject]);
 
   /**
    * Where the cards are, and how big they are, for a camera move.
@@ -3736,7 +3742,7 @@ export function FactoryFlow() {
           ].join(" ")}
         >
           {overwritePicking.create ? (
-            <>Pick a pocket on the board. It uploads to your shelf as a new blueprint. Esc cancels.</>
+            <>Pick a pocket on the board. It lands on your shelf. Esc cancels.</>
           ) : (
             <>
               Pick a pocket on the board. It becomes &ldquo;{overwritePicking.name}&rdquo;. Esc

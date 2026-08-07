@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
  * in, above whatever list they are filtering.
  *
  * One component rather than the same class string written out per tab: Items,
- * Blueprints and Setups are three views of one column, and a search box that
+ * Pockets and Setups are three views of one column, and a search box that
  * is boxed on two of them and bare on the third reads as a different kind of
  * control rather than the same one.
  */

@@ -17,7 +17,7 @@ import { useSyncExternalStore } from "react";
  * never wants to see it on any board.
  */
 export interface WorkspaceView {
-  /** The recipe browser / blueprints / setups column on the left. */
+  /** The recipe browser / pockets / setups column on the left. */
   leftPanelOpen: boolean;
   /** The resource flow panel on the right. */
   rightPanelOpen: boolean;

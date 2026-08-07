@@ -94,7 +94,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
     }
   };
 
-  // Shelve the whole dimension as a blueprint: the save dialog opens
+  // Shelve the whole dimension: the save dialog opens
   // prefilled with the pocket's name and stat card, plus an icon to pick.
   const saveAsBlueprint = () => {
     const payload = captureBoardSelection(useFactoryStore.getState().project, [pocket.id]);
@@ -141,7 +141,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
           {/* One head row, exactly two cells tall, like every machine card:
               delete/clone/open on the left like every card's edit chrome, the
               name in the middle, and the two "send it away" actions — shelve
-              as blueprint, unpack — on the right. Calm mode drops all six and
+              to the shelf, unpack — on the right. Calm mode drops all six and
               gives the whole row to the name, the same trade a machine card
               makes; the row stays 40px either way, so the ports below keep
               their grid lines. */}
@@ -243,8 +243,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     saveAsBlueprint();
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-                  title={`Save "${pocket.name}" to my blueprints (sign in required)`}
-                  aria-label={`Save pocket ${pocket.name} as a blueprint`}
+                  title={`Save "${pocket.name}" to my pocket shelf (sign in required)`}
+                  aria-label={`Save pocket ${pocket.name} to my shelf`}
                 >
                   <Save aria-hidden className="h-3.5 w-3.5" />
                 </button>

@@ -7,7 +7,6 @@ import {
   Factory,
   Gauge,
   Grid3x3,
-  Layers,
   MoveUpRight,
   Paintbrush,
   Palette,
@@ -107,7 +106,7 @@ const CALLOUTS: Array<{
     title: "The left column",
     rows: [
       { icon: Search, text: "Items: every item and fluid in the pack" },
-      { icon: Layers, text: "Blueprints: chunks you saved, and everyone else's" },
+      { chip: "✦", text: "Pockets: chunks you saved, and everyone else's" },
       { icon: Factory, text: "Setups: whole factories people have shared" },
       { text: "Search an item, click it, pick a recipe" },
       { text: "The machine lands on the board" },

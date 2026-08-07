@@ -10,7 +10,7 @@ import { renderIoStats, TierBadge } from "./shelf-cards";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "./IconPicker";
 
 /**
- * The one confirmation every pocket-to-blueprint path lands in: the pocket
+ * The one confirmation every pocket-to-shelf path lands in: the pocket
  * card's save button, the shelf's share-a-pocket flow, and overwriting an
  * owned row. Mostly filled out already — the pocket's name, its needs and
  * makes, the machine count — plus the face it wears (icon), its tags, and
@@ -105,7 +105,7 @@ function SaveDialogBody({ request }: { request: BlueprintSaveRequest }) {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-base font-semibold">
             <Save className="h-4 w-4" />
-            {isOverwrite ? "Overwrite this blueprint" : "Save as a blueprint"}
+            {isOverwrite ? "Overwrite this pocket" : "Save this pocket"}
           </h2>
           <button
             type="button"
@@ -119,7 +119,7 @@ function SaveDialogBody({ request }: { request: BlueprintSaveRequest }) {
 
         {isOverwrite ? (
           <p className="mb-3 text-xs leading-relaxed text-amber-300">
-            The picked pocket replaces this blueprint&apos;s contents. Its votes, downloads and
+            The picked pocket replaces this one&apos;s contents. Its votes, downloads and
             standing stay.
           </p>
         ) : null}
@@ -141,7 +141,7 @@ function SaveDialogBody({ request }: { request: BlueprintSaveRequest }) {
                 void commit();
               }
             }}
-            placeholder="Blueprint name"
+            placeholder="Pocket name"
             className="h-10 min-w-0 flex-1 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2.5 text-sm outline-none focus:border-cyan-600"
           />
         </div>
@@ -236,7 +236,7 @@ function SaveDialogBody({ request }: { request: BlueprintSaveRequest }) {
       </div>
       {isPickingIcon ? (
         <IconPicker
-          title="Pick this blueprint's icon"
+          title="Pick this pocket's icon"
           suggestions={iconSuggestionsFromStats(io.needs, io.outputs)}
           onPick={(picked) => {
             setIcon(picked);
