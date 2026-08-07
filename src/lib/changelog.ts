@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.21.0",
+    date: "2026-08-06",
+    headline: "Pocket cards now read like machine cards",
+    notes: [
+      "Every resource going in or out of a pocket has a bar and two numbers: what it is moving right now, and the most it could move if it got everything it asks for.",
+      "That second number comes from running every machine inside the pocket, not from scaling one figure, so a pocket short on one ingredient shows you exactly how much output you are losing.",
+      "An ingredient with nothing wired to it now says HAND-FED, and each output tells you who is drinking from it, the same as any machine.",
+      "A pocket that wanted one thing under two names used to show it twice, the second time with no rate at all. It is one row now.",
+      "Pockets light up when you point at a resource in the list on the right. They used to stay dark.",
+      "Dragging a resource off a pocket onto empty board makes a drawer. It quietly did nothing before.",
+    ],
+  },
+  {
     version: "1.20.1",
     date: "2026-08-06",
     headline: "The item search sits in the same box as the other two tabs",

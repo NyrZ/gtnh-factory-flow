@@ -1470,7 +1470,7 @@ function GridBlock({
 }
 
 /** Input chip width, shared by the input rail and the output rail's chip. */
-const PORT_CHIP_WIDTH_CLASS = "w-[140px]";
+export const PORT_CHIP_WIDTH_CLASS = "w-[140px]";
 
 /**
  * One side of the port rails. Every port always renders - a hidden port is a
@@ -1524,7 +1524,7 @@ function PortRail({
  * edge — inside the card, like inputs. The row is the edge anchor, so wires
  * reach the coupling the same way they reach an input chip.
  */
-function OutputSocketRow({
+export function OutputSocketRow({
   nodeId,
   port,
   pending,
@@ -1689,7 +1689,7 @@ function buildPortFlowScope(nodeId: string, port: RailPort) {
   return { edges, ports, nodes };
 }
 
-function PortChip({
+export function PortChip({
   nodeId,
   port,
   pending,

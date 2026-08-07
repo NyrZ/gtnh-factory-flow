@@ -205,7 +205,11 @@ import {
 import { StorageNode, type StorageFlowNode } from "./StorageNode";
 import { TrashNode, type TrashFlowNode } from "./TrashNode";
 import { PocketNode, type PocketFlowNode } from "./PocketNode";
-import { computePocketSummaries } from "./pocket-summary";
+import {
+  buildPocketRailPorts,
+  computePocketSummaries,
+  resolvePocketPortHandleId,
+} from "./pocket-summary";
 import {
   ANNOTATION_DRAG_HANDLE_CLASS,
   AnnotationNode,
@@ -1338,6 +1342,21 @@ export function FactoryFlow() {
     [project, pocketView.visiblePockets],
   );
 
+  // The rails a pocket card wears. Built here rather than inside the card for
+  // the same reason the summaries are: this reads the whole plan's solve, and
+  // a card that derived it per render would redo it on every unrelated store
+  // write. Keyed off the result too, so the bars follow the live numbers.
+  const pocketRails = useMemo(() => {
+    const rails = new Map<string, ReturnType<typeof buildPocketRailPorts>>();
+    for (const pocket of pocketView.visiblePockets) {
+      const summary = pocketSummaries.get(pocket.id);
+      if (summary) {
+        rails.set(pocket.id, buildPocketRailPorts(project, result, pocket.id, summary));
+      }
+    }
+    return rails;
+  }, [project, result, pocketSummaries, pocketView.visiblePockets]);
+
   const nodesFromProject = useMemo<BoardFlowNode[]>(
     () => [
       ...project.nodes
@@ -1427,6 +1446,7 @@ export function FactoryFlow() {
             data: reuseObjectIdentity(pocketNodeDataCache, pocket.id, {
               pocket,
               summary: pocketSummaries.get(pocket.id),
+              railPorts: pocketRails.get(pocket.id),
             }),
           }) satisfies PocketFlowNode,
       ),
@@ -1436,6 +1456,7 @@ export function FactoryFlow() {
       activeNodeBottlenecks,
       activePocketId,
       hoveredUsageNodeId,
+      pocketRails,
       pocketSummaries,
       pocketView.visiblePockets,
       project.annotations,
@@ -2013,12 +2034,26 @@ export function FactoryFlow() {
       // older vintage carry no handle and fall back to the wire's resource.
       // pocket-summary derives its port rows the SAME way, which is what
       // guarantees every crossing wire has a rendered port to dock on.
+      // The card merges compatible forms into one row, so the stored handle
+      // is not always a port that got drawn: a wire carrying concrete carbon
+      // dust docks on the oredict row that survived. Ask the summary which
+      // row this wire belongs to, and only fall back to the stored handle
+      // when it has no opinion — otherwise the wire anchors to a port that
+      // was never rendered and disappears.
       const canonicalSourceHandle = sourceIsPocket
-        ? (canonicalizeResourceHandleId(edge.sourceHandle) ??
+        ? (resolvePocketPortHandleId(project, pocketSummaries.get(sourceRep), sourceRep, "output", {
+            kind: sourceHandle?.kind ?? edge.resourceKind,
+            id: sourceHandle?.resourceId ?? edge.resourceId,
+          }) ??
+          canonicalizeResourceHandleId(edge.sourceHandle) ??
           makeResourceHandleId("output", { kind: edge.resourceKind, id: edge.resourceId }))
         : canonicalizeResourceHandleId(edge.sourceHandle);
       const canonicalTargetHandle = targetIsPocket
-        ? (canonicalizeResourceHandleId(edge.targetHandle) ??
+        ? (resolvePocketPortHandleId(project, pocketSummaries.get(targetRep), targetRep, "input", {
+            kind: targetHandle?.kind ?? edge.resourceKind,
+            id: targetHandle?.resourceId ?? edge.resourceId,
+          }) ??
+          canonicalizeResourceHandleId(edge.targetHandle) ??
           makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId }))
         : canonicalizeResourceHandleId(edge.targetHandle);
       const isStorageEdgeActive =
@@ -2197,6 +2232,7 @@ export function FactoryFlow() {
     linePulseMode,
     lineThicknessMode,
     layoutVersion,
+    pocketSummaries,
     pocketView,
     project,
     recipeSearch,

@@ -1,6 +1,6 @@
 "use client";
 
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { type Node, type NodeProps } from "@xyflow/react";
 import { memo, useState } from "react";
 import { Copy, Expand, PackageOpen, Save } from "lucide-react";
 import type { FactoryPocket } from "@/lib/model/types";
@@ -8,8 +8,10 @@ import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
-import { makeResourceHandleId } from "./resource-handles";
+
 import { formatSlotRateOrNull } from "./flow-explainers";
+import { OutputSocketRow, PORT_CHIP_WIDTH_CLASS, PortChip } from "./RecipeNode";
+import type { RailPort } from "./node-verdict";
 import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
 import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
@@ -18,6 +20,8 @@ import type { PocketPortSummary, PocketSummary } from "./pocket-summary";
 export interface PocketNodeData extends Record<string, unknown> {
   pocket: FactoryPocket;
   summary?: PocketSummary;
+  /** The machine-card rails for this pocket, built once per project commit. */
+  railPorts?: { inputs: RailPort[]; outputs: RailPort[] };
 }
 
 export type PocketFlowNode = Node<PocketNodeData, "pocketNode">;
@@ -39,7 +43,8 @@ export const POCKET_NODE_WIDTH = RECIPE_NODE_WIDTH;
 const INK_MUTED = "text-[#c9b8ec]";
 
 function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
-  const { pocket, summary } = data;
+  const { pocket, summary, railPorts } = data;
+  const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
   const enterPocket = useFactoryStore((state) => state.enterPocket);
   const dissolvePocket = useFactoryStore((state) => state.dissolvePocket);
   const renamePocket = useFactoryStore((state) => state.renamePocket);
@@ -277,7 +282,17 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     : "justify-start",
               ].join(" ")}
             >
-              <PocketPortRail nodeId={pocket.id} side="input" ports={inputs} />
+              {/* The machine card's own rails, not a lookalike. A pocket is a
+                  card on this board that takes things in and gives things
+                  out, so it gets the same chips, the same bars, the same
+                  HAND-FED mark and the same output couplings — and inherits
+                  calm mode's trade with them for free. */}
+              <PocketPortRail
+                nodeId={pocket.id}
+                side="input"
+                ports={railPorts?.inputs ?? []}
+                pending={pendingResourceConnection}
+              />
               {inputs.length > 0 && outputs.length > 0 ? (
                 <div
                   className={`flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black ${INK_MUTED}`}
@@ -285,7 +300,12 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                   →
                 </div>
               ) : null}
-              <PocketPortRail nodeId={pocket.id} side="output" ports={outputs} />
+              <PocketPortRail
+                nodeId={pocket.id}
+                side="output"
+                ports={railPorts?.outputs ?? []}
+                pending={pendingResourceConnection}
+              />
             </div>
           )}
 
@@ -394,106 +414,44 @@ function PocketGlanceIoRow({ port }: { port: PocketPortSummary }) {
 }
 
 /**
- * One side of the rails: 140px chips in 40px rows with no gaps, the same
- * vertical rhythm as a machine card, so port centres land on grid lines.
+ * One side of a pocket's rails.
+ *
+ * The chips are the machine card's own: a pocket takes things in and gives
+ * things out like any other card, so it earns the same bar, the same
+ * HAND-FED mark, and the same output coupling telling you who is drinking.
+ * Widths match a machine rail exactly (140px in, chip plus coupling out),
+ * which is what keeps port centres on the grid lines the router measures.
  */
 function PocketPortRail({
   nodeId,
   side,
   ports,
+  pending,
 }: {
   nodeId: string;
   side: "input" | "output";
-  ports: PocketPortSummary[];
+  ports: RailPort[];
+  pending: ReturnType<typeof useFactoryStore.getState>["pendingResourceConnection"];
 }) {
   if (ports.length === 0) {
     return null;
   }
 
-  return (
-    <div className="flex w-[140px] shrink-0 flex-col justify-start gap-0 py-0">
-      {ports.map((port) => (
-        <PocketPortChip
-          key={`${side}:${port.kind}:${port.resourceId}`}
-          nodeId={nodeId}
-          side={side}
-          port={port}
-        />
-      ))}
-    </div>
-  );
-}
-
-/**
- * A pocket port chip: icon, name, rate — the same surface a machine port
- * shows, minus the machine-only health bar. The whole row is the React Flow
- * handle (drag to wire) and the edge anchor the router measures.
- */
-function PocketPortChip({
-  nodeId,
-  side,
-  port,
-}: {
-  nodeId: string;
-  side: "input" | "output";
-  port: PocketPortSummary;
-}) {
   const isInput = side === "input";
-  const handleId = makeResourceHandleId(side, { kind: port.kind, id: port.resourceId });
-  const rate = formatSlotRateOrNull(port.ratePerSecond, port.kind);
-  const name = port.displayName ?? port.resourceId;
-
   return (
     <div
-      className="pocket-port relative flex h-[40px] w-full flex-none items-center gap-1 px-0.5 py-0"
-      data-resource-edge-anchor="true"
-      data-resource-node-id={nodeId}
-      data-resource-handle-id={handleId}
-      title={
-        isInput
-          ? `The dimension needs ${name} — drag to wire a supplier`
-          : `The dimension offers ${name} — drag to wire a taker`
-      }
+      className={[
+        "flex shrink-0 flex-col justify-start gap-0 py-0",
+        isInput ? PORT_CHIP_WIDTH_CLASS : "w-[176px]",
+      ].join(" ")}
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
-        <ResourceIcon
-          resource={{ ...port, id: port.resourceId, amount: 1 }}
-          bare
-          tooltip={false}
-          showAmount={false}
-          // Same crop trick as machine chips: item art carries baked-in
-          // transparent padding, so items zoom and clip while fluids keep
-          // their exact square.
-          iconPixelSize={port.kind === "fluid" ? 50 : undefined}
-          className={port.kind === "fluid" ? "" : "!h-7 !w-7 origin-center scale-150"}
-        />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
-        <span className="block truncate text-[11px] font-bold leading-[13px] text-white">
-          {name}
-        </span>
-        {rate ? (
-          <span
-            className={`block truncate text-[10px] leading-[12px] tabular-nums ${INK_MUTED} opacity-90`}
-          >
-            {rate}
-          </span>
-        ) : null}
-      </span>
-      <Handle
-        id={handleId}
-        type={isInput ? "target" : "source"}
-        position={isInput ? Position.Left : Position.Right}
-        data-resource-handle="true"
-        data-resource-node-id={nodeId}
-        data-resource-handle-id={handleId}
-        title={`${isInput ? "Input" : "Output"}: ${name} — drag to wire`}
-        className={[
-          "resource-slot-handle nodrag !absolute !left-0 !right-auto !top-0 !z-30 !h-full !w-full !min-w-0 !translate-x-0 !translate-y-0",
-          "!rounded-none !border-0 !bg-transparent !opacity-0",
-          "cursor-crosshair",
-        ].join(" ")}
-      />
+      {ports.map((port) =>
+        isInput ? (
+          <PortChip key={port.key} nodeId={nodeId} port={port} pending={pending} />
+        ) : (
+          <OutputSocketRow key={port.key} nodeId={nodeId} port={port} pending={pending} />
+        ),
+      )}
     </div>
   );
 }

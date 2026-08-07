@@ -54,6 +54,7 @@ function makeOredictPocketProject(): FactoryProject {
     storages: [],
     annotations: [],
     pockets: [{ id: "pocket-1", name: "Carbon line", position: { x: 0, y: 0 } }],
+    fuelProfiles: [],
   };
 }
 
