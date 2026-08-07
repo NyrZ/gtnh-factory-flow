@@ -53,6 +53,19 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
 
   const inputs = summary?.inputs ?? [];
   const outputs = summary?.outputs ?? [];
+  // Pointing at a resource in the right-hand panel lights every card that
+  // touches it. A pocket touches one whenever the resource crosses its
+  // boundary, so it lights up on exactly the same terms as a machine card:
+  // the dimension is a card on this board, and leaving it dark made a lit
+  // board read as "nothing in here uses that".
+  const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
+  const selectedFlowResourceKey = useFactoryStore((state) => state.selectedFlowResourceKey);
+  const litResourceKey = hoveredFlowResourceKey ?? selectedFlowResourceKey;
+  const isResourceHighlighted =
+    litResourceKey !== undefined &&
+    [...inputs, ...outputs].some(
+      (port) => `${port.kind}:${port.resourceId}` === litResourceKey,
+    );
 
   const commitRename = () => {
     if (draftName !== undefined) {
@@ -90,6 +103,9 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
       className={[
         "group relative font-mono text-white",
         selected ? "ring-2 ring-purple-500" : "",
+        // On the shell, exactly where a machine card wears it, so the outline
+        // frames the whole dimension rather than its inner window.
+        isResourceHighlighted ? "resource-glow" : "",
       ].join(" ")}
       style={{ width: POCKET_NODE_WIDTH }}
       onDoubleClick={(event) => {

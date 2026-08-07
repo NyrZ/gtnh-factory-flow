@@ -6,7 +6,7 @@ import type {
   ResourceAmount,
   ResourceKind,
 } from "./types";
-import { isRecipeInputConsumed } from "./resources";
+import { isRecipeInputConsumed, resourceMatchesInput } from "./resources";
 import {
   applyRecipeInputOverrides,
   restoreCrossKindInputOverrideVisuals,
@@ -205,16 +205,67 @@ export function listPocketPortResources(
   return resources;
 }
 
-/** The pocket's own resource entry for one port, or undefined if no member backs it. */
+/**
+ * Display metadata for a resource the members do not name themselves. Read
+ * from anywhere in the plan, because a port that outlives the recipe entry
+ * behind it still has to draw an icon and a name.
+ */
+function describeProjectResource(
+  project: FactoryProject,
+  resource: { kind: ResourceKind; id: string },
+): ResourceAmount {
+  for (const recipe of project.recipes) {
+    for (const entry of [...recipe.inputs, ...recipe.outputs]) {
+      if (entry.kind === resource.kind && entry.id === resource.id) {
+        return { ...entry, amount: 1 };
+      }
+    }
+  }
+  for (const storage of project.storages ?? []) {
+    if (storage.kind === resource.kind && storage.resourceId === resource.id) {
+      return storageResource(storage);
+    }
+  }
+  return { kind: resource.kind, id: resource.id, amount: 1 };
+}
+
+/**
+ * The pocket's own resource entry for one port.
+ *
+ * A port you can SEE must always be a port you can drag, and that is not
+ * automatic here: the card's ports come from a scoped solve plus every wire
+ * crossing the boundary (`computePocketSummaries`), while this list is built
+ * from member recipes. The two can name one physical resource differently —
+ * a wire stored against a concrete oredict form, a member whose effective
+ * recipe resolves to a compatible one — and a port that fell down the gap
+ * used to refuse the drag before it began, silently.
+ *
+ * So: exact identity first, keeping the rule that a member consuming a
+ * genuinely distinct form gets its own port. Then the same compatibility rule
+ * the rest of the board matches by, keeping the PORT's identity (the handle
+ * and the card already agree on it) and borrowing the member's metadata.
+ * Then a plain description, so the answer is never "nothing".
+ */
 export function getPocketResourceForHandle(
   project: FactoryProject,
   pocketId: string,
   side: "input" | "output",
   resource: { kind: ResourceKind; id: string },
-): ResourceAmount | undefined {
-  return listPocketPortResources(project, pocketId, side).find(
+): ResourceAmount {
+  const ports = listPocketPortResources(project, pocketId, side);
+  const exact = ports.find(
     (entry) => entry.kind === resource.kind && entry.id === resource.id,
   );
+  if (exact) {
+    return exact;
+  }
+
+  const compatible = ports.find((entry) => resourceMatchesInput(resource, entry));
+  if (compatible) {
+    return { ...compatible, kind: resource.kind, id: resource.id };
+  }
+
+  return describeProjectResource(project, resource);
 }
 
 /**
@@ -248,26 +299,47 @@ export function resolveMemberIdsForResource(
   side: "input" | "output",
   resource: { kind: ResourceKind; id: string },
 ): string[] {
-  const ids: string[] = [];
-  for (const node of project.nodes) {
-    if (!memberIds.has(node.id)) {
-      continue;
+  const collect = (
+    matchesMember: (entry: ResourceAmount) => boolean,
+    matchesStorage: (storage: FactoryStorage) => boolean,
+  ): string[] => {
+    const ids: string[] = [];
+    for (const node of project.nodes) {
+      if (!memberIds.has(node.id)) {
+        continue;
+      }
+      if (memberSideResources(project, node, side).some(matchesMember)) {
+        ids.push(node.id);
+      }
     }
-    const matches = memberSideResources(project, node, side).some(
-      (entry) => entry.kind === resource.kind && entry.id === resource.id,
-    );
-    if (matches) {
-      ids.push(node.id);
+    for (const storage of project.storages ?? []) {
+      if (memberIds.has(storage.id) && matchesStorage(storage)) {
+        ids.push(storage.id);
+      }
     }
+    return ids;
+  };
+
+  const exact = collect(
+    (entry) => entry.kind === resource.kind && entry.id === resource.id,
+    (storage) => storage.kind === resource.kind && storage.resourceId === resource.id,
+  );
+  if (exact.length > 0) {
+    return exact;
   }
-  for (const storage of project.storages ?? []) {
-    if (
-      memberIds.has(storage.id) &&
-      storage.kind === resource.kind &&
-      storage.resourceId === resource.id
-    ) {
-      ids.push(storage.id);
-    }
-  }
-  return ids;
+
+  // Nothing named it exactly. Rather than drop the wire on the floor, fall
+  // back to the board's own compatibility rule — the same one that lets a
+  // concrete Spruce Log satisfy an oredict logWood slot. Second, never first:
+  // an exact match still wins, so a member drinking a genuinely different
+  // form keeps its own port instead of being swept into this one.
+  return collect(
+    (entry) => resourceMatchesInput(resource, entry),
+    (storage) =>
+      resourceMatchesInput(resource, {
+        kind: storage.kind,
+        id: storage.resourceId,
+        displayName: storage.displayName,
+      }),
+  );
 }
