@@ -162,6 +162,26 @@ export interface NodeSurfaceColor {
   shadow: string;
 }
 
+/**
+ * The custom rate card's own face: the app's deep blue, not a dye off the
+ * palette above.
+ *
+ * The palette's panels are deliberately pale — they tint a card without
+ * hiding what is written on it — and a card's ink stays light whatever it is
+ * painted, since half of a card is inset chips and textures that do not
+ * recolour. `blue` (#8f9ab8) came out just under the ink threshold, so the
+ * card shipped as white text on a pale blue face, with every gap between its
+ * panels reading as a bright band. This sits near an unpainted card's face in
+ * darkness, so the card reads like every other card, and is unmistakably blue.
+ */
+export const CUSTOM_RATE_NODE_COLOR: NodeSurfaceColor = {
+  swatch: "#3c6bb0",
+  panel: "#2c3853",
+  header: "#39496b",
+  border: "#141a28",
+  shadow: "#3c6bb0",
+};
+
 function mixHex(from: string, to: string, amount: number): string {
   const channel = (hex: string, offset: number) =>
     Number.parseInt(hex.slice(offset, offset + 2), 16);

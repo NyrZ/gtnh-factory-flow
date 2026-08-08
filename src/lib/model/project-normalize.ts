@@ -1,5 +1,6 @@
 import type { FactoryProject } from "./types";
 import { normalizeProjectFuelProfiles } from "./fuels";
+import { isCustomRateRecipe, releaseCustomRates } from "./custom-rate";
 import { snapPositionToGrid, snapSizeUpToGrid } from "@/lib/board-grid";
 
 /**
@@ -12,8 +13,41 @@ import { snapPositionToGrid, snapSizeUpToGrid } from "@/lib/board-grid";
  */
 export function normalizeLoadedProject(project: FactoryProject): FactoryProject {
   return snapProjectToGrid(
-    repairPocketReferences(dropCrossFormConnections(normalizeProjectFuelProfiles(project))),
+    repairPocketReferences(
+      unpaintCustomRateCards(
+        releaseCustomRates(dropCrossFormConnections(normalizeProjectFuelProfiles(project))),
+      ),
+    ),
   );
+}
+
+/**
+ * Custom rate cards shipped for one version painted with the palette's `blue`,
+ * whose panel is pale enough to put the card's light ink on a light face. They
+ * now wear the app's own deep blue, which is not a paint tag at all, so the
+ * cards made in that version have their tag cleared and pick the new face up.
+ *
+ * Only exactly that tag on exactly those cards: a card painted any other
+ * colour was painted on purpose and keeps it.
+ */
+function unpaintCustomRateCards(project: FactoryProject): FactoryProject {
+  const customRecipeIds = new Set(
+    project.recipes.filter(isCustomRateRecipe).map((recipe) => recipe.id),
+  );
+  if (customRecipeIds.size === 0) {
+    return project;
+  }
+  let changed = false;
+  const nodes = project.nodes.map((node) => {
+    if (node.colorTag !== "blue" || !customRecipeIds.has(node.recipeId)) {
+      return node;
+    }
+    changed = true;
+    const unpainted = { ...node };
+    delete unpainted.colorTag;
+    return unpainted;
+  });
+  return changed ? { ...project, nodes } : project;
 }
 
 /**

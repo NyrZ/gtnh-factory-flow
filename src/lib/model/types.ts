@@ -250,10 +250,20 @@ export interface TargetRate {
   displayName?: string;
 }
 
+/** Which way a custom rate card faces: it makes the resource, or it drinks it. */
+export type CustomRateMode = "supply" | "request";
+
 export interface FactoryNode {
   id: string;
   recipeId: string;
   colorTag?: FactoryNodeColorTag;
+  /**
+   * Custom rate cards only: the dial, kept on the CARD rather than in the
+   * synthetic recipe's slot. The slot is the live value the solver reads, and
+   * it is emptied every time the card lets go of its resource — this is what
+   * survives that, so a card you unwire and rewire comes back on your number.
+   */
+  customRate?: { perSecond: number; mode: CustomRateMode };
   machineCount: number;
   parallel: number;
   overclockTier: MachineTier | string;

@@ -11,8 +11,10 @@ import type { AlternativeCycleFace } from "@/lib/nei/alternative-cycle";
 import { createCropFarmPlaceholderRecipe } from "@/lib/model/passive-production";
 import {
   createCustomRatePlaceholderRecipe,
+  getCustomRateDial,
   getCustomRateSlot,
   isCustomRateRecipe,
+  releaseCustomRates,
   withCustomRateSlot,
   type CustomRateMode,
 } from "@/lib/model/custom-rate";
@@ -885,14 +887,12 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     );
   },
   addCustomRateNode: () => {
-    // Each custom rate node owns its recipe (the rate lives on it).
+    // Each custom rate node owns its recipe (the rate lives on it). No paint
+    // tag: an unpainted custom rate card gets its own deep blue in RecipeNode,
+    // which stays a card face you can read rather than a colour from the
+    // player's palette. Painting one still works and still wins.
     set((state) =>
-      addRecipeNodeToState(
-        state,
-        createCustomRatePlaceholderRecipe(createId("recipe")),
-        undefined,
-        { colorTag: "blue" },
-      ),
+      addRecipeNodeToState(state, createCustomRatePlaceholderRecipe(createId("recipe"))),
     );
   },
   setCustomRateConfig: (nodeId, patch) => {
@@ -904,21 +904,29 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       if (!node || !recipe || !isCustomRateRecipe(recipe)) {
         return state;
       }
-      const slot = getCustomRateSlot(recipe);
-      if (!slot) {
+      // The dial answers on an empty card too: you can set a card up before
+      // wiring it, and the numbers survive it letting go of a resource.
+      const dial = getCustomRateDial(node, recipe);
+      const mode = patch.mode ?? dial.mode;
+      const perSecond = patch.perSecond ?? dial.perSecond;
+      if (mode === dial.mode && perSecond === dial.perSecond) {
         return state;
       }
-      const mode = patch.mode ?? slot.mode;
-      const perSecond = patch.perSecond ?? slot.resource.amount;
-      const nextRecipe = withCustomRateSlot(recipe, slot.resource, mode, perSecond);
-      const modeFlipped = mode !== slot.mode;
+      const slot = getCustomRateSlot(recipe);
+      const modeFlipped = mode !== dial.mode;
       const project = touchProject({
         ...state.project,
-        recipes: state.project.recipes.map((entry) =>
-          entry.id === recipe.id ? nextRecipe : entry,
+        nodes: state.project.nodes.map((entry) =>
+          entry.id === nodeId ? { ...entry, customRate: { perSecond, mode } } : entry,
         ),
-        // A flipped mode reverses the node's direction — old wires point the
-        // wrong way, so they drop.
+        recipes: state.project.recipes.map((entry) =>
+          entry.id === recipe.id && slot
+            ? withCustomRateSlot(entry, slot.resource, mode, perSecond)
+            : entry,
+        ),
+        // A flipped mode reverses the card's direction, so its old wires point
+        // the wrong way and drop. The card then has nothing wired to it and
+        // lets go of its resource (touchProject), keeping the dial.
         edges: modeFlipped
           ? state.project.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId)
           : state.project.edges,
@@ -937,7 +945,9 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       }
       const existing = getCustomRateSlot(recipe);
       const mode: CustomRateMode = customSide === "output" ? "supply" : "request";
-      const perSecond = existing?.resource.amount ?? 1;
+      // The dialed number, never the last-adopted slot's: a card that held
+      // water at 50/s and is handed lava keeps the 50.
+      const perSecond = getCustomRateDial(node, recipe).perSecond;
       const resourceChanged =
         existing !== undefined &&
         (existing.resource.kind !== resource.kind || existing.resource.id !== resource.id);
@@ -965,6 +975,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           : state.project.edges;
       const project = touchProject({
         ...state.project,
+        // The side you wired IS the direction, so the dial follows it.
+        nodes: state.project.nodes.map((entry) =>
+          entry.id === customNodeId ? { ...entry, customRate: { perSecond, mode } } : entry,
+        ),
         recipes: state.project.recipes.map((entry) =>
           entry.id === recipe.id ? nextRecipe : entry,
         ),
@@ -3245,7 +3259,11 @@ function haveSameMachineCounts(left: FactoryProject, right: FactoryProject): boo
 
 function touchProject(project: FactoryProject): FactoryProject {
   return {
-    ...project,
+    // Every edit passes through here, which is the one place that can promise
+    // a custom rate card never keeps a resource after its last wire goes —
+    // whether the wire, the machine at the far end or a whole selection was
+    // what got deleted.
+    ...releaseCustomRates(project),
     metadata: {
       ...project.metadata,
       updatedAt: new Date().toISOString(),

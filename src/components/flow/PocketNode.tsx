@@ -1,7 +1,7 @@
 "use client";
 
 import { type Node, type NodeProps } from "@xyflow/react";
-import { memo, useState } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import { Copy, Expand, PackageOpen, Save } from "lucide-react";
 import type { FactoryPocket } from "@/lib/model/types";
 import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
@@ -16,6 +16,7 @@ import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
 import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
 import type { PocketPortSummary, PocketSummary } from "./pocket-summary";
+import { useRenderedHandles } from "./use-rendered-handles";
 
 export interface PocketNodeData extends Record<string, unknown> {
   pocket: FactoryPocket;
@@ -42,6 +43,9 @@ export const POCKET_NODE_WIDTH = RECIPE_NODE_WIDTH;
 /** The purple ink pair: names in white, figures a step down. */
 const INK_MUTED = "text-[#c9b8ec]";
 
+/** Full-strength pocket purple, for the accent every inset panel mixes in. */
+const POCKET_ACCENT = "#8d6fd1";
+
 function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const { pocket, summary, railPorts } = data;
   const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
@@ -58,6 +62,13 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
 
   const inputs = summary?.inputs ?? [];
   const outputs = summary?.outputs ?? [];
+  // A pocket's ports follow its membership, and a swap can leave the card the
+  // exact same size with different ports on it. React Flow only re-measures
+  // handles on resize, so it has to be told — see use-rendered-handles.ts.
+  useRenderedHandles(pocket.id, [
+    ...(railPorts?.inputs ?? []).map((port) => port.handleId),
+    ...(railPorts?.outputs ?? []).map((port) => port.handleId),
+  ]);
   // Pointing at a resource in the right-hand panel lights every card that
   // touches it. A pocket touches one whenever the resource crosses its
   // boundary, so it lights up on exactly the same terms as a machine card:
@@ -130,7 +141,12 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
           border would push the rows off the grid), painted star-field purple. */}
       <div
         data-node-glance-root=""
-        className="relative bg-[#3b2d52] shadow-[inset_0_0_0_2px_#241b33,inset_4px_4px_0_#5e4a85,inset_-4px_-4px_0_#1a1326]"
+        // Painted like a colour-tagged machine card, in the pocket's own
+        // purple: the port chips and the name bar it shares with RecipeNode
+        // read the accent and come out dark purple instead of board grey.
+        // The head buttons stay their hand-painted selves — they are chrome.
+        className="recipe-node-painted relative bg-[#3b2d52] shadow-[inset_0_0_0_2px_#241b33,inset_4px_4px_0_#5e4a85,inset_-4px_-4px_0_#1a1326]"
+        style={{ "--recipe-node-accent": POCKET_ACCENT } as CSSProperties}
       >
         {/* Zoomed out, the card is a star on purple — a pocket, not a machine.
             Hovering opens the same I/O reveal a machine card gives: name bar
@@ -295,7 +311,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               />
               {inputs.length > 0 && outputs.length > 0 ? (
                 <div
-                  className={`flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black ${INK_MUTED}`}
+                  className={`mc-rail-arrow flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black ${INK_MUTED}`}
                 >
                   →
                 </div>

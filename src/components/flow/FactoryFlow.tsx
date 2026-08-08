@@ -156,6 +156,7 @@ import {
 import {
   CUSTOM_RATE_ANY_RESOURCE_ID,
   getCustomRateSlot,
+  isCustomRateNodeId,
   isCustomRateRecipe,
 } from "@/lib/model/custom-rate";
 import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
@@ -2502,14 +2503,18 @@ export function FactoryFlow() {
             return;
           }
 
-          // A custom-rate node's universal port adopts whatever it's wired to.
-          const sourceIsAny = sourceHandle.resourceId === CUSTOM_RATE_ANY_RESOURCE_ID;
-          const targetIsAny = targetHandle.resourceId === CUSTOM_RATE_ANY_RESOURCE_ID;
-          if (sourceIsAny !== targetIsAny) {
-            const customEnd = sourceIsAny
+          // A custom rate card adopts whatever it is wired to, and re-adopts
+          // when something else lands on it later. The test is which CARD this
+          // is, not which port id it is showing: once a card has adopted, its
+          // port carries a real resource id, and matching on that is what made
+          // a card refuse every resource but the one it already held.
+          const sourceIsCustom = isCustomRateNodeId(project, connection.source);
+          const targetIsCustom = isCustomRateNodeId(project, connection.target);
+          if (sourceIsCustom !== targetIsCustom) {
+            const customEnd = sourceIsCustom
               ? { nodeId: connection.source, side: sourceHandle.side }
               : { nodeId: connection.target, side: targetHandle.side };
-            const machineEnd = sourceIsAny
+            const machineEnd = sourceIsCustom
               ? { nodeId: connection.target, handleId: connection.targetHandle ?? undefined }
               : { nodeId: connection.source, handleId: connection.sourceHandle ?? undefined };
             const machineResource = machineEnd.handleId
@@ -2520,7 +2525,7 @@ export function FactoryFlow() {
             }
             return;
           }
-          if (sourceIsAny && targetIsAny) {
+          if (sourceIsCustom && targetIsCustom) {
             return;
           }
 
@@ -2692,10 +2697,11 @@ export function FactoryFlow() {
       }
 
       if (draggedResource && targetHandle) {
-        // Dropped onto a custom-rate node's universal port: the machine side
-        // decides direction (an output feeds it, an input drinks from it).
+        // Dropped onto a custom rate card, empty or already holding something:
+        // the machine side decides direction (an output feeds it, an input
+        // drinks from it) and the card adopts what was dropped.
         if (
-          targetHandle.resourceId === CUSTOM_RATE_ANY_RESOURCE_ID &&
+          isCustomRateNodeId(project, targetHandle.nodeId) &&
           draggedResource.id !== CUSTOM_RATE_ANY_RESOURCE_ID &&
           draggedResource.id !== TRASH_ANY_RESOURCE_ID &&
           draggedResource.nodeId !== targetHandle.nodeId
@@ -7632,9 +7638,22 @@ function findNodeDropTarget(
 
   const contextualRecipe = getEffectiveNodeRecipe(recipe, node);
 
-  // An unset custom rate node shows universal ports and adopts whatever lands.
-  if (isCustomRateRecipe(recipe) && !getCustomRateSlot(contextualRecipe)) {
-    return draggingUniversalPort ? undefined : port({ kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID });
+  // A custom rate card takes anything. Unset, it shows the two universal
+  // sockets and the drop lands on those; set, the drop lands on the port it is
+  // already showing and the card adopts the new resource in place of the old.
+  // Only the side it faces answers: a card that supplies can be asked for
+  // something, not fed something. Turning it round is the dial's job.
+  if (isCustomRateRecipe(recipe)) {
+    if (draggingUniversalPort) {
+      return undefined;
+    }
+    const slot = getCustomRateSlot(contextualRecipe);
+    if (!slot) {
+      return port({ kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID });
+    }
+    return slot.mode === (side === "output" ? "supply" : "request")
+      ? port({ kind: slot.resource.kind, id: slot.resource.id })
+      : undefined;
   }
 
   if (draggingUniversalPort) {
@@ -7946,18 +7965,19 @@ function isCompatibleResourceConnection(
     );
   }
 
-  // Custom-rate universal ports accept any concrete resource on the far end.
-  const sourceIsAny = sourceHandle.resourceId === CUSTOM_RATE_ANY_RESOURCE_ID;
-  const targetIsAny = targetHandle.resourceId === CUSTOM_RATE_ANY_RESOURCE_ID;
-  if (sourceIsAny || targetIsAny) {
-    if (sourceIsAny && targetIsAny) {
+  // A custom rate card accepts any concrete resource on the far end, whether
+  // it is holding one already or not.
+  const sourceIsCustom = isCustomRateNodeId(project, connection.source);
+  const targetIsCustom = isCustomRateNodeId(project, connection.target);
+  if (sourceIsCustom || targetIsCustom) {
+    if (sourceIsCustom && targetIsCustom) {
       return false;
     }
     if (sourceHandle.side === targetHandle.side) {
       return false;
     }
-    const machineNodeId = sourceIsAny ? connection.target : connection.source;
-    const machineHandleId = sourceIsAny ? connection.targetHandle : connection.sourceHandle;
+    const machineNodeId = sourceIsCustom ? connection.target : connection.source;
+    const machineHandleId = sourceIsCustom ? connection.targetHandle : connection.sourceHandle;
     return Boolean(
       machineNodeId &&
         machineHandleId &&

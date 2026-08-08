@@ -56,6 +56,7 @@ import {
 } from "@/lib/model";
 import {
   CUSTOM_RATE_ANY_RESOURCE_ID,
+  getCustomRateDial,
   getCustomRateSlot,
   isCustomRateRecipe,
   type CustomRateMode,
@@ -73,6 +74,7 @@ import { NodeGlanceText, glanceTileStyle } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./machine-icons";
 import { publishDockTopInset } from "./dock-insets";
+import { useRenderedHandles } from "./use-rendered-handles";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { MachineStatsContent } from "./MachineStatsContent";
@@ -103,7 +105,12 @@ import {
   type PortStory,
 } from "./flow-explainers";
 import { useFactoryStore } from "@/store/factory-store";
-import { GT_NODE_COLORS, heatmapColorFor, heatmapInkFor } from "./node-colors";
+import {
+  CUSTOM_RATE_NODE_COLOR,
+  GT_NODE_COLORS,
+  heatmapColorFor,
+  heatmapInkFor,
+} from "./node-colors";
 import { useBoardView } from "./board-view";
 import { getPaintBrushCursor } from "./paint-cursor";
 import { GT_TIER_COLORS } from "./tier-colors";
@@ -111,6 +118,14 @@ import { GT_TIER_COLORS } from "./tier-colors";
 // Full width so the crop config panel and stat grid line up with the recipe
 // canvas edge instead of forcing their own wider box.
 const CROP_CONFIG_PANEL_WIDTH_CLASS = "w-full";
+
+// Module constants, not fresh arrays per render: these feed the handle-set
+// key, and a new array every render would be extra work on the hottest card.
+const EMPTY_HANDLE_IDS: readonly string[] = [];
+const CUSTOM_RATE_UNIVERSAL_HANDLE_IDS: readonly string[] = [
+  makeResourceHandleId("input", { kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID }),
+  makeResourceHandleId("output", { kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID }),
+];
 
 export interface RecipeNodeData extends Record<string, unknown> {
   projectNode: FactoryNode;
@@ -158,7 +173,16 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // Heatmap wins over the paint tag while it is on, and gives it straight back
   // when it goes off — the tag is never written to or lost.
   const { heatmapMode, calmMode, glanceMode } = useBoardView();
-  const paintColor = projectNode.colorTag ? GT_NODE_COLORS[projectNode.colorTag] : undefined;
+  // A custom rate card that nobody has painted wears the app's own deep blue,
+  // not a colour off the player's palette. The palette's panels are pale by
+  // design (they tint a card without hiding it) and the card's own ink stays
+  // light, which on a pale blue put white text on a pale blue face. Painting
+  // one still works and still wins.
+  const paintColor = projectNode.colorTag
+    ? GT_NODE_COLORS[projectNode.colorTag]
+    : isCustomRateRecipe(recipe)
+      ? CUSTOM_RATE_NODE_COLOR
+      : undefined;
   const heatColor = heatmapMode
     ? heatmapColorFor(result?.utilization, projectNode.enabled !== false)
     : undefined;
@@ -268,6 +292,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     const isCustomRateNode = isCustomRateRecipe(recipe);
     const customRateSlot = isCustomRateNode ? getCustomRateSlot(recipe) : undefined;
     const isCustomRatePlaceholder = isCustomRateNode && !customRateSlot;
+    // What the dial shows. An empty card has no slot to read, so the numbers
+    // come off the card itself, which is also what keeps them across a card
+    // letting go of a resource and being wired to another.
+    const customRateDial = isCustomRateNode
+      ? getCustomRateDial(projectNode, recipe)
+      : undefined;
 
     return {
       machineHandlers,
@@ -283,6 +313,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       isCropFarmPlaceholder,
       isCustomRateNode,
       customRateSlot,
+      customRateDial,
       isCustomRatePlaceholder,
       isCropProductionNode: cropProductionControls.length > 0,
       beeFrameControls,
@@ -315,6 +346,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     isCropFarmPlaceholder,
     isCustomRateNode,
     customRateSlot,
+    customRateDial,
     isCustomRatePlaceholder,
     isCropProductionNode,
     beeFrameControls,
@@ -336,6 +368,22 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     projectNode.id,
     overclockedRecipe,
     verdict,
+  );
+  // The ports this card actually renders below, in render order. A placeholder
+  // shows no rails at all: a crop farm waiting on a crop has nothing to wire,
+  // and a custom rate node shows its two universal sockets instead. Handing
+  // the list to React Flow keeps its handle bounds honest when the set changes
+  // without the card changing size — see use-rendered-handles.ts.
+  useRenderedHandles(
+    projectNode.id,
+    isCropFarmPlaceholder
+      ? EMPTY_HANDLE_IDS
+      : isCustomRatePlaceholder
+        ? CUSTOM_RATE_UNIVERSAL_HANDLE_IDS
+        : [
+            ...rails.inputs.map((port) => port.handleId),
+            ...rails.outputs.map((port) => port.handleId),
+          ],
   );
   const exceedsMaxTier =
     tierControl !== undefined &&
@@ -578,14 +626,24 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // window directly without touching the frame this element draws.
         className={[
           "recipe-node-window relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]",
+          // The paint's colours live on the WHOLE card, header included: the
+          // name bar takes the accent too, and it sits above the tinted face.
+          nodeColor ? "recipe-node-painted" : "",
           isInspectorHighlighted ? "resource-glow" : "",
         ].join(" ")}
         style={
           nodeColor
-            ? {
+            ? ({
                 backgroundColor: nodeColor.panel,
                 boxShadow: `inset 0 0 0 2px ${nodeColor.border}, inset 4px 4px 0 var(--mc-100), inset -4px -4px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
-              }
+                "--recipe-node-tint": nodeColor.panel,
+                "--recipe-node-tint-header": nodeColor.header,
+                "--recipe-node-tint-border": nodeColor.border,
+                // The full-strength dye. Panels mix a little of it into their
+                // own dark, which is what makes a red card's boxes dark red
+                // instead of either black or pink.
+                "--recipe-node-accent": nodeColor.swatch,
+              } as CSSProperties)
             : undefined
         }
       >
@@ -837,18 +895,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           ) : null}
         </div>
         </div>
-        <div
-          className={nodeColor ? "recipe-node-tinted-area" : undefined}
-          style={
-            nodeColor
-              ? ({
-                  "--recipe-node-tint": nodeColor.panel,
-                  "--recipe-node-tint-header": nodeColor.header,
-                  "--recipe-node-tint-border": nodeColor.border,
-                } as CSSProperties)
-              : undefined
-          }
-        >
+        <div className={nodeColor ? "recipe-node-tinted-area" : undefined}>
           {isCropFarmPlaceholder ? (
             <button
               type="button"
@@ -856,7 +903,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 event.stopPropagation();
                 setCropMenuOpen(true);
               }}
-              className="nodrag mx-auto my-0 flex h-[80px] w-[240px] items-center justify-center gap-2 border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[14px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+              className="mc-panel nodrag mx-auto my-0 flex h-[80px] w-[240px] items-center justify-center gap-2 border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[14px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
             >
               <Sprout className="h-5 w-5" /> Pick a crop
             </button>
@@ -884,7 +931,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               pending={pendingResourceConnection}
             />
             {rails.inputs.length > 0 && rails.outputs.length > 0 ? (
-              <div className="flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
+              <div className="mc-rail-arrow flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
                 →
               </div>
             ) : null}
@@ -896,12 +943,15 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             />
           </div>
           )}
-          {customRateSlot ? (
+          {/* The dial is on the card whether it holds a resource or not: an
+              empty card still has a number and a direction, and they are what
+              the next thing you wire to it starts on. */}
+          {customRateDial ? (
             <CustomRatePanel
               nodeId={projectNode.id}
-              mode={customRateSlot.mode}
-              kind={customRateSlot.resource.kind}
-              perSecond={customRateSlot.resource.amount}
+              mode={customRateDial.mode}
+              kind={customRateSlot?.resource.kind ?? "item"}
+              perSecond={customRateDial.perSecond}
             />
           ) : null}
           {/* The bottom cluster: the config dials (coil tiers, TGS tools,
@@ -919,20 +969,20 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               {calmMode ? null : machineConfigPanel}
               {calmMode ? null : passiveProductionPanel}
               <div
-                className={[
-                  // A hairline over the stats: the knobs are one thing, the
-                  // verdict below them is another.
-                  "min-w-0 border-t border-[var(--mc-56)] pb-[6px] pt-[6px] text-[14px] leading-5 text-[var(--mc-ink)]",
-                  nodeColor ? "recipe-node-stat-grid" : "",
-                ].join(" ")}
-                style={nodeColor ? { backgroundColor: nodeColor.panel } : undefined}
+                // A hairline over the stats: the knobs are one thing, the
+                // verdict below them is another. No background of its own —
+                // this strip is card FACE, and the face is painted once by
+                // .recipe-node-tinted-area. It used to paint itself with the
+                // raw tag colour, which left the bottom of a painted card a
+                // visibly different shade from the rest of it.
+                className="min-w-0 border-t border-[var(--mc-56)] pb-[6px] pt-[6px] text-[14px] leading-5 text-[var(--mc-ink)]"
               >
                 {calmMode ? (
                   /* Pure presentation: the count as one large line, centred,
                      on the same bordered tile every other element sits on —
                      bare text floated alone on the card face. */
                   <div className="flex min-w-0 items-center justify-center">
-                    <span className="truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+                    <span className="mc-panel truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                       {projectNode.machineCount}×{" "}
                       {isCropProductionNode
                         ? projectNode.machineCount === 1
@@ -1238,7 +1288,7 @@ function UsageStat({
     >
       {/* One card, one divider: the number and the word are the same
           sentence — how hard it runs, and why. Two boxes read as two facts. */}
-      <div className="flow-usage-stat flex min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+      <div className="mc-panel flow-usage-stat flex min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
         <div className="min-w-0 px-1.5">
           <div className="text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
             Usage
@@ -2037,15 +2087,16 @@ export function PortChip({
 // whatever resource the far end carries (the machine side decides direction).
 function CustomRateUniversalPorts({ nodeId }: { nodeId: string }) {
   return (
-    // Six cells: one row of ports over the explanation.
-    <div className="flex h-[120px] flex-col gap-0">
+    // Four cells: one row of sockets over one line of explanation. The dial
+    // sits under this block and takes two more, so an empty card is the same
+    // height as a card with one port on it.
+    <div className="flex h-[80px] flex-col gap-0">
       <div className="flex h-[40px] items-center justify-between gap-3">
         <UniversalPortChip nodeId={nodeId} side="input" label="Drain any" />
         <UniversalPortChip nodeId={nodeId} side="output" label="Supply any" />
       </div>
-      <p className="mx-auto flex max-w-[300px] flex-1 items-center text-center text-[11px] leading-tight text-[var(--mc-ink-muted)]">
-        Wire either port to any machine — this node adopts that resource. Right side
-        supplies it at a dialed rate, left side constantly drains it.
+      <p className="mx-auto flex max-w-[320px] flex-1 items-center text-center text-[11px] leading-tight text-[var(--mc-ink-muted)]">
+        Wire either socket to a machine and this card becomes that resource.
       </p>
     </div>
   );
@@ -2064,7 +2115,7 @@ function UniversalPortChip({
   const handleId = makeResourceHandleId(side, { kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID });
   return (
     <div
-      className="relative flex h-[40px] w-[160px] items-center justify-center border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[11px] font-bold uppercase tracking-wide text-[var(--mc-ink-muted)]"
+      className="mc-panel relative flex h-[40px] w-[160px] items-center justify-center border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[11px] font-bold uppercase tracking-wide text-[var(--mc-ink-muted)]"
       data-resource-edge-anchor="true"
       data-resource-node-id={nodeId}
       data-resource-handle-id={handleId}
@@ -2127,14 +2178,16 @@ function CustomRatePanel({
   const modeButtonClassName = (active: boolean) =>
     [
       "nodrag h-6 px-2 text-[11px] font-bold uppercase",
+      // The chosen side is the app's blue and keeps it on any paint: it is the
+      // one thing on this row that says which way the card faces.
       active
         ? "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-85)]"
-        : "bg-[var(--mc-82)] text-[var(--mc-ink-muted)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-47)] hover:bg-[var(--mc-100)]",
+        : "mc-control bg-[var(--mc-82)] text-[var(--mc-ink-muted)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-47)] hover:bg-[var(--mc-100)]",
     ].join(" ");
 
   return (
     // Two cells tall, or more if the dial needs them.
-    <GridBlock className="nodrag border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <GridBlock className="mc-panel nodrag border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
     <div className="flex items-center gap-1">
       <div className="flex border-2 border-[var(--mc-33)]">
         <button
@@ -2145,7 +2198,7 @@ function CustomRatePanel({
           }}
           onPointerDown={(event) => event.stopPropagation()}
           className={modeButtonClassName(mode === "supply")}
-          title="Supply: makes the resource at this rate. Flipping reverses the node and drops its wires."
+          title="Supply: this card makes the resource at this rate. Flipping turns the card round, so its wires drop and it lets go of the resource. The rate stays."
         >
           Supply
         </button>
@@ -2157,7 +2210,7 @@ function CustomRatePanel({
           }}
           onPointerDown={(event) => event.stopPropagation()}
           className={modeButtonClassName(mode === "request")}
-          title="Request: constantly drains the resource at this rate. Flipping reverses the node and drops its wires."
+          title="Request: this card drains the resource at this rate, constantly. Flipping turns the card round, so its wires drop and it lets go of the resource. The rate stays."
         >
           Request
         </button>
@@ -2186,7 +2239,7 @@ function CustomRatePanel({
         // the typed digits, so a "5" node is small and a "1000000000" node
         // grows only when it has to.
         style={{ width: `${Math.min(Math.max(draft.length + 2, 5), 16)}ch` }}
-        className="nodrag h-6 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
+        className="mc-control nodrag h-6 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
       />
       <span className="shrink-0 pr-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
         {rateUnitSuffix(kind === "fluid").trim() || "/s"}
@@ -2776,7 +2829,7 @@ function MachineConfigControlPanel({
   const rows = Math.ceil(controls.length / 2);
   return (
     <GridBlock
-      className="nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      className="mc-panel nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
       minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
     >
       <div className="grid grid-cols-[repeat(auto-fit,minmax(168px,1fr))] items-center gap-x-1 gap-y-1">
@@ -2848,7 +2901,7 @@ function PassiveProductionConfigPanel({
   return (
     <GridBlock
       className={[
-        "nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
+        "mc-panel nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
         className,
       ].join(" ")}
       minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
@@ -3131,7 +3184,7 @@ function Stat({
   valueClassName?: string;
 }) {
   return (
-    <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <div className="mc-panel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
       <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className={["truncate font-medium", valueClassName ?? ""].join(" ")}>{value}</div>
     </div>
@@ -3178,10 +3231,10 @@ function MachineCountStat({
   };
 
   const stepButtonClassName =
-    "nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
+    "mc-control nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
 
   return (
-    <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <div className="mc-panel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
       <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className="flex min-w-0 items-center gap-0.5">
         <button
@@ -3214,7 +3267,7 @@ function MachineCountStat({
           inputMode="numeric"
           aria-label={`${label} count`}
           title={`Edit ${label.toLowerCase()} count`}
-          className="nodrag h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
+          className="mc-control nodrag h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
         />
         <button
           type="button"

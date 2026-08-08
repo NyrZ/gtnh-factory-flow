@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.32.0",
+    date: "2026-08-08",
+    headline: "Custom rate cards let go, and every wire out of one shows",
+    notes: [
+      "Wiring a custom rate card to a machine drew no line at all. The rate counted and the machine ran on it, but the board showed nothing between the two cards until you reloaded. The line now appears the moment you let go, and so does any wire on a card that changes what it holds: a different machine, a different alternative for a slot, a swap inside a pocket.",
+      "A custom rate card holds its resource only while something is wired to it. Pull the last wire and it goes back to a blank card with two sockets, ready for whatever you drag onto it next. Before, a card that once carried water carried water for ever and quietly refused everything else.",
+      "You can also just drop something else on a card that is already wired, and it becomes that instead.",
+      "The rate you dialed and the supply/request choice now live on the card, so they survive all of it. The dial is on a blank card too: set it up first, then wire it.",
+      "Painting a card now colours the whole card. The name bar, the item chips, the boxes along the bottom and the arrow in the middle all go to a dark shade of the colour you picked, so a red card is red all the way through and everything on it is still easy to read. Before, the paint reached the item chips and nothing else, and the usage and machine boxes stayed black on every colour.",
+      "Pockets, crop farms and custom rate cards are built the same way now: purple, green and blue cards with their own dark panels. Custom rate cards were a pale blue with white writing on it, which was the hardest thing on the board to read. Cards you already have change with them.",
+    ],
+  },
+  {
     version: "1.31.0",
     date: "2026-08-08",
     headline: "A cell is an item, and a Canner is a machine you place",

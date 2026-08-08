@@ -268,6 +268,12 @@ export const factoryNodeSchema = z.object({
   id: z.string().min(1),
   recipeId: z.string().min(1),
   colorTag: factoryNodeColorTagSchema.optional(),
+  customRate: z
+    .object({
+      perSecond: z.number().min(0),
+      mode: z.enum(["supply", "request"]),
+    })
+    .optional(),
   machineCount: z.number().min(0),
   parallel: z
     .number()

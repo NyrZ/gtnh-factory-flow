@@ -666,6 +666,27 @@ img {
     2px 2px 0 var(--mc-24);
 }
 
+/* ===== Painted cards =====================================================
+   A card's colour reaches all of it, in two strengths.
+
+   The FACE is the tint muted toward the unpainted card face: a wash the
+   panels sit on rather than a slab of colour.
+
+   Everything inset on the card — the name bar, the item chips, the usage and
+   reason box, the machine and parallel counters, the config dials, the rate
+   dial, the arrow between the rails — is that colour's DARK ACCENT: a little
+   of the full-strength dye mixed into the same dark surface the element has
+   unpainted. So a red card has dark red boxes and a purple pocket has dark
+   purple ones, while every one of them stays a dark ground with light text
+   on it, at the same contrast an unpainted card has.
+
+   The alternative, tinting panels toward the pale face colour, is what this
+   replaces: it put light text on light panels, and it reached the item chips
+   but not the stats, so a painted card had a black strip along its bottom.
+
+   Everything opts IN by class, so semantic surfaces — a binding red port, a
+   hungry amber one, a tier badge, the delete button — carry no class and are
+   never repainted by a colour tag. */
 .recipe-node-tinted-area {
   background: color-mix(in srgb, var(--recipe-node-tint) 82%, var(--mc-78));
   box-shadow:
@@ -673,30 +694,35 @@ img {
     inset -1px -1px 0 rgba(0, 0, 0, 0.25);
 }
 
-.recipe-node-tinted-area .recipe-node-nei-tint {
-  background: color-mix(in srgb, var(--recipe-node-tint) 88%, var(--mc-78));
+.recipe-node-painted .mc-panel,
+.recipe-node-painted .flow-port:not(.flow-port--bind):not(.flow-port--hot) {
+  background: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-71));
+  border-color: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-47));
 }
 
-.recipe-node-tinted-area .recipe-node-nei-tint .recipe-node-window-stats {
-  background: color-mix(in srgb, var(--recipe-node-tint) 86%, var(--mc-78));
+/* The name bar sits one step up from the panels, as it does unpainted. */
+.recipe-node-painted .minecraft-title {
+  background: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-61));
 }
 
-.recipe-node-canvas-tint::before {
-  content: "";
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  background: color-mix(in srgb, var(--recipe-node-tint-header) 42%, transparent);
-}
-
-.recipe-node-stat-grid > div {
-  background: color-mix(in srgb, var(--recipe-node-tint) 86%, var(--mc-71));
-  border-color: color-mix(in srgb, var(--recipe-node-tint-border) 62%, var(--mc-47));
-}
-
-.recipe-node-stat-grid input {
-  background: color-mix(in srgb, var(--recipe-node-tint) 42%, var(--mc-85));
+/* Things you type in or press sit a step lighter than the panel behind them,
+   again the same step as unpainted. */
+.recipe-node-painted .mc-control {
+  background: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-85));
+  border-color: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-47));
   color: var(--mc-ink);
+}
+
+.recipe-node-painted .mc-control:hover {
+  background: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-100));
+}
+
+/* The arrow between the rails is the one place the dye shows at strength:
+   it is a mark, not a surface, so it takes the colour rather than a wash of
+   it, mixed far enough toward the ink that a black or grey card still has a
+   visible arrow. */
+.recipe-node-painted .mc-rail-arrow {
+  color: color-mix(in srgb, var(--recipe-node-accent) 60%, var(--mc-ink));
 }
 
 /* ===== Node verdict strip + port rails ===================================
@@ -1241,13 +1267,6 @@ img {
   background: #cf8e00;
 }
 
-/* Color-tagged nodes tint neutral ports like every other panel; semantic
-   states (binding red, hungry amber) always win over the paint. */
-.recipe-node-tinted-area .flow-port:not(.flow-port--bind):not(.flow-port--hot) {
-  background: color-mix(in srgb, var(--recipe-node-tint) 86%, var(--mc-71));
-  border-color: color-mix(in srgb, var(--recipe-node-tint-border) 62%, var(--mc-47));
-}
-
 /* A port pulled into the hovered flow scope must be unmissable: the one warm
    glow colour the whole app lights up in (see --glow-line). Works over tints
    and semantic tones alike. */
@@ -1314,14 +1333,6 @@ img {
   background: #4a5a6c;
 }
 
-/* Calmed bind/hot chips on a painted card take the paint like every other
-   panel — without this they'd sit grey on a tinted face. */
-.factory-flow-board--calm .recipe-node-tinted-area .flow-port--bind,
-.factory-flow-board--calm .recipe-node-tinted-area .flow-port--hot {
-  background: color-mix(in srgb, var(--recipe-node-tint) 86%, var(--mc-71));
-  border-color: color-mix(in srgb, var(--recipe-node-tint-border) 62%, var(--mc-47));
-}
-
 /* The usage-hover teaching link stays, in steel: with the alert channel calmed
    to near-black the outline would all but vanish. */
 .factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
@@ -1348,4 +1359,3 @@ img {
 .factory-flow-board--calm .board-edit-chrome {
   display: none;
 }
-

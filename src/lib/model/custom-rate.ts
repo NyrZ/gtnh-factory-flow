@@ -1,23 +1,55 @@
-import type { Recipe, ResourceAmount } from "./types";
+import type { CustomRateMode, FactoryNode, Recipe, ResourceAmount } from "./types";
 
 /**
  * The custom rate node: a source/sink you dial by hand. Supply mode makes a
  * chosen resource at a fixed rate for requesters; request mode is the
- * negative — a constant drain that asks for the resource. Modeled as a
+ * negative: a constant drain that asks for the resource. Modeled as a
  * synthetic one-second recipe (amount per craft == rate per second), so the
  * solver treats it like any other machine with no special cases.
+ *
+ * A card holds its resource only for as long as it is wired to something. Pull
+ * the last wire and it lets go and offers its universal ports again, so the
+ * next thing you drag onto it is what it becomes — see `releaseCustomRates`.
+ * The dial survives that on the node (`FactoryNode.customRate`); the resource
+ * does not, because a card holding a resource nothing asked for was a card
+ * that quietly refused every other resource you tried to give it.
  */
 export const CUSTOM_RATE_MACHINE_TYPE = "Custom Rate";
 export const CUSTOM_RATE_DURATION_TICKS = 20;
 /** The placeholder's universal wire-here ports adopt whatever connects. */
 export const CUSTOM_RATE_ANY_RESOURCE_ID = "custom-any";
+/** The rate a card starts on, before anyone has dialed one. */
+export const CUSTOM_RATE_DEFAULT_PER_SECOND = 1;
 
-export type CustomRateMode = "supply" | "request";
+export type { CustomRateMode };
 
 export function isCustomRateRecipe(
   recipe: Pick<Recipe, "machineType"> | undefined,
 ): boolean {
   return recipe?.machineType === CUSTOM_RATE_MACHINE_TYPE;
+}
+
+/**
+ * Is this card a custom rate card? The CARD is the socket, not the port id it
+ * happens to be showing: a card already holding water still takes a drop of
+ * lava, and answers with the port it is showing rather than refusing because
+ * the ids do not match.
+ */
+export function isCustomRateNodeId(
+  project: {
+    nodes: Array<Pick<FactoryNode, "id" | "recipeId">>;
+    recipes: Array<Pick<Recipe, "id" | "machineType">>;
+  },
+  nodeId: string | null | undefined,
+): boolean {
+  if (!nodeId) {
+    return false;
+  }
+  const node = project.nodes.find((entry) => entry.id === nodeId);
+  if (!node) {
+    return false;
+  }
+  return isCustomRateRecipe(project.recipes.find((entry) => entry.id === node.recipeId));
 }
 
 export function getCustomRateSlot(
@@ -44,8 +76,80 @@ export function createCustomRatePlaceholderRecipe(id: string): Recipe {
     eut: 0,
     inputs: [],
     outputs: [],
-    notes: "Wire any port to this — it adopts that resource.",
+    notes: "Wire any port to this and it adopts that resource.",
     source: { recipeMap: "custom-rate" },
+  };
+}
+
+/** The empty recipe again: same id, same node, no resource and no name. */
+export function withoutCustomRateSlot(recipe: Recipe): Recipe {
+  return { ...recipe, name: "Custom Rate", inputs: [], outputs: [] };
+}
+
+/**
+ * The dial a card is set to: what the panel shows and what the next adoption
+ * starts from. The remembered value on the node wins over the live slot, so
+ * dialing a rate and then rewiring the card keeps the number you typed.
+ */
+export function getCustomRateDial(
+  node: Pick<FactoryNode, "customRate">,
+  recipe: Pick<Recipe, "inputs" | "outputs">,
+): { perSecond: number; mode: CustomRateMode } {
+  const slot = getCustomRateSlot(recipe);
+  return {
+    perSecond:
+      node.customRate?.perSecond ?? slot?.resource.amount ?? CUSTOM_RATE_DEFAULT_PER_SECOND,
+    mode: node.customRate?.mode ?? slot?.mode ?? "supply",
+  };
+}
+
+/**
+ * Every custom rate card left holding a resource with nothing wired to it,
+ * emptied. Returns the same project when there is nothing to release, so the
+ * common mutation costs one pass over the nodes and allocates nothing.
+ *
+ * This runs from `touchProject`, which is to say after EVERY project edit, so
+ * there is no path — delete a wire, delete the machine at the far end, delete
+ * a whole selection, undo into a state with fewer wires — that can leave a
+ * card stuck on a resource it is no longer connected to.
+ */
+export function releaseCustomRates<
+  Project extends {
+    nodes: FactoryNode[];
+    recipes: Recipe[];
+    edges: Array<{ source: string; target: string }>;
+  },
+>(project: Project): Project {
+  const customRecipeIds = new Set<string>();
+  for (const recipe of project.recipes) {
+    if (isCustomRateRecipe(recipe) && getCustomRateSlot(recipe)) {
+      customRecipeIds.add(recipe.id);
+    }
+  }
+  if (customRecipeIds.size === 0) {
+    return project;
+  }
+
+  const wired = new Set<string>();
+  for (const edge of project.edges) {
+    wired.add(edge.source);
+    wired.add(edge.target);
+  }
+  const releasedRecipeIds = new Set<string>();
+  for (const node of project.nodes) {
+    if (customRecipeIds.has(node.recipeId) && !wired.has(node.id)) {
+      releasedRecipeIds.add(node.recipeId);
+    }
+  }
+  if (releasedRecipeIds.size === 0) {
+    return project;
+  }
+
+  return {
+    ...project,
+    recipes: project.recipes.map((recipe) =>
+      releasedRecipeIds.has(recipe.id) ? withoutCustomRateSlot(recipe) : recipe,
+    ),
   };
 }
 
