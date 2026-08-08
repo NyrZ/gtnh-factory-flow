@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.32.1",
+    date: "2026-08-08",
+    headline: "Presentation mode keeps a card's colour",
+    notes: [
+      "On a painted card, presentation mode turned the input and output plugs black while the rest of the card stayed its colour. Quieting a plug now takes it to that card's own dark shade, so the card reads as one thing.",
+      "Output plugs on a painted card were also missing the colour in normal mode. They have it now.",
+    ],
+  },
+  {
     version: "1.32.0",
     date: "2026-08-08",
     headline: "Custom rate cards let go, and every wire out of one shows",

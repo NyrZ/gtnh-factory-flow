@@ -694,10 +694,20 @@ img {
     inset -1px -1px 0 rgba(0, 0, 0, 0.25);
 }
 
+/* One dark step off the dye, used everywhere a card has a neutral surface.
+   Kept as variables so the calm-mode rules below can hand the SAME pair to
+   the state washes without restating the mix five times. */
+.recipe-node-painted {
+  --recipe-node-accent-panel: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-71));
+  --recipe-node-accent-edge: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-47));
+}
+
 .recipe-node-painted .mc-panel,
-.recipe-node-painted .flow-port:not(.flow-port--bind):not(.flow-port--hot) {
-  background: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-71));
-  border-color: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-47));
+.recipe-node-painted .flow-port:not(.flow-port--bind):not(.flow-port--hot),
+.recipe-node-painted
+  .flow-plug:not(.flow-plug--hungry):not(.flow-plug--blocked):not(.flow-plug--fed) {
+  background: var(--recipe-node-accent-panel);
+  border-color: var(--recipe-node-accent-edge);
 }
 
 /* The name bar sits one step up from the panels, as it does unpainted. */
@@ -1315,6 +1325,22 @@ img {
   --verdict-starved-ink: var(--mc-ink);
   --verdict-blocked-ink: var(--mc-ink);
   --verdict-bottleneck-ink: var(--mc-ink);
+}
+
+/* Calming a state means dropping it to the card's OWN neutral, and on a
+   painted card that neutral is the accent, not board grey. Without this the
+   binding input, the hot input and the fed plug were the only things on a
+   painted card that went flat --mc-71 in presentation mode — every state a
+   card was wearing turned into a black chip on a coloured card, which read
+   as the paint having missed them. Set on the window rather than the shell
+   so the accent is in scope. */
+.factory-flow-board--calm .recipe-node-painted {
+  --state-wash: var(--recipe-node-accent-panel);
+  --state-edge: var(--recipe-node-accent-edge);
+  --port-hot-bg: var(--recipe-node-accent-panel);
+  --port-hot-edge: var(--recipe-node-accent-edge);
+  --port-fed-bg: var(--recipe-node-accent-panel);
+  --port-fed-edge: var(--recipe-node-accent-edge);
 }
 
 /* The accents that don't read the channel: the default want caret and the
