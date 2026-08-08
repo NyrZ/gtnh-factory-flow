@@ -3,6 +3,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  Cpu,
   Factory,
   GitBranchPlus,
   LayoutGrid,
@@ -24,6 +25,7 @@ import {
 import type { DatasetResourceIndexEntry, RecipeSummary } from "@/lib/datasets/types";
 import {
   GT_VOLTAGE_TIERS,
+  formatRate,
   getRecipeMachineHandlers,
   resourceLabel,
   resourceMatchesInput,
@@ -44,10 +46,94 @@ import { BlueprintPanel } from "./BlueprintPanel";
 import { SetupsPanel } from "./SetupsPanel";
 import { machineArtPixels } from "./flow/MachinePicker";
 import { useMachineHandlerIcons } from "./flow/machine-icons";
+import { NEI_PALETTE } from "@/lib/nei-renderer/theme/palette";
 import { NeiRecipeWindow } from "./nei/NeiRecipeWindow";
 import { ResourceIcon } from "./nei/ResourceIcon";
 
 const RECIPE_QUERY_LIMIT = 120;
+
+/**
+ * The recipe book's size rules.
+ *
+ * A recipe is drawn on a fixed NEI canvas, so a card cannot be squeezed: it is
+ * either given the width it needs or it gets cut off, which is what used to
+ * happen. Every number below is therefore derived from what one card needs.
+ */
+// The NEI canvas most recipes are drawn on. Wider ones exist, and like the row
+// height, one decision is made for the whole grid rather than per card.
+const NEI_CANVAS_WIDTH = 170;
+// The add button sits in the panel's own top corner, so a card is no wider
+// than the recipe it draws.
+const CARD_ADD_GUTTER = 0;
+const CARD_GAP = 12;
+// The time strip along the foot of the panel.
+const CARD_CHROME_HEIGHT = 30;
+const NEI_CANVAS_HEIGHT_DEFAULT = 82;
+const NEI_CANVAS_HEIGHT_NATIVE = 120;
+const RECIPE_CARD_MAX_COLUMNS = 3;
+
+const BOARD_SIDEBAR_LEFT = 306;
+const BOARD_SIDEBAR_RIGHT = 330;
+const CATEGORY_RAIL_WIDTH = 290;
+// One column of cards next to the category rail.
+const RECIPE_BOOK_MIN_WIDTH = 640;
+const RECIPE_BOOK_MAX_WIDTH = 1400;
+const RECIPE_BOOK_MAX_HEIGHT = 860;
+// Two columns of cards next to the rail: the size worth stepping around the
+// board's sidebars for.
+const RECIPE_BOOK_COMFORTABLE_WIDTH = 1080;
+// The rail keeps its column only while the recipes still get two of theirs.
+// Held any lower it would win the argument for space and leave a single card
+// stranded in a wide empty column.
+const RECIPE_BOOK_RAIL_NEEDS =
+  CATEGORY_RAIL_WIDTH + (NEI_CANVAS_WIDTH * 2 + CARD_ADD_GUTTER) * 2 + CARD_GAP + 24;
+const RECIPE_BOOK_SHEET_BELOW = 700;
+const ZERO_OFFSET = { x: 0, y: 0 };
+
+interface RecipeBookViewport {
+  /** Filling the screen rather than floating over the board. */
+  sheet: boolean;
+  /** The category rail is a column of its own, not a dropdown. */
+  showRail: boolean;
+  dodgesSidebars: boolean;
+  width: number;
+  height: number;
+}
+
+/**
+ * How many cards fit across, and how big to draw each one.
+ *
+ * Readability wins over density: the scale never drops below 2 while a single
+ * column can still hold it, so a narrow book shows one large readable recipe
+ * rather than two clipped ones.
+ */
+function chooseRecipeGrid(width: number): { columns: number; scale: number } {
+  const cardAtScaleTwo = NEI_CANVAS_WIDTH * 2 + CARD_ADD_GUTTER;
+  const columnWidth = (columns: number) => (width - CARD_GAP * (columns - 1)) / columns;
+
+  let columns = 1;
+  for (let candidate = RECIPE_CARD_MAX_COLUMNS; candidate >= 2; candidate -= 1) {
+    if (columnWidth(candidate) >= cardAtScaleTwo) {
+      columns = candidate;
+      break;
+    }
+  }
+
+  const column = columnWidth(columns);
+  if (column < cardAtScaleTwo) {
+    // A phone. One recipe, drawn as large as the screen allows.
+    return { columns: 1, scale: width >= NEI_CANVAS_WIDTH * 2 ? 2 : 1 };
+  }
+
+  // A column with room to spare draws the recipe larger rather than leaving it
+  // small in the middle of an empty card.
+  return { columns, scale: Math.min(3, Math.floor(column / NEI_CANVAS_WIDTH)) };
+}
+
+function recipeRowHeight(scale: number, native: boolean) {
+  const canvas = native ? NEI_CANVAS_HEIGHT_NATIVE : NEI_CANVAS_HEIGHT_DEFAULT;
+  return canvas * scale + CARD_CHROME_HEIGHT;
+}
 const RESOURCE_DEFAULT_PAGE_SIZE = 6;
 const RESOURCE_ROW_HEIGHT = 40;
 const RESOURCE_ROW_GAP = 2;
@@ -1261,9 +1347,8 @@ function RecipeBookOverlay({
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLElement>(null);
-  const initialPanelSize = getInitialRecipeBookSize();
+  const layout = useRecipeBookViewport();
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [panelSize] = useState(initialPanelSize);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -1273,8 +1358,23 @@ function RecipeBookOverlay({
   } | null>(null);
   const displayedRecipes = filteredRecipes;
 
+  // A book that fills the screen has nowhere to be dragged to, so it ignores
+  // any offset rather than forgetting it: shrink the window and drag it, and
+  // widening the window again puts it back where it was left.
+  const appliedOffset = layout.sheet ? ZERO_OFFSET : dragOffset;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || layout.sheet) {
       return;
     }
 
@@ -1313,8 +1413,20 @@ function RecipeBookOverlay({
 
   return (
     <div
-      className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center px-3 py-4 lg:pl-[306px] lg:pr-[330px]"
+      className={[
+        "pointer-events-auto fixed inset-0 flex items-center justify-center",
+        // While the book steps around the board's sidebars it sits under them,
+        // so they stay usable. Once it stops stepping around them it has to
+        // sit over them, or they clip the book instead.
+        layout.dodgesSidebars ? "z-30" : "z-50",
+        layout.sheet ? "" : "px-3 py-4",
+      ].join(" ")}
       onPointerDown={onClose}
+      style={
+        layout.dodgesSidebars
+          ? { paddingLeft: BOARD_SIDEBAR_LEFT, paddingRight: BOARD_SIDEBAR_RIGHT }
+          : undefined
+      }
     >
       <section
         ref={panelRef}
@@ -1322,21 +1434,32 @@ function RecipeBookOverlay({
         aria-label="Recipe book"
         onPointerDown={(event) => event.stopPropagation()}
         style={{
-          transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
-          width: `min(${panelSize.width}px, calc(100vw - 24px))`,
-          height: `min(${panelSize.height}px, calc(100vh - 32px))`,
+          transform: `translate(${appliedOffset.x}px, ${appliedOffset.y}px)`,
+          width: layout.sheet ? "100%" : `min(${layout.width}px, 100%)`,
+          height: layout.sheet ? "100%" : `min(${layout.height}px, 100%)`,
         }}
       >
         <div className="relative flex min-h-0 flex-1 overflow-hidden border-2 border-[var(--mc-96)] bg-[var(--mc-78)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]">
-          <CategoryRail
-            activeResource={activeResource}
-            mode={mode}
-            tabs={recipeMapTabs}
-            activeRecipeMap={activeRecipeMap}
-            onRecipeMapChange={onRecipeMapChange}
-            onRecipeMapHover={onRecipeMapHover}
-          />
-          <div className="flex min-h-0 flex-1 flex-col">
+          {layout.showRail ? (
+            <CategoryRail
+              activeResource={activeResource}
+              mode={mode}
+              tabs={recipeMapTabs}
+              activeRecipeMap={activeRecipeMap}
+              onRecipeMapChange={onRecipeMapChange}
+              onRecipeMapHover={onRecipeMapHover}
+            />
+          ) : null}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {layout.showRail ? null : (
+            <CategoryPicker
+              activeResource={activeResource}
+              mode={mode}
+              tabs={recipeMapTabs}
+              activeRecipeMap={activeRecipeMap}
+              onRecipeMapChange={onRecipeMapChange}
+            />
+          )}
           <div className="px-2 pt-2">
             <div
               onPointerDown={handlePointerDown}
@@ -1345,7 +1468,10 @@ function RecipeBookOverlay({
               onPointerCancel={handlePointerUp}
               className="flex h-11 cursor-move select-none items-center gap-3 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)]"
             >
-              <span className="min-w-0 leading-[1.1]">
+              {/* The title takes the slack so the machines and the close
+                  button stay pinned to the right rather than floating in the
+                  middle of a wide bar. */}
+              <span className="min-w-0 flex-1 leading-[1.1]">
                 <span className="block text-[8px] font-bold uppercase tracking-[0.14em] text-[#ececec] [text-shadow:1px_1px_0_#4a4a4a]">
                   Category · recipe map
                 </span>
@@ -1356,6 +1482,21 @@ function RecipeBookOverlay({
                 </span>
               </span>
               <CategoryMachineStrip recipe={filteredRecipes[0]} />
+              {/*
+                The book used to be closed only by clicking the board around
+                it. Now that it can cover the whole screen there may be no
+                board left to click, so it says how to leave.
+              */}
+              <button
+                type="button"
+                title="Close recipe book (Esc)"
+                aria-label="Close recipe book"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={onClose}
+                className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-71)] text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
 
@@ -1430,6 +1571,63 @@ function RecipeBookOverlay({
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+/**
+ * The category rail folded into one row, for a book too narrow to spare 290px
+ * for a column. Same job as {@link CategoryRail}: say what is being looked at,
+ * and switch recipe map.
+ */
+function CategoryPicker({
+  activeResource,
+  mode,
+  tabs,
+  activeRecipeMap,
+  onRecipeMapChange,
+}: {
+  activeResource: IndexedResource;
+  mode: "recipes" | "uses";
+  tabs: RecipeMapTab[];
+  activeRecipeMap: string;
+  onRecipeMapChange: (recipeMap: string) => void;
+}) {
+  return (
+    <div className="flex min-w-0 shrink-0 items-center gap-2 border-b-2 border-[var(--mc-55)] bg-[var(--mc-71)] p-2">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
+        <ResourceIcon
+          resource={{ ...activeResource, amount: 1 }}
+          size="sm"
+          bare
+          showAmount={false}
+          tooltip={false}
+          className="!h-full !w-full"
+          iconPixelSize={machineArtPixels(40)}
+        />
+      </span>
+      <span className="min-w-0 flex-1 leading-[1.15]">
+        <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink-muted)]">
+          {mode === "uses" ? "Uses of" : "Recipes for"}
+        </span>
+        <span className="block truncate text-[14px] font-bold text-[var(--mc-ink)]">
+          {resourceLabel(activeResource)}
+        </span>
+      </span>
+      <label className="flex min-w-0 shrink items-center">
+        <span className="sr-only">Category</span>
+        <select
+          value={activeRecipeMap}
+          onChange={(event) => onRecipeMapChange(event.target.value)}
+          className="h-9 w-[150px] max-w-full border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+        >
+          {tabs.map((tab) => (
+            <option key={tab.id} value={tab.id}>
+              {tab.label}
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 }
@@ -1591,12 +1789,13 @@ function VirtualRecipeResultList({
   onLoadMore: () => void;
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
-  const [viewport, setViewport] = useState({ scrollTop: 0, height: 360 });
+  const [viewport, setViewport] = useState({ scrollTop: 0, height: 360, width: 640 });
   // `usesNativeNeiChrome` resolves a layout per call, and infinite scroll keeps
   // growing this array (120, 240, 360...), so it must not run on every scroll
   // frame.
-  const rowHeight = useMemo(() => (recipes.some(usesNativeNeiChrome) ? 322 : 246), [recipes]);
-  const columnCount = 2;
+  const native = useMemo(() => recipes.some(usesNativeNeiChrome), [recipes]);
+  const { columns: columnCount, scale } = chooseRecipeGrid(viewport.width);
+  const rowHeight = recipeRowHeight(scale, native);
   const overscan = 1;
   const rowCount = Math.ceil(recipes.length / columnCount);
   const startRow = Math.max(0, Math.floor(viewport.scrollTop / rowHeight) - overscan);
@@ -1622,6 +1821,9 @@ function VirtualRecipeResultList({
       setViewport({
         scrollTop: scrollParent.scrollTop,
         height: scrollParent.clientHeight,
+        // The width the cards actually get, which is what decides how many fit
+        // and how large each is drawn.
+        width: scrollParent.clientWidth,
       });
     };
 
@@ -1663,7 +1865,10 @@ function VirtualRecipeResultList({
       }
     >
       <div style={{ height: topPadding }} />
-      <div className="grid grid-cols-2 items-start gap-3">
+      <div
+        className="grid items-start justify-items-center gap-3"
+        style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+      >
         {visibleRecipes.map((recipe) => (
           <RecipeResultCard
             key={recipe.id}
@@ -1674,6 +1879,7 @@ function VirtualRecipeResultList({
             onAddConnected={onAddConnected}
             onSlotBrowse={onSlotBrowse}
             contextResource={contextResource}
+            scale={scale}
           />
         ))}
       </div>
@@ -1695,6 +1901,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
   onAddConnected,
   onSlotBrowse,
   contextResource,
+  scale = 2,
 }: {
   recipe: RecipeSummary;
   selected: boolean;
@@ -1707,6 +1914,8 @@ const RecipeResultCard = memo(function RecipeResultCard({
   onAddConnected?: (recipeId: string) => void | Promise<void>;
   onSlotBrowse?: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
   contextResource?: PreviewContextResource;
+  /** How large to draw the recipe. Set by the grid from the width it has. */
+  scale?: number;
 }) {
   const previewRecipe = useMemo(
     () => contextualizePreviewRecipe(summaryToPreviewRecipe(recipe), contextResource),
@@ -1719,6 +1928,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
     () => Object.fromEntries(facesRef.current) as RecipeInputPicks,
     [facesRef],
   );
+  const seconds = recipe.durationTicks / 20;
 
   return (
     <AlternativeCycleScope facesRef={facesRef}>
@@ -1730,7 +1940,33 @@ const RecipeResultCard = memo(function RecipeResultCard({
         selected ? "ring-1 ring-cyan-400" : "",
       ].join(" ")}
     >
-      <div className="flex items-start justify-end gap-2">
+      {/*
+        Everything the card offers now sits on the recipe's own panel: the add
+        button in its top corner and the time along its foot. The card is then
+        exactly as wide as the panel, so a small recipe takes a small card
+        instead of being padded out to a fixed width.
+      */}
+      <div
+        className="relative w-fit overflow-hidden pb-[3px]"
+        style={{ backgroundColor: NEI_PALETTE.panel }}
+      >
+        <NeiRecipeWindow
+          recipe={previewRecipe}
+          scale={scale}
+          compact
+          hideStats
+          contextResource={contextResource}
+          onSlotClick={onSlotBrowse ? (slot, mode) => onSlotBrowse(slot.resource, mode) : undefined}
+        />
+        <div
+          className="flex h-6 items-center gap-2 px-1.5 text-[11px] leading-none"
+          style={{ color: NEI_PALETTE.borderDark }}
+        >
+          <span className="min-w-0 flex-1 truncate">
+            Time: {formatRate(seconds, seconds >= 10 ? 0 : 1)} s
+          </span>
+          <CircuitSetting recipe={previewRecipe} />
+        </div>
         <button
           type="button"
           title={onAddConnected ? "Add and connect recipe node" : "Add recipe node"}
@@ -1743,25 +1979,69 @@ const RecipeResultCard = memo(function RecipeResultCard({
               onAdd(recipe, undefined, currentPicks());
             }
           }}
-          className="absolute right-1 top-1 z-10 inline-flex h-7 w-7 shrink-0 items-center justify-center border border-neutral-600 bg-[#1b1d21] text-neutral-200 hover:border-cyan-400 hover:text-cyan-100"
+          className="absolute right-[3px] top-[3px] z-10 inline-flex h-6 w-6 items-center justify-center border border-[#5a5a5a] bg-[#3b3b3b] text-neutral-100 hover:border-cyan-400 hover:text-cyan-200"
         >
-          {onAddConnected ? <GitBranchPlus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+          {onAddConnected ? <GitBranchPlus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
         </button>
-      </div>
-      <div className="overflow-hidden pb-1 pr-9">
-        <NeiRecipeWindow
-          recipe={previewRecipe}
-          scale={2}
-          compact
-          contextResource={contextResource}
-          className="mx-auto"
-          onSlotClick={onSlotBrowse ? (slot, mode) => onSlotBrowse(slot.resource, mode) : undefined}
-        />
       </div>
     </article>
     </AlternativeCycleScope>
   );
 });
+
+const PROGRAMMED_CIRCUIT_ITEM = "gregtech:gt.integrated_circuit";
+
+/**
+ * The number a machine's circuit slot has to be dialled to, or the empty slot
+ * saying it does not care.
+ *
+ * Every GregTech machine has this slot, so the card always says where it
+ * stands: a recipe that needs circuit 11 will not run on circuit 2, and a
+ * recipe showing the empty slot runs whatever the circuit is set to. Leaving
+ * it off entirely is what made the two cases impossible to tell apart.
+ */
+function CircuitSetting({ recipe }: { recipe: Recipe }) {
+  if (recipe.kind !== "gregtech_machine") {
+    return null;
+  }
+
+  const circuit = recipe.inputs.find(
+    (input) => input.kind === "item" && input.id.replace(/@\d+$/, "") === PROGRAMMED_CIRCUIT_ITEM,
+  );
+  const setting = recipe.programmedCircuit;
+
+  return (
+    <span
+      title={
+        setting
+          ? `Programmed circuit: set to ${setting}`
+          : "No circuit setting: runs whatever the circuit is set to"
+      }
+      className="flex h-5 shrink-0 items-center gap-1 px-1"
+      style={{
+        backgroundColor: NEI_PALETTE.panelDark,
+        boxShadow: `inset 1px 1px 0 ${NEI_PALETTE.borderDark}, inset -1px -1px 0 ${NEI_PALETTE.panelLight}`,
+      }}
+    >
+      {circuit ? (
+        <ResourceIcon
+          resource={{ ...circuit, amount: 1 }}
+          size="sm"
+          bare
+          showAmount={false}
+          tooltip={false}
+          className="!h-4 !w-4"
+          iconPixelSize={32}
+        />
+      ) : (
+        <Cpu className="h-3.5 w-3.5 opacity-40" />
+      )}
+      <span className="tabular-nums" style={{ color: NEI_PALETTE.borderDarker }}>
+        {setting ?? "-"}
+      </span>
+    </span>
+  );
+}
 
 function summaryToPreviewRecipe(summary: RecipeSummary): Recipe {
   return {
@@ -1971,17 +2251,60 @@ function scheduleAfterPaint(callback: () => void) {
   };
 }
 
-function getInitialRecipeBookSize() {
+/**
+ * How much room the recipe book has, and what shape it should take.
+ *
+ * Read on every resize. It used to be measured once when the book opened and
+ * never again, so widening the window, or turning a phone, left the book at
+ * whatever size it happened to open at.
+ */
+function readRecipeBookViewport(): RecipeBookViewport {
   if (typeof window === "undefined") {
-    return { width: 760, height: 760 };
+    return { sheet: false, showRail: true, dodgesSidebars: true, width: 960, height: 760 };
   }
 
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  // Too narrow to be a window at all: fill the screen instead of leaving a
+  // book that is mostly margin.
+  if (viewportWidth < RECIPE_BOOK_SHEET_BELOW) {
+    return {
+      sheet: true,
+      showRail: false,
+      dodgesSidebars: false,
+      width: viewportWidth,
+      height: viewportHeight,
+    };
+  }
+
+  // The board's own sidebars are worth keeping in view, but only while
+  // stepping around them still leaves the book a comfortable size. Below that
+  // the book covers them, which is the lesser loss.
+  const besideSidebars = viewportWidth - BOARD_SIDEBAR_LEFT - BOARD_SIDEBAR_RIGHT - 24;
+  const dodgesSidebars = besideSidebars >= RECIPE_BOOK_COMFORTABLE_WIDTH;
+  const available = dodgesSidebars ? besideSidebars : viewportWidth - 24;
+
   return {
-    // The category rail (228px) lives inside the panel now, so the book is
-    // wider than the old tab-bar layout.
-    width: Math.min(1150, Math.max(560, window.innerWidth - 360 - 440 - 48)),
-    height: Math.min(760, Math.max(360, window.innerHeight - 32)),
+    sheet: false,
+    showRail: available >= RECIPE_BOOK_RAIL_NEEDS,
+    dodgesSidebars,
+    width: Math.min(RECIPE_BOOK_MAX_WIDTH, Math.max(RECIPE_BOOK_MIN_WIDTH, available)),
+    height: Math.min(RECIPE_BOOK_MAX_HEIGHT, Math.max(360, viewportHeight - 32)),
   };
+}
+
+function useRecipeBookViewport(): RecipeBookViewport {
+  const [viewport, setViewport] = useState(readRecipeBookViewport);
+
+  useEffect(() => {
+    const update = () => setViewport(readRecipeBookViewport());
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return viewport;
 }
 
 function getDatasetVersionCacheKey(version: {

@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.30.0",
+    date: "2026-08-08",
+    headline: "The recipe book fits your screen, and shows the circuit setting",
+    notes: [
+      "The book now takes the room it has instead of a fixed size, and follows the window as you resize it. On a laptop it is roughly twice as wide as before, which is what it needed: the add button and the output slot used to be cut off the right edge and there was no way to reach them.",
+      "On a phone it fills the screen and shows one recipe at a time, drawn as large as the screen allows. Nothing is cut off any more. The category list becomes a dropdown when there is no room for it, and Escape or the new X closes the book.",
+      "Each recipe now carries its own add button and its time on the recipe panel itself, so a card is only as wide as the recipe it draws. Small recipes take small cards, and more of them fit side by side.",
+      "Machines that need their circuit dialled to a number now show that circuit in the recipe, marked as something the machine keeps rather than eats. Over thirty thousand recipes were missing it, so they looked like they would run on any setting.",
+      "Recipes no longer show the energy per craft, which was only ever repeating what the tier already tells you.",
+    ],
+  },
+  {
     version: "1.29.0",
     date: "2026-08-07",
     headline: "Slots that take more than one item now show it, and let you choose",

@@ -26,6 +26,11 @@ interface NeiRecipeWindowProps {
   hideCollapseControls?: boolean;
   contextResource?: Pick<ResourceAmount, "kind" | "id">;
   statsAction?: ReactNode;
+  /**
+   * Leave the time and energy line off, for callers that put it somewhere of
+   * their own. The recipe book draws it on the panel itself.
+   */
+  hideStats?: boolean;
 }
 
 export const NeiRecipeWindow = memo(function NeiRecipeWindow({
@@ -45,6 +50,7 @@ export const NeiRecipeWindow = memo(function NeiRecipeWindow({
   hideCollapseControls = false,
   contextResource,
   statsAction,
+  hideStats = false,
 }: NeiRecipeWindowProps) {
   const recipeMap = recipe.source?.recipeMap ?? recipe.machineType;
   const layout = useMemo(() => getNeiRecipeLayout(recipe), [recipe]);
@@ -141,7 +147,7 @@ export const NeiRecipeWindow = memo(function NeiRecipeWindow({
           hideCollapseControls={preserveNativeSlots}
           contextResource={contextResource}
         />
-        <div className="recipe-node-window-stats">{stats}</div>
+        {hideStats ? null : <div className="recipe-node-window-stats">{stats}</div>}
       </div>
     );
   }
