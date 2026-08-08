@@ -1207,9 +1207,24 @@ function addRecipe(recipe) {
   });
 }
 
+// Two different things travel under `alternatives`, and only one of them may
+// ride along on every recipe that mentions the item.
+//
+// Ore dictionary membership belongs to the ITEM. It is identical everywhere
+// the item appears, so it is written once into the shared resource catalog and
+// stripped from the recipe copies; inlining `logWood`'s fifty members into
+// every recipe that burns a log would bloat the dataset for no new fact.
+//
+// What a recipe SLOT accepts belongs to the RECIPE. The Circuit Assembler will
+// take tin or lead in place of soldering alloy, but that says nothing about
+// solder in any other machine, so this must stay on the input and must never
+// reach the catalog.
 function compactRecipeResource(resource) {
   const compact = { ...resource };
-  delete compact.alternatives;
+  delete compact.slotChoice;
+  if (!resource.slotChoice) {
+    delete compact.alternatives;
+  }
   return compact;
 }
 
@@ -1237,6 +1252,7 @@ function resourceAmount(rawResource, options = {}) {
     return undefined;
   }
 
+  const slotChoices = slotAlternatives(rawResource, id, amount);
   const iconPath = renderedIconPath(rawResource.icon) ?? text(rawResource.iconPath, undefined);
   const tooltip = [
     ...(normalizeStringArray(rawResource.tooltip) ?? []),
@@ -1255,10 +1271,14 @@ function resourceAmount(rawResource, options = {}) {
     consumed: options.consumed === false || rawResource.consumed === false ? false : undefined,
     chance: normalizeChance(options.chance ?? rawResource.chance),
     neiSlot: options.neiSlot,
-    // The other things this exact slot accepts, straight from the recipe. A
-    // GregTech slot can take a resistor OR an SMD resistor, and soldering alloy
-    // OR twice the tin, and only the recipe knows which slots those are.
-    alternatives: slotAlternatives(rawResource, id, amount),
+    // The other things this exact slot accepts, straight from the recipe. The
+    // Circuit Assembler slot that wants 72 L of soldering alloy will equally
+    // take 144 L of tin or 288 L of lead, and only the recipe knows that.
+    alternatives: slotChoices,
+    // Marks the line above as slot data rather than ore dictionary membership,
+    // so `compactRecipeResource` keeps it and the shared catalog does not take
+    // it. Stripped before the recipe is written; it never ships.
+    slotChoice: slotChoices ? true : undefined,
   });
   return resource;
 }
@@ -1383,7 +1403,10 @@ function resourceCatalogEntry(resource) {
     modId: resource.modId,
     tooltip: resource.tooltip,
     oreDictionary: resource.oreDictionary,
-    alternatives: resource.alternatives,
+    // The catalog is keyed by id and shared by every recipe, so only
+    // item-level membership may live here. A substitute one recipe's slot
+    // happens to allow must not follow the item into every other recipe.
+    alternatives: resource.slotChoice ? undefined : resource.alternatives,
   });
 }
 
