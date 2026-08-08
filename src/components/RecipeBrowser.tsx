@@ -187,24 +187,30 @@ const RESOURCE_GRID_GAP = 4;
 const RESOURCE_PAGER_HEIGHT = 40;
 const RESOURCE_VIEW_STORAGE_KEY = "gtnh-factory-flow.resource-view.v1";
 
-type ResourceKindFilter = "all" | "item" | "fluid";
 type ResourceSortMode = "relevance" | "name" | "mod" | "recipes";
 type ResourceViewMode = "list" | "grid";
 
 /**
- * Where the listed things have to come from.
+ * The one question the list is answering.
  *
- * "Board" is answered here rather than by the server: the cards on the board are
+ * Six answers, one at a time, because that is how they are actually used: nobody
+ * asks for the fluids a bee makes, they ask for what bees make. Splitting the
+ * six across a kind row and a source row made it look like they combined, and
+ * the combinations were either the same list or nothing.
+ *
+ * "Board" is answered from the project rather than the server: the cards are
  * already in memory, and nothing the dataset knows could answer it anyway.
  */
-type ResourceSourceMode = "all" | "board" | "plants" | "bees";
+type ResourceFilterMode = "all" | "item" | "fluid" | "board" | "plants" | "bees";
 
-const RESOURCE_SOURCE_CHOICES: Array<{
-  mode: ResourceSourceMode;
+const RESOURCE_FILTER_CHOICES: Array<{
+  mode: ResourceFilterMode;
   label: string;
   title: string;
 }> = [
-  { mode: "all", label: "All", title: "Everything in the loaded dataset" },
+  { mode: "all", label: "All", title: "Every item and fluid in the loaded dataset" },
+  { mode: "item", label: "Items", title: "Items only" },
+  { mode: "fluid", label: "Fluids", title: "Fluids only" },
   {
     mode: "board",
     label: "Board",
@@ -213,6 +219,15 @@ const RESOURCE_SOURCE_CHOICES: Array<{
   { mode: "plants", label: "Plants", title: "Only what a crop farm or a tree can grow" },
   { mode: "bees", label: "Bees", title: "Only what bees produce" },
 ];
+
+/** The dataset query only knows kinds and sources; this splits the choice up. */
+function resourceFilterKind(filter: ResourceFilterMode): "item" | "fluid" | undefined {
+  return filter === "item" || filter === "fluid" ? filter : undefined;
+}
+
+function resourceFilterSource(filter: ResourceFilterMode): "plants" | "bees" | undefined {
+  return filter === "plants" || filter === "bees" ? filter : undefined;
+}
 
 /**
  * What a cell with no room for words says when you hover it.
@@ -284,11 +299,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourcePageSize, setResourcePageSize] = useState(RESOURCE_DEFAULT_PAGE_SIZE);
   const [resourceResults, setResourceResults] = useState<IndexedResource[]>([]);
   const [resourceTotal, setResourceTotal] = useState(0);
-  const [resourceKind, setResourceKind] = useState<ResourceKindFilter>("all");
   const [resourceMod, setResourceMod] = useState("");
   const [resourceSort, setResourceSort] = useState<ResourceSortMode>("relevance");
   const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
-  const [resourceSource, setResourceSource] = useState<ResourceSourceMode>("all");
+  const [resourceFilter, setResourceFilter] = useState<ResourceFilterMode>("all");
   // The master switch: what the whole left panel is FOR right now — finding
   // items to build with, stamping saved blueprints, or browsing the network's
   // shared setups. One at a time, full column each; the old bottom-strip
@@ -309,17 +323,16 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const debouncedRecipeSearch = useDebouncedValue(recipeSearch, RESOURCE_SEARCH_DEBOUNCE_MS);
   const debouncedRecipeBookSearch = useDebouncedValue(recipeBookSearch, RECIPE_SEARCH_DEBOUNCE_MS);
 
+  const onBoard = resourceFilter === "board";
   // The board filter is answered here, from the cards themselves, so it needs no
   // request and cannot go stale. Everything else comes back from the server.
-  const boardResults = useBoardResourceResults(resourceSource === "board", {
+  const boardResults = useBoardResourceResults(onBoard, {
     query: debouncedRecipeSearch.trim(),
-    kind: resourceKind,
     mod: resourceMod,
     sort: resourceSort,
     offset: resourcePage * resourcePageSize,
     limit: resourcePageSize,
   });
-  const onBoard = resourceSource === "board";
   const displayedResources = onBoard ? boardResults.resources : resourceResults;
   const displayedTotal = onBoard ? boardResults.total : resourceTotal;
   const displayedMods = onBoard ? boardResults.mods : resourceMods;
@@ -397,19 +410,17 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             query: debouncedRecipeSearch.trim(),
             offset: page * resourcePageSize,
             limit: resourcePageSize,
-            kind: resourceKind,
+            filter: resourceFilter,
             mod: resourceMod,
             sort: resourceSort,
-            source: resourceSource,
           })
         : "",
     [
       debouncedRecipeSearch,
-      resourceKind,
+      resourceFilter,
       resourceMod,
       resourcePageSize,
       resourceSort,
-      resourceSource,
       selectedDatasetVersion,
     ],
   );
@@ -543,14 +554,13 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     return deferStateUpdate(() => setResourcePage(0));
   }, [
     debouncedRecipeSearch,
-    resourceKind,
+    resourceFilter,
     resourceMod,
     resourceSort,
-    resourceSource,
     selectedDatasetVersion?.id,
   ]);
 
-  // Kind/search changes can empty the selected mod's scope; drop a stale pick.
+  // A filter or search change can empty the selected mod's scope; drop a stale pick.
   useEffect(() => {
     if (resourceMod && resourceMods.length > 0 && !resourceMods.some((m) => m.id === resourceMod)) {
       return deferStateUpdate(() => setResourceMod(""));
@@ -568,7 +578,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
 
   useEffect(() => {
     // The board's own resources are answered from memory, below: no request.
-    if (!selectedDatasetVersion || resourceSource === "board") {
+    if (!selectedDatasetVersion || onBoard) {
       return deferStateUpdate(() => {
         setResourceResults([]);
         setResourceTotal(0);
@@ -607,10 +617,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         query,
         offset: resourcePage * resourcePageSize,
         limit: resourcePageSize,
-        kind: resourceKind === "all" ? undefined : resourceKind,
+        kind: resourceFilterKind(resourceFilter),
         mod: resourceMod || undefined,
         sort: resourceSort,
-        source: resourceSource === "all" ? undefined : resourceSource,
+        source: resourceFilterSource(resourceFilter),
       },
       { signal: controller.signal },
     )
@@ -644,12 +654,12 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     datasetManifestUrl,
     getResourceQueryKey,
     debouncedRecipeSearch,
-    resourceKind,
+    onBoard,
+    resourceFilter,
     resourceMod,
     resourcePage,
     resourcePageSize,
     resourceSort,
-    resourceSource,
     selectedDatasetVersion,
   ]);
 
@@ -891,29 +901,46 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             filters in. Bare, this tab's controls read as a different kind of
             thing from the other two, when they are the same thing. */}
         <ControlsCard>
-          <label className="flex h-9 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
-            <Search className="h-4 w-4 text-neutral-500" />
-            <input
-              value={recipeSearch}
-              onChange={(event) => {
-                const value = event.target.value;
-                setRecipeSearch(value);
-              }}
-              placeholder="Search item or fluid..."
-              className="min-w-0 flex-1 bg-transparent outline-none"
-            />
-            {recipeSearch ? (
-              <button
-                type="button"
-                onClick={() => setRecipeSearch("")}
-                title="Clear search"
-                aria-label="Clear search"
-                className="text-neutral-500 hover:text-neutral-200"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            ) : null}
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
+              <Search className="h-4 w-4 text-neutral-500" />
+              <input
+                value={recipeSearch}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setRecipeSearch(value);
+                }}
+                placeholder="Search item or fluid..."
+                className="min-w-0 flex-1 bg-transparent outline-none"
+              />
+              {recipeSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setRecipeSearch("")}
+                  title="Clear search"
+                  aria-label="Clear search"
+                  className="text-neutral-500 hover:text-neutral-200"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </label>
+            {/* How the results are drawn, not which ones: it belongs with the box
+                they come out of rather than in the row of filters. */}
+            <button
+              type="button"
+              onClick={() => changeResourceView(resourceView === "list" ? "grid" : "list")}
+              title={resourceView === "list" ? "Switch to grid view" : "Switch to list view"}
+              aria-label={resourceView === "list" ? "Switch to grid view" : "Switch to list view"}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200"
+            >
+              {resourceView === "list" ? (
+                <LayoutGrid className="h-4 w-4" />
+              ) : (
+                <List className="h-4 w-4" />
+              )}
+            </button>
+          </div>
 
           {/* What the search had to do to find anything. Only ever shown when it
               had to do something: a spelling stood in, or the words were taken
@@ -928,58 +955,24 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             </p>
           ) : null}
 
-          <div className="mt-2 flex items-center gap-1">
-            {(
-              [
-                ["all", "All"],
-                ["item", "Items"],
-                ["fluid", "Fluids"],
-              ] as Array<[ResourceKindFilter, string]>
-            ).map(([kind, label]) => (
-              <button
-                key={kind}
-                type="button"
-                onClick={() => setResourceKind(kind)}
-                className={[
-                  "h-7 flex-1 rounded-[4px] border text-xs font-medium",
-                  resourceKind === kind
-                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
-                    : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
-                ].join(" ")}
-              >
-                {label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => changeResourceView(resourceView === "list" ? "grid" : "list")}
-              title={resourceView === "list" ? "Switch to grid view" : "Switch to list view"}
-              aria-label={resourceView === "list" ? "Switch to grid view" : "Switch to list view"}
-              className="flex h-7 w-8 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200"
-            >
-              {resourceView === "list" ? (
-                <LayoutGrid className="h-3.5 w-3.5" />
-              ) : (
-                <List className="h-3.5 w-3.5" />
-              )}
-            </button>
-          </div>
-
-          {/* Where the thing has to come from. "Board" is answered from the
-              cards in front of you; the other two are what the dataset says can
-              be grown or coaxed out of a bee. */}
-          <div className="mt-2 flex items-center gap-1">
-            {RESOURCE_SOURCE_CHOICES.map((choice) => (
+          {/* One question, six answers, one of them on at a time. There is no
+              "fluids a bee makes" to ask for, so there is no second row to pair
+              this with; the view toggle sits with the search box it belongs to. */}
+          {/* Two rows of three rather than six across: the column has no room to
+              print "Fluids" and "Plants" six abreast, and squeezing them was how
+              the labels started clipping. Still one group with one answer on. */}
+          <div className="mt-2 grid grid-cols-3 gap-1">
+            {RESOURCE_FILTER_CHOICES.map((choice) => (
               <button
                 key={choice.mode}
                 type="button"
-                onClick={() => setResourceSource(choice.mode)}
+                onClick={() => setResourceFilter(choice.mode)}
                 title={choice.title}
-                aria-pressed={resourceSource === choice.mode}
+                aria-pressed={resourceFilter === choice.mode}
                 className={[
-                  "h-7 flex-1 rounded-[4px] border text-xs font-medium",
-                  resourceSource === choice.mode
-                    ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+                  "h-7 min-w-0 truncate rounded-[4px] border text-xs font-medium",
+                  resourceFilter === choice.mode
+                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-300"
                     : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
                 ].join(" ")}
               >
@@ -1032,14 +1025,14 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
               resources={displayedResources}
               total={displayedTotal}
               currentPage={resourcePage}
-              isLoading={resourceQueryLoading && resourceSource !== "board"}
+              isLoading={resourceQueryLoading && !onBoard}
               error={resourceQueryError}
               emptyLabel={
-                resourceSource === "board"
+                onBoard
                   ? "Nothing on the board yet."
-                  : resourceSource === "plants"
+                  : resourceFilter === "plants"
                     ? "No crop grows that."
-                    : resourceSource === "bees"
+                    : resourceFilter === "bees"
                       ? "No bee makes that."
                       : undefined
               }
@@ -1254,7 +1247,6 @@ function useBoardResourceResults(
   enabled: boolean,
   request: {
     query: string;
-    kind: ResourceKindFilter;
     mod: string;
     sort: ResourceSortMode;
     offset: number;
@@ -1285,9 +1277,6 @@ function useBoardResourceResults(
         modCounts.clear();
         const matches: Array<{ resource: IndexedResource; score: number }> = [];
         resources.forEach((resource, index) => {
-          if (request.kind !== "all" && resource.kind !== request.kind) {
-            return;
-          }
           const score = matchSearchEntry(query, fields[index], options);
           if (score === undefined) {
             return;
@@ -1335,7 +1324,6 @@ function useBoardResourceResults(
     };
   }, [
     enabled,
-    request.kind,
     request.limit,
     request.mod,
     request.offset,
@@ -2971,21 +2959,19 @@ function getResourceQueryCacheKey({
   query,
   offset,
   limit,
-  kind,
+  filter,
   mod,
   sort,
-  source,
 }: {
   versionId: string;
   query: string;
   offset: number;
   limit: number;
-  kind: ResourceKindFilter;
+  filter: ResourceFilterMode;
   mod: string;
   sort: ResourceSortMode;
-  source: ResourceSourceMode;
 }) {
-  return [versionId, query.trim().toLowerCase(), offset, limit, kind, mod, sort, source].join("|");
+  return [versionId, query.trim().toLowerCase(), offset, limit, filter, mod, sort].join("|");
 }
 
 

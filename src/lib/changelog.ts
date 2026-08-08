@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.34.1",
+    date: "2026-08-08",
+    headline: "One set of filters, not two",
+    notes: [
+      "Items, fluids, board, plants and bees were split across two rows, which read as though you had to pick one from each. You pick one, full stop: All, Items, Fluids, Board, Plants or Bees. Six buttons, two rows, one of them on.",
+      "The list and grid switch has moved up next to the search box, where it belongs: it changes how results are drawn, not which ones you get.",
+    ],
+  },
+  {
     version: "1.34.0",
     date: "2026-08-08",
     headline: "The search box forgives you, and crops are recipes now",
