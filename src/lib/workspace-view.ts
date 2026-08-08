@@ -45,6 +45,26 @@ export const DEFAULT_WORKSPACE_VIEW: WorkspaceView = {
   favouriteResourceKeys: [],
 };
 
+/** Below this a phone has no room for the board and two columns at once. */
+const NARROW_VIEWPORT_WIDTH = 700;
+
+/**
+ * Whether the side columns start open.
+ *
+ * On a phone the two of them leave the board almost nothing, so they start
+ * folded to their rails and the board gets the screen. The rails keep a button
+ * each, so opening one is a tap away and the choice is then remembered like
+ * any other.
+ */
+function defaultPanelsOpen(): boolean {
+  return typeof window === "undefined" || window.innerWidth >= NARROW_VIEWPORT_WIDTH;
+}
+
+function defaultWorkspaceView(): WorkspaceView {
+  const open = defaultPanelsOpen();
+  return { ...DEFAULT_WORKSPACE_VIEW, leftPanelOpen: open, rightPanelOpen: open };
+}
+
 let workspaceViewState: WorkspaceView = DEFAULT_WORKSPACE_VIEW;
 let workspaceViewLoaded = false;
 const listeners = new Set<() => void>();
@@ -53,7 +73,7 @@ function readWorkspaceView(): WorkspaceView {
   try {
     const raw = window.localStorage.getItem(WORKSPACE_VIEW_STORAGE_KEY);
     if (!raw) {
-      return DEFAULT_WORKSPACE_VIEW;
+      return defaultWorkspaceView();
     }
     const parsed = JSON.parse(raw) as Partial<Record<keyof WorkspaceView, unknown>>;
     // An ABSENT key takes the default; only an explicit `false` means off, so
@@ -72,8 +92,8 @@ function readWorkspaceView(): WorkspaceView {
     return {
       favouriteResourceKeys,
       hiddenResourceKeys: keys(parsed.hiddenResourceKeys).filter((key) => !starred.has(key)),
-      leftPanelOpen: flag(parsed.leftPanelOpen, DEFAULT_WORKSPACE_VIEW.leftPanelOpen),
-      rightPanelOpen: flag(parsed.rightPanelOpen, DEFAULT_WORKSPACE_VIEW.rightPanelOpen),
+      leftPanelOpen: flag(parsed.leftPanelOpen, defaultPanelsOpen()),
+      rightPanelOpen: flag(parsed.rightPanelOpen, defaultPanelsOpen()),
       showHiddenResources: flag(
         parsed.showHiddenResources,
         DEFAULT_WORKSPACE_VIEW.showHiddenResources,
@@ -82,7 +102,7 @@ function readWorkspaceView(): WorkspaceView {
       trendsOpen: flag(parsed.trendsOpen, DEFAULT_WORKSPACE_VIEW.trendsOpen),
     };
   } catch {
-    return DEFAULT_WORKSPACE_VIEW;
+    return defaultWorkspaceView();
   }
 }
 

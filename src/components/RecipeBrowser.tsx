@@ -2145,7 +2145,11 @@ function CircuitSetting({ recipe }: { recipe: Recipe }) {
     return null;
   }
 
-  const setting = recipe.programmedCircuit;
+  // A circuit setting is a small number. Older datasets put a whole item name
+  // in this field, and a card drawn from one would stretch itself around
+  // "Circuit Board (configuration 32100)" rather than say nothing.
+  const raw = recipe.programmedCircuit;
+  const setting = raw && /^\d{1,2}$/.test(raw) ? raw : undefined;
 
   return (
     <span
