@@ -1,23 +1,20 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildTextSearchIndex,
-  getChoiceAlternativesByKey,
-  getWildcardResource,
-  queryTextSearchIndex,
-  searchTokensMatch,
-} from "./dataset-query";
+import { buildTextSearchIndex, queryTextSearchIndex } from "@/lib/search";
+import { matchSearchTokens, parseSearchQuery } from "@/lib/search";
+import { getChoiceAlternativesByKey, getWildcardResource } from "./dataset-query";
 
 describe("dataset query text search", () => {
   it("matches substrings inside tokens without matching across token boundaries", () => {
     const index = buildTextSearchIndex(["Hydrogen Sulfide"], [0]);
+    const tokens = index.tokensByEntry[0] ?? [];
 
-    const sulfideCandidates = queryTextSearchIndex(index, ["ulfide"]) ?? [0];
-    expect(sulfideCandidates).toContain(0);
-    expect(searchTokensMatch(index.tokensByEntry[0] ?? [], ["ulfide"])).toBe(true);
+    const sulfide = parseSearchQuery("ulfide");
+    expect(queryTextSearchIndex(index, sulfide) ?? [0]).toContain(0);
+    expect(matchSearchTokens(sulfide, tokens)).toBeDefined();
 
-    const crossBoundaryCandidates = queryTextSearchIndex(index, ["nsu"]) ?? [0];
-    expect(crossBoundaryCandidates).not.toContain(0);
-    expect(searchTokensMatch(index.tokensByEntry[0] ?? [], ["nsu"])).toBe(false);
+    const crossBoundary = parseSearchQuery("nsu");
+    expect(queryTextSearchIndex(index, crossBoundary) ?? [0]).not.toContain(0);
+    expect(matchSearchTokens(crossBoundary, tokens)).toBeUndefined();
   });
 });
 

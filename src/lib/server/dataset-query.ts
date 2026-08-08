@@ -27,6 +27,22 @@ import {
   isOreDictionaryResource,
   isVirtualChoiceResource,
 } from "@/lib/model";
+import {
+  buildSearchVocabulary,
+  buildTextSearchIndex,
+  buildTokenSearchIndex,
+  matchSearchEntry,
+  matchSearchTokens,
+  parseSearchQuery,
+  queryTextSearchIndex,
+  resolveSearchPhases,
+  splitSearchTokens,
+  type SearchEntryFields,
+  type SearchPhase,
+  type SearchQuery,
+  type SearchVocabulary,
+  type TextSearchIndex,
+} from "@/lib/search";
 
 type TierFilter = "all" | Exclude<MachineTier, "DEMO">;
 type SearchableResource = Pick<
@@ -65,6 +81,8 @@ interface LoadedRecipeIndex {
   recipeMapIconEntriesByMap?: Map<string, RecipeMapIconEntry>;
   recipesByRawRecipeId?: Map<string, Recipe[]>;
   hydratedRecipeSummaries?: Map<number, RecipeSummary>;
+  /** Resources a crop or a bee can produce; see getPassiveSourceResourceKeys. */
+  passiveSourceKeys?: Partial<Record<ResourceSourceFilter, Set<string>>>;
 }
 
 export interface DatasetRecipeRef {
@@ -137,13 +155,14 @@ interface QueryIndexes {
 
 interface ResourceQueryIndexes {
   sortedResourceIndexes: number[];
-  searchText: string[];
+  /**
+   * Each resource split by where its words came from, so a word in the item's
+   * name counts for more than the same word buried in a registry id.
+   */
+  fields: SearchEntryFields[];
   searchIndex: TextSearchIndex;
-}
-
-interface TextSearchIndex {
-  tokensByEntry: string[][];
-  trigramToEntries: Map<string, number[]>;
+  /** The words items are actually called: what a typo gets corrected against. */
+  vocabulary: SearchVocabulary;
 }
 
 interface RecipeShardPayload {
@@ -151,10 +170,20 @@ interface RecipeShardPayload {
   recipes: Recipe[];
 }
 
-// Source-style recipe maps live behind dedicated board tools (like drawers and
-// fluid tanks) instead of the recipe book: nothing is crafted, they only produce.
 const CROP_FARM_RECIPE_MAP = "Crop Farm";
-const HIDDEN_RECIPE_BOOK_MAPS = new Set([CROP_FARM_RECIPE_MAP]);
+
+/**
+ * The recipe maps that are things growing rather than machines running.
+ *
+ * A crop farm is a real way to get an item, so it belongs in the recipe book
+ * next to the machines that make the same thing: looking up Oak Log should show
+ * that a crop can grow one. These sets are also what the "grown" and "bees"
+ * filters in the item list mean.
+ */
+const PLANT_RECIPE_MAPS = new Set([CROP_FARM_RECIPE_MAP, "IC2 Crop", "Tree Growth Simulator"]);
+const BEE_RECIPE_MAPS = new Set(["Bee Produce"]);
+
+export type ResourceSourceFilter = "plants" | "bees";
 
 const datasetRoot = path.join(process.cwd(), "public", "datasets", "gtnh");
 const loadedCatalogs = new Map<string, LoadedRecipeIndex>();
@@ -274,73 +303,72 @@ export async function queryDatasetResources(
     kind?: "item" | "fluid";
     mod?: string;
     sort?: ResourceQuerySort;
+    source?: ResourceSourceFilter;
   },
 ) {
   const catalog = await loadCatalog(versionId);
   const indexes = ensureResourceIndexes(catalog);
-  const queryTokens = splitSearchTokens(request.query);
-  const candidateIndexes = queryTextSearchIndex(indexes.searchIndex, queryTokens);
-  const matches: number[] = [];
-  const modCounts = new Map<string, number>();
+  const sourceKeys = request.source
+    ? await getPassiveSourceResourceKeys(catalog, request.source)
+    : undefined;
+  let modCounts = new Map<string, number>();
 
-  for (const resourceIndex of candidateIndexes ?? indexes.sortedResourceIndexes) {
-    const resource = catalog.resourceIndex[resourceIndex];
-    if (
-      !resource ||
-      isVirtualChoiceResource(resource) ||
-      (!resource.iconPath && !resource.iconAtlas)
-    ) {
-      continue;
-    }
-    if (
-      queryTokens.length &&
-      !searchTokensMatch(indexes.searchIndex.tokensByEntry[resourceIndex] ?? [], queryTokens)
-    ) {
-      continue;
-    }
-    if (request.kind && resource.kind !== request.kind) {
-      continue;
-    }
+  const resolved = resolveSearchPhases(
+    parseSearchQuery(request.query),
+    indexes.vocabulary,
+    (query, options) => {
+      // Counted per pass, because which mods are on offer depends on which
+      // reading of the query the results came from.
+      const counts = new Map<string, number>();
+      const candidateIndexes =
+        queryTextSearchIndex(indexes.searchIndex, query, options) ?? indexes.sortedResourceIndexes;
+      const matches: Array<{ resourceIndex: number; score: number }> = [];
 
-    // Mod counts reflect the search+kind scope, so the mod dropdown always
-    // shows what picking each mod would leave.
-    const modId = getResourceModId(resource);
-    modCounts.set(modId, (modCounts.get(modId) ?? 0) + 1);
-    if (request.mod && modId !== request.mod) {
-      continue;
-    }
-    matches.push(resourceIndex);
-  }
+      for (const resourceIndex of candidateIndexes) {
+        const resource = catalog.resourceIndex[resourceIndex];
+        if (
+          !resource ||
+          isVirtualChoiceResource(resource) ||
+          (!resource.iconPath && !resource.iconAtlas)
+        ) {
+          continue;
+        }
+        if (request.kind && resource.kind !== request.kind) {
+          continue;
+        }
+        if (sourceKeys && !sourceKeys.has(`${resource.kind}:${resource.id}`)) {
+          continue;
+        }
 
-  const sort = request.sort ?? "relevance";
-  if (sort !== "relevance") {
-    const nameOf = (index: number) => {
-      const resource = catalog.resourceIndex[index];
-      return (resource?.displayName ?? resource?.id ?? "").toLowerCase();
-    };
-    if (sort === "name") {
-      matches.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
-    } else if (sort === "mod") {
-      matches.sort((a, b) => {
-        const modCompare = getResourceModId(catalog.resourceIndex[a]).localeCompare(
-          getResourceModId(catalog.resourceIndex[b]),
-        );
-        return modCompare !== 0 ? modCompare : nameOf(a).localeCompare(nameOf(b));
-      });
-    } else if (sort === "recipes") {
-      matches.sort((a, b) => {
-        const countDelta =
-          (catalog.resourceIndex[b]?.recipeCount ?? 0) -
-          (catalog.resourceIndex[a]?.recipeCount ?? 0);
-        return countDelta !== 0 ? countDelta : nameOf(a).localeCompare(nameOf(b));
-      });
-    }
-  }
+        const score = matchSearchEntry(query, indexes.fields[resourceIndex] ?? {}, options);
+        if (score === undefined) {
+          continue;
+        }
+
+        // Mod counts reflect the search+kind scope, so the mod dropdown always
+        // shows what picking each mod would leave.
+        const modId = getResourceModId(resource);
+        counts.set(modId, (counts.get(modId) ?? 0) + 1);
+        if (request.mod && modId !== request.mod) {
+          continue;
+        }
+        matches.push({
+          resourceIndex,
+          score: score > 0 ? score + resourceRelevanceBias(resource) : score,
+        });
+      }
+
+      modCounts = counts;
+      return matches;
+    },
+  );
+
+  const matches = sortResourceMatches(catalog, resolved.results, request.sort ?? "relevance");
 
   return {
     resources: matches
       .slice(request.offset, request.offset + request.limit)
-      .map((index) => catalog.resourceIndex[index])
+      .map((match) => catalog.resourceIndex[match.resourceIndex])
       .filter(Boolean),
     total: matches.length,
     offset: request.offset,
@@ -349,7 +377,65 @@ export async function queryDatasetResources(
     mods: [...modCounts.entries()]
       .map(([id, count]) => ({ id, count }))
       .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id)),
+    ...searchOutcome(resolved),
   };
+}
+
+/**
+ * The nudge that settles two equally good name matches.
+ *
+ * Between "Steel Plate" and "Compressed Aluminium Plate Casing", the item used
+ * in more recipes and named more plainly is the one that was meant, so both
+ * count for a little - never enough to outrank an actual better match.
+ */
+function resourceRelevanceBias(resource: DatasetResourceIndexEntry): number {
+  const name = resource.displayName ?? resource.id;
+  return Math.log10(1 + (resource.recipeCount ?? 0)) / 10 - name.length / 400;
+}
+
+/** What the search did, for the "showing results for ..." line. */
+function searchOutcome(resolved: { query: SearchQuery; phase: SearchPhase }) {
+  return {
+    searchPhase: resolved.phase,
+    corrections: resolved.phase === "corrected" ? resolved.query.corrections : [],
+  };
+}
+
+function sortResourceMatches(
+  catalog: LoadedRecipeIndex,
+  matches: Array<{ resourceIndex: number; score: number }>,
+  sort: ResourceQuerySort,
+) {
+  const nameOf = (match: { resourceIndex: number }) => {
+    const resource = catalog.resourceIndex[match.resourceIndex];
+    return (resource?.displayName ?? resource?.id ?? "").toLowerCase();
+  };
+  const modOf = (match: { resourceIndex: number }) =>
+    getResourceModId(catalog.resourceIndex[match.resourceIndex]);
+  const recipesOf = (match: { resourceIndex: number }) =>
+    catalog.resourceIndex[match.resourceIndex]?.recipeCount ?? 0;
+
+  if (sort === "name") {
+    return [...matches].sort((left, right) => nameOf(left).localeCompare(nameOf(right)));
+  }
+  if (sort === "mod") {
+    return [...matches].sort(
+      (left, right) =>
+        modOf(left).localeCompare(modOf(right)) || nameOf(left).localeCompare(nameOf(right)),
+    );
+  }
+  if (sort === "recipes") {
+    return [...matches].sort(
+      (left, right) =>
+        recipesOf(right) - recipesOf(left) || nameOf(left).localeCompare(nameOf(right)),
+    );
+  }
+
+  // Best match. With nothing typed every score is 0 and the sort is stable, so
+  // the list keeps the index's own most-used-first order.
+  return [...matches].sort(
+    (left, right) => right.score - left.score || recipesOf(right) - recipesOf(left),
+  );
 }
 
 export async function queryDatasetRecipes(
@@ -371,33 +457,28 @@ export async function queryDatasetRecipes(
 
   const recipeCatalog = await loadRecipeIndex(versionId);
   const indexes = ensureIndexes(recipeCatalog);
-  const queryTokens = splitSearchTokens(request.query);
   const resourceScope = request.resource
     ? getRecipeResourceScope(recipeCatalog, request.resource, request.mode)
     : undefined;
   const candidates = request.resource
     ? getResourceIndexes(indexes.recipeIndexesByResource, resourceScope!, request.mode)
     : indexes.allRecipeIndexes;
-  const searchCandidates = queryTextSearchIndex(indexes.searchIndex, queryTokens);
-  const searchCandidateSet = searchCandidates ? new Set(searchCandidates) : undefined;
+  const resolved = resolveRecipeSearch(
+    request.query,
+    () => ensureResourceIndexes(recipeCatalog).vocabulary,
+    (query, options) => scoreRecipeCandidates(indexes.searchIndex, candidates, query, options),
+  );
+  const searchScores = resolved.searchScores;
   const eligibleRecipeMaps = request.resource
     ? getResourceRecipeMaps(indexes.recipeMapsByResource, resourceScope!, request.mode)
     : [...new Set(indexes.recipeMaps.filter(Boolean))];
   const sortedRecipeMaps = eligibleRecipeMaps
-    .filter((recipeMap) => !HIDDEN_RECIPE_BOOK_MAPS.has(recipeMap))
     .filter((recipeMap) =>
-      recipeMapHasMatchingIndexedRecipe(
-        indexes,
-        candidates,
-        recipeMap,
-        request.maxTier,
-        queryTokens,
-        searchCandidateSet,
-        {
-          scope: resourceScope,
-          mode: request.mode,
-        },
-      ),
+      recipeMapHasMatchingIndexedRecipe(indexes, candidates, recipeMap, request.maxTier, {
+        searchScores,
+        scope: resourceScope,
+        mode: request.mode,
+      }),
     )
     .sort((a, b) => a.localeCompare(b));
   const effectiveMap =
@@ -415,49 +496,35 @@ export async function queryDatasetRecipes(
           effectiveMap,
         )
       : candidates;
-  const withIcons: Array<{ recipeIndex: number; iconScore: number }> = [];
-  const withoutIcons: number[] = [];
-  let total = 0;
+  const matching: RankedRecipe[] = [];
 
   for (const recipeIndex of scopedCandidates) {
-    if (HIDDEN_RECIPE_BOOK_MAPS.has(indexes.recipeMaps[recipeIndex] ?? "")) {
-      continue;
-    }
     if (!recipeMatchesTierIndex(indexes, recipeIndex, request.maxTier)) {
       continue;
     }
-    if (searchCandidateSet && !searchCandidateSet.has(recipeIndex)) {
-      continue;
-    }
-    if (
-      queryTokens.length &&
-      !searchTokensMatch(indexes.searchIndex.tokensByEntry[recipeIndex] ?? [], queryTokens)
-    ) {
+    if (searchScores && !searchScores.has(recipeIndex)) {
       continue;
     }
     if (effectiveMap && indexes.recipeMaps[recipeIndex] !== effectiveMap) {
       continue;
     }
-    total += 1;
-    const iconScore = indexes.iconScores[recipeIndex] ?? 0;
-    if (iconScore > 0) {
-      withIcons.push({ recipeIndex, iconScore });
-    } else {
-      withoutIcons.push(recipeIndex);
-    }
+    matching.push({
+      recipeIndex,
+      score: searchScores?.get(recipeIndex) ?? 0,
+      iconScore: indexes.iconScores[recipeIndex] ?? 0,
+    });
   }
 
-  const recipeIndexes = [
-    ...withIcons.sort((a, b) => b.iconScore - a.iconScore).map((entry) => entry.recipeIndex),
-    ...withoutIcons,
-  ].slice(request.offset, request.offset + request.limit);
+  const recipeIndexes = rankRecipes(matching)
+    .slice(request.offset, request.offset + request.limit)
+    .map((match) => match.recipeIndex);
   const recipes = (await getRecipeSummariesByIndex(recipeCatalog, recipeIndexes)).map((recipe) =>
     applyUsesResourceContext(recipe, recipeCatalog, request.resource),
   );
 
   return {
     recipes,
-    total,
+    total: matching.length,
     recipeMaps: sortedRecipeMaps,
     recipeMapIcons: Object.fromEntries(
       sortedRecipeMaps
@@ -468,14 +535,107 @@ export async function queryDatasetRecipes(
     ),
     offset: request.offset,
     limit: request.limit,
-    hasMore: request.offset + request.limit < total,
+    hasMore: request.offset + request.limit < matching.length,
+    ...searchOutcome(resolved),
   };
 }
 
+interface RankedRecipe {
+  recipeIndex: number;
+  score: number;
+  iconScore: number;
+}
+
 /**
- * All crop source "recipes" for the crop farm board tool. These are excluded
- * from recipe book queries (see HIDDEN_RECIPE_BOOK_MAPS) and listed here for
- * the dedicated crop picker instead.
+ * The order cards come out in.
+ *
+ * Recipes whose icons render stay ahead of ones that would draw as empty slots,
+ * which is a rule the book has always had. Inside that, the closest match to
+ * what was typed comes first.
+ */
+function rankRecipes(matches: RankedRecipe[]): RankedRecipe[] {
+  return [...matches].sort(
+    (left, right) =>
+      Number(right.iconScore > 0) - Number(left.iconScore > 0) ||
+      right.score - left.score ||
+      right.iconScore - left.iconScore ||
+      left.recipeIndex - right.recipeIndex,
+  );
+}
+
+/**
+ * The typed words resolved against the recipe corpus, or nothing to resolve.
+ *
+ * With an empty box the caller is browsing a resource rather than searching, so
+ * no scoring runs at all and `searchScores` stays undefined: every recipe in
+ * scope is in.
+ */
+function resolveRecipeSearch(
+  rawQuery: string,
+  getVocabulary: () => SearchVocabulary | undefined,
+  run: (query: SearchQuery, options: { partial?: boolean }) => RankedRecipe[],
+): {
+  query: SearchQuery;
+  phase: SearchPhase;
+  searchScores: Map<number, number> | undefined;
+} {
+  const parsed = parseSearchQuery(rawQuery);
+  if (parsed.terms.length === 0) {
+    return { query: parsed, phase: "exact", searchScores: undefined };
+  }
+
+  const resolved = resolveSearchPhases(parsed, getVocabulary(), run);
+  return {
+    query: resolved.query,
+    phase: resolved.phase,
+    searchScores: new Map(resolved.results.map((match) => [match.recipeIndex, match.score])),
+  };
+}
+
+/** Which of a known set of recipes the words match, and how well. */
+function scoreRecipeCandidates(
+  searchIndex: TextSearchIndex,
+  candidates: Iterable<number>,
+  query: SearchQuery,
+  options: { partial?: boolean },
+): RankedRecipe[] {
+  const narrowed = queryTextSearchIndex(searchIndex, query, options);
+  const narrowedSet = narrowed ? new Set(narrowed) : undefined;
+  const matches: RankedRecipe[] = [];
+
+  for (const recipeIndex of candidates) {
+    if (narrowedSet && !narrowedSet.has(recipeIndex)) {
+      continue;
+    }
+    const score = matchSearchTokens(query, searchIndex.tokensByEntry[recipeIndex] ?? [], options);
+    if (score !== undefined) {
+      matches.push({ recipeIndex, score, iconScore: 0 });
+    }
+  }
+
+  return matches;
+}
+
+function scoreRecipeIndexes(
+  searchIndex: TextSearchIndex,
+  recipeIndexes: Iterable<number>,
+  query: SearchQuery,
+  options: { partial?: boolean },
+): RankedRecipe[] {
+  const matches: RankedRecipe[] = [];
+  for (const recipeIndex of recipeIndexes) {
+    const score = matchSearchTokens(query, searchIndex.tokensByEntry[recipeIndex] ?? [], options);
+    if (score !== undefined) {
+      matches.push({ recipeIndex, score, iconScore: 0 });
+    }
+  }
+  return matches;
+}
+
+/**
+ * All crop source "recipes", for the crop picker on a crop farm card. They also
+ * appear in the recipe book like any other recipe; this is the flat catalogue
+ * the card's own dropdown searches.
  */
 export async function listDatasetCropFarmRecipes(versionId: string) {
   const catalog = await loadCatalog(versionId);
@@ -514,52 +674,49 @@ async function queryDatasetRecipesFromLookup(
   },
 ) {
   const lookup = await loadRecipeLookupIndex(catalog.version);
-  const queryTokens = splitSearchTokens(request.query);
-  const tierCandidatesByMap = new Map<number, number[]>();
+  const parsedQuery = parseSearchQuery(request.query);
 
-  if (!request.resource && queryTokens.length === 0) {
+  if (!request.resource && parsedQuery.terms.length === 0) {
     return emptyRecipeQueryResult(request);
   }
 
   const resourceScope = request.resource
     ? getRecipeResourceScope(catalog, request.resource, request.mode)
     : undefined;
-  const recipesByMap = resourceScope
-    ? getLookupRecipesByMap(lookup, resourceScope, request.mode)
-    : getLookupRecipesByMapForSearch(lookup, queryTokens);
-
-  // Source-style maps (crop farms) are spawned from dedicated board tools,
-  // not the recipe book: they are not crafting recipes.
-  for (const [recipeMapId] of [...recipesByMap.entries()]) {
-    const recipeMapName = lookup.recipeMaps[recipeMapId];
-    if (recipeMapName && HIDDEN_RECIPE_BOOK_MAPS.has(recipeMapName)) {
-      recipesByMap.delete(recipeMapId);
-    }
-  }
-
-  for (const [recipeMapId, recipeIndexes] of recipesByMap.entries()) {
-    const candidates = recipeIndexes.filter((recipeIndex) =>
-      recipeMatchesLookupTier(lookup, recipeIndex, request.maxTier),
-    );
-    if (candidates.length > 0) {
-      tierCandidatesByMap.set(recipeMapId, candidates);
-    }
-  }
-
-  const searchMatchedRecipeIndexes = queryTokens.length
-    ? await getSearchMatchedRecipeIndexes(
-        catalog,
+  // Only a typed query needs the words index, and building it walks every
+  // recipe: browsing a resource must not pay for one.
+  const search = parsedQuery.terms.length
+    ? await getRecipeSearchIndex(catalog, lookup)
+    : undefined;
+  const scopedByMap = resourceScope
+    ? tierFilteredByMap(
         lookup,
-        [...new Set([...tierCandidatesByMap.values()].flat())],
-        queryTokens,
+        getLookupRecipesByMap(lookup, resourceScope, request.mode),
+        request.maxTier,
       )
     : undefined;
+  const resolved = resolveRecipeSearch(
+    request.query,
+    () => ensureResourceIndexes(catalog).vocabulary,
+    (query, options) => {
+      if (!search) {
+        return [];
+      }
+      return scopedByMap
+        ? scoreRecipeCandidates(search.index, flattenRecipeIndexes(scopedByMap), query, options)
+        : scoreAllRecipes(search.index, search.entryCount, query, options);
+    },
+  );
+  const searchScores = resolved.searchScores;
+  // A pure text search has no resource to group by, so the maps come out of what
+  // the words matched.
+  const tierCandidatesByMap =
+    scopedByMap ??
+    tierFilteredByMap(lookup, groupRecipesByMap(lookup, searchScores?.keys() ?? []), request.maxTier);
 
   const sortedRecipeMaps = [...tierCandidatesByMap.entries()]
     .filter(([, recipeIndexes]) =>
-      recipeIndexes.some(
-        (recipeIndex) => !searchMatchedRecipeIndexes || searchMatchedRecipeIndexes.has(recipeIndex),
-      ),
+      recipeIndexes.some((recipeIndex) => !searchScores || searchScores.has(recipeIndex)),
     )
     .map(([recipeMapId]) => lookup.recipeMaps[recipeMapId])
     .filter((recipeMap): recipeMap is string => Boolean(recipeMap))
@@ -572,27 +729,30 @@ async function queryDatasetRecipesFromLookup(
   const scopedCandidates =
     effectiveMapId !== undefined
       ? (tierCandidatesByMap.get(effectiveMapId) ?? [])
-      : [...new Set([...tierCandidatesByMap.values()].flat())];
-  const matchingRecipeIndexes: number[] = [];
+      : flattenRecipeIndexes(tierCandidatesByMap);
+  const matching: RankedRecipe[] = [];
 
   for (const recipeIndex of scopedCandidates) {
-    if (searchMatchedRecipeIndexes && !searchMatchedRecipeIndexes.has(recipeIndex)) {
+    if (searchScores && !searchScores.has(recipeIndex)) {
       continue;
     }
-    matchingRecipeIndexes.push(recipeIndex);
+    matching.push({
+      recipeIndex,
+      score: searchScores?.get(recipeIndex) ?? 0,
+      iconScore: lookup.iconScores[recipeIndex] ?? 0,
+    });
   }
 
-  const pageRecipeIndexes = matchingRecipeIndexes.slice(
-    request.offset,
-    request.offset + request.limit,
-  );
+  const pageRecipeIndexes = rankRecipes(matching)
+    .slice(request.offset, request.offset + request.limit)
+    .map((match) => match.recipeIndex);
   const recipes = (await getRecipeSummariesByIndex(catalog, pageRecipeIndexes)).map((recipe) =>
     applyUsesResourceContext(recipe, catalog, request.resource),
   );
 
   return {
     recipes,
-    total: matchingRecipeIndexes.length,
+    total: matching.length,
     recipeMaps: sortedRecipeMaps,
     recipeMapIcons: Object.fromEntries(
       sortedRecipeMaps
@@ -603,7 +763,70 @@ async function queryDatasetRecipesFromLookup(
     ),
     offset: request.offset,
     limit: request.limit,
-    hasMore: request.offset + request.limit < matchingRecipeIndexes.length,
+    hasMore: request.offset + request.limit < matching.length,
+    ...searchOutcome(resolved),
+  };
+}
+
+function tierFilteredByMap(
+  lookup: LoadedRecipeLookupIndex,
+  recipesByMap: Map<number, number[]>,
+  maxTier: TierFilter,
+): Map<number, number[]> {
+  const filtered = new Map<number, number[]>();
+  for (const [recipeMapId, recipeIndexes] of recipesByMap) {
+    const candidates = recipeIndexes.filter((recipeIndex) =>
+      recipeMatchesLookupTier(lookup, recipeIndex, maxTier),
+    );
+    if (candidates.length > 0) {
+      filtered.set(recipeMapId, candidates);
+    }
+  }
+  return filtered;
+}
+
+function groupRecipesByMap(
+  lookup: LoadedRecipeLookupIndex,
+  recipeIndexes: Iterable<number>,
+): Map<number, number[]> {
+  const byMap = new Map<number, number[]>();
+  for (const recipeIndex of recipeIndexes) {
+    const recipeMapId = lookup.recipeMapIdsByRecipeIndex[recipeIndex] ?? -1;
+    if (recipeMapId < 0) {
+      continue;
+    }
+    const existing = byMap.get(recipeMapId);
+    if (existing) {
+      existing.push(recipeIndex);
+    } else {
+      byMap.set(recipeMapId, [recipeIndex]);
+    }
+  }
+  return byMap;
+}
+
+function flattenRecipeIndexes(recipesByMap: Map<number, number[]>): number[] {
+  return [...new Set([...recipesByMap.values()].flat())];
+}
+
+/**
+ * The words index for recipes, from wherever this dataset keeps it.
+ *
+ * Datasets published with a lookup index carry the search text in it; older ones
+ * only have it on the full recipe index, which then has to be loaded.
+ */
+async function getRecipeSearchIndex(
+  catalog: LoadedRecipeIndex,
+  lookup: LoadedRecipeLookupIndex,
+): Promise<{ index: TextSearchIndex; entryCount: number }> {
+  if (lookup.searchText.length) {
+    return { index: ensureLookupSearchIndex(lookup), entryCount: lookup.recipeCount };
+  }
+
+  const recipeCatalog = catalog.recipes ? catalog : await loadRecipeIndex(catalog.version.id);
+  return {
+    index: ensureIndexes(recipeCatalog).searchIndex,
+    entryCount: recipeCatalog.recipes?.length ?? 0,
   };
 }
 
@@ -1082,36 +1305,57 @@ async function getRecipeSummariesByIndex(
     .filter((summary): summary is RecipeSummary => Boolean(summary));
 }
 
-async function getSearchMatchedRecipeIndexes(
+/**
+ * Which items and fluids a thing that GROWS can hand you.
+ *
+ * Built by walking the produced-by index once and keeping the resources whose
+ * recipes belong to a crop or bee map. Cached on the loaded dataset, because it
+ * is the same answer for every player on it.
+ */
+async function getPassiveSourceResourceKeys(
   catalog: LoadedRecipeIndex,
-  lookup: LoadedRecipeLookupIndex | undefined,
-  recipeIndexes: number[],
-  queryTokens: string[],
-): Promise<Set<number>> {
-  if (lookup?.searchText.length) {
-    const searchIndex = ensureLookupSearchIndex(lookup);
-    const indexedCandidates = queryTextSearchIndex(searchIndex, queryTokens);
-    const indexedCandidateSet = indexedCandidates ? new Set(indexedCandidates) : undefined;
-    return new Set(
-      recipeIndexes.filter(
-        (recipeIndex) =>
-          (!indexedCandidateSet || indexedCandidateSet.has(recipeIndex)) &&
-          searchTokensMatch(searchIndex.tokensByEntry[recipeIndex] ?? [], queryTokens),
-      ),
-    );
+  source: ResourceSourceFilter,
+): Promise<Set<string>> {
+  const cached = catalog.passiveSourceKeys?.[source];
+  if (cached) {
+    return cached;
   }
 
-  const recipeCatalog = catalog.recipes ? catalog : await loadRecipeIndex(catalog.version.id);
-  const indexes = ensureIndexes(recipeCatalog);
-  const indexedCandidates = queryTextSearchIndex(indexes.searchIndex, queryTokens);
-  const indexedCandidateSet = indexedCandidates ? new Set(indexedCandidates) : undefined;
-  return new Set(
-    recipeIndexes.filter(
-      (recipeIndex) =>
-        (!indexedCandidateSet || indexedCandidateSet.has(recipeIndex)) &&
-        searchTokensMatch(indexes.searchIndex.tokensByEntry[recipeIndex] ?? [], queryTokens),
-    ),
-  );
+  const recipeMaps = source === "plants" ? PLANT_RECIPE_MAPS : BEE_RECIPE_MAPS;
+  const keys = new Set<string>();
+
+  if (catalog.version.recipeLookupIndexPath) {
+    const lookup = await loadRecipeLookupIndex(catalog.version);
+    const mapIds = new Set(
+      [...recipeMaps]
+        .map((recipeMap) => lookup.recipeMapIds.get(recipeMap))
+        .filter((mapId): mapId is number => mapId !== undefined),
+    );
+    for (const [key, recipesByMap] of lookup.entries) {
+      if (!key.startsWith("recipes:")) {
+        continue;
+      }
+      for (const recipeMapId of recipesByMap.keys()) {
+        if (mapIds.has(recipeMapId)) {
+          keys.add(key.slice("recipes:".length));
+          break;
+        }
+      }
+    }
+  } else {
+    const recipeCatalog = await loadRecipeIndex(catalog.version.id);
+    for (const recipe of recipeCatalog.recipes ?? []) {
+      if (!recipe.recipeMap || !recipeMaps.has(recipe.recipeMap)) {
+        continue;
+      }
+      for (const output of recipe.outputs ?? []) {
+        keys.add(`${output.kind}:${output.id}`);
+      }
+    }
+  }
+
+  catalog.passiveSourceKeys = { ...catalog.passiveSourceKeys, [source]: keys };
+  return keys;
 }
 
 function ensureLookupSearchIndex(lookup: LoadedRecipeLookupIndex): TextSearchIndex {
@@ -1535,50 +1779,27 @@ function getLookupRecipesByMap(
   return recipesByMap;
 }
 
-function getLookupRecipesByMapForSearch(
-  lookup: LoadedRecipeLookupIndex,
-  queryTokens: string[],
-): Map<number, number[]> {
-  const searchIndex = ensureLookupSearchIndex(lookup);
-  const indexedCandidates = queryTextSearchIndex(searchIndex, queryTokens);
-  const recipesByMap = new Map<number, number[]>();
-  const addRecipe = (recipeIndex: number) => {
-    if (
-      queryTokens.length &&
-      !searchTokensMatch(searchIndex.tokensByEntry[recipeIndex] ?? [], queryTokens)
-    ) {
-      return;
-    }
-    const recipeMapId = lookup.recipeMapIdsByRecipeIndex[recipeIndex] ?? -1;
-    if (recipeMapId < 0) {
-      return;
-    }
-    const recipeIndexes = recipesByMap.get(recipeMapId);
-    if (recipeIndexes) {
-      recipeIndexes.push(recipeIndex);
-    } else {
-      recipesByMap.set(recipeMapId, [recipeIndex]);
-    }
-  };
+/**
+ * A search with no resource behind it: score every recipe the words can reach.
+ *
+ * The trigram index normally hands back a short list. Only a query it cannot
+ * narrow (a two-letter word) falls through to walking all of them, which is why
+ * that walk is a generator rather than a 270,000-long array.
+ */
+function scoreAllRecipes(
+  searchIndex: TextSearchIndex,
+  entryCount: number,
+  query: SearchQuery,
+  options: { partial?: boolean },
+): RankedRecipe[] {
+  const narrowed = queryTextSearchIndex(searchIndex, query, options);
+  return scoreRecipeIndexes(searchIndex, narrowed ?? countedRange(entryCount), query, options);
+}
 
-  if (indexedCandidates) {
-    for (const recipeIndex of indexedCandidates) {
-      addRecipe(recipeIndex);
-    }
-  } else {
-    for (let recipeIndex = 0; recipeIndex < lookup.recipeCount; recipeIndex += 1) {
-      addRecipe(recipeIndex);
-    }
+function* countedRange(count: number): Generator<number> {
+  for (let index = 0; index < count; index += 1) {
+    yield index;
   }
-
-  for (const recipeIndexes of recipesByMap.values()) {
-    recipeIndexes.sort(
-      (left, right) =>
-        (lookup.iconScores[right] ?? 0) - (lookup.iconScores[left] ?? 0) || left - right,
-    );
-  }
-
-  return recipesByMap;
 }
 
 function applyUsesResourceContext<T extends RecipeSummary>(
@@ -1752,10 +1973,18 @@ function ensureResourceIndexes(catalog: LoadedRecipeIndex): ResourceQueryIndexes
     return catalog.resourceIndexes;
   }
 
-  const searchText: string[] = [];
+  const fields: SearchEntryFields[] = [];
+  const tokensByEntry: string[][] = [];
   const sortedResourceIndexes = catalog.resourceIndex
     .map((resource, index) => {
-      searchText[index] = normalizeResourceSearchText(resource);
+      fields[index] = resourceSearchFields(resource);
+      tokensByEntry[index] = [
+        ...new Set([
+          ...(fields[index].name ?? []),
+          ...(fields[index].id ?? []),
+          ...(fields[index].text ?? []),
+        ]),
+      ];
       return index;
     })
     .filter((index) => {
@@ -1771,12 +2000,30 @@ function ensureResourceIndexes(catalog: LoadedRecipeIndex): ResourceQueryIndexes
       );
     });
 
-  catalog.resourceIndexes = {
+  const resourceIndexes: ResourceQueryIndexes = {
     sortedResourceIndexes,
-    searchText,
-    searchIndex: buildTextSearchIndex(searchText, sortedResourceIndexes),
+    fields,
+    searchIndex: buildTokenSearchIndex(tokensByEntry, sortedResourceIndexes),
+    // Ore dictionary entries are named "Ore Dictionary: plateSteel", which is not
+    // a phrase anyone types, so only real names teach the corrector words.
+    vocabulary: buildSearchVocabulary(
+      sortedResourceIndexes
+        .map((index) => catalog.resourceIndex[index])
+        .filter((resource) => resource && !isOreDictionaryResource(resource))
+        .map((resource) => resource.displayName ?? ""),
+    ),
   };
-  return catalog.resourceIndexes;
+  catalog.resourceIndexes = resourceIndexes;
+  return resourceIndexes;
+}
+
+function resourceSearchFields(resource: DatasetResourceIndexEntry): SearchEntryFields {
+  return {
+    nameText: normalizeText(resource.displayName ?? resource.id),
+    name: splitSearchTokens(resource.displayName ?? ""),
+    id: splitSearchTokens(`${resource.id} ${(resource.oreDictionary ?? []).join(" ")}`),
+    text: splitSearchTokens((resource.tooltip ?? []).join(" ")),
+  };
 }
 
 function addRecipeIndex(index: Map<string, number[]>, key: string, recipeIndex: number) {
@@ -1802,9 +2049,11 @@ function recipeMapHasMatchingIndexedRecipe(
   candidates: number[],
   recipeMap: string,
   maxTier: TierFilter,
-  queryTokens: string[],
-  searchCandidateSet: Set<number> | undefined,
-  scope: { scope?: RecipeResourceScope; mode: "recipes" | "uses" },
+  scope: {
+    searchScores: Map<number, number> | undefined;
+    scope?: RecipeResourceScope;
+    mode: "recipes" | "uses";
+  },
 ) {
   const scopedCandidates = scope.scope
     ? getResourceIndexes(indexes.recipeIndexesByResourceAndMap, scope.scope, scope.mode, recipeMap)
@@ -1819,11 +2068,7 @@ function recipeMapHasMatchingIndexedRecipe(
       return false;
     }
 
-    return Boolean(
-      (!searchCandidateSet || searchCandidateSet.has(recipeIndex)) &&
-      (!queryTokens.length ||
-        searchTokensMatch(indexes.searchIndex.tokensByEntry[recipeIndex] ?? [], queryTokens)),
-    );
+    return !scope.searchScores || scope.searchScores.has(recipeIndex);
   });
 }
 
@@ -1874,127 +2119,6 @@ function resourceSearchTerms(
   ].filter((term): term is string => Boolean(term));
 }
 
-function normalizeResourceSearchText(resource: DatasetResourceIndexEntry): string {
-  return normalizeText(
-    [resource.displayName, resource.id, resource.kind, ...(resource.tooltip ?? [])]
-      .filter(Boolean)
-      .join(" "),
-  );
-}
-
-export function buildTextSearchIndex(
-  searchText: string[],
-  entryIndexes: number[],
-): TextSearchIndex {
-  const tokensByEntry: string[][] = [];
-  const trigramToEntries = new Map<string, number[]>();
-
-  for (const entryIndex of entryIndexes) {
-    const tokens = [...new Set(splitSearchTokens(searchText[entryIndex] ?? ""))];
-    tokensByEntry[entryIndex] = tokens;
-
-    const entryTrigrams = new Set<string>();
-    for (const token of tokens) {
-      for (const trigram of getTokenTrigrams(token)) {
-        entryTrigrams.add(trigram);
-      }
-    }
-
-    for (const trigram of entryTrigrams) {
-      const existing = trigramToEntries.get(trigram);
-      if (existing) {
-        existing.push(entryIndex);
-      } else {
-        trigramToEntries.set(trigram, [entryIndex]);
-      }
-    }
-  }
-
-  return {
-    tokensByEntry,
-    trigramToEntries,
-  };
-}
-
-export function queryTextSearchIndex(
-  index: TextSearchIndex,
-  queryTokens: string[],
-): number[] | undefined {
-  if (queryTokens.length === 0) {
-    return undefined;
-  }
-
-  const indexedTokens = queryTokens.filter((token) => token.length >= 3);
-  if (indexedTokens.length === 0) {
-    return undefined;
-  }
-
-  let candidates: number[] | undefined;
-  for (const token of indexedTokens) {
-    const tokenCandidates = queryTokenCandidates(index, token);
-    if (tokenCandidates.length === 0) {
-      return [];
-    }
-
-    candidates = candidates
-      ? intersectOrderedIndexes(candidates, tokenCandidates)
-      : tokenCandidates;
-
-    if (candidates.length === 0) {
-      return [];
-    }
-  }
-
-  return candidates;
-}
-
-function queryTokenCandidates(index: TextSearchIndex, token: string): number[] {
-  const trigrams = getTokenTrigrams(token);
-  let candidates: number[] | undefined;
-
-  for (const trigram of trigrams) {
-    const entries = index.trigramToEntries.get(trigram);
-    if (!entries?.length) {
-      return [];
-    }
-
-    candidates = candidates ? intersectOrderedIndexes(candidates, entries) : entries;
-    if (candidates.length === 0) {
-      return [];
-    }
-  }
-
-  return candidates ?? [];
-}
-
-function intersectOrderedIndexes(left: number[], right: number[]): number[] {
-  const rightSet = new Set(right);
-  return left.filter((entry) => rightSet.has(entry));
-}
-
-export function searchTokensMatch(entryTokens: string[], queryTokens: string[]): boolean {
-  return queryTokens.every((queryToken) =>
-    entryTokens.some((entryToken) => entryToken.includes(queryToken)),
-  );
-}
-
-function getTokenTrigrams(token: string): string[] {
-  if (token.length < 3) {
-    return [];
-  }
-
-  const trigrams = new Set<string>();
-  for (let index = 0; index <= token.length - 3; index += 1) {
-    trigrams.add(token.slice(index, index + 3));
-  }
-  return [...trigrams];
-}
-
-function splitSearchTokens(value: string): string[] {
-  return normalizeText(value)
-    .split(/[^a-z0-9]+/i)
-    .filter(Boolean);
-}
 
 function buildRecipeMapIconMap(
   recipeMaps: string[],
@@ -2046,6 +2170,17 @@ function getKnownRecipeMapIcon(
 type KnownRecipeMapIcon = RecipeMapIconEntry & { recipeMaps: string[] };
 
 const KNOWN_RECIPE_MAP_ICONS: KnownRecipeMapIcon[] = [
+  {
+    // The tab a crop grows on. Guessing from the map's name lands on a farming
+    // machine, and this reads as "something planted" at 16 pixels.
+    recipeMap: CROP_FARM_RECIPE_MAP,
+    recipeMaps: [CROP_FARM_RECIPE_MAP, "IC2 Crop"],
+    resource: {
+      kind: "item",
+      id: "cropsnh:cropsticks",
+      displayName: "Crop Sticks",
+    },
+  },
   {
     recipeMap: "Thaumcraft Infusion",
     recipeMaps: ["Thaumcraft Infusion", "Arcane Infusion"],

@@ -1,6 +1,7 @@
 "use client";
 
 import type { MachineTier, Recipe, RecipeOutput, ResourceAmount } from "@/lib/model/types";
+import type { SearchCorrection, SearchPhase } from "@/lib/search";
 import type {
   DatasetResourceIndexEntry,
   DatasetVersion,
@@ -28,6 +29,8 @@ export interface RecipeDatasetQueryResult {
   offset: number;
   limit: number;
   hasMore: boolean;
+  searchPhase?: SearchPhase;
+  corrections?: SearchCorrection[];
 }
 
 export interface RecipeDatasetResourceQuery {
@@ -37,6 +40,8 @@ export interface RecipeDatasetResourceQuery {
   kind?: "item" | "fluid";
   mod?: string;
   sort?: "relevance" | "name" | "mod" | "recipes";
+  /** Narrow to what a crop can grow or a bee can make. */
+  source?: "plants" | "bees";
 }
 
 export interface RecipeDatasetResourceQueryResult {
@@ -47,6 +52,10 @@ export interface RecipeDatasetResourceQueryResult {
   hasMore: boolean;
   /** Mods present in the current search scope, with match counts. */
   mods?: Array<{ id: string; count: number }>;
+  /** How the results were arrived at: as typed, respelled, or loosened. */
+  searchPhase?: SearchPhase;
+  /** The words that had to be respelled to find anything. */
+  corrections?: SearchCorrection[];
 }
 
 export interface RecipeDatasetResolveRef {
@@ -182,6 +191,9 @@ export async function queryRecipeDatasetResources(
   }
   if (query.sort && query.sort !== "relevance") {
     url.searchParams.set("sort", query.sort);
+  }
+  if (query.source) {
+    url.searchParams.set("source", query.source);
   }
   addDatasetCacheKey(url, version);
 

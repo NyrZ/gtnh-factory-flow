@@ -13,6 +13,7 @@ export async function GET(
     const url = new URL(request.url);
     const kindParam = url.searchParams.get("kind");
     const sortParam = url.searchParams.get("sort");
+    const sourceParam = url.searchParams.get("source");
     const result = await queryDatasetResources(versionId, {
       query: url.searchParams.get("query") ?? "",
       offset: parseOffset(url.searchParams.get("offset")),
@@ -23,6 +24,7 @@ export async function GET(
         sortParam === "name" || sortParam === "mod" || sortParam === "recipes"
           ? sortParam
           : undefined,
+      source: sourceParam === "plants" || sourceParam === "bees" ? sourceParam : undefined,
     });
     return NextResponse.json(result, {
       headers: datasetCacheHeaders(),
