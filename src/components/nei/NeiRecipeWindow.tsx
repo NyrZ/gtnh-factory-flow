@@ -135,7 +135,13 @@ export const NeiRecipeWindow = memo(function NeiRecipeWindow({
           layout={layout}
           scale={scale}
           slotPixelSize={compactSlotPixelSize}
-          iconPixelSize={QUICK_SLOT_ICON_PIXEL_SIZE}
+          // Tied to the slot rather than fixed, because the slot size is what
+          // actually sets how large a compact recipe draws: the canvas works
+          // its scale out from it and ignores `scale` entirely. A fixed icon
+          // left every card the same size however much room it was given.
+          iconPixelSize={Math.round(
+            compactSlotPixelSize * (QUICK_SLOT_ICON_PIXEL_SIZE / QUICK_SLOT_PIXEL_SIZE),
+          )}
           className={canvasClassName}
           renderHandle={renderHandle}
           getSlotConnectionAttributes={getSlotConnectionAttributes}

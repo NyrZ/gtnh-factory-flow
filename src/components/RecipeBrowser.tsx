@@ -90,6 +90,35 @@ const RECIPE_BOOK_RAIL_NEEDS =
 const RECIPE_BOOK_SHEET_BELOW = 700;
 const ZERO_OFFSET = { x: 0, y: 0 };
 
+interface MeasuredCard {
+  /** Which list this was measured from, so a new list starts over. */
+  key: string;
+  /** One recipe's drawn width, unscaled. */
+  unit: number;
+  /** The tallest card drawn so far, in px at the scale it was drawn. */
+  row: number;
+}
+
+/** Everything between the book's edge and the cards: rail, padding, borders. */
+function recipeBookChrome(showRail: boolean) {
+  return (showRail ? CATEGORY_RAIL_WIDTH : 0) + 24 + 4;
+}
+
+/**
+ * The width the book actually needs, which is not the width it can have.
+ *
+ * Taking every spare pixel made the window wider without fitting another card
+ * in it, and the difference went to margins either side of the cards. So the
+ * columns are chosen from the room available, and then the book is pulled back
+ * in to exactly hold them.
+ */
+function fitRecipeBookWidth(available: number, showRail: boolean, unitWidth: number) {
+  const chrome = recipeBookChrome(showRail);
+  const { columns, scale } = chooseRecipeGrid(available - chrome, unitWidth);
+  const cards = columns * unitWidth * scale + CARD_GAP * (columns - 1);
+  return Math.min(available, chrome + cards);
+}
+
 interface RecipeBookViewport {
   /** Filling the screen rather than floating over the board. */
   sheet: boolean;
@@ -98,6 +127,8 @@ interface RecipeBookViewport {
   dodgesSidebars: boolean;
   width: number;
   height: number;
+  /** Measured, not assumed: these columns can be collapsed. */
+  sidebars: { left: number; right: number };
 }
 
 /**
@@ -1352,6 +1383,16 @@ function RecipeBookOverlay({
   const panelRef = useRef<HTMLElement>(null);
   const layout = useRecipeBookViewport();
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [measured, setMeasured] = useState<MeasuredCard>({
+    key: "",
+    unit: NEI_CANVAS_WIDTH,
+    row: 0,
+  });
+  // A book that fills the screen keeps its width; there is nowhere for a margin
+  // to go and shrinking it would only leave a gap at the edge.
+  const panelWidth = layout.sheet
+    ? layout.width
+    : fitRecipeBookWidth(layout.width, layout.showRail, measured.unit);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -1427,7 +1468,7 @@ function RecipeBookOverlay({
       onPointerDown={onClose}
       style={
         layout.dodgesSidebars
-          ? { paddingLeft: BOARD_SIDEBAR_LEFT, paddingRight: BOARD_SIDEBAR_RIGHT }
+          ? { paddingLeft: layout.sidebars.left, paddingRight: layout.sidebars.right }
           : undefined
       }
     >
@@ -1438,7 +1479,7 @@ function RecipeBookOverlay({
         onPointerDown={(event) => event.stopPropagation()}
         style={{
           transform: `translate(${appliedOffset.x}px, ${appliedOffset.y}px)`,
-          width: layout.sheet ? "100%" : `min(${layout.width}px, 100%)`,
+          width: layout.sheet ? "100%" : `min(${panelWidth}px, 100%)`,
           height: layout.sheet ? "100%" : `min(${layout.height}px, 100%)`,
         }}
       >
@@ -1540,7 +1581,13 @@ function RecipeBookOverlay({
             </select>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-3" id="recipe-book-scroll">
+          <div
+            // On a phone the padding is the difference between a recipe drawn
+            // at readable size and one drawn at half of it, because a card
+            // only steps in whole sizes.
+            className={["min-h-0 flex-1 overflow-y-auto", layout.sheet ? "p-1" : "p-3"].join(" ")}
+            id="recipe-book-scroll"
+          >
             {queryError ? (
               <div className="border-2 border-[var(--mc-47)] bg-[var(--mc-71)] p-3 text-sm shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                 {queryError}
@@ -1568,6 +1615,8 @@ function RecipeBookOverlay({
                 hasMore={hasMore}
                 isLoadingMore={isLoading && displayedRecipes.length > 0}
                 onLoadMore={onLoadMore}
+                measured={measured}
+                onMeasured={setMeasured}
               />
             )}
           </div>
@@ -1772,6 +1821,8 @@ function VirtualRecipeResultList({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  measured,
+  onMeasured,
 }: {
   recipes: RecipeSummary[];
   queryTotal: number;
@@ -1790,6 +1841,13 @@ function VirtualRecipeResultList({
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
+  /**
+   * How wide one recipe draws, unscaled. Held by the book rather than here so
+   * the book can shrink to fit whole cards instead of handing the difference
+   * to the margins.
+   */
+  measured: MeasuredCard;
+  onMeasured: (measured: MeasuredCard) => void;
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 360, width: 640 });
@@ -1805,11 +1863,26 @@ function VirtualRecipeResultList({
   // and the answer is thrown away whenever the list changes rather than
   // letting one wide category narrow every later one.
   const listKey = recipes.length > 0 ? `${recipes[0].id}:${recipes.length}` : "";
-  const [measured, setMeasured] = useState({ key: "", unit: NEI_CANVAS_WIDTH });
   const unitWidth = measured.key === listKey ? measured.unit : NEI_CANVAS_WIDTH;
   const { columns: columnCount, scale } = chooseRecipeGrid(viewport.width, unitWidth);
-  const rowHeight = recipeRowHeight(scale, native);
+  // Every row is assumed to be exactly this tall, so the layout is made to
+  // match rather than the other way round: recipes with a long list of outputs
+  // draw much taller cards than the estimate, and a row that ran over its
+  // share left the list reporting less height than it had. Scrolling down then
+  // ran past the end, the browser pulled the scroll position back, and the
+  // list could never reach its own bottom.
+  const cardHeight = Math.max(
+    recipeRowHeight(scale, native),
+    measured.key === listKey ? measured.row : 0,
+  );
+  const rowHeight = cardHeight + CARD_GAP;
   const gridRef = useRef<HTMLDivElement>(null);
+  // Read inside the observer, which must not be torn down and rebuilt every
+  // time a measurement lands.
+  const measuredRef = useRef(measured);
+  useEffect(() => {
+    measuredRef.current = measured;
+  }, [measured]);
 
   useEffect(() => {
     const grid = gridRef.current;
@@ -1818,23 +1891,37 @@ function VirtualRecipeResultList({
     }
 
     const observer = new ResizeObserver(() => {
-      let widest = 0;
+      setViewport((current) =>
+        current.width === grid.clientWidth ? current : { ...current, width: grid.clientWidth },
+      );
+
+      let unit = 0;
+      let tallest = 0;
       for (const card of grid.children) {
-        widest = Math.max(widest, card.getBoundingClientRect().width);
+        const box = card.getBoundingClientRect();
+        const drawnAt = Number(card.getAttribute("data-card-scale")) || 1;
+        // The unscaled width is what the next scale choice has to be made
+        // from. The height is kept as drawn, since that is what a row holds.
+        unit = Math.max(unit, box.width / drawnAt);
+        tallest = Math.max(tallest, box.height);
       }
-      if (widest <= 0) {
+      if (unit <= 0) {
         return;
       }
-      // Cards are drawn at the current scale; the unscaled width is what the
-      // next scale choice has to be made from.
-      const unit = Math.ceil(widest / scale);
-      setMeasured((current) =>
-        current.key === listKey && current.unit >= unit ? current : { key: listKey, unit },
-      );
+      unit = Math.ceil(unit);
+      const row = Math.ceil(tallest);
+      const current = measuredRef.current;
+      if (current.key !== listKey || unit > current.unit || row > current.row) {
+        onMeasured({
+          key: listKey,
+          unit: current.key === listKey ? Math.max(current.unit, unit) : unit,
+          row: current.key === listKey ? Math.max(current.row, row) : row,
+        });
+      }
     });
     observer.observe(grid);
     return () => observer.disconnect();
-  }, [listKey, scale]);
+  }, [listKey, onMeasured, scale]);
   const overscan = 1;
   const rowCount = Math.ceil(recipes.length / columnCount);
   const startRow = Math.max(0, Math.floor(viewport.scrollTop / rowHeight) - overscan);
@@ -1860,9 +1947,10 @@ function VirtualRecipeResultList({
       setViewport({
         scrollTop: scrollParent.scrollTop,
         height: scrollParent.clientHeight,
-        // The width the cards actually get, which is what decides how many fit
-        // and how large each is drawn.
-        width: scrollParent.clientWidth,
+        // The grid's own width, not the scroller's: the scroller's includes its
+        // padding, and counting that as room for cards made the columns come
+        // out a padding wider than the cards could ever fill.
+        width: gridRef.current?.clientWidth ?? scrollParent.clientWidth,
       });
     };
 
@@ -1907,7 +1995,12 @@ function VirtualRecipeResultList({
       <div
         ref={gridRef}
         className="grid items-start justify-items-center gap-3"
-        style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+        style={{
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+          // Pinned, so a row can never take more room than the list set aside
+          // for it. With the gap, each row occupies exactly one rowHeight.
+          gridAutoRows: `${cardHeight}px`,
+        }}
       >
         {visibleRecipes.map((recipe) => (
           <RecipeResultCard
@@ -1973,6 +2066,11 @@ const RecipeResultCard = memo(function RecipeResultCard({
   return (
     <AlternativeCycleScope facesRef={facesRef}>
     <article
+      // The scale this card was actually drawn at. The measurer reads it from
+      // here rather than from React state, which can be a render ahead of the
+      // DOM: pairing a new scale with a width drawn at the old one inflates
+      // the measurement, and since it only ever grows, the error would stick.
+      data-card-scale={scale}
       onClick={() => onSelectRecipe(recipe.id)}
       onDoubleClick={() => void onAdd(recipe, undefined, currentPicks())}
       className={[
@@ -1993,6 +2091,10 @@ const RecipeResultCard = memo(function RecipeResultCard({
         <NeiRecipeWindow
           recipe={previewRecipe}
           scale={scale}
+          // A compact recipe takes its size from the slot, not from `scale`,
+          // so the chosen scale has to be expressed as one. 20 keeps scale 2
+          // drawing exactly the size these cards have always been.
+          compactSlotPixelSize={20 * scale}
           compact
           hideStats
           contextResource={contextResource}
@@ -2060,14 +2162,12 @@ function CircuitSetting({ recipe }: { recipe: Recipe }) {
         would say the same thing twice in the space of one card.
       */}
       <Cpu className="h-5 w-5" style={{ color: NEI_PALETTE.borderDark }} />
-      {setting ? (
-        <span
-          className="text-[13px] font-bold leading-none tabular-nums"
-          style={{ color: NEI_PALETTE.borderDarker }}
-        >
-          {setting}
-        </span>
-      ) : null}
+      <span
+        className="text-[13px] font-bold leading-none tabular-nums"
+        style={{ color: NEI_PALETTE.borderDarker }}
+      >
+        {setting ?? "-"}
+      </span>
     </span>
   );
 }
@@ -2287,13 +2387,45 @@ function scheduleAfterPaint(callback: () => void) {
  * never again, so widening the window, or turning a phone, left the book at
  * whatever size it happened to open at.
  */
+/**
+ * How much room the board's own columns take, asked of the columns themselves.
+ *
+ * Guessing at these was wrong by 38px, which put the left edge of the book
+ * underneath the column beside it. The column paints over the book, so the book
+ * appeared to tuck under it for part of the way through a resize. They can also
+ * be collapsed, which no fixed number would follow.
+ */
+function measureBoardSidebars(): { left: number; right: number } {
+  if (typeof document === "undefined") {
+    return { left: BOARD_SIDEBAR_LEFT, right: BOARD_SIDEBAR_RIGHT };
+  }
+
+  const width = (selector: string, fallback: number) => {
+    const element = document.querySelector(selector);
+    return element ? Math.round(element.getBoundingClientRect().width) : fallback;
+  };
+
+  return {
+    left: width('aside[data-help-anchor="browser"]', BOARD_SIDEBAR_LEFT),
+    right: width('aside[data-help-anchor="inspector"]', BOARD_SIDEBAR_RIGHT),
+  };
+}
+
 function readRecipeBookViewport(): RecipeBookViewport {
   if (typeof window === "undefined") {
-    return { sheet: false, showRail: true, dodgesSidebars: true, width: 960, height: 760 };
+    return {
+      sheet: false,
+      showRail: true,
+      dodgesSidebars: true,
+      width: 960,
+      height: 760,
+      sidebars: { left: BOARD_SIDEBAR_LEFT, right: BOARD_SIDEBAR_RIGHT },
+    };
   }
 
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
+  const sidebars = measureBoardSidebars();
 
   // Too narrow to be a window at all: fill the screen instead of leaving a
   // book that is mostly margin.
@@ -2304,13 +2436,14 @@ function readRecipeBookViewport(): RecipeBookViewport {
       dodgesSidebars: false,
       width: viewportWidth,
       height: viewportHeight,
+      sidebars,
     };
   }
 
   // The board's own sidebars are worth keeping in view, but only while
   // stepping around them still leaves the book a comfortable size. Below that
   // the book covers them, which is the lesser loss.
-  const besideSidebars = viewportWidth - BOARD_SIDEBAR_LEFT - BOARD_SIDEBAR_RIGHT - 24;
+  const besideSidebars = viewportWidth - sidebars.left - sidebars.right - 24;
   const dodgesSidebars = besideSidebars >= RECIPE_BOOK_COMFORTABLE_WIDTH;
   const available = dodgesSidebars ? besideSidebars : viewportWidth - 24;
 
@@ -2320,6 +2453,7 @@ function readRecipeBookViewport(): RecipeBookViewport {
     dodgesSidebars,
     width: Math.min(RECIPE_BOOK_MAX_WIDTH, Math.max(RECIPE_BOOK_MIN_WIDTH, available)),
     height: Math.min(RECIPE_BOOK_MAX_HEIGHT, Math.max(360, viewportHeight - 32)),
+    sidebars,
   };
 }
 
@@ -2328,9 +2462,25 @@ function useRecipeBookViewport(): RecipeBookViewport {
 
   useEffect(() => {
     const update = () => setViewport(readRecipeBookViewport());
-    update();
+
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    // Hiding a column is not a window resize, and the book has to give back
+    // the room either way.
+    const observer = new ResizeObserver(update);
+    for (const selector of [
+      'aside[data-help-anchor="browser"]',
+      'aside[data-help-anchor="inspector"]',
+    ]) {
+      const element = document.querySelector(selector);
+      if (element) {
+        observer.observe(element);
+      }
+    }
+
+    return () => {
+      window.removeEventListener("resize", update);
+      observer.disconnect();
+    };
   }, []);
 
   return viewport;
