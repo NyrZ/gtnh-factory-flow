@@ -1680,15 +1680,35 @@ function hashRecipe(value) {
   return crypto.createHash("sha1").update(JSON.stringify(value)).digest("hex").slice(0, 12);
 }
 
+/**
+ * The number a machine's circuit slot has to be dialled to.
+ *
+ * Only the GregTech programmed circuit counts. Matching anything merely named
+ * "circuit" claimed ordinary ingredients and read their item id as a setting,
+ * so a recipe taking a Circuit Board was labelled "configuration 32100" and a
+ * Wrap of Circuit Board "configuration 32760". Neither is a circuit setting;
+ * both are just where the item sits in its mod's item list.
+ */
 function detectProgrammedCircuit(inputs) {
+  // Declared here rather than at module scope: this file does its work as it
+  // is read, well above where a constant down here would be initialised.
+  const programmedCircuitItem = "gregtech:gt.integrated_circuit";
   const circuit = inputs.find(
-    (input) => input.kind === "item" && /circuit/i.test(`${input.id} ${input.displayName ?? ""}`),
+    (input) => input.kind === "item" && baseItemId(input.id) === programmedCircuitItem,
   );
   if (!circuit) {
     return undefined;
   }
-  const meta = /@(\d+)$/.exec(circuit.id)?.[1];
-  return meta ? `${resourceLabel(circuit)} (configuration ${meta})` : resourceLabel(circuit);
+
+  const configuration = Number(/@(\d+)$/.exec(circuit.id)?.[1] ?? Number.NaN);
+  // 32767 is "any damage", which is a wildcard rather than a setting.
+  return Number.isFinite(configuration) && configuration !== 32767
+    ? String(configuration)
+    : undefined;
+}
+
+function baseItemId(id) {
+  return String(id ?? "").replace(/@\d+$/, "");
 }
 
 function thaumcraftMachineType(type) {

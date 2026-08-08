@@ -1985,7 +1985,9 @@ public final class GtnhCalcOracleExporter {
     ) {
         List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
         for (int index = 0; index < stacks.length; index++) {
-            Map<String, Object> item = itemStack(stacks[index]);
+            Map<String, Object> item = markNonConsumed
+                ? inputItemStack(stacks[index])
+                : itemStack(stacks[index]);
             if (item == null) {
                 continue;
             }
@@ -2199,6 +2201,33 @@ public final class GtnhCalcOracleExporter {
             unifiedStacksMethodCache = null;
         }
         return unifiedStacksMethodCache;
+    }
+
+    /**
+     * An item a recipe needs in a slot, which is not always an item it eats.
+     *
+     * GregTech marks "this slot must hold this, and keeps it" by giving the
+     * stack a size of zero. The programmed circuit is the everyday case:
+     * `GTUtility.getIntegratedCircuit(n)` is `Circuit_Integrated.getWithDamage(0, n)`,
+     * a zero-sized stack whose damage value IS the circuit setting the player
+     * dials in. Treating zero as "no item" dropped every one of them, so a
+     * recipe that runs only on circuit 11 looked like it ran on anything.
+     */
+    private Map<String, Object> inputItemStack(ItemStack stack) {
+        if (stack == null || stack.getItem() == null) {
+            return null;
+        }
+        if (stack.stackSize > 0) {
+            return itemStack(stack);
+        }
+
+        ItemStack present = stack.copy();
+        present.stackSize = 1;
+        Map<String, Object> item = itemStack(present);
+        if (item != null) {
+            item.put("consumed", Boolean.FALSE);
+        }
+        return item;
     }
 
     private Map<String, Object> itemStack(ItemStack stack) {
