@@ -229,3 +229,48 @@ describe("the shared clock", () => {
     );
   });
 });
+
+describe("substitutes that are not one for one", () => {
+  const solderSlot = {
+    kind: "fluid" as const,
+    id: "molten.solderingalloy",
+    amount: 72,
+    displayName: "Molten Soldering Alloy",
+    alternatives: [
+      { kind: "fluid" as const, id: "molten.tin", displayName: "Molten Tin", amount: 2 },
+      { kind: "fluid" as const, id: "molten.lead", displayName: "Molten Lead", amount: 4 },
+    ],
+  };
+
+  it("restates the amount in the substitute's own units", () => {
+    const faces = getAlternativeCycleFaces(solderSlot);
+    const tin = applyAlternativeCycleFace(solderSlot, faces[1]);
+    const lead = applyAlternativeCycleFace(solderSlot, faces[2]);
+
+    expect(faces.map((face) => face.displayName)).toEqual([
+      "Molten Soldering Alloy",
+      "Molten Tin",
+      "Molten Lead",
+    ]);
+    expect(tin.amount).toBe(144);
+    expect(lead.amount).toBe(288);
+  });
+
+  it("leaves a one-for-one member's amount alone", () => {
+    const plankSlot = {
+      kind: "item" as const,
+      id: "oredict:plankWood",
+      amount: 3,
+      displayName: "Ore Dictionary: plankWood",
+      alternatives: [
+        { kind: "item" as const, id: "minecraft:planks", displayName: "Oak Planks", amount: 1 },
+        { kind: "item" as const, id: "minecraft:planks@1", displayName: "Spruce Planks", amount: 1 },
+      ],
+    };
+
+    const faces = getAlternativeCycleFaces(plankSlot);
+
+    expect(applyAlternativeCycleFace(plankSlot, faces[0]).amount).toBe(3);
+    expect(applyAlternativeCycleFace(plankSlot, faces[1]).amount).toBe(3);
+  });
+});

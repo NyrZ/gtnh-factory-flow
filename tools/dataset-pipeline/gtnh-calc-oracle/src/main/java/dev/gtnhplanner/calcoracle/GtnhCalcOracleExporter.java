@@ -206,9 +206,20 @@ public final class GtnhCalcOracleExporter {
                     exportedRecipe.put("durationTicks", Integer.valueOf(recipe.mDuration));
                     exportedRecipe.put("eut", Long.valueOf(recipe.mEUt));
                     exportedRecipe.put("specialValue", Integer.valueOf(recipe.mSpecialValue));
-                    exportedRecipe.put("itemInputs", itemStacks(recipe.mInputs, getInputChances(recipe, recipe.mInputs.length), true));
+                    List<Integer> itemInputSlots = new ArrayList<Integer>();
+                    List<Integer> fluidInputSlots = new ArrayList<Integer>();
+                    List<Map<String, Object>> itemInputs = itemStacks(
+                        recipe.mInputs,
+                        getInputChances(recipe, recipe.mInputs.length),
+                        true,
+                        itemInputSlots
+                    );
+                    List<Map<String, Object>> fluidInputs = fluidStacks(recipe.mFluidInputs, fluidInputSlots);
+                    attachSlotAlternatives(itemInputs, itemInputSlots, recipe, "mOreDictAlt", false);
+                    attachSlotAlternatives(fluidInputs, fluidInputSlots, recipe, "mAltFluidInputs", true);
+                    exportedRecipe.put("itemInputs", itemInputs);
                     exportedRecipe.put("itemOutputs", outputItemStacks(recipe));
-                    exportedRecipe.put("fluidInputs", fluidStacks(recipe.mFluidInputs));
+                    exportedRecipe.put("fluidInputs", fluidInputs);
                     exportedRecipe.put("fluidOutputs", fluidStacks(recipe.mFluidOutputs));
                     exportedRecipe.put("nonConsumedInputs", specialItems(recipe.mSpecialItems));
                     exportedRecipe.put("runtimeCalculation", buildGtRuntimeCalculation(map.unlocalizedName, name, recipe));
@@ -1956,6 +1967,21 @@ public final class GtnhCalcOracleExporter {
     }
 
     private List<Map<String, Object>> itemStacks(ItemStack[] stacks, int[] inputChances, boolean markNonConsumed) {
+        return itemStacks(stacks, inputChances, markNonConsumed, null);
+    }
+
+    /**
+     * @param sourceIndexes when given, receives the recipe slot each exported
+     *     entry came from. Empty slots are skipped, so the exported list is
+     *     shorter than the recipe's array and positions do not line up on their
+     *     own; anything keyed by slot has to follow this mapping.
+     */
+    private List<Map<String, Object>> itemStacks(
+        ItemStack[] stacks,
+        int[] inputChances,
+        boolean markNonConsumed,
+        List<Integer> sourceIndexes
+    ) {
         List<Map<String, Object>> items = new ArrayList<Map<String, Object>>();
         for (int index = 0; index < stacks.length; index++) {
             Map<String, Object> item = itemStack(stacks[index]);
@@ -1966,19 +1992,118 @@ public final class GtnhCalcOracleExporter {
                 item.put("consumed", Boolean.FALSE);
             }
             items.add(item);
+            if (sourceIndexes != null) {
+                sourceIndexes.add(Integer.valueOf(index));
+            }
         }
         return items;
     }
 
     private List<Map<String, Object>> fluidStacks(FluidStack[] stacks) {
+        return fluidStacks(stacks, null);
+    }
+
+    private List<Map<String, Object>> fluidStacks(FluidStack[] stacks, List<Integer> sourceIndexes) {
         List<Map<String, Object>> fluids = new ArrayList<Map<String, Object>>();
-        for (FluidStack stack : stacks) {
-            Map<String, Object> fluid = fluidStack(stack);
+        for (int index = 0; index < stacks.length; index++) {
+            Map<String, Object> fluid = fluidStack(stacks[index]);
             if (fluid != null) {
                 fluids.add(fluid);
+                if (sourceIndexes != null) {
+                    sourceIndexes.add(Integer.valueOf(index));
+                }
             }
         }
         return fluids;
+    }
+
+    /**
+     * Attaches the other things a slot will accept.
+     *
+     * A GregTech recipe slot is not always one item. `mOreDictAlt` holds the
+     * item alternatives per slot and `mAltFluidInputs` the fluid ones, which is
+     * how one Circuit Assembler recipe takes a resistor OR an SMD resistor, and
+     * soldering alloy OR twice the tin OR four times the lead. Reading only the
+     * primary stack threw that away and left every such slot looking like it
+     * demanded one exact item.
+     *
+     * Slots with nothing to offer are left alone: a vacuum tube stays a vacuum
+     * tube, and inventing substitutes for it would describe a recipe the game
+     * will not run.
+     *
+     * Both fields are read reflectively. `mOreDictAlt` lives on a GTRecipe
+     * subclass that only some recipes use, and neither field exists in every
+     * GregTech build this exporter is pointed at.
+     */
+    private void attachSlotAlternatives(
+        List<Map<String, Object>> exported,
+        List<Integer> sourceIndexes,
+        Object recipe,
+        String fieldName,
+        boolean fluids
+    ) {
+        Object raw = readField(recipe, fieldName);
+        if (raw == null || !raw.getClass().isArray()) {
+            return;
+        }
+
+        int length = Array.getLength(raw);
+        for (int position = 0; position < exported.size(); position++) {
+            int slot = sourceIndexes.get(position).intValue();
+            if (slot >= length) {
+                continue;
+            }
+            Object perSlot = Array.get(raw, slot);
+            if (perSlot == null || !perSlot.getClass().isArray()) {
+                continue;
+            }
+
+            List<Map<String, Object>> alternatives = new ArrayList<Map<String, Object>>();
+            int count = Array.getLength(perSlot);
+            for (int index = 0; index < count; index++) {
+                Object entry = Array.get(perSlot, index);
+                Map<String, Object> resource = fluids
+                    ? (entry instanceof FluidStack ? fluidStack((FluidStack) entry) : null)
+                    : (entry instanceof ItemStack ? itemStack((ItemStack) entry) : null);
+                if (resource == null) {
+                    continue;
+                }
+                String id = String.valueOf(resource.get("id"));
+                boolean seen = false;
+                for (Map<String, Object> existing : alternatives) {
+                    if (id.equals(String.valueOf(existing.get("id")))) {
+                        seen = true;
+                        break;
+                    }
+                }
+                if (!seen) {
+                    alternatives.add(resource);
+                }
+            }
+
+            // One entry is the slot restating itself, not a choice.
+            if (alternatives.size() > 1) {
+                exported.get(position).put("alternatives", alternatives);
+            }
+        }
+    }
+
+    private Object readField(Object target, String fieldName) {
+        if (target == null) {
+            return null;
+        }
+        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                // Keep walking up; the field may live on a superclass.
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private Map<String, Object> itemStack(ItemStack stack) {

@@ -1255,8 +1255,44 @@ function resourceAmount(rawResource, options = {}) {
     consumed: options.consumed === false || rawResource.consumed === false ? false : undefined,
     chance: normalizeChance(options.chance ?? rawResource.chance),
     neiSlot: options.neiSlot,
+    // The other things this exact slot accepts, straight from the recipe. A
+    // GregTech slot can take a resistor OR an SMD resistor, and soldering alloy
+    // OR twice the tin, and only the recipe knows which slots those are.
+    alternatives: slotAlternatives(rawResource, id, amount),
   });
   return resource;
+}
+
+function slotAlternatives(rawResource, selfId, selfAmount) {
+  if (!Array.isArray(rawResource.alternatives) || rawResource.alternatives.length === 0) {
+    return undefined;
+  }
+
+  const alternatives = [];
+  for (const entry of rawResource.alternatives) {
+    const resolved = resourceAmount(entry);
+    if (!resolved) {
+      continue;
+    }
+    if (alternatives.some((existing) => existing.id === resolved.id)) {
+      continue;
+    }
+    // `amount` on an alternative is a RATIO, not a stack size: the field means
+    // target units per source unit everywhere else it is used. Substitutes are
+    // rarely one for one -- a recipe taking 72 L of soldering alloy wants 144 L
+    // of tin or 288 L of lead -- so the real amounts are divided out here and
+    // multiplied back when a slot is actually switched.
+    alternatives.push({
+      ...resolved,
+      amount: selfAmount > 0 ? resolved.amount / selfAmount : 1,
+    });
+  }
+
+  // A slot that only ever offered itself is not a choice.
+  if (alternatives.length < 2 && !alternatives.some((entry) => entry.id !== selfId)) {
+    return undefined;
+  }
+  return alternatives;
 }
 
 function oreDictionaryResource(rawResource) {

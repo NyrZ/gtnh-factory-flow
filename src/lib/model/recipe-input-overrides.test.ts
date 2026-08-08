@@ -194,3 +194,30 @@ describe("recipe input overrides", () => {
     );
   });
 });
+
+describe("switching a slot to a substitute of the same kind", () => {
+  it("scales the requirement by the substitute's ratio", () => {
+    const solder = {
+      kind: "fluid" as const,
+      id: "molten.solderingalloy",
+      displayName: "Molten Soldering Alloy",
+      amount: 72,
+      alternatives: [{ kind: "fluid" as const, id: "molten.lead", amount: 4 }],
+    };
+
+    expect(crossKindInputOverrideAmount(solder, "fluid", { kind: "fluid", amount: 4 })).toBe(288);
+  });
+
+  it("leaves an ore dictionary member's requirement untouched", () => {
+    const planks = {
+      kind: "item" as const,
+      id: "oredict:plankWood",
+      displayName: "Ore Dictionary: plankWood",
+      amount: 3,
+      alternatives: [{ kind: "item" as const, id: "minecraft:planks", amount: 1 }],
+    };
+
+    expect(crossKindInputOverrideAmount(planks, "item", { kind: "item", amount: 1 })).toBe(3);
+    expect(crossKindInputOverrideAmount(planks, "item", undefined)).toBe(3);
+  });
+});

@@ -178,9 +178,22 @@ export function applyAlternativeCycleFace<T extends CycleResource>(
   // falling back to the oredict's atlas would paint one item's name over
   // another's picture.
   const faceHasIcon = face.iconPath !== undefined || face.iconAtlas !== undefined;
+  // Showing tin at the soldering alloy's number would misstate the recipe on
+  // the very slot being read, so the ratio is applied to the label too.
+  const ownAmount = (resource as { amount?: number }).amount;
+  const ratio = face.amount;
+  const scaled =
+    ownAmount !== undefined &&
+    ratio !== undefined &&
+    Number.isFinite(ratio) &&
+    ratio > 0 &&
+    ratio !== 1
+      ? { amount: ownAmount * ratio }
+      : undefined;
 
   return {
     ...resource,
+    ...scaled,
     kind: face.kind,
     id: face.id,
     displayName: face.displayName ?? resource.displayName,

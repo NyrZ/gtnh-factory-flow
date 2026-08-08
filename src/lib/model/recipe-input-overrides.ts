@@ -25,14 +25,23 @@ const DEFAULT_CELL_FLUID_AMOUNT = 1000;
 export function crossKindInputOverrideAmount(
   input: Pick<ResourceAmount, "kind" | "id" | "displayName" | "amount" | "alternatives">,
   targetKind: ResourceKind,
-  alternative?: { amount?: number },
+  alternative?: { amount?: number; kind?: ResourceKind },
 ): number {
+  const perUnit = alternative?.amount;
+  const hasRatio = perUnit !== undefined && Number.isFinite(perUnit) && perUnit > 0;
+
   if (input.kind === targetKind) {
-    return input.amount;
+    // Substitutes within one kind are not always one for one: a slot wanting
+    // 72 L of soldering alloy wants 144 L of tin, and the ratio says so. Ore
+    // dictionary members carry 1 and so leave the amount exactly as it was.
+    //
+    // The alternative's own kind has to be checked. A cell input also lists its
+    // FLUID equivalent at 1000, and that entry says nothing about how many
+    // CELLS to use -- reading it here is what once turned 2 cells into 2,000.
+    return hasRatio && alternative?.kind === targetKind ? input.amount * perUnit : input.amount;
   }
 
-  const perUnit = alternative?.amount;
-  if (perUnit !== undefined && Number.isFinite(perUnit) && perUnit > 0) {
+  if (hasRatio) {
     return input.amount * perUnit;
   }
 
