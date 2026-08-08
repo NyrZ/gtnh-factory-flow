@@ -18,13 +18,13 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "1.29.0",
     date: "2026-08-07",
-    headline: "Slots that take any of several items now show them, and let you choose",
+    headline: "Slots that take more than one item now show it, and let you choose",
     notes: [
-      "A slot that stands for a group of items now behaves the way it does in game: the item rolls through the group, about one a second. An Any LV Circuit slot rolls through the four circuits that fit it, and a plank slot in a crafting recipe rolls through the planks.",
-      "Hover a rolling slot to hold it still and read it. The tooltip lists everything it takes. Scroll on it to step through the group yourself, which stops the roll and settles on your pick, and the corner mark turns from a cyan plus to an orange square once a slot is set.",
-      "Adding the recipe uses whatever the slot was showing at that moment, so you can either aim for the one you want or just take what comes up. Either way the machine lands on your board asking for a real item.",
-      "Slots like these used to give nothing away. An Any LV Circuit slot named a stand-in you cannot craft and never said which circuits would do, and in crafting recipes the squares were simply blank.",
-      "A slot that names one specific item is left alone. Sharing an ore dictionary entry is not the same as being interchangeable, and a recipe that wants a vacuum tube will not take a NAND chip.",
+      "A slot that accepts more than one item now rolls through them the way it does in game, about one a second. The Circuit Assembler recipe for an Electronic Circuit rolls its resistor slot between a resistor and an SMD resistor, and its fluid between 72 L of soldering alloy, 144 L of tin and 288 L of lead. The amount changes with the item, so the machine always asks for the right quantity.",
+      "Hover a rolling slot to hold it still and read it. Scroll on it to step through the choices yourself, which stops the roll and settles on your pick. The corner mark turns from a cyan plus to an orange square once a slot is set.",
+      "Adding the recipe uses whatever the slot was showing at that moment, so you can either aim for the one you want or just take what comes up.",
+      "A slot that takes one exact item is left alone. The vacuum tube in that same recipe still says vacuum tube, because that is all the machine will accept.",
+      "None of this was visible before. Every slot looked like it demanded one exact item, and an Any LV Circuit slot named a stand-in you cannot craft without ever saying which circuits would do.",
     ],
   },
   {
