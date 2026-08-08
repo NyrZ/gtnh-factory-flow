@@ -2021,15 +2021,18 @@ public final class GtnhCalcOracleExporter {
      * Attaches the other things a slot will accept.
      *
      * A GregTech recipe slot is not always one item. `mOreDictAlt` holds the
-     * item alternatives per slot and `mAltFluidInputs` the fluid ones, which is
-     * how one Circuit Assembler recipe takes a resistor OR an SMD resistor, and
-     * soldering alloy OR twice the tin OR four times the lead. Reading only the
-     * primary stack threw that away and left every such slot looking like it
-     * demanded one exact item.
+     * item alternatives per slot and `mAltFluidInputs` the fluid ones. That is
+     * how the Circuit Assembler recipe for an Electronic Circuit takes 72 L of
+     * soldering alloy OR 144 L of tin OR 288 L of lead: it is registered with
+     * `SubstituteFluidStack.soldering(HALF_INGOTS)`, whose three fluids each
+     * carry their own amount. Reading only the primary stack threw the other
+     * two away and left the slot looking like it demanded soldering alloy.
      *
-     * Slots with nothing to offer are left alone: a vacuum tube stays a vacuum
-     * tube, and inventing substitutes for it would describe a recipe the game
-     * will not run.
+     * Both lists include the primary stack, so a slot that offers only itself
+     * is not a choice and is skipped. Slots with nothing to offer are left
+     * alone: the vacuum tube in that same recipe is a plain ItemStack with no
+     * alternatives, and inventing substitutes for it would describe a recipe
+     * the game will not run.
      *
      * Both fields are read reflectively. `mOreDictAlt` lives on a GTRecipe
      * subclass that only some recipes use, and neither field exists in every
@@ -2086,24 +2089,6 @@ public final class GtnhCalcOracleExporter {
                 exported.get(position).put("alternatives", alternatives);
             }
         }
-    }
-
-    private Object readField(Object target, String fieldName) {
-        if (target == null) {
-            return null;
-        }
-        for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
-            try {
-                Field field = type.getDeclaredField(fieldName);
-                field.setAccessible(true);
-                return field.get(target);
-            } catch (NoSuchFieldException ignored) {
-                // Keep walking up; the field may live on a superclass.
-            } catch (Throwable ignored) {
-                return null;
-            }
-        }
-        return null;
     }
 
     private Map<String, Object> itemStack(ItemStack stack) {
