@@ -67,7 +67,7 @@ const NEI_CANVAS_WIDTH = 170;
 const CARD_ADD_GUTTER = 0;
 const CARD_GAP = 12;
 // The time and circuit strip along the foot of the panel.
-const CARD_CHROME_HEIGHT = 50;
+const CARD_CHROME_HEIGHT = 38;
 const NEI_CANVAS_HEIGHT_DEFAULT = 82;
 const NEI_CANVAS_HEIGHT_NATIVE = 120;
 const RECIPE_CARD_MAX_COLUMNS = 3;
@@ -1999,7 +1999,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
           onSlotClick={onSlotBrowse ? (slot, mode) => onSlotBrowse(slot.resource, mode) : undefined}
         />
         <div
-          className="flex h-11 items-center gap-2 px-1.5 text-[11px] leading-none"
+          className="flex h-8 items-center gap-2 px-1.5 text-[11px] leading-none"
           style={{ color: NEI_PALETTE.borderDark }}
         >
           <span className="min-w-0 flex-1 truncate">
@@ -2029,8 +2029,6 @@ const RecipeResultCard = memo(function RecipeResultCard({
   );
 });
 
-const PROGRAMMED_CIRCUIT_ITEM = "gregtech:gt.integrated_circuit";
-
 /**
  * The number a machine's circuit slot has to be dialled to, or the empty slot
  * saying it does not care.
@@ -2045,9 +2043,6 @@ function CircuitSetting({ recipe }: { recipe: Recipe }) {
     return null;
   }
 
-  const circuit = recipe.inputs.find(
-    (input) => input.kind === "item" && input.id.replace(/@\d+$/, "") === PROGRAMMED_CIRCUIT_ITEM,
-  );
   const setting = recipe.programmedCircuit;
 
   return (
@@ -2057,32 +2052,22 @@ function CircuitSetting({ recipe }: { recipe: Recipe }) {
           ? `Programmed circuit: set to ${setting}`
           : "No circuit setting: runs whatever the circuit is set to"
       }
-      className="flex h-10 shrink-0 items-center gap-1.5"
+      className="flex h-7 shrink-0 items-center gap-1"
     >
-      {circuit ? (
-        // The circuit's own art is dark and small, and it sits on the panel's
-        // grey in the corner of an already small card, so it is lifted rather
-        // than boxed: a box would only take more of the card.
-        // Sized to match the empty slot's glyph beside it, so the two states
-        // read as the same thing rather than the real one looking smaller.
-        <ResourceIcon
-          resource={{ ...circuit, amount: 1 }}
-          size="sm"
-          bare
-          showAmount={false}
-          tooltip={false}
-          className="!h-10 !w-10"
-          iconPixelSize={40}
-        />
-      ) : (
-        <Cpu className="h-9 w-9" style={{ color: NEI_PALETTE.borderDark }} />
-      )}
-      <span
-        className="text-[20px] font-bold leading-none tabular-nums"
-        style={{ color: NEI_PALETTE.borderDarker }}
-      >
-        {setting ?? "-"}
-      </span>
+      {/*
+        Always the drawn slot, never the circuit's own art. A recipe that dials
+        a circuit already shows the item in its slots, so putting it here too
+        would say the same thing twice in the space of one card.
+      */}
+      <Cpu className="h-5 w-5" style={{ color: NEI_PALETTE.borderDark }} />
+      {setting ? (
+        <span
+          className="text-[13px] font-bold leading-none tabular-nums"
+          style={{ color: NEI_PALETTE.borderDarker }}
+        >
+          {setting}
+        </span>
+      ) : null}
     </span>
   );
 }
