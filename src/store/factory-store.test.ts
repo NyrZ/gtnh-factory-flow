@@ -3718,6 +3718,57 @@ describe("pocket dimensions", () => {
     expect(undoHistory).toHaveLength(2);
   });
 
+  it("drags a drawer out of a slot into the pocket being viewed", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["beta"]) as string;
+    useFactoryStore.getState().enterPocket(pocketId);
+
+    useFactoryStore
+      .getState()
+      .addStorageForConnection(
+        { kind: "item", id: "plate", displayName: "Plate" },
+        "beta",
+        "output",
+        { x: 600, y: 0 },
+        makeResourceHandleId("output", { kind: "item", id: "plate" }, 0),
+      );
+
+    const project = useFactoryStore.getState().project;
+    const plate = project.storages?.find((storage) => storage.resourceId === "plate");
+    // The drawer lands where you are standing. Left undefined it would be
+    // filtered off the pocket view and appear on the root board instead.
+    expect(plate?.pocketId).toBe(pocketId);
+  });
+
+  it("adds new machines, drawers and notes to the pocket being viewed", () => {
+    const pocketId = useFactoryStore
+      .getState()
+      .compactSelectionIntoPocket(["alpha"]) as string;
+    useFactoryStore.getState().enterPocket(pocketId);
+
+    useFactoryStore.getState().addResourceStorage({
+      kind: "item",
+      id: "plate",
+      displayName: "Plate",
+      iconPath: undefined,
+      iconAtlas: undefined,
+      dominantColor: undefined,
+    });
+    useFactoryStore.getState().addAnnotation({
+      kind: "text",
+      text: "inside",
+      position: { x: 0, y: 400 },
+      size: { width: 200, height: 100 },
+    });
+
+    const project = useFactoryStore.getState().project;
+    expect(project.storages?.find((storage) => storage.resourceId === "plate")?.pocketId).toBe(
+      pocketId,
+    );
+    expect(project.annotations?.find((note) => note.text === "inside")?.pocketId).toBe(pocketId);
+  });
+
   it("pastes root payloads into the pocket being viewed", () => {
     const pocketId = useFactoryStore
       .getState()

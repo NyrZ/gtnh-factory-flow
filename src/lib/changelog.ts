@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.30.1",
+    date: "2026-08-08",
+    headline: "New cards stay in the pocket you are standing in",
+    notes: [
+      "Drag a drawer or tank out of a slot while inside a pocket and it landed on the main board instead, wired to a machine you could no longer see. It now appears where you are working.",
+      "The same went for every new card: machines added from the recipe book, drawers added from the resource list, and notes. All of them jumped out to the main board. They stay put now.",
+      "Pockets you already built are unchanged. Anything that escaped is still on the main board, so drag it back in.",
+    ],
+  },
+  {
     version: "1.30.0",
     date: "2026-08-08",
     headline: "The recipe book fits your screen, and shows the circuit setting",

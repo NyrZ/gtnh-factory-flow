@@ -1114,6 +1114,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           x: 180 + (state.project.storages?.length ?? 0) * 80,
           y: 180 + (state.project.storages?.length ?? 0) * 60,
         }),
+        pocketId: state.activePocketId,
       };
       const project = touchProject({
         ...state.project,
@@ -1140,6 +1141,11 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         iconAtlas: storageResource.iconAtlas,
         dominantColor: storageResource.dominantColor ?? storageResource.iconAtlas?.dominantColor,
         position: snapPositionToGrid(position),
+        // A new card belongs to the level you are LOOKING at, not the level of
+        // whatever it wired itself to. Dragging from a collapsed pocket's port
+        // hands over members inside that pocket; inheriting from them would
+        // bury the drawer in a pocket you are standing outside of.
+        pocketId: state.activePocketId,
       };
       let project: FactoryProject = {
         ...state.project,
@@ -1365,7 +1371,12 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ...state.project,
         annotations: [
           ...(state.project.annotations ?? []),
-          { ...annotation, ...snapAnnotationToGrid(annotation), id: createId("annotation") },
+          {
+            ...annotation,
+            ...snapAnnotationToGrid(annotation),
+            id: createId("annotation"),
+            pocketId: state.activePocketId,
+          },
         ],
       });
 
@@ -2254,6 +2265,7 @@ function addRecipeNodeToState(
         x: 100 + index * 80,
         y: 120 + (index % 4) * 80,
       }),
+    pocketId: state.activePocketId,
   };
   const recipeAlreadyInProject = state.project.recipes.some((entry) => entry.id === recipe.id);
   const project = touchProject({
@@ -2301,6 +2313,7 @@ function addConnectedRecipeNodeToState(
         ? { x: anchorNode.position.x - 440, y: anchorNode.position.y }
         : { x: anchorNode.position.x + 440, y: anchorNode.position.y },
     ),
+    pocketId: state.activePocketId,
   };
 
   const projectWithNode: FactoryProject = {
