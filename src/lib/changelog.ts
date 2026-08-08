@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.34.0",
+    date: "2026-08-08",
+    headline: "The search box forgives you, and crops are recipes now",
+    notes: [
+      "Searching finally works the way you type. Plurals find the singular, so \"oak logs\" finds Oak Log. Spelling mistakes get fixed for you: \"vaccum tube\" finds the Vacuum Tube, \"steal ingot\" finds Steel. Two words run together still work, and nicknames like \"ebf\" find the Electric Blast Furnace. Names now beat registry ids, so the item you meant is at the top.",
+      "Crops are real recipes. Look up Oak Log and a Crop Farm sits in the list next to the machines, so you can see a crop can grow it. Click it and the crop card lands ready to run, with the crop already picked. No more hunting for the sprout button and setting one up by hand.",
+      "New filters under the search box: only what is already on your board, only what a crop or tree can grow, only what bees make.",
+      "A Recent strip along the bottom of the items column remembers the last things you looked up, so coming back to the same ingredient is one click. In the icon grid, hovering an item now names it and says which mod it is from.",
+      "Hovering a slot that rotates through the items it accepts used to answer with the whole list of them, twice, wrapped over the card. It now names the one item you are pointing at. Scrolling that slot no longer makes the tooltip vanish, so you can spin through the options and read each one.",
+    ],
+  },
+  {
     version: "1.33.2",
     date: "2026-08-08",
     headline: "Your crop farm logs go into the machines that want logs",
