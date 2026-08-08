@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.33.0",
+    date: "2026-08-08",
+    headline: "A painted card is painted all the way through",
+    notes: [
+      "Paint a card and every part of it takes the colour: the name bar, the item boxes, the plugs, the usage and machine boxes, the dropdowns and the little block beside them, the machine tabs on top, the close and copy buttons. Bits kept getting left behind on the old dark grey, and each fix found a new one.",
+      "Each colour has its own set of shades now, written down rather than worked out on the fly. A card keeps exactly the light and shade an unpainted card has, so text is as easy to read on a yellow card as on a grey one, and the bright ring around the outside is what tells you the colour from across the board.",
+      "Pockets and crop farms are built from the same sets, in purple and green, so every card on the board is put together the same way.",
+      "What a card is telling you never takes the paint: a starved input, a plug that is short, the tier badge and the delete button keep their own colours on every card.",
+    ],
+  },
+  {
     version: "1.32.1",
     date: "2026-08-08",
     headline: "Presentation mode keeps a card's colour",

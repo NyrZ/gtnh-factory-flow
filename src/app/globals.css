@@ -667,73 +667,20 @@ img {
 }
 
 /* ===== Painted cards =====================================================
-   A card's colour reaches all of it, in two strengths.
+   A card takes a colour by REDEFINING its own --mc-* tokens, on the shell, in
+   node-colors.ts (GT_NODE_RAMPS). There is nothing to do here: every surface
+   inside a card already reads those tokens, so the face, the name bar, the
+   port chips, the plugs, the stat tiles, the config dials, the dropdowns and
+   the block beside them, the machine tabs and the head buttons all arrive at
+   the card's colour without any rule naming them.
 
-   The FACE is the tint muted toward the unpainted card face: a wash the
-   panels sit on rather than a slab of colour.
+   That is deliberate. Every earlier version of this tinted a LIST of elements
+   and the list was never complete, so a painted card always had a few pieces
+   left at board grey. A ramp cannot miss one.
 
-   Everything inset on the card — the name bar, the item chips, the usage and
-   reason box, the machine and parallel counters, the config dials, the rate
-   dial, the arrow between the rails — is that colour's DARK ACCENT: a little
-   of the full-strength dye mixed into the same dark surface the element has
-   unpainted. So a red card has dark red boxes and a purple pocket has dark
-   purple ones, while every one of them stays a dark ground with light text
-   on it, at the same contrast an unpainted card has.
-
-   The alternative, tinting panels toward the pale face colour, is what this
-   replaces: it put light text on light panels, and it reached the item chips
-   but not the stats, so a painted card had a black strip along its bottom.
-
-   Everything opts IN by class, so semantic surfaces — a binding red port, a
-   hungry amber one, a tier badge, the delete button — carry no class and are
-   never repainted by a colour tag. */
-.recipe-node-tinted-area {
-  background: color-mix(in srgb, var(--recipe-node-tint) 82%, var(--mc-78));
-  box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.45),
-    inset -1px -1px 0 rgba(0, 0, 0, 0.25);
-}
-
-/* One dark step off the dye, used everywhere a card has a neutral surface.
-   Kept as variables so the calm-mode rules below can hand the SAME pair to
-   the state washes without restating the mix five times. */
-.recipe-node-painted {
-  --recipe-node-accent-panel: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-71));
-  --recipe-node-accent-edge: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-47));
-}
-
-.recipe-node-painted .mc-panel,
-.recipe-node-painted .flow-port:not(.flow-port--bind):not(.flow-port--hot),
-.recipe-node-painted
-  .flow-plug:not(.flow-plug--hungry):not(.flow-plug--blocked):not(.flow-plug--fed) {
-  background: var(--recipe-node-accent-panel);
-  border-color: var(--recipe-node-accent-edge);
-}
-
-/* The name bar sits one step up from the panels, as it does unpainted. */
-.recipe-node-painted .minecraft-title {
-  background: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-61));
-}
-
-/* Things you type in or press sit a step lighter than the panel behind them,
-   again the same step as unpainted. */
-.recipe-node-painted .mc-control {
-  background: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-85));
-  border-color: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-47));
-  color: var(--mc-ink);
-}
-
-.recipe-node-painted .mc-control:hover {
-  background: color-mix(in srgb, var(--recipe-node-accent) 26%, var(--mc-100));
-}
-
-/* The arrow between the rails is the one place the dye shows at strength:
-   it is a mark, not a surface, so it takes the colour rather than a wash of
-   it, mixed far enough toward the ink that a black or grey card still has a
-   visible arrow. */
-.recipe-node-painted .mc-rail-arrow {
-  color: color-mix(in srgb, var(--recipe-node-accent) 60%, var(--mc-ink));
-}
+   Semantic colour is the exception and stays out of it: a binding input, a
+   hungry plug, a tier badge and the delete button's red are their own values,
+   not tokens, so what a card is telling you never depends on its paint. */
 
 /* ===== Node verdict strip + port rails ===================================
    A card has exactly one reason, and everything wrong on that card is painted
@@ -1327,21 +1274,9 @@ img {
   --verdict-bottleneck-ink: var(--mc-ink);
 }
 
-/* Calming a state means dropping it to the card's OWN neutral, and on a
-   painted card that neutral is the accent, not board grey. Without this the
-   binding input, the hot input and the fed plug were the only things on a
-   painted card that went flat --mc-71 in presentation mode — every state a
-   card was wearing turned into a black chip on a coloured card, which read
-   as the paint having missed them. Set on the window rather than the shell
-   so the accent is in scope. */
-.factory-flow-board--calm .recipe-node-painted {
-  --state-wash: var(--recipe-node-accent-panel);
-  --state-edge: var(--recipe-node-accent-edge);
-  --port-hot-bg: var(--recipe-node-accent-panel);
-  --port-hot-edge: var(--recipe-node-accent-edge);
-  --port-fed-bg: var(--recipe-node-accent-panel);
-  --port-fed-edge: var(--recipe-node-accent-edge);
-}
+/* Calming a state drops it to the card's own neutral — which on a painted
+   card is that card's --mc-71, because the ramp is declared on this very
+   element. Nothing extra to do. */
 
 /* The accents that don't read the channel: the default want caret and the
    ×N burst on an otherwise neutral port. */

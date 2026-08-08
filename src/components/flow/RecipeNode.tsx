@@ -105,12 +105,7 @@ import {
   type PortStory,
 } from "./flow-explainers";
 import { useFactoryStore } from "@/store/factory-store";
-import {
-  CUSTOM_RATE_NODE_COLOR,
-  GT_NODE_COLORS,
-  heatmapColorFor,
-  heatmapInkFor,
-} from "./node-colors";
+import { GT_NODE_COLORS, heatmapColorFor, heatmapRamp, rampFor } from "./node-colors";
 import { useBoardView } from "./board-view";
 import { getPaintBrushCursor } from "./paint-cursor";
 import { GT_TIER_COLORS } from "./tier-colors";
@@ -173,26 +168,22 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // Heatmap wins over the paint tag while it is on, and gives it straight back
   // when it goes off — the tag is never written to or lost.
   const { heatmapMode, calmMode, glanceMode } = useBoardView();
-  // A custom rate card that nobody has painted wears the app's own deep blue,
-  // not a colour off the player's palette. The palette's panels are pale by
-  // design (they tint a card without hiding it) and the card's own ink stays
-  // light, which on a pale blue put white text on a pale blue face. Painting
+  // A custom rate card nobody has painted wears the app's own blue. Painting
   // one still works and still wins.
-  const paintColor = projectNode.colorTag
-    ? GT_NODE_COLORS[projectNode.colorTag]
-    : isCustomRateRecipe(recipe)
-      ? CUSTOM_RATE_NODE_COLOR
-      : undefined;
+  const paintTag = projectNode.colorTag ?? (isCustomRateRecipe(recipe) ? "blue" : undefined);
+  const paintColor = paintTag ? GT_NODE_COLORS[paintTag] : undefined;
   const heatColor = heatmapMode
     ? heatmapColorFor(result?.utilization, projectNode.enabled !== false)
     : undefined;
   const nodeColor = heatColor ?? paintColor;
-  // Only the heatmap flips the ink. A hand-painted node keeps every element
-  // in its theme colours and just tints the panels behind them: half the card
-  // is textures and inset chips that don't recolour, and switching the text
-  // under them to match the paint made those pieces harder to read, not
-  // easier.
-  const nodeInk = heatColor ? heatmapInkFor(heatColor.panel) : undefined;
+  // The card's own --mc-* ramp, which is the WHOLE of how a card takes a
+  // colour: every surface inside already reads these tokens, so redefining
+  // them here paints the dropdowns, the block beside them, the machine tabs,
+  // the head buttons, the plugs and everything else without one of them
+  // having to know. See GT_NODE_RAMPS.
+  // The ink is never touched: a ramp keeps an unpainted card's lightnesses,
+  // so the same light text sits at the same contrast on every colour.
+  const nodeRamp = heatColor ? heatmapRamp(heatColor.panel) : rampFor(paintTag);
   const paintCursor =
     nodeColorPaintMode !== undefined
       ? getPaintBrushCursor(
@@ -570,16 +561,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // content-driven (`w-max`), which put the card's right edge — and so
         // every output coupling — at an arbitrary sub-cell offset.
         width: RECIPE_NODE_WIDTH,
-        ...(nodeColor
-          ? ({
-              // The paint decides the ink. Everything inside the card reads
-              // its text colour from these two variables, so one assignment
-              // here keeps names, rates and stats legible on black and on
-              // white alike — no component needs to know its own colour.
-              "--mc-ink": nodeInk?.ink,
-              "--mc-ink-muted": nodeInk?.inkMuted,
-            } as CSSProperties)
-          : undefined),
+        // The colour, all of it. The ramp goes on the SHELL rather than the
+        // window so the machine tabs above the card take it too — they are
+        // the card's tabs, and a grey tab on a green card was the tell that
+        // the paint was a list of elements rather than a palette.
+        ...(nodeRamp as CSSProperties | undefined),
         ...(paintCursor ? { cursor: paintCursor } : undefined),
       }}
     >
@@ -626,24 +612,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         // window directly without touching the frame this element draws.
         className={[
           "recipe-node-window relative bg-[var(--mc-78)] shadow-[inset_0_0_0_2px_var(--mc-96),inset_4px_4px_0_var(--mc-100),inset_-4px_-4px_0_var(--mc-33)]",
-          // The paint's colours live on the WHOLE card, header included: the
-          // name bar takes the accent too, and it sits above the tinted face.
-          nodeColor ? "recipe-node-painted" : "",
           isInspectorHighlighted ? "resource-glow" : "",
         ].join(" ")}
+        // The card's face, frame and bevels are already the ramp's tokens, so
+        // a painted card needs nothing here but the RING: the dye at full
+        // strength around the outside, which is what makes a tag legible from
+        // across the board and at any zoom, however quiet the body is.
         style={
           nodeColor
-            ? ({
-                backgroundColor: nodeColor.panel,
+            ? {
                 boxShadow: `inset 0 0 0 2px ${nodeColor.border}, inset 4px 4px 0 var(--mc-100), inset -4px -4px 0 var(--mc-33), 0 0 0 2px ${nodeColor.shadow}`,
-                "--recipe-node-tint": nodeColor.panel,
-                "--recipe-node-tint-header": nodeColor.header,
-                "--recipe-node-tint-border": nodeColor.border,
-                // The full-strength dye. Panels mix a little of it into their
-                // own dark, which is what makes a red card's boxes dark red
-                // instead of either black or pink.
-                "--recipe-node-accent": nodeColor.swatch,
-              } as CSSProperties)
+              }
             : undefined
         }
       >
@@ -895,7 +874,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           ) : null}
         </div>
         </div>
-        <div className={nodeColor ? "recipe-node-tinted-area" : undefined}>
+        {/* The card body. No paint of its own: the window behind it is
+            already the ramp's face, painted or not. */}
+        <div>
           {isCropFarmPlaceholder ? (
             <button
               type="button"
@@ -903,7 +884,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                 event.stopPropagation();
                 setCropMenuOpen(true);
               }}
-              className="mc-panel nodrag mx-auto my-0 flex h-[80px] w-[240px] items-center justify-center gap-2 border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[14px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+              className="nodrag mx-auto my-0 flex h-[80px] w-[240px] items-center justify-center gap-2 border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[14px] font-bold text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
             >
               <Sprout className="h-5 w-5" /> Pick a crop
             </button>
@@ -931,7 +912,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               pending={pendingResourceConnection}
             />
             {rails.inputs.length > 0 && rails.outputs.length > 0 ? (
-              <div className="mc-rail-arrow flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
+              <div className="flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
                 →
               </div>
             ) : null}
@@ -971,10 +952,10 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               <div
                 // A hairline over the stats: the knobs are one thing, the
                 // verdict below them is another. No background of its own —
-                // this strip is card FACE, and the face is painted once by
-                // .recipe-node-tinted-area. It used to paint itself with the
-                // raw tag colour, which left the bottom of a painted card a
-                // visibly different shade from the rest of it.
+                // this strip is card face, and the face is the window behind
+                // it. It used to paint itself with the raw tag colour, which
+                // left the bottom of a painted card a different shade from
+                // the rest of it.
                 className="min-w-0 border-t border-[var(--mc-56)] pb-[6px] pt-[6px] text-[14px] leading-5 text-[var(--mc-ink)]"
               >
                 {calmMode ? (
@@ -982,7 +963,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                      on the same bordered tile every other element sits on —
                      bare text floated alone on the card face. */
                   <div className="flex min-w-0 items-center justify-center">
-                    <span className="mc-panel truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+                    <span className="truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
                       {projectNode.machineCount}×{" "}
                       {isCropProductionNode
                         ? projectNode.machineCount === 1
@@ -1288,7 +1269,7 @@ function UsageStat({
     >
       {/* One card, one divider: the number and the word are the same
           sentence — how hard it runs, and why. Two boxes read as two facts. */}
-      <div className="mc-panel flow-usage-stat flex min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+      <div className="flow-usage-stat flex min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
         <div className="min-w-0 px-1.5">
           <div className="text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
             Usage
@@ -2115,7 +2096,7 @@ function UniversalPortChip({
   const handleId = makeResourceHandleId(side, { kind: "item", id: CUSTOM_RATE_ANY_RESOURCE_ID });
   return (
     <div
-      className="mc-panel relative flex h-[40px] w-[160px] items-center justify-center border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[11px] font-bold uppercase tracking-wide text-[var(--mc-ink-muted)]"
+      className="relative flex h-[40px] w-[160px] items-center justify-center border-2 border-dashed border-[var(--mc-33)] bg-[var(--mc-71)] text-[11px] font-bold uppercase tracking-wide text-[var(--mc-ink-muted)]"
       data-resource-edge-anchor="true"
       data-resource-node-id={nodeId}
       data-resource-handle-id={handleId}
@@ -2182,12 +2163,12 @@ function CustomRatePanel({
       // one thing on this row that says which way the card faces.
       active
         ? "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-85)]"
-        : "mc-control bg-[var(--mc-82)] text-[var(--mc-ink-muted)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-47)] hover:bg-[var(--mc-100)]",
+        : "bg-[var(--mc-82)] text-[var(--mc-ink-muted)] shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-47)] hover:bg-[var(--mc-100)]",
     ].join(" ");
 
   return (
     // Two cells tall, or more if the dial needs them.
-    <GridBlock className="mc-panel nodrag border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <GridBlock className="nodrag border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
     <div className="flex items-center gap-1">
       <div className="flex border-2 border-[var(--mc-33)]">
         <button
@@ -2239,7 +2220,7 @@ function CustomRatePanel({
         // the typed digits, so a "5" node is small and a "1000000000" node
         // grows only when it has to.
         style={{ width: `${Math.min(Math.max(draft.length + 2, 5), 16)}ch` }}
-        className="mc-control nodrag h-6 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
+        className="nodrag h-6 shrink-0 border border-[var(--mc-33)] bg-[var(--mc-93)] px-1 text-right text-[13px] text-[var(--mc-ink)]"
       />
       <span className="shrink-0 pr-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
         {rateUnitSuffix(kind === "fluid").trim() || "/s"}
@@ -2829,7 +2810,7 @@ function MachineConfigControlPanel({
   const rows = Math.ceil(controls.length / 2);
   return (
     <GridBlock
-      className="mc-panel nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
+      className="nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]"
       minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
     >
       <div className="grid grid-cols-[repeat(auto-fit,minmax(168px,1fr))] items-center gap-x-1 gap-y-1">
@@ -2901,7 +2882,7 @@ function PassiveProductionConfigPanel({
   return (
     <GridBlock
       className={[
-        "mc-panel nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
+        "nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
         className,
       ].join(" ")}
       minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
@@ -3184,7 +3165,7 @@ function Stat({
   valueClassName?: string;
 }) {
   return (
-    <div className="mc-panel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
       <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className={["truncate font-medium", valueClassName ?? ""].join(" ")}>{value}</div>
     </div>
@@ -3231,10 +3212,10 @@ function MachineCountStat({
   };
 
   const stepButtonClassName =
-    "mc-control nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
+    "nodrag flex h-5 w-5 shrink-0 items-center justify-center border border-[var(--mc-33)] bg-[var(--mc-82)] text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-47)] hover:bg-[var(--mc-100)] active:shadow-[inset_1px_1px_0_var(--mc-47),inset_-1px_-1px_0_var(--mc-100)]";
 
   return (
-    <div className="mc-panel min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
+    <div className="min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
       <div className="truncate text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">{label}</div>
       <div className="flex min-w-0 items-center gap-0.5">
         <button
@@ -3267,7 +3248,7 @@ function MachineCountStat({
           inputMode="numeric"
           aria-label={`${label} count`}
           title={`Edit ${label.toLowerCase()} count`}
-          className="mc-control nodrag h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
+          className="nodrag h-[21px] w-0 min-w-0 flex-1 border border-[var(--mc-47)] bg-[var(--mc-85)] px-1 text-center text-[14px] font-medium leading-4 text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-100),inset_-1px_-1px_0_var(--mc-54)] outline-none focus:border-cyan-700 focus:bg-[var(--mc-100)] focus:ring-1 focus:ring-cyan-400"
         />
         <button
           type="button"

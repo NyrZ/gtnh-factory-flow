@@ -17,6 +17,7 @@ import { useBoardView } from "./board-view";
 import { NodeGlanceText } from "./NodeGlance";
 import type { PocketPortSummary, PocketSummary } from "./pocket-summary";
 import { useRenderedHandles } from "./use-rendered-handles";
+import { GT_NODE_RAMPS } from "./node-colors";
 
 export interface PocketNodeData extends Record<string, unknown> {
   pocket: FactoryPocket;
@@ -42,9 +43,6 @@ export const POCKET_NODE_WIDTH = RECIPE_NODE_WIDTH;
 
 /** The purple ink pair: names in white, figures a step down. */
 const INK_MUTED = "text-[#c9b8ec]";
-
-/** Full-strength pocket purple, for the accent every inset panel mixes in. */
-const POCKET_ACCENT = "#8d6fd1";
 
 function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
   const { pocket, summary, railPorts } = data;
@@ -141,12 +139,14 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
           border would push the rows off the grid), painted star-field purple. */}
       <div
         data-node-glance-root=""
-        // Painted like a colour-tagged machine card, in the pocket's own
-        // purple: the port chips and the name bar it shares with RecipeNode
-        // read the accent and come out dark purple instead of board grey.
-        // The head buttons stay their hand-painted selves — they are chrome.
-        className="recipe-node-painted relative bg-[#3b2d52] shadow-[inset_0_0_0_2px_#241b33,inset_4px_4px_0_#5e4a85,inset_-4px_-4px_0_#1a1326]"
-        style={{ "--recipe-node-accent": POCKET_ACCENT } as CSSProperties}
+        // Painted like a colour-tagged machine card: the purple ramp is
+        // declared here, so everything the card borrows from RecipeNode — the
+        // port chips, the plugs, the name bar — arrives purple instead of
+        // board grey, without this file listing any of them. The bright
+        // bevels and the head buttons below are the pocket's own identity and
+        // stay hand-painted, like the ring around a painted machine card.
+        className="relative bg-[#3b2d52] shadow-[inset_0_0_0_2px_#241b33,inset_4px_4px_0_#5e4a85,inset_-4px_-4px_0_#1a1326]"
+        style={GT_NODE_RAMPS.purple as CSSProperties}
       >
         {/* Zoomed out, the card is a star on purple — a pocket, not a machine.
             Hovering opens the same I/O reveal a machine card gives: name bar
@@ -311,7 +311,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
               />
               {inputs.length > 0 && outputs.length > 0 ? (
                 <div
-                  className={`mc-rail-arrow flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black ${INK_MUTED}`}
+                  className={`flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black ${INK_MUTED}`}
                 >
                   →
                 </div>

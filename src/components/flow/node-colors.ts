@@ -143,16 +143,295 @@ export const GT_NODE_COLORS: Record<
   },
 };
 
-/**
- * The ink each tag needs, keyed the same way as the colours. Node components
- * push these into `--mc-ink` / `--mc-ink-muted` on the card root, so every
- * label, rate and stat inside inherits readable text without any component
- * knowing which colour it was painted.
+/*
+ * There is deliberately no per-tag ink table any more. A card's ramp below
+ * keeps an unpainted card's LIGHTNESSES, so the one light ink reads at the
+ * same contrast on every colour and no card has to switch to dark text.
  */
-export const GT_NODE_INK: Record<FactoryNodeColorTag, { ink: string; inkMuted: string }> =
-  Object.fromEntries(
-    Object.entries(GT_NODE_COLORS).map(([tag, color]) => [tag, inkFor(color.panel)]),
-  ) as Record<FactoryNodeColorTag, { ink: string; inkMuted: string }>;
+
+/**
+ * A painted card's own --mc-* ramp, one preset per colour tag.
+ *
+ * A card is built entirely out of the --mc-* tokens: the face is --mc-78, an
+ * inset panel is --mc-71, a name bar --mc-61, a dropdown or a typed field
+ * --mc-85, a head button --mc-49, the bevels --mc-100 and --mc-33. Painting a
+ * card REDEFINES those tokens on the card itself, so every surface inside it
+ * takes the colour without knowing it was painted - the port chips, the
+ * plugs, the stat tiles, the config dials, the dropdowns and the little block
+ * beside them, the machine tabs, the close and copy buttons. There is no list
+ * of elements to keep in sync, which is the whole reason for doing it this
+ * way: every previous attempt tinted the elements someone remembered.
+ *
+ * Each ramp is the NEUTRAL ramp's lightnesses carried onto that dye's hue, so
+ * a painted card has exactly the relief and the text contrast an unpainted
+ * one has. Tags that are not a hue - white, black and the two greys - are the
+ * neutral ramp moved up or down instead. The values are written out rather
+ * than mixed at runtime so they can be read, compared and hand-edited; they
+ * were generated once from (hue, saturation, lightness shift) per tag.
+ *
+ * Semantic colour is deliberately NOT in here and never takes the paint: a
+ * binding input, a fed plug, a tier badge and the delete button's red all
+ * come from their own values, so what a card is telling you never depends on
+ * what colour you painted it.
+ */
+export const GT_NODE_RAMPS: Record<FactoryNodeColorTag, Record<string, string>> = {
+  white: {
+    "--mc-100": "#6f7176",
+    "--mc-93": "#636469",
+    "--mc-85": "#5f6065",
+    "--mc-82": "#5b5c60",
+    "--mc-78": "#515256",
+    "--mc-71": "#4b4c50",
+    "--mc-61": "#424346",
+    "--mc-56": "#3f4043",
+    "--mc-55": "#3e3f42",
+    "--mc-49": "#3b3c3e",
+    "--mc-47": "#3a3b3d",
+    "--mc-33": "#323235",
+    "--mc-25": "#2c2c2e",
+    "--mc-15": "#262628",
+  },
+  orange: {
+    "--mc-100": "#845f41",
+    "--mc-93": "#735339",
+    "--mc-85": "#6e4f36",
+    "--mc-82": "#684b33",
+    "--mc-78": "#5b412d",
+    "--mc-71": "#523b29",
+    "--mc-61": "#463222",
+    "--mc-56": "#412f20",
+    "--mc-55": "#402e1f",
+    "--mc-49": "#3c2b1d",
+    "--mc-47": "#3a2a1d",
+    "--mc-33": "#2f2217",
+    "--mc-25": "#271c13",
+    "--mc-15": "#1f160f",
+  },
+  magenta: {
+    "--mc-100": "#7a4876",
+    "--mc-93": "#6b3f67",
+    "--mc-85": "#653c62",
+    "--mc-82": "#60385d",
+    "--mc-78": "#533150",
+    "--mc-71": "#4c2c49",
+    "--mc-61": "#40253d",
+    "--mc-56": "#3b2339",
+    "--mc-55": "#3a2238",
+    "--mc-49": "#362034",
+    "--mc-47": "#351f33",
+    "--mc-33": "#2a1929",
+    "--mc-25": "#231421",
+    "--mc-15": "#1b101a",
+  },
+  light_blue: {
+    "--mc-100": "#446f7e",
+    "--mc-93": "#3b606e",
+    "--mc-85": "#385c69",
+    "--mc-82": "#355763",
+    "--mc-78": "#2e4b56",
+    "--mc-71": "#2a444e",
+    "--mc-61": "#233a42",
+    "--mc-56": "#21363d",
+    "--mc-55": "#20343c",
+    "--mc-49": "#1e3138",
+    "--mc-47": "#1d3037",
+    "--mc-33": "#17262c",
+    "--mc-25": "#131f24",
+    "--mc-15": "#0f191c",
+  },
+  yellow: {
+    "--mc-100": "#827343",
+    "--mc-93": "#72653b",
+    "--mc-85": "#6c6038",
+    "--mc-82": "#665b35",
+    "--mc-78": "#594f2e",
+    "--mc-71": "#51482a",
+    "--mc-61": "#453d23",
+    "--mc-56": "#403921",
+    "--mc-55": "#3f3820",
+    "--mc-49": "#3b341e",
+    "--mc-47": "#39331e",
+    "--mc-33": "#2e2918",
+    "--mc-25": "#262214",
+    "--mc-15": "#1e1b10",
+  },
+  lime: {
+    "--mc-100": "#657e44",
+    "--mc-93": "#586e3b",
+    "--mc-85": "#546938",
+    "--mc-82": "#4f6335",
+    "--mc-78": "#45562e",
+    "--mc-71": "#3e4e2a",
+    "--mc-61": "#354223",
+    "--mc-56": "#313d21",
+    "--mc-55": "#303c20",
+    "--mc-49": "#2d381e",
+    "--mc-47": "#2c371d",
+    "--mc-33": "#232c17",
+    "--mc-25": "#1d2413",
+    "--mc-15": "#161c0f",
+  },
+  pink: {
+    "--mc-100": "#7d4c5b",
+    "--mc-93": "#6d4350",
+    "--mc-85": "#68404c",
+    "--mc-82": "#633c48",
+    "--mc-78": "#56353f",
+    "--mc-71": "#4f3039",
+    "--mc-61": "#432931",
+    "--mc-56": "#3f262e",
+    "--mc-55": "#3e262d",
+    "--mc-49": "#3a232a",
+    "--mc-47": "#392329",
+    "--mc-33": "#2e1c22",
+    "--mc-25": "#27181c",
+    "--mc-15": "#1f1317",
+  },
+  gray: {
+    "--mc-100": "#585c61",
+    "--mc-93": "#4c5054",
+    "--mc-85": "#484c50",
+    "--mc-82": "#44474b",
+    "--mc-78": "#3a3d41",
+    "--mc-71": "#35373a",
+    "--mc-61": "#2c2e30",
+    "--mc-56": "#282a2d",
+    "--mc-55": "#27292c",
+    "--mc-49": "#252628",
+    "--mc-47": "#242527",
+    "--mc-33": "#1b1d1e",
+    "--mc-25": "#161718",
+    "--mc-15": "#101112",
+  },
+  light_gray: {
+    "--mc-100": "#6d6d64",
+    "--mc-93": "#606058",
+    "--mc-85": "#5c5c55",
+    "--mc-82": "#575750",
+    "--mc-78": "#4d4d47",
+    "--mc-71": "#464641",
+    "--mc-61": "#3d3d38",
+    "--mc-56": "#393934",
+    "--mc-55": "#383834",
+    "--mc-49": "#353531",
+    "--mc-47": "#343430",
+    "--mc-33": "#2b2b28",
+    "--mc-25": "#252522",
+    "--mc-15": "#1e1e1c",
+  },
+  cyan: {
+    "--mc-100": "#437a7c",
+    "--mc-93": "#3a6a6c",
+    "--mc-85": "#376567",
+    "--mc-82": "#345f61",
+    "--mc-78": "#2d5354",
+    "--mc-71": "#294b4c",
+    "--mc-61": "#223f40",
+    "--mc-56": "#203a3b",
+    "--mc-55": "#1f393a",
+    "--mc-49": "#1d3536",
+    "--mc-47": "#1c3435",
+    "--mc-33": "#16292a",
+    "--mc-25": "#122122",
+    "--mc-15": "#0e1a1a",
+  },
+  purple: {
+    "--mc-100": "#664478",
+    "--mc-93": "#583b68",
+    "--mc-85": "#543863",
+    "--mc-82": "#4f355d",
+    "--mc-78": "#442d51",
+    "--mc-71": "#3e2949",
+    "--mc-61": "#33223d",
+    "--mc-56": "#302038",
+    "--mc-55": "#2f1f37",
+    "--mc-49": "#2b1d33",
+    "--mc-47": "#2a1c32",
+    "--mc-33": "#211627",
+    "--mc-25": "#1b121f",
+    "--mc-15": "#140d18",
+  },
+  blue: {
+    "--mc-100": "#42497a",
+    "--mc-93": "#39406a",
+    "--mc-85": "#363c65",
+    "--mc-82": "#33395f",
+    "--mc-78": "#2c3152",
+    "--mc-71": "#282c4a",
+    "--mc-61": "#21253e",
+    "--mc-56": "#1f2239",
+    "--mc-55": "#1e2238",
+    "--mc-49": "#1c1f34",
+    "--mc-47": "#1b1e33",
+    "--mc-33": "#151828",
+    "--mc-25": "#111320",
+    "--mc-15": "#0d0e18",
+  },
+  brown: {
+    "--mc-100": "#755a47",
+    "--mc-93": "#654e3e",
+    "--mc-85": "#604a3b",
+    "--mc-82": "#5a4637",
+    "--mc-78": "#4e3c30",
+    "--mc-71": "#47372b",
+    "--mc-61": "#3b2e24",
+    "--mc-56": "#372a21",
+    "--mc-55": "#352921",
+    "--mc-49": "#32261e",
+    "--mc-47": "#30251e",
+    "--mc-33": "#261d17",
+    "--mc-25": "#1e1713",
+    "--mc-15": "#17120e",
+  },
+  green: {
+    "--mc-100": "#5e7547",
+    "--mc-93": "#51653e",
+    "--mc-85": "#4d603b",
+    "--mc-82": "#495a37",
+    "--mc-78": "#3f4e30",
+    "--mc-71": "#39472b",
+    "--mc-61": "#2f3b24",
+    "--mc-56": "#2c3721",
+    "--mc-55": "#2b3521",
+    "--mc-49": "#28321e",
+    "--mc-47": "#27301e",
+    "--mc-33": "#1e2617",
+    "--mc-25": "#181e13",
+    "--mc-15": "#12170e",
+  },
+  red: {
+    "--mc-100": "#7e4844",
+    "--mc-93": "#6e3f3b",
+    "--mc-85": "#693c38",
+    "--mc-82": "#633835",
+    "--mc-78": "#56312e",
+    "--mc-71": "#4e2c2a",
+    "--mc-61": "#422523",
+    "--mc-56": "#3d2321",
+    "--mc-55": "#3c2220",
+    "--mc-49": "#38201e",
+    "--mc-47": "#371f1d",
+    "--mc-33": "#2c1917",
+    "--mc-25": "#241413",
+    "--mc-15": "#1c100f",
+  },
+  black: {
+    "--mc-100": "#4f5157",
+    "--mc-93": "#43454a",
+    "--mc-85": "#3f4146",
+    "--mc-82": "#3b3c41",
+    "--mc-78": "#323337",
+    "--mc-71": "#2c2d31",
+    "--mc-61": "#232427",
+    "--mc-56": "#202023",
+    "--mc-55": "#1f1f22",
+    "--mc-49": "#1c1c1f",
+    "--mc-47": "#1b1b1e",
+    "--mc-33": "#131315",
+    "--mc-25": "#0d0d0e",
+    "--mc-15": "#070808",
+  },
+};
 
 export interface NodeSurfaceColor {
   swatch: string;
@@ -163,24 +442,28 @@ export interface NodeSurfaceColor {
 }
 
 /**
- * The custom rate card's own face: the app's deep blue, not a dye off the
- * palette above.
- *
- * The palette's panels are deliberately pale — they tint a card without
- * hiding what is written on it — and a card's ink stays light whatever it is
- * painted, since half of a card is inset chips and textures that do not
- * recolour. `blue` (#8f9ab8) came out just under the ink threshold, so the
- * card shipped as white text on a pale blue face, with every gap between its
- * panels reading as a bright band. This sits near an unpainted card's face in
- * darkness, so the card reads like every other card, and is unmistakably blue.
+ * The custom rate card's own colour: the app's blue, not a dye off the
+ * player's palette, so painting one still works and still wins.
  */
-export const CUSTOM_RATE_NODE_COLOR: NodeSurfaceColor = {
-  swatch: "#3c6bb0",
-  panel: "#2c3853",
-  header: "#39496b",
-  border: "#141a28",
-  shadow: "#3c6bb0",
-};
+export const CUSTOM_RATE_NODE_COLOR: NodeSurfaceColor = GT_NODE_COLORS.blue;
+
+/** The ramp a card wears, painted or not. Undefined means the neutral one. */
+export function rampFor(tag: FactoryNodeColorTag | undefined): Record<string, string> | undefined {
+  return tag ? GT_NODE_RAMPS[tag] : undefined;
+}
+
+/**
+ * The heatmap's ramp: the same construction as a paint tag's, mixed live off
+ * the heat colour because heat is continuous and cannot be a preset. It is a
+ * VIEW, not a card's colour, so it is allowed to be derived.
+ */
+export function heatmapRamp(panel: string): Record<string, string> {
+  const stops: Record<string, string> = {};
+  for (const [token, neutral] of Object.entries(GT_NODE_RAMPS.gray)) {
+    stops[token] = mixHex(neutral, panel, 0.34);
+  }
+  return stops;
+}
 
 function mixHex(from: string, to: string, amount: number): string {
   const channel = (hex: string, offset: number) =>
@@ -243,11 +526,6 @@ export function heatmapColorFor(
     border: mixHex(base, "#101010", 0.42),
     shadow: base,
   };
-}
-
-/** Ink for a heat colour, same luminance rule as the paint tags. */
-export function heatmapInkFor(panel: string): { ink: string; inkMuted: string } {
-  return inkFor(panel);
 }
 
 /**
