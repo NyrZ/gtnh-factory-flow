@@ -67,7 +67,7 @@ const NEI_CANVAS_WIDTH = 170;
 const CARD_ADD_GUTTER = 0;
 const CARD_GAP = 12;
 // The time and circuit strip along the foot of the panel.
-const CARD_CHROME_HEIGHT = 38;
+const CARD_CHROME_HEIGHT = 50;
 const NEI_CANVAS_HEIGHT_DEFAULT = 82;
 const NEI_CANVAS_HEIGHT_NATIVE = 120;
 const RECIPE_CARD_MAX_COLUMNS = 3;
@@ -1999,7 +1999,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
           onSlotClick={onSlotBrowse ? (slot, mode) => onSlotBrowse(slot.resource, mode) : undefined}
         />
         <div
-          className="flex h-8 items-center gap-2 px-1.5 text-[11px] leading-none"
+          className="flex h-11 items-center gap-2 px-1.5 text-[11px] leading-none"
           style={{ color: NEI_PALETTE.borderDark }}
         >
           <span className="min-w-0 flex-1 truncate">
@@ -2057,7 +2057,7 @@ function CircuitSetting({ recipe }: { recipe: Recipe }) {
           ? `Programmed circuit: set to ${setting}`
           : "No circuit setting: runs whatever the circuit is set to"
       }
-      className="flex h-7 shrink-0 items-center gap-1"
+      className="flex h-10 shrink-0 items-center gap-1.5"
     >
       {circuit ? (
         // The circuit's own art is dark and small, and it sits on the panel's
@@ -2071,14 +2071,14 @@ function CircuitSetting({ recipe }: { recipe: Recipe }) {
           bare
           showAmount={false}
           tooltip={false}
-          className="!h-7 !w-7"
-          iconPixelSize={28}
+          className="!h-10 !w-10"
+          iconPixelSize={40}
         />
       ) : (
-        <Cpu className="h-5 w-5" style={{ color: NEI_PALETTE.borderDark }} />
+        <Cpu className="h-9 w-9" style={{ color: NEI_PALETTE.borderDark }} />
       )}
       <span
-        className="text-[13px] font-bold leading-none tabular-nums"
+        className="text-[20px] font-bold leading-none tabular-nums"
         style={{ color: NEI_PALETTE.borderDarker }}
       >
         {setting ?? "-"}
