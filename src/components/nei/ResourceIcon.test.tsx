@@ -126,6 +126,30 @@ describe("ResourceIcon", () => {
     expect(screen.queryByText("Not consumed")).toBeNull();
   });
 
+  it("waits on a sprite behind an outline instead of painting its name", async () => {
+    // A loading `<img>` paints its alt text, so a panel of icons filled itself
+    // with item names in a font sized for something ten times the box.
+    render(
+      <ResourceIcon
+        resource={{
+          kind: "item",
+          id: "minecraft:iron_ingot",
+          amount: 1,
+          displayName: "Iron Ingot",
+          iconPath: "/textures/rendered/iron_ingot.png",
+        }}
+        tooltip={false}
+      />,
+    );
+
+    const sprite = screen.getByAltText("Iron Ingot");
+    expect(sprite.className).toContain("invisible");
+
+    fireEvent.load(sprite);
+
+    expect(sprite.className).not.toContain("invisible");
+  });
+
   it("names only the item on a slot that rotates through what it accepts", async () => {
     // The group's name and every member of it, twice over, buried the one thing
     // being pointed at under eight wrapped lines.

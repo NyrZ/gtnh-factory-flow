@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type CSSProperties } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ResourceAmount, ResourceIconAtlasRef, ResourceKind } from "@/lib/model/types";
 import { NEI_TEXTURES } from "@/lib/nei-renderer/theme/textures";
 import {
@@ -293,20 +293,83 @@ function IconImage({
     );
   }
 
+  return <SpriteImage resource={resource} iconPath={iconPath} iconPixelSize={iconPixelSize} />;
+}
+
+/**
+ * One item's sprite, and what stands in for it until it arrives.
+ *
+ * A plain `<img>` paints its ALT TEXT while it loads, so a panel of icons filled
+ * itself with item names in a 16px font, sized for a box a fraction of their
+ * width, for as long as the sprites took to arrive. The image is therefore held
+ * hidden until it has actually decoded - `visibility` hides alt text where
+ * `opacity` would not - and an outline waits in its place.
+ *
+ * The outline only becomes visible after a beat (see SPRITE_PULSE_DELAY_MS). A
+ * sprite that was already cached arrives inside that beat and the placeholder is
+ * never seen at all, which is the whole point: the flash it replaces was the
+ * complaint, so it must not become a flash of its own.
+ */
+function SpriteImage({
+  resource,
+  iconPath,
+  iconPixelSize,
+}: {
+  resource: Pick<ResourceAmount, "kind" | "id" | "displayName">;
+  iconPath: string;
+  iconPixelSize?: number;
+}) {
+  const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
+  const imageRef = useRef<HTMLImageElement | null>(null);
+
+  // A cached sprite can finish before React has attached onLoad, and a src that
+  // changes has to start over.
+  useEffect(() => {
+    const image = imageRef.current;
+    setStatus(image?.complete ? (image.naturalWidth > 0 ? "loaded" : "failed") : "loading");
+  }, [iconPath]);
+
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={iconPath}
-      alt={resourceLabel(resource)}
-      draggable={false}
-      className={
-        iconPixelSize
-          ? "minecraft-pixel-art max-w-none object-contain"
-          : "minecraft-pixel-art h-[calc(200%-8px)] w-[calc(200%-8px)] max-w-none object-contain"
-      }
-      style={{
-        ...(iconPixelSize ? { width: iconPixelSize, height: iconPixelSize } : undefined),
-      }}
+    <>
+      {status === "loaded" ? null : <SpritePlaceholder settled={status === "failed"} />}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        ref={imageRef}
+        src={iconPath}
+        alt={resourceLabel(resource)}
+        draggable={false}
+        onLoad={() => setStatus("loaded")}
+        onError={() => setStatus("failed")}
+        className={[
+          iconPixelSize
+            ? "minecraft-pixel-art max-w-none object-contain"
+            : "minecraft-pixel-art h-[calc(200%-8px)] w-[calc(200%-8px)] max-w-none object-contain",
+          // Hidden, not transparent: alt text is what we are keeping off screen,
+          // and only `visibility` takes it with the picture.
+          status === "loaded" ? "" : "invisible",
+        ].join(" ")}
+        style={{
+          ...(iconPixelSize ? { width: iconPixelSize, height: iconPixelSize } : undefined),
+        }}
+      />
+    </>
+  );
+}
+
+/** How long a sprite gets to arrive before anything is drawn in its place. */
+const SPRITE_PULSE_DELAY_MS = 250;
+
+function SpritePlaceholder({ settled }: { settled: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={[
+        "absolute inset-[18%] rounded-[2px] border border-white/20 bg-white/5 opacity-0",
+        // A sprite that will never arrive stops pulsing and just sits there: a
+        // forever-breathing box reads as "still working on it".
+        settled ? "[animation:none] opacity-100" : "animate-pulse",
+      ].join(" ")}
+      style={settled ? undefined : { animationDelay: `${SPRITE_PULSE_DELAY_MS}ms` }}
     />
   );
 }
