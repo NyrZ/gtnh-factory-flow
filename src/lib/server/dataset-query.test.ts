@@ -83,8 +83,10 @@ describe("what an \"any of these\" placeholder stands for", () => {
   });
 
   it("never hands alternatives to a concrete item", () => {
-    // A recipe asking for this exact circuit does not accept the other three,
-    // and saying it does would license a factory that cannot be built.
+    // Sharing an ore dictionary group is not the same as being accepted. The
+    // Circuit Assembler recipe for an Electronic Circuit names a Vacuum Tube
+    // and takes only that, despite sharing `circuitPrimitive` with the NAND
+    // chip, so expanding concrete inputs invents recipes that do not exist.
     const byKey = getChoiceAlternativesByKey(catalog());
 
     expect(byKey.get("item:gregtech:circuit@1")).toBeUndefined();
@@ -97,5 +99,38 @@ describe("what an \"any of these\" placeholder stands for", () => {
     expect(
       byKey.get("item:dreamcraft:circuitlv")?.some((entry) => /^Any /.test(entry.displayName ?? "")),
     ).toBe(false);
+  });
+});
+
+describe("a placeholder that sits in two groups", () => {
+  it("is offered the union, without duplicating a shared member", () => {
+    const catalog = {
+      resources: [],
+      resourceIndex: [
+        {
+          kind: "item",
+          id: "oredict:circuitBasic",
+          alternatives: [
+            { kind: "item", id: "any:lv", displayName: "Any LV Circuit" },
+            { kind: "item", id: "gt:circuit.electronic", displayName: "Electronic Circuit" },
+          ],
+        },
+        {
+          kind: "item",
+          id: "oredict:circuitTier1",
+          alternatives: [
+            { kind: "item", id: "any:lv", displayName: "Any LV Circuit" },
+            { kind: "item", id: "gt:circuit.electronic", displayName: "Electronic Circuit" },
+            { kind: "item", id: "gt:circuit.logic", displayName: "Integrated Logic Circuit" },
+          ],
+        },
+      ],
+    } as unknown as Parameters<typeof getChoiceAlternativesByKey>[0];
+
+    const offered = getChoiceAlternativesByKey(catalog)
+      .get("item:any:lv")
+      ?.map((entry) => entry.displayName);
+
+    expect(offered).toEqual(["Electronic Circuit", "Integrated Logic Circuit"]);
   });
 });

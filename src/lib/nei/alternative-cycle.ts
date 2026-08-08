@@ -126,6 +126,9 @@ export function getAlternativeCycleFaces(resource: CycleResource): AlternativeCy
   const sameKind = (resource.alternatives ?? []).filter(
     (alternative) =>
       alternative.kind === resource.kind &&
+      // A group lists the slot's own item among its members, and showing it
+      // twice would make the rotation stutter on that face.
+      alternative.id !== resource.id &&
       // One placeholder must never be a face of another: an ore dictionary
       // group lists "Any LV Circuit" beside the real circuits, and rotating
       // onto it would show a stand-in where an item should be.

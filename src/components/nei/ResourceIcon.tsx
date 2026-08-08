@@ -190,9 +190,9 @@ function buildTooltipLabel(
 
   const cycleLine =
     alternativeState === "locked"
-      ? "Set to this one. Shift+scroll to change."
+      ? "Set to this one. Scroll to change."
       : alternativeState === "cycling"
-        ? "Shift+scroll to pick one."
+        ? "Scroll to pick one."
         : undefined;
 
   return [...baseLines, alternativesLine, cycleLine, chanceLine, consumedLine]

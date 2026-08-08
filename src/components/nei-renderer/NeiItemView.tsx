@@ -137,15 +137,14 @@ function CyclingStackIcon({
     }
 
     // Attached natively rather than through `onWheel` because React registers
-    // wheel handlers passively, where `preventDefault` is ignored. Without it
-    // shift+scroll would cycle the slot AND scroll the list sideways.
+    // wheel handlers passively, where `preventDefault` is ignored, and without
+    // it the slot would step AND the list would scroll out from under it.
+    //
+    // Plain scroll, not shift+scroll. Pointing at a slot that is visibly
+    // rotating and turning the wheel has one obvious meaning, and only slots
+    // with something to rotate through mount this at all, so the rest of the
+    // list scrolls normally.
     const onWheel = (event: WheelEvent) => {
-      // Plain scroll belongs to the list. The browser is a dense grid of slots,
-      // so the cursor sits over one most of the time and hijacking it would
-      // make the list barely scrollable.
-      if (!event.shiftKey) {
-        return;
-      }
       event.preventDefault();
       event.stopPropagation();
       const delta = event.deltaY !== 0 ? event.deltaY : event.deltaX;

@@ -1290,10 +1290,16 @@ function getCatalogResourcesByKey(
  * lists its members, and the placeholder is one of them. This inverts that once
  * per catalog so a placeholder can be expanded back into its group.
  *
- * Deliberately restricted to placeholders. A recipe asking for a specific
- * Electronic Circuit shares an ore dictionary group with four other circuits
- * but does NOT accept them, and claiming otherwise would quietly license a
- * factory that cannot be built.
+ * Deliberately restricted to placeholders, which is a narrower rule than it
+ * first looks like it should be. Ore dictionary membership is NOT the same
+ * thing as what a recipe accepts: the Circuit Assembler recipe for an
+ * Electronic Circuit names a Vacuum Tube and takes only that, even though the
+ * vacuum tube shares the `circuitPrimitive` group with the NAND chip. Offering
+ * the group there invents a recipe that does not exist.
+ *
+ * A placeholder is different in kind. "Any LV Circuit" is not an item anyone
+ * can hold; standing for its group is the entire reason it exists, so
+ * expanding it reports what the recipe already meant.
  */
 export function getChoiceAlternativesByKey(
   catalog: LoadedRecipeIndex,
@@ -1312,25 +1318,30 @@ export function getChoiceAlternativesByKey(
       continue;
     }
 
+    // One stand-in must never expand into another, so placeholders are dropped
+    // from the offered set no matter who is asking.
+    const real = members.filter((member) => !isVirtualChoiceResource(member));
+    if (real.length === 0) {
+      continue;
+    }
+
     for (const member of members) {
       if (!isVirtualChoiceResource(member)) {
         continue;
       }
       const key = `${member.kind}:${member.id}`;
-      const existing = byKey.get(key) ?? [];
-      for (const sibling of members) {
-        // A placeholder is never one of its own faces, and one placeholder
-        // must not expand into another.
-        if (isVirtualChoiceResource(sibling)) {
-          continue;
-        }
-        if (!existing.some((entry) => entry.kind === sibling.kind && entry.id === sibling.id)) {
-          existing.push(sibling);
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, real);
+        continue;
+      }
+      const merged = [...existing];
+      for (const sibling of real) {
+        if (!merged.some((entry) => entry.kind === sibling.kind && entry.id === sibling.id)) {
+          merged.push(sibling);
         }
       }
-      if (existing.length > 0) {
-        byKey.set(key, existing);
-      }
+      byKey.set(key, merged);
     }
   }
 
