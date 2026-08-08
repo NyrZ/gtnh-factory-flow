@@ -2063,14 +2063,16 @@ function CircuitSetting({ recipe }: { recipe: Recipe }) {
         // The circuit's own art is dark and small, and it sits on the panel's
         // grey in the corner of an already small card, so it is lifted rather
         // than boxed: a box would only take more of the card.
+        // Sized to match the empty slot's glyph beside it, so the two states
+        // read as the same thing rather than the real one looking smaller.
         <ResourceIcon
           resource={{ ...circuit, amount: 1 }}
           size="sm"
           bare
           showAmount={false}
           tooltip={false}
-          className="!h-5 !w-5 [&_img]:brightness-125 [&_img]:contrast-125"
-          iconPixelSize={20}
+          className="!h-7 !w-7"
+          iconPixelSize={28}
         />
       ) : (
         <Cpu className="h-5 w-5" style={{ color: NEI_PALETTE.borderDark }} />
