@@ -69,6 +69,63 @@ describe("resource helpers", () => {
     ).toBe(false);
   });
 
+  // "@32767" is "any damage of this item", not an item. The dataset lists
+  // logWood's vanilla members as the two wildcards, and the only producers of a
+  // real Oak Log are the Crop Farm bonsai crops and the Tree Growth Simulator,
+  // so before this the plant sources could not feed anything that wants a log.
+  it("matches the any-damage wildcard against concrete item variants", () => {
+    const logWood = {
+      kind: "item" as const,
+      id: "oredict:logWood",
+      displayName: "Ore Dictionary: logWood",
+      alternatives: [
+        { kind: "item" as const, id: "minecraft:log@32767", displayName: "Oak Log", amount: 1 },
+        { kind: "item" as const, id: "minecraft:log2@32767", displayName: "Acacia Log", amount: 1 },
+      ],
+    };
+
+    for (const id of ["minecraft:log", "minecraft:log@1", "minecraft:log2", "minecraft:log2@1"]) {
+      expect(resourceMatchesInput({ kind: "item", id }, logWood)).toBe(true);
+    }
+
+    // A recipe that takes the wildcard directly, and the reverse direction: a
+    // Centrifuge outputs "minecraft:dirt@32767" into a plain dirt slot.
+    expect(
+      resourceMatchesInput(
+        { kind: "item", id: "minecraft:log@2" },
+        { kind: "item", id: "minecraft:log@32767" },
+      ),
+    ).toBe(true);
+    expect(
+      resourceMatchesInput(
+        { kind: "item", id: "minecraft:dirt@32767" },
+        { kind: "item", id: "minecraft:dirt" },
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps the wildcard off items that merely share a name prefix", () => {
+    expect(
+      resourceMatchesInput(
+        { kind: "item", id: "minecraft:log2" },
+        { kind: "item", id: "minecraft:log@32767" },
+      ),
+    ).toBe(false);
+    expect(
+      resourceMatchesInput(
+        { kind: "item", id: "minecraft:log2@1" },
+        { kind: "item", id: "minecraft:log@32767" },
+      ),
+    ).toBe(false);
+    // Still an item against a fluid: the cell rule is untouched.
+    expect(
+      resourceMatchesInput(
+        { kind: "fluid", id: "molten.tin@32767" },
+        { kind: "item", id: "molten.tin" },
+      ),
+    ).toBe(false);
+  });
+
   // Search still knows the two forms name the same substance, so looking up a
   // cell can offer the fluid's recipes too. It carries no amount, because
   // nothing converts between them any more.

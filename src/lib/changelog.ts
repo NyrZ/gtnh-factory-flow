@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.33.2",
+    date: "2026-08-08",
+    headline: "Your crop farm logs go into the machines that want logs",
+    notes: [
+      "A bonsai crop makes a real Oak Log, but the Coke Oven, Pyrolyse Oven, Macerator and Lathe all ask for the any-wood version of it, and the board would not let you join the two. It does now, for every wood: oak, spruce, birch, jungle, acacia and dark oak.",
+      "The same thing was quietly blocking thousands of other recipes that accept any damaged or coloured version of an item, so a few chains you gave up on should join up now too.",
+    ],
+  },
+  {
     version: "1.33.1",
     date: "2026-08-08",
     headline: "You can actually click the colours now",

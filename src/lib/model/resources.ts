@@ -174,6 +174,39 @@ export function isRecipeInputConsumed(
   return input.consumed !== false;
 }
 
+const ANY_DAMAGE_SUFFIX = "@32767";
+
+/**
+ * "@32767" is Minecraft's any-damage wildcard. `minecraft:log@32767` is not an
+ * item you can hold: it stands for "an oak, spruce, birch or jungle log,
+ * whichever damage value". A concrete variant satisfies it and it satisfies a
+ * concrete slot, so the two must match wherever an item id is compared.
+ *
+ * The dataset leans on it hard. `oredict:logWood` lists its vanilla members as
+ * the two wildcards rather than the six real logs, and ~2,800 recipes take a
+ * wildcard input directly. Matching on the literal string meant a Crop Farm's
+ * Oak Log could not feed the logWood slot it is listed under, and a
+ * Centrifuge's `minecraft:dirt@32767` could not feed a dirt slot.
+ *
+ * The server already knows the rule (`resourceIdsAreCompatible` in
+ * `dataset-query.ts`), which is why the recipe book finds logWood recipes from
+ * a Spruce Log. This is the board side agreeing with it.
+ */
+function itemIdsMatch(left: string, right: string): boolean {
+  return left === right || matchesAnyDamage(left, right) || matchesAnyDamage(right, left);
+}
+
+function matchesAnyDamage(wildcardId: string, concreteId: string): boolean {
+  if (!wildcardId.endsWith(ANY_DAMAGE_SUFFIX)) {
+    return false;
+  }
+
+  const baseId = wildcardId.slice(0, -ANY_DAMAGE_SUFFIX.length);
+  // A bare id is the damage-0 item ("minecraft:log" is Oak Log). Anchoring the
+  // prefix on "@" keeps "minecraft:log@32767" off "minecraft:log2@1".
+  return concreteId === baseId || concreteId.startsWith(`${baseId}@`);
+}
+
 /**
  * An item is an item and a fluid is a fluid. A filled cell is an ordinary item
  * that happens to be named after a fluid, and it does NOT satisfy that fluid's
@@ -196,11 +229,16 @@ export function resourceMatchesInput(
     return false;
   }
 
+  // Damage values only exist on items; a fluid id is compared literally.
+  const idsMatch = resource.kind === "item" ? itemIdsMatch : (left: string, right: string) =>
+    left === right;
+
   return (
-    resource.id === input.id ||
+    idsMatch(resource.id, input.id) ||
     Boolean(
       input.alternatives?.some(
-        (alternative) => alternative.kind === resource.kind && alternative.id === resource.id,
+        (alternative) =>
+          alternative.kind === resource.kind && idsMatch(alternative.id, resource.id),
       ),
     )
   );
