@@ -217,6 +217,7 @@ public final class GtnhCalcOracleExporter {
                     List<Map<String, Object>> fluidInputs = fluidStacks(recipe.mFluidInputs, fluidInputSlots);
                     attachSlotAlternatives(itemInputs, itemInputSlots, recipe, "mOreDictAlt", false);
                     attachSlotAlternatives(fluidInputs, fluidInputSlots, recipe, "mAltFluidInputs", true);
+                    attachUnifiedItemAlternatives(itemInputs, itemInputSlots, recipe.mInputs);
                     exportedRecipe.put("itemInputs", itemInputs);
                     exportedRecipe.put("itemOutputs", outputItemStacks(recipe));
                     exportedRecipe.put("fluidInputs", fluidInputs);
@@ -2089,6 +2090,115 @@ public final class GtnhCalcOracleExporter {
                 exported.get(position).put("alternatives", alternatives);
             }
         }
+    }
+
+    /**
+     * Adds the items GregTech treats as the same thing as the one in the slot.
+     *
+     * `mOreDictAlt` only covers slots a recipe declared as an ore dictionary
+     * choice. Most slots name one exact item and still accept more, because
+     * GregTech unifies equivalent items: the Circuit Assembler recipe for an
+     * Electronic Circuit asks for 2 resistors and takes 2 SMD resistors, since
+     * both are registered under `componentCircuitResistor`.
+     *
+     * The rule for which items count is GregTech's, not the ore dictionary's,
+     * and it is subtle. A vacuum tube shares the `circuitPrimitive` group with
+     * the NAND chip yet the machine will not take one for the other. Rather
+     * than reimplement that, this asks the game the same question NEI asks:
+     * `GTNEIDefaultHandler` builds its cycling slots from
+     * `GTOreDictUnificator.getNonUnifiedStacks`, so calling it here means the
+     * board offers exactly what the player sees cycling in game.
+     *
+     * The returned variants carry the slot's own stack size, so a slot wanting
+     * 2 resistors offers 2 SMD resistors, and the ratio stays one to one.
+     */
+    private void attachUnifiedItemAlternatives(
+        List<Map<String, Object>> exported,
+        List<Integer> sourceIndexes,
+        ItemStack[] inputs
+    ) {
+        if (inputs == null || unifiedStacksMethod() == null) {
+            return;
+        }
+
+        for (int position = 0; position < exported.size(); position++) {
+            int slot = sourceIndexes.get(position).intValue();
+            if (slot >= inputs.length || inputs[slot] == null) {
+                continue;
+            }
+
+            List<?> variants;
+            try {
+                variants = (List<?>) unifiedStacksMethod().invoke(null, new Object[] { inputs[slot] });
+            } catch (Throwable ignored) {
+                return;
+            }
+            if (variants == null || variants.size() < 2) {
+                continue;
+            }
+
+            Map<String, Object> target = exported.get(position);
+            List<Map<String, Object>> alternatives = existingAlternatives(target);
+            for (Object entry : variants) {
+                if (!(entry instanceof ItemStack)) {
+                    continue;
+                }
+                Map<String, Object> resource = itemStack((ItemStack) entry);
+                if (resource == null) {
+                    continue;
+                }
+                String id = String.valueOf(resource.get("id"));
+                boolean seen = false;
+                for (Map<String, Object> existing : alternatives) {
+                    if (id.equals(String.valueOf(existing.get("id")))) {
+                        seen = true;
+                        break;
+                    }
+                }
+                if (!seen) {
+                    alternatives.add(resource);
+                }
+            }
+
+            // One entry is the slot restating itself, not a choice.
+            if (alternatives.size() > 1) {
+                target.put("alternatives", alternatives);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> existingAlternatives(Map<String, Object> target) {
+        Object existing = target.get("alternatives");
+        if (existing instanceof List) {
+            return (List<Map<String, Object>>) existing;
+        }
+        List<Map<String, Object>> alternatives = new ArrayList<Map<String, Object>>();
+        Map<String, Object> self = map();
+        for (Map.Entry<String, Object> field : target.entrySet()) {
+            if (!"alternatives".equals(field.getKey())) {
+                self.put(field.getKey(), field.getValue());
+            }
+        }
+        alternatives.add(self);
+        return alternatives;
+    }
+
+    private boolean unifiedStacksMethodResolved;
+    private Method unifiedStacksMethodCache;
+
+    private Method unifiedStacksMethod() {
+        if (unifiedStacksMethodResolved) {
+            return unifiedStacksMethodCache;
+        }
+        unifiedStacksMethodResolved = true;
+        try {
+            Class<?> type = Class.forName("gregtech.api.util.GTOreDictUnificator");
+            unifiedStacksMethodCache = type.getMethod("getNonUnifiedStacks", Object.class);
+        } catch (Throwable ignored) {
+            unifiedStacksMethodCache = null;
+        }
+        return unifiedStacksMethodCache;
     }
 
     private Map<String, Object> itemStack(ItemStack stack) {

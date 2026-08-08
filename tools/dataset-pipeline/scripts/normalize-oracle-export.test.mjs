@@ -33,12 +33,33 @@ function fluid(id, amount, displayName) {
   return { kind: "fluid", id, amount, displayName };
 }
 
+function item(id, amount, displayName) {
+  return { kind: "item", id, amount, displayName };
+}
+
+const RESISTOR = "gregtech:gt.metaitem.01@32716";
+const SMD_RESISTOR = "gregtech:gt.metaitem.03@32011";
+const VACUUM_TUBE = "gregtech:gt.metaitem.01@32700";
+
 /**
- * The Circuit Assembler recipe for an Electronic Circuit, cut down to the part
- * under test. GregTech registers its fluid with
- * `SubstituteFluidStack.soldering(HALF_INGOTS)`, which is why the slot lists
- * three fluids at three different amounts, and registers the resistor and the
- * vacuum tube as plain stacks, which is why they list nothing.
+ * The Circuit Assembler recipe for an Electronic Circuit (the LV tier circuit),
+ * as the oracle exports it from the running game. Every slot here is the real
+ * thing, and each behaves differently on purpose:
+ *
+ *   Circuit Board 1x       one exact item, nothing else accepted
+ *   Resistor 2x            also takes 2 SMD resistors: GregTech unifies them
+ *                          through `componentCircuitResistor`, so NEI shows
+ *                          the slot cycling between the two
+ *   1x Red Alloy Wire 2x   its ore dictionary group has one member, so no
+ *                          choice comes out of it
+ *   Vacuum Tube 2x         shares `circuitPrimitive` with the NAND chip and
+ *                          STILL takes only vacuum tubes, which is why ore
+ *                          dictionary membership cannot be used as the rule
+ *   Molten Soldering Alloy 72 L    or 144 L of tin, or 288 L of lead, from
+ *                                  `SubstituteFluidStack.soldering(HALF_INGOTS)`
+ *
+ * Item substitutes come at the slot's own stack size (2 resistors, 2 SMD
+ * resistors), fluid substitutes at their own amounts.
  */
 const RAW_EXPORT = {
   schemaVersion: 1,
@@ -65,12 +86,16 @@ const RAW_EXPORT = {
               durationTicks: 200,
               eut: 15,
               itemInputs: [
+                item("gregtech:gt.metaitem.03@32100", 1, "Circuit Board"),
                 {
-                  kind: "item",
-                  id: "gregtech:gt.metaitem.01@32716",
-                  amount: 2,
-                  displayName: "Resistor",
+                  ...item(RESISTOR, 2, "Resistor"),
+                  alternatives: [
+                    item(RESISTOR, 2, "Resistor"),
+                    item(SMD_RESISTOR, 2, "SMD Resistor"),
+                  ],
                 },
+                item("gregtech:gt.blockmachines@2000", 2, "1x Red Alloy Wire"),
+                item(VACUUM_TUBE, 2, "Vacuum Tube"),
               ],
               itemOutputs: [
                 { kind: "item", id: "ic2:itempartcircuit", amount: 1, displayName: "Electronic Circuit" },
@@ -132,10 +157,34 @@ describe("what a recipe slot accepts", () => {
     expect(solder.amount * byId.get("molten.lead")).toBe(288);
   });
 
-  it("invents nothing for a slot that named one exact item", () => {
-    const resistor = recipe.inputs.find((input) => input.id === "gregtech:gt.metaitem.01@32716");
+  it("offers the SMD resistor the resistor slot really takes", () => {
+    const resistor = recipe.inputs.find((input) => input.id === RESISTOR);
 
-    expect(resistor.alternatives).toBeUndefined();
+    expect(resistor.alternatives?.map((entry) => entry.displayName)).toEqual([
+      "Resistor",
+      "SMD Resistor",
+    ]);
+  });
+
+  it("keeps an item substitute at the slot's own count", () => {
+    // The slot wants 2 resistors and takes 2 SMD resistors, so the ratio is
+    // one to one and the count must not drift when the slot is switched.
+    const resistor = recipe.inputs.find((input) => input.id === RESISTOR);
+    const smd = resistor.alternatives.find((entry) => entry.id === SMD_RESISTOR);
+
+    expect(smd.amount).toBe(1);
+    expect(resistor.amount * smd.amount).toBe(2);
+  });
+
+  it("invents nothing for a slot that named one exact item", () => {
+    // A vacuum tube shares `circuitPrimitive` with the NAND chip, and the
+    // machine still takes only vacuum tubes. Offering the group here would
+    // describe a recipe the game will not run.
+    const vacuumTube = recipe.inputs.find((input) => input.id === VACUUM_TUBE);
+    const board = recipe.inputs.find((input) => input.id === "gregtech:gt.metaitem.03@32100");
+
+    expect(vacuumTube.alternatives).toBeUndefined();
+    expect(board.alternatives).toBeUndefined();
   });
 
   it("never lets one recipe's substitutes follow the item into the catalog", () => {
