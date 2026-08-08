@@ -1213,12 +1213,22 @@ function toRecipeSummary(
   return {
     id: enrichedRecipe.id,
     name: enrichedRecipe.name,
+    // What the recipe IS, which decides how the recipe book draws it. Leaving
+    // it off made the renderer fall back to guessing from the recipe's name,
+    // and the guess reads substrings: "miCROProcessor" contains "crop", so the
+    // Circuit Assembler recipe for one was drawn on a farm scene. The recipe
+    // index built by the pipeline has always carried this; only this
+    // server-side projection dropped it.
+    kind: enrichedRecipe.kind,
+    category: enrichedRecipe.category,
     recipeMap: enrichedRecipe.source?.recipeMap ?? enrichedRecipe.machineType,
     machineType: enrichedRecipe.machineType,
     minimumTier: enrichedRecipe.minimumTier,
     durationTicks: enrichedRecipe.durationTicks,
     eut: enrichedRecipe.eut,
     programmedCircuit: enrichedRecipe.programmedCircuit,
+    specialValue: enrichedRecipe.specialValue,
+    metadata: enrichedRecipe.metadata,
     machineHandlers: hydrateMachineHandlers(enrichedRecipe.machineHandlers, resourcesByKey),
     machineConfigControls: hydrateMachineConfigControls(
       enrichedRecipe.machineConfigControls,

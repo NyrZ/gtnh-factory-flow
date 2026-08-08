@@ -53,25 +53,36 @@ export function recipeToRenderModel(recipe: Recipe): NeiRecipeRenderModel {
   };
 }
 
+/**
+ * The machines whose recipes are drawn by a handler of their own, by name.
+ *
+ * Only a machine's own name counts, never the recipe's, because a recipe is
+ * named after what it makes and the machine that makes it is what decides the
+ * layout. A Centrifuge recipe for Beeswax is still a Centrifuge recipe.
+ *
+ * Matching is exact for the same reason. Searching for the word "crop" would
+ * still claim the Crop Breeder, and searching for "bee" would claim a Beech
+ * Wood Plank, both of which are ordinary GregTech machines.
+ */
+const HANDLER_KIND_BY_MACHINE: ReadonlyMap<string, NeiRecipeKind> = new Map([
+  ["bee produce", "bee_produce"],
+  ["crop farm", "crop_produce"],
+  ["ic2 crop", "crop_produce"],
+  ["thaumcraft essentia smelting", "essentia_smelting"],
+]);
+
 function inferRecipeKind(recipe: Recipe): NeiRecipeKind {
+  // Every recipe in the dataset carries its kind. This is the last resort for
+  // one that somehow arrives without it.
   if (recipe.kind) {
     return recipe.kind;
   }
 
-  const labels = [recipe.machineType, recipe.source?.recipeMap, recipe.name]
-    .filter((value): value is string => Boolean(value))
-    .map(normalizeLabel);
-
-  if (labels.some((label) => label.includes("bee") || label.includes("apiary"))) {
-    return "bee_produce";
-  }
-
-  if (labels.some((label) => label.includes("crop"))) {
-    return "crop_produce";
-  }
-
-  if (labels.some((label) => label.includes("essentia") || label.includes("alchemy furnace"))) {
-    return "essentia_smelting";
+  for (const label of [recipe.machineType, recipe.source?.recipeMap]) {
+    const kind = label ? HANDLER_KIND_BY_MACHINE.get(normalizeLabel(label)) : undefined;
+    if (kind) {
+      return kind;
+    }
   }
 
   return "gregtech_machine";
