@@ -4907,7 +4907,15 @@ const PaintToolbar = memo(function PaintToolbar({
   return (
     <div
       data-board-toolbar
-      className="nodrag pointer-events-none absolute right-3 top-3 z-20 flex items-start"
+      className={[
+        "nodrag pointer-events-none absolute right-3 top-3 flex items-start",
+        // An open palette hangs below its own row and crosses the view
+        // toolbar underneath. Both toolbars sit at z-20 and the view row is
+        // later in the DOM, so it painted OVER the swatches and took the
+        // clicks: the colours were visible and unpickable. The paint row
+        // lifts above every other toolbar for as long as the palette is out.
+        isPaletteOpen ? "z-40" : "z-20",
+      ].join(" ")}
     >
       <div
         className="flex items-start"
@@ -4916,7 +4924,11 @@ const PaintToolbar = memo(function PaintToolbar({
       >
       <div
         className={[
-          "mr-0 grid w-[156px] grid-cols-5 gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+          // Nine across, two down: the whole palette reads in one glance, and
+          // it hangs only one row below the toolbar instead of four — a tall
+          // block of swatches covered the view toolbar and half the board.
+          // It grows LEFT into empty canvas, clear of the undo/rate row.
+          "mr-0 grid w-[296px] grid-cols-9 gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
           isPaletteOpen
             ? "pointer-events-auto translate-x-0 opacity-100"
             : "pointer-events-none translate-x-2 opacity-0",

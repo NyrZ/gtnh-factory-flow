@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.33.1",
+    date: "2026-08-08",
+    headline: "You can actually click the colours now",
+    notes: [
+      "The colour picker opened underneath the row of view buttons below it, so half the colours were showing but could not be clicked. It now opens over the top of everything.",
+      "It is also a wide strip of two rows instead of a tall block, so you can see every colour at once and it covers far less of the board.",
+    ],
+  },
+  {
     version: "1.33.0",
     date: "2026-08-08",
     headline: "A painted card is painted all the way through",
