@@ -1,6 +1,33 @@
 @import "tailwindcss";
 @import "@xyflow/react/dist/style.css";
 
+/*
+ * `compact:` — a phone, or any window too narrow or too short for the board to
+ * share the screen with both side columns. The height half catches a phone held
+ * sideways, which is wider than the width test but only ~430px tall.
+ *
+ * The same thresholds as COMPACT_MAX_WIDTH and COMPACT_MAX_HEIGHT in
+ * `src/lib/compact-view.ts`, which owns the behavioural half of the switch
+ * (drawers instead of columns, one menu instead of a top bar, folded toolbars).
+ * This variant is for the style-only half: heights, minimum heights, tap
+ * targets, font sizes. Change one, change the other.
+ */
+/* Two blocks rather than one comma-separated query: the comma form makes
+   Tailwind emit a rule with an empty selector, and `or` inside one media query
+   asks more of a browser than two plain ones do. */
+@custom-variant compact {
+  @media (max-width: 899.98px) {
+    & {
+      @slot;
+    }
+  }
+  @media (max-height: 559.98px) {
+    & {
+      @slot;
+    }
+  }
+}
+
 
 /*
  * Theme tokens. The app renders dark, and only dark.

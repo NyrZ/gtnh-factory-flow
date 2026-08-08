@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { isCompactViewport } from "./compact-view";
 
 /**
  * Workspace preferences: which of the three columns are open, and how the
@@ -45,19 +46,20 @@ export const DEFAULT_WORKSPACE_VIEW: WorkspaceView = {
   favouriteResourceKeys: [],
 };
 
-/** Below this a phone has no room for the board and two columns at once. */
-const NARROW_VIEWPORT_WIDTH = 700;
-
 /**
  * Whether the side columns start open.
  *
  * On a phone the two of them leave the board almost nothing, so they start
- * folded to their rails and the board gets the screen. The rails keep a button
- * each, so opening one is a tap away and the choice is then remembered like
- * any other.
+ * closed and the board gets the screen. Each edge keeps a handle, so opening one
+ * is a tap or a swipe away and the choice is then remembered like any other.
+ *
+ * A media query rather than `window.innerWidth`: a mobile browser widens the
+ * layout viewport when a page overflows it, so `innerWidth` on a 390px phone can
+ * report 935 — which is exactly how this used to open both columns on the one
+ * device that has room for neither.
  */
 function defaultPanelsOpen(): boolean {
-  return typeof window === "undefined" || window.innerWidth >= NARROW_VIEWPORT_WIDTH;
+  return typeof window === "undefined" || !isCompactViewport();
 }
 
 function defaultWorkspaceView(): WorkspaceView {

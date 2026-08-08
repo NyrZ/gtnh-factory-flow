@@ -60,6 +60,54 @@ export function ReportBugButton() {
   );
 }
 
+/**
+ * The same three links as labelled rows, for the compact menu. Two brand marks
+ * a phone can read at a glance are still two brand marks nobody can hover for a
+ * tooltip, so up here they carry their names.
+ */
+export function MenuLinks() {
+  return (
+    <div className="flex flex-col">
+      <MenuLink href={GITHUB_URL} label="Source on GitHub">
+        <GithubMark />
+      </MenuLink>
+      <MenuLink href={DISCORD_THREAD_URL} label="Discord thread">
+        <DiscordMark />
+      </MenuLink>
+      <MenuLink href={BUG_REPORT_URL} label="Report a bug" tone="danger">
+        <Bug className="h-3.5 w-3.5" aria-hidden />
+      </MenuLink>
+    </div>
+  );
+}
+
+function MenuLink({
+  href,
+  label,
+  tone,
+  children,
+}: {
+  href: string;
+  label: string;
+  tone?: "danger";
+  children: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={[
+        "flex h-10 items-center gap-2.5 rounded px-2 text-sm hover:bg-surface-sunken",
+        tone === "danger" ? "text-red-300" : "text-fg-subtle",
+      ].join(" ")}
+    >
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center">{children}</span>
+      <span className="truncate">{label}</span>
+    </a>
+  );
+}
+
 function HeaderLink({
   href,
   label,

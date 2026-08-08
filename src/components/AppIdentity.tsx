@@ -22,7 +22,7 @@ export function AppIdentity({ onLoadDatasetVersion }: AppIdentityProps) {
 
   return (
     <label
-      className="flex items-center gap-1.5"
+      className="flex min-w-0 items-center gap-1.5"
       title="Which GTNH pack version every recipe is loaded from. Changing it reloads the recipe list and re-resolves the recipes already on your board."
     >
       <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
@@ -32,7 +32,9 @@ export function AppIdentity({ onLoadDatasetVersion }: AppIdentityProps) {
         value={selectedDatasetVersionId ?? ""}
         disabled={isDatasetLoading || !manifest?.versions.length}
         onChange={(event) => onLoadDatasetVersion(event.target.value)}
-        className="h-6 max-w-[220px] rounded-[4px] border border-line-strong bg-surface-sunken px-1.5 text-xs font-normal normal-case tracking-normal text-fg outline-none disabled:cursor-not-allowed disabled:text-fg-muted"
+        // In the compact menu it gets the sheet's whole width: a truncated pack
+        // version is the one string here nobody can afford to guess at.
+        className="h-6 max-w-[220px] compact:h-9 compact:min-w-0 compact:max-w-none compact:flex-1 rounded-[4px] border border-line-strong bg-surface-sunken px-1.5 text-xs compact:text-sm font-normal normal-case tracking-normal text-fg outline-none disabled:cursor-not-allowed disabled:text-fg-muted"
       >
         {manifest?.versions.length ? (
           manifest.versions.map((version) => (

@@ -5,6 +5,7 @@ import {
   Ellipsis,
   Download,
   Factory,
+  Focus,
   Gauge,
   Grid3x3,
   MoveUpRight,
@@ -183,8 +184,9 @@ const CALLOUTS: Array<{
     anchor: "glance",
     side: "above",
     align: "end",
-    title: "Card faces",
+    title: "Faces and framing",
     rows: [
+      { icon: Focus, text: "Fit the whole plan back on the screen" },
       { icon: Box, text: "What each card IS: its machine, big when zoomed out" },
       { icon: Gauge, text: "How hard it runs: red idle, green flat out" },
     ],
@@ -359,10 +361,10 @@ function CalloutArrow({
 }
 
 /** One card line: the button's own icon (or a text chip), then the words. */
-function HelpRowLine({ row }: { row: HelpRow }) {
+function HelpRowLine({ row, wrap = false }: { row: HelpRow; wrap?: boolean }) {
   const Icon = row.icon;
   return (
-    <li className="flex items-center gap-2">
+    <li className={wrap ? "flex items-start gap-2" : "flex items-center gap-2"}>
       <span className="flex h-4 w-5 shrink-0 items-center justify-center">
         {Icon ? (
           <Icon className="h-3.5 w-3.5" style={{ color: ACCENT }} />
@@ -379,10 +381,70 @@ function HelpRowLine({ row }: { row: HelpRow }) {
           </span>
         )}
       </span>
-      <span className="whitespace-nowrap">{row.text}</span>
+      <span className={wrap ? undefined : "whitespace-nowrap"}>{row.text}</span>
     </li>
   );
 }
+
+/**
+ * The same help, as one scrolling sheet.
+ *
+ * The glance layer is built out of rings and arrows pointing at the toolbars it
+ * describes; on a phone those toolbars are folded into single buttons, three of
+ * its eight cards are wider than the screen, and there is no hover to open it
+ * with. So compact windows get the content and drop the pointing: every card in
+ * a column, wrapped, over a full-screen sheet with one way out.
+ */
+function HelpSheet({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[120] flex flex-col bg-[#101419] font-mono text-[#dbe3ec]">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#48546857] px-3">
+        <span className="text-[12px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
+          What everything does
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close help"
+          className="flex h-9 w-9 items-center justify-center border border-[#48546857] text-[16px] text-[#aebccd]"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+        {CALLOUTS.map((callout) => (
+          <section key={callout.anchor} className="border border-[#48546857] bg-[#151a21]">
+            <p className={TITLE_CLASS}>{callout.title}</p>
+            <ul className="flex flex-col gap-1.5 p-2.5 pt-2 text-[12px] leading-snug">
+              {callout.rows.map((row) => (
+                <HelpRowLine key={row.text} row={row} wrap />
+              ))}
+            </ul>
+          </section>
+        ))}
+        <section className="border border-[#48546857] bg-[#151a21]">
+          <p className={TITLE_CLASS}>Moves worth knowing</p>
+          <div className="grid grid-cols-[auto_1fr] items-start gap-x-2.5 gap-y-1.5 p-2.5 pt-2">
+            {TIPS.map((tip) => (
+              <Fragment key={tip.chip}>
+                <span
+                  className="justify-self-start border bg-[#1b2430] px-1.5 py-[1px] text-[10px] font-bold leading-[14px]"
+                  style={{ borderColor: ACCENT_DIM, color: "#b9c7d8" }}
+                >
+                  {tip.chip}
+                </span>
+                <span className="text-[12px] leading-snug">{tip.result}</span>
+              </Fragment>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+const HELP_BUTTON_CLASS =
+  "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110";
 
 function HelpGlanceSheet({
   measured,
@@ -476,8 +538,9 @@ function HelpGlanceSheet({
   );
 }
 
-export const BoardHelp = memo(function BoardHelp() {
+export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean }) {
   const [measured, setMeasured] = useState<Measured | undefined>(undefined);
+  const [isSheetOpen, setSheetOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const hideTimerRef = useRef<number | undefined>(undefined);
 
@@ -497,6 +560,25 @@ export const BoardHelp = memo(function BoardHelp() {
   }, []);
   useEffect(() => () => window.clearTimeout(hideTimerRef.current), []);
 
+  if (compact) {
+    return (
+      <div className="absolute bottom-3 left-3 z-30">
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          className={HELP_BUTTON_CLASS}
+          title="What does everything do?"
+          aria-label="Show board help"
+        >
+          ?
+        </button>
+        {isSheetOpen && typeof document !== "undefined"
+          ? createPortal(<HelpSheet onClose={() => setSheetOpen(false)} />, document.body)
+          : null}
+      </div>
+    );
+  }
+
   return (
     <div
       className="absolute bottom-3 left-3 z-30"
@@ -508,7 +590,7 @@ export const BoardHelp = memo(function BoardHelp() {
         type="button"
         onFocus={show}
         onBlur={scheduleHide}
-        className="pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+        className={HELP_BUTTON_CLASS}
         title="What does everything do?"
         aria-label="Show board help"
       >

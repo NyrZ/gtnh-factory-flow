@@ -16,6 +16,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.35.0",
+    date: "2026-08-08",
+    headline: "The planner fits on a phone",
+    notes: [
+      "On a narrow screen, or a phone held sideways, the top bar keeps only the app name and everything else moves behind the menu button on the right: the pack version, cleaning the board, importing, the three export formats, the links and your account. It used to run a long way off the edge of the screen, which made your phone shrink the whole page to fit.",
+      "The items and resources columns are now drawers that slide over the board, and they follow your finger: drag one out from the tab on either edge, or tap it, and throw it back out again with a swipe. The two words printed sideways down the edges are gone, so the board gets that space back.",
+      "The board's buttons fold into three: build, paint and view. Tap one and its row unfolds on the line below, clear of everything else. Undo and redo stay out in the open where a mistake can find them.",
+      "A new button in the bottom right corner puts the whole plan back on the screen, zoomed to fit, however far you have wandered off. It is there on desktop too, and the React Flow badge that used to squat in that corner is gone.",
+      "In the items column, the filters fold away behind a button beside the grid switch, and Recent is a single row on a phone instead of eating a third of the list.",
+      "The help behind the question mark opens as a page you can scroll on a phone, instead of pointing arrows at buttons that are folded away.",
+      "The design tabs are a third shorter on every screen. The text was never filling them.",
+    ],
+  },
+  {
     version: "1.34.1",
     date: "2026-08-08",
     headline: "The items column, tidied up",

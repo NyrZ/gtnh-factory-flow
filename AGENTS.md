@@ -174,6 +174,28 @@ gh run watch <run-id> --exit-status
 - When selected handler changes through the machine dropdown/multi-arrow UI, carry handler-specific tier/config behavior with it.
 - Images/icons in recipe nodes should use dataset resources/atlas paths. If they exist in prod but not dev, suspect deployment/static asset path/build mismatch before changing recipe logic.
 
+## Compact Mode (Phones And Small Windows)
+
+- `src/lib/compact-view.ts` owns the switch: `useIsCompactViewport()` /
+  `isCompactViewport()`, true under 900px wide OR 560px tall (a phone held
+  sideways is 932x430 and needs the same layout). `globals.css` defines a
+  Tailwind `compact:` variant on the same two numbers for style-only changes.
+  Change one, change the other.
+- Ask the MEDIA QUERY, never `window.innerWidth`: a mobile browser widens the
+  layout viewport when content overflows it, so a 390px phone can report 935 and
+  answer the question backwards. This is what used to open both side columns on
+  the one device with room for neither.
+- Compact replaces the three-column grid with the board plus two drawers
+  (`PanelDrawer`), the top bar with one menu (`AppMenu`), and each board toolbar
+  with one folded button (`ToolGroup` in `FactoryFlow.tsx`, one open at a time,
+  all three triggers on the top line and every fold-out on the line below).
+- The drawers track the finger: the live offset is written to the `translate`
+  property, not `transform`, because Tailwind's own translate utilities use
+  `translate` and the two COMPOSE. A drag holds the panel mounted past the moment
+  it closes, which is what there is to animate.
+- Do not put minimum heights in the way of a short window; pair them with
+  `compact:min-h-0` as the shell, the board and both panels do.
+
 ## The Board Grid
 
 - `src/lib/board-grid.ts` owns `BOARD_GRID = 20` and every card size derived

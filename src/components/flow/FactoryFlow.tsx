@@ -33,10 +33,13 @@ import {
   Cable,
   Ellipsis,
   Anchor,
+  Eye,
+  Focus,
   Tag,
   Gauge,
   Grid3x3,
   Grip,
+  Hammer,
   LoaderCircle,
   MoveUpRight,
   Paintbrush,
@@ -51,6 +54,7 @@ import {
   Type,
   Undo2,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import {
   memo,
@@ -161,6 +165,7 @@ import {
 } from "@/lib/model/custom-rate";
 import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
 import { rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
+import { useIsCompactViewport } from "@/lib/compact-view";
 import { getSupplyCeiling } from "@/components/inspector/usage-limits";
 import {
   EDGE_DETAIL_ARROWS,
@@ -295,6 +300,9 @@ const CANVAS_PATTERN_VARIANT: Record<
   lines: BackgroundVariant.Lines,
   cross: BackgroundVariant.Cross,
 };
+
+/** Module-level so the board never re-renders on a fresh object identity. */
+const PRO_OPTIONS = { hideAttribution: true };
 
 /**
  * Thickness-mode widths come from the lane-fraction menu in
@@ -3361,6 +3369,16 @@ export function FactoryFlow() {
     (nodeIds: string[]) => frameBoardCards(nodeIds),
     [frameBoardCards],
   );
+  const handleFitView = useCallback(() => frameBoardCards(), [frameBoardCards]);
+
+  // Compact windows fold each toolbar into a single button, and only one of them
+  // unfolds at a time: expanded, any two of these rows would cross each other on
+  // a 390px board, which is the mess they are being folded away to avoid.
+  const isCompact = useIsCompactViewport();
+  const [openToolGroup, setOpenToolGroup] = useState<ToolGroupId | undefined>(undefined);
+  const handleToolGroupToggle = useCallback((group: ToolGroupId | undefined) => {
+    setOpenToolGroup((current) => (current === group ? undefined : group));
+  }, []);
 
   // Stable references keep the memoized PaintToolbar from re-rendering on the
   // per-frame FactoryFlow renders a node drag produces.
@@ -3629,7 +3647,11 @@ export function FactoryFlow() {
       // React subscription.
       data-glance-mode={boardView.glanceMode}
       className={[
-        "factory-flow-board relative h-full min-h-[520px] overflow-hidden border-x border-line bg-canvas",
+        // The 520px floor keeps a desktop board usable; a phone in landscape has
+        // about 320px of window left after the bars and has to live with it,
+        // because a floor taller than the window is a page that scrolls the board
+        // out of sight.
+        "factory-flow-board relative h-full min-h-[520px] compact:min-h-0 overflow-hidden border-x border-line bg-canvas",
         isNodeDragging ? "factory-flow-board--dragging" : "",
         paintCursor ? "factory-flow-board--painting" : "",
         annotationTool ? "factory-flow-board--annotating" : "",
@@ -3663,6 +3685,10 @@ export function FactoryFlow() {
         // React Flow styles its own controls and minimap off this; the app has
         // no light palette to switch to.
         colorMode="dark"
+        // The attribution badge sat in the bottom-right corner and pushed the
+        // board's own buttons up out of that corner to clear it. The library is
+        // MIT and credited in the repo instead.
+        proOptions={PRO_OPTIONS}
         isValidConnection={isValidResourceConnection}
         connectionLineComponent={ResourceConnectionLine}
         connectionLineStyle={connectionLineStyle}
@@ -3748,20 +3774,30 @@ export function FactoryFlow() {
         onAnnotationToolChange={handleAnnotationToolChange}
         isDeleteMode={isDeleteMode}
         onDeleteModeChange={handleDeleteModeChange}
+        compact={isCompact}
+        openGroup={openToolGroup}
+        onToggleGroup={handleToolGroupToggle}
       />
       <BoardViewToolbar
         view={boardView}
         onChange={writeBoardView}
         dockToggleWarning={dockToggleWarning}
+        compact={isCompact}
+        openGroup={openToolGroup}
+        onToggleGroup={handleToolGroupToggle}
       />
-      <SourceToolbar />
-      <BoardHelp />
+      <SourceToolbar
+        compact={isCompact}
+        openGroup={openToolGroup}
+        onToggleGroup={handleToolGroupToggle}
+      />
+      <BoardHelp compact={isCompact} />
       {overwritePicking ? (
         <div
           className={[
             "pointer-events-none absolute left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 border-2 border-amber-500 bg-[#2a1e07]/95 px-3 py-1.5 font-mono text-[12px] text-amber-200 shadow-[4px_4px_0_rgba(0,0,0,0.45)]",
             // Below the breadcrumbs when a pocket dimension is open.
-            activePocketId ? "top-14" : "top-3",
+            centredBannerTop(isCompact, Boolean(activePocketId)),
           ].join(" ")}
         >
           {overwritePicking.create ? (
@@ -3823,7 +3859,11 @@ export function FactoryFlow() {
         selectionCount={selectedNodeIds.length}
         onCompact={compactSelectedBoardItems}
       />
-      <SmartViewToolbar glanceMode={boardView.glanceMode} onModeChange={handleGlanceModeChange} />
+      <SmartViewToolbar
+        glanceMode={boardView.glanceMode}
+        onModeChange={handleGlanceModeChange}
+        onFitView={handleFitView}
+      />
       <HopMapLegend />
       <DeathSpiralNotice onShow={handleShowNodes} />
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
@@ -3921,6 +3961,22 @@ function SelectionHandoffController({
 }
 
 /**
+ * How far down a banner centred over the board sits.
+ *
+ * On a wide board the top line is clear in the middle, so banners ride at the
+ * very top. On a compact one that line holds the three folded toolbars and the
+ * line below it is where they unfold, so a centred banner would land on top of
+ * them: it drops to the third line instead, and a second banner stacks under the
+ * first.
+ */
+function centredBannerTop(compact: boolean, second: boolean): string {
+  if (compact) {
+    return second ? "top-[8.5rem]" : "top-24";
+  }
+  return second ? "top-14" : "top-3";
+}
+
+/**
  * Where in the multiverse the board is: "Board ▸ Pocket ▸ Inner pocket",
  * top-centre, every segment a jump. Hidden entirely on the root board — the
  * common case pays nothing for the feature.
@@ -3929,6 +3985,7 @@ const PocketBreadcrumbs = memo(function PocketBreadcrumbs() {
   const activePocketId = useFactoryStore((state) => state.activePocketId);
   const pockets = useFactoryStore((state) => state.project.pockets);
   const enterPocket = useFactoryStore((state) => state.enterPocket);
+  const isCompact = useIsCompactViewport();
   if (!activePocketId) {
     return null;
   }
@@ -3951,7 +4008,10 @@ const PocketBreadcrumbs = memo(function PocketBreadcrumbs() {
   return (
     <div
       data-board-toolbar
-      className="nodrag pointer-events-auto absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-1 border-2 border-[#8d6fd1] bg-[#241b33]/95 px-2 py-1.5 font-mono text-[12px] text-white shadow-[inset_2px_2px_0_#3b2d52,inset_-2px_-2px_0_#1a1326]"
+      className={[
+        "nodrag pointer-events-auto absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 border-2 border-[#8d6fd1] bg-[#241b33]/95 px-2 py-1.5 font-mono text-[12px] text-white shadow-[inset_2px_2px_0_#3b2d52,inset_-2px_-2px_0_#1a1326]",
+        centredBannerTop(isCompact, false),
+      ].join(" ")}
     >
       <button
         type="button"
@@ -3998,6 +4058,7 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
   onCompact: () => boolean;
 }) {
   const activePocketId = useFactoryStore((state) => state.activePocketId);
+  const isCompact = useIsCompactViewport();
   if (selectionCount < 2) {
     return null;
   }
@@ -4008,7 +4069,7 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
       // Sits below the breadcrumb strip when both are up.
       className={[
         "nodrag pointer-events-auto absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-2",
-        activePocketId ? "top-14" : "top-3",
+        centredBannerTop(isCompact, Boolean(activePocketId)),
       ].join(" ")}
     >
       <button
@@ -4024,13 +4085,112 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
   );
 });
 
+/** Which of the board's toolbars is unfolded on a compact window. */
+type ToolGroupId = "build" | "paint" | "view";
+
+interface ToolGroupProps {
+  id: ToolGroupId;
+  compact: boolean;
+  openGroup?: ToolGroupId;
+  onToggle: (group: ToolGroupId | undefined) => void;
+  /** The trigger's mark. */
+  icon: LucideIcon;
+  /** What it opens, in words, for the trigger's label. */
+  label: string;
+  /** Which corner the toolbar lives in, and so which way it unfolds. */
+  side: "left" | "right";
+  children: React.ReactNode;
+}
+
+/**
+ * A toolbar folded into one button, for windows too narrow to carry it.
+ *
+ * Three rows of nine 36px buttons want 970px between them. A 390px board gave
+ * them one, so they overlapped: the paint row's bin sat on top of the rate
+ * units, and half of each row was unreachable. Folded, each row costs one
+ * button, and the one the player opens unfolds over empty canvas.
+ *
+ * Off compact this is not a wrapper at all — it renders its children and
+ * nothing else, so the desktop toolbars keep exactly the DOM they had.
+ */
+function ToolGroup({
+  id,
+  compact,
+  openGroup,
+  onToggle,
+  icon: Icon,
+  label,
+  side,
+  children,
+}: ToolGroupProps) {
+  if (!compact) {
+    return <>{children}</>;
+  }
+
+  const isOpen = openGroup === id;
+  // The row unfolds DOWNWARDS, onto a line of its own, and out of the layout: the
+  // three triggers share the top line, so a row that opened along it would land
+  // on top of the other two, and one measured 373px of a 390px board. Absolute
+  // also means a folded row takes no width, so a trigger never shifts.
+  //
+  // `invisible` rather than a bare `opacity-0`: every button in these rows sets
+  // `pointer-events-auto` for the sake of the toolbar it lives in, which would
+  // override a `pointer-events-none` here and leave a row of invisible buttons
+  // taking taps. Hidden visibility cannot be overridden from inside, so it costs
+  // the fade on the way out and buys correctness.
+  const row = (
+    <div
+      className={[
+        // `w-max`, or the row inherits its shrink-to-fit width from the toolbar
+        // root it is positioned against — which folded is one 36px button, so
+        // every row wrapped into a vertical column one button wide.
+        "absolute top-11 flex w-max max-w-[calc(100vw-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
+        side === "left" ? "left-0 justify-start" : "right-0 justify-end",
+        isOpen ? "translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0",
+      ].join(" ")}
+    >
+      {children}
+    </div>
+  );
+  const trigger = (
+    <button
+      type="button"
+      onClick={() => onToggle(id)}
+      aria-expanded={isOpen}
+      aria-label={isOpen ? `Hide ${label}` : `Show ${label}`}
+      title={isOpen ? `Hide ${label}` : label}
+      className={[
+        "pointer-events-auto relative z-10 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+        isOpen ? "ring-2 ring-cyan-300" : "",
+      ].join(" ")}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+
+  return side === "left" ? (
+    <>
+      {trigger}
+      {row}
+    </>
+  ) : (
+    <>
+      {row}
+      {trigger}
+    </>
+  );
+}
+
 const SmartViewToolbar = memo(function SmartViewToolbar({
   glanceMode,
   onModeChange,
+  onFitView,
 }: {
   glanceMode: BoardView["glanceMode"];
   /** Status brings the heatmap with it and drops the paint brush. */
   onModeChange: (mode: GlanceMode) => void;
+  /** Zoom out until the whole plan is on screen, and centre it. */
+  onFitView: () => void;
 }) {
   const buttonClass = (active: boolean) =>
     [
@@ -4039,11 +4199,22 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
     ].join(" ");
 
   return (
-    // bottom-8, not bottom-3: the React Flow attribution keeps its corner.
+    // bottom-3 since the attribution badge left this corner.
     <div
       data-help-anchor="glance"
-      className="nodrag pointer-events-none absolute bottom-8 right-3 z-20 flex items-start gap-1"
+      className="nodrag pointer-events-none absolute bottom-3 right-3 z-20 flex items-start gap-1"
     >
+      {/* Set apart by a wider gap: this one moves the camera, the two beside it
+          change what every card shows. */}
+      <button
+        type="button"
+        onClick={onFitView}
+        className={`${buttonClass(false)} mr-2`}
+        title="Fit the whole plan on the screen"
+        aria-label="Fit the plan on the screen"
+      >
+        <Focus className="h-4 w-4" />
+      </button>
       <button
         type="button"
         onClick={() => onModeChange("identity")}
@@ -4078,7 +4249,15 @@ const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }>
   { unit: "hour", label: "/h", title: "Show all rates per hour" },
 ];
 
-const SourceToolbar = memo(function SourceToolbar() {
+const SourceToolbar = memo(function SourceToolbar({
+  compact,
+  openGroup,
+  onToggleGroup,
+}: {
+  compact: boolean;
+  openGroup?: ToolGroupId;
+  onToggleGroup: (group: ToolGroupId | undefined) => void;
+}) {
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
   const addTrashNode = useFactoryStore((state) => state.addTrashNode);
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
@@ -4126,6 +4305,18 @@ const SourceToolbar = memo(function SourceToolbar() {
           <Redo2 className="h-4 w-4" />
         </button>
       </div>
+      {/* Undo and redo stay out in the open even on a phone: they are the two
+          buttons a mistake sends you looking for, and a mistake is not the
+          moment to go hunting through a fold-out. */}
+      <ToolGroup
+        id="build"
+        compact={compact}
+        openGroup={openGroup}
+        onToggle={onToggleGroup}
+        icon={Hammer}
+        label="build tools"
+        side="left"
+      >
       <button
         type="button"
         onClick={addCropFarmNode}
@@ -4172,6 +4363,7 @@ const SourceToolbar = memo(function SourceToolbar() {
           </button>
         ))}
       </div>
+      </ToolGroup>
     </div>
   );
 });
@@ -4585,7 +4777,10 @@ const HopMapLegend = memo(function HopMapLegend() {
       // z-40, above every node: a card's z-index is lifted on hover and while a
       // picker is open, and the legend must not end up underneath whichever
       // card happens to sit in that corner of a dense board.
-      className="nodrag pointer-events-none absolute bottom-3 right-3 z-40 flex flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-3 py-2.5 font-mono font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.35)]"
+      //
+      // bottom-16 leaves the corner itself to the view buttons, which this used
+      // to sit right on top of.
+      className="nodrag pointer-events-none absolute bottom-16 right-3 z-40 flex flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-49)] px-3 py-2.5 font-mono font-bold text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.35)]"
     >
       <span className="text-[13px] uppercase tracking-[1px]">Hops needed</span>
       {chipped ? (
@@ -4717,11 +4912,17 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
   view,
   onChange,
   dockToggleWarning,
+  compact,
+  openGroup,
+  onToggleGroup,
 }: {
   view: BoardView;
   onChange: (patch: Partial<BoardView>) => void;
   /** One-line caution before the dock flip rewires a big or dotted board. */
   dockToggleWarning?: string;
+  compact: boolean;
+  openGroup?: ToolGroupId;
+  onToggleGroup: (group: ToolGroupId | undefined) => void;
 }) {
   const {
     canvasPattern,
@@ -4752,8 +4953,23 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       // top-16, not top-3: a clear gap below the editing tools is the whole
       // point of the grouping.
       data-help-anchor="view"
-      className="nodrag pointer-events-none absolute right-3 top-16 z-20 flex items-start gap-1"
+      className={[
+        "nodrag pointer-events-none absolute z-20 flex items-start gap-1",
+        // Folded, this is one button, and it joins the paint trigger on the top
+        // line rather than holding a line of its own below it — which also keeps
+        // both fold-out rows on the same clear second line.
+        compact ? "right-14 top-3" : "right-3 top-16",
+      ].join(" ")}
     >
+      <ToolGroup
+        id="view"
+        compact={compact}
+        openGroup={openGroup}
+        onToggle={onToggleGroup}
+        icon={Eye}
+        label="view options"
+        side="right"
+      >
       <button
         type="button"
         onClick={() =>
@@ -4867,6 +5083,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       >
         <Presentation className="h-4 w-4" />
       </button>
+      </ToolGroup>
     </div>
   );
 });
@@ -4880,6 +5097,9 @@ const PaintToolbar = memo(function PaintToolbar({
   onAnnotationToolChange,
   isDeleteMode,
   onDeleteModeChange,
+  compact,
+  openGroup,
+  onToggleGroup,
 }: {
   paintMode?: FactoryNodeColorTag | null;
   onPaintModeChange: (tag: FactoryNodeColorTag | null | undefined) => void;
@@ -4889,6 +5109,9 @@ const PaintToolbar = memo(function PaintToolbar({
   onAnnotationToolChange: (tool: FactoryAnnotationKind | undefined) => void;
   isDeleteMode: boolean;
   onDeleteModeChange: (enabled: boolean) => void;
+  compact: boolean;
+  openGroup?: ToolGroupId;
+  onToggleGroup: (group: ToolGroupId | undefined) => void;
 }) {
   const activeColor = GT_NODE_COLORS[activeColorTag];
   const [isPaletteOpen, setPaletteOpen] = useState(false);
@@ -4917,6 +5140,15 @@ const PaintToolbar = memo(function PaintToolbar({
         isPaletteOpen ? "z-40" : "z-20",
       ].join(" ")}
     >
+      <ToolGroup
+        id="paint"
+        compact={compact}
+        openGroup={openGroup}
+        onToggle={onToggleGroup}
+        icon={Paintbrush}
+        label="paint and annotation tools"
+        side="right"
+      >
       <div
         className="flex items-start"
         onMouseEnter={openPalette}
@@ -4928,7 +5160,12 @@ const PaintToolbar = memo(function PaintToolbar({
           // it hangs only one row below the toolbar instead of four — a tall
           // block of swatches covered the view toolbar and half the board.
           // It grows LEFT into empty canvas, clear of the undo/rate row.
-          "mr-0 grid w-[296px] grid-cols-9 gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+          "grid gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+          // On a phone the row it sits in is barely wider than the palette, so
+          // nine across would push the brush off the board. It drops out of the
+          // row and hangs two lines under the trigger instead — clear of the
+          // unfolded paint row on the line between — six across and three down.
+          compact ? "absolute right-0 top-[5.5rem] grid-cols-6" : "mr-0 w-[296px] grid-cols-9",
           isPaletteOpen
             ? "pointer-events-auto translate-x-0 opacity-100"
             : "pointer-events-none translate-x-2 opacity-0",
@@ -5026,6 +5263,7 @@ const PaintToolbar = memo(function PaintToolbar({
       >
         <Trash2 className={isDeleteMode ? "h-4 w-4 text-red-300" : "h-4 w-4"} />
       </button>
+      </ToolGroup>
     </div>
   );
 });

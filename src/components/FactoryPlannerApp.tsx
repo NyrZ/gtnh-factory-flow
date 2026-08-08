@@ -17,17 +17,20 @@ import { applyPlanView } from "@/lib/plan-view";
 import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
+import { useIsCompactViewport } from "@/lib/compact-view";
 import { AppHeader } from "./AppHeader";
 import { BlueprintSaveDialog } from "./BlueprintSaveDialog";
 import { DesignTabs } from "./DesignTabs";
 import { FactoryFlow } from "./flow/FactoryFlow";
 import { InspectorPanel } from "./InspectorPanel";
+import { ChevronIcon, PanelDrawer } from "./PanelDrawer";
 import { RecipeBrowser } from "./RecipeBrowser";
 
 export function FactoryPlannerApp() {
   const project = useFactoryStore((state) => state.project);
   const lastResult = useFactoryStore((state) => state.lastResult);
   const workspace = useWorkspaceView();
+  const isCompact = useIsCompactViewport();
   const hydrateResourceHistory = useFactoryStore((state) => state.hydrateResourceHistory);
   const hydrateDesigns = useDesignStore((state) => state.hydrate);
   const saveActiveProject = useDesignStore((state) => state.saveActiveProject);
@@ -213,8 +216,53 @@ export function FactoryPlannerApp() {
   }, [activeDesignId, project, saveActiveProject]);
 
   return (
-    <div className="flex h-screen min-h-[720px] flex-col bg-canvas text-fg">
+    // h-dvh, not h-screen: a phone browser's address bar comes and goes, and
+    // `vh` measures the window as if it never did, so the bottom row of the
+    // board spent its life under the chrome. The 720px floor is a desktop
+    // guarantee that all three columns have room; a phone in landscape has 390px
+    // and must fit anyway.
+    <div
+      className={[
+        "flex h-dvh flex-col bg-canvas text-fg",
+        isCompact ? "" : "min-h-[720px]",
+      ].join(" ")}
+    >
       <AppHeader onLoadDatasetVersion={loadDatasetVersion} />
+      {isCompact ? (
+        <CompactWorkspace workspace={workspace} onLoadDatasetVersion={loadDatasetVersion} />
+      ) : (
+        <ColumnWorkspace workspace={workspace} onLoadDatasetVersion={loadDatasetVersion} />
+      )}
+      {/* Every pocket-to-shelf path (card save, share-a-pocket,
+          overwrite) confirms through this one dialog. */}
+      <BlueprintSaveDialog />
+    </div>
+  );
+}
+
+interface WorkspaceProps {
+  workspace: ReturnType<typeof useWorkspaceView>;
+  onLoadDatasetVersion: (versionId: string) => void;
+}
+
+/** The board with the tab strip over it: the same on any window. */
+function BoardColumn() {
+  return (
+    /*
+      The tab strip belongs to the canvas, not the window: designs switch
+      what is on the board, while the browser and inspector are fixed
+      furniture. Rows rather than flex so the board keeps its `h-full`.
+    */
+    <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]">
+      <DesignTabs />
+      <FactoryFlow />
+    </div>
+  );
+}
+
+function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
+  return (
+    <>
       {/* 344/332: the browser column carries three iconed tabs and the setup
           shelf, so it gets a touch more than the old 312; the resource column
           went from 277 to fit a rate, a name and the mark buttons on one line
@@ -236,29 +284,53 @@ export function FactoryPlannerApp() {
         {/* The browser owns its own header row, so no wrapper here — it stays a
             direct grid item at exactly the column width, as it was before. */}
         {workspace.leftPanelOpen ? (
-          <RecipeBrowser onLoadDatasetVersion={loadDatasetVersion} />
+          <RecipeBrowser onLoadDatasetVersion={onLoadDatasetVersion} />
         ) : (
           <PanelRail side="left" label="Items, pockets and setups" />
         )}
-        {/*
-          The tab strip belongs to the canvas, not the window: designs switch
-          what is on the board, while the browser and inspector are fixed
-          furniture. Rows rather than flex so the board keeps its `h-full`.
-        */}
-        <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]">
-          <DesignTabs />
-          <FactoryFlow />
-        </div>
+        <BoardColumn />
         {workspace.rightPanelOpen ? (
           <InspectorPanel />
         ) : (
           <PanelRail side="right" label="Resources" />
         )}
       </main>
-      {/* Every pocket-to-shelf path (card save, share-a-pocket,
-          overwrite) confirms through this one dialog. */}
-      <BlueprintSaveDialog />
-    </div>
+    </>
+  );
+}
+
+/**
+ * One column: the board, with the other two as drawers over it.
+ *
+ * Only one drawer at a time — two of them on a 390px screen is a stack of
+ * panels with no board left to point at — so opening either closes the other.
+ */
+function CompactWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
+  const openLeft = () => writeWorkspaceView({ leftPanelOpen: true, rightPanelOpen: false });
+  const openRight = () => writeWorkspaceView({ leftPanelOpen: false, rightPanelOpen: true });
+
+  return (
+    <main className="relative min-h-0 flex-1 overflow-hidden">
+      <BoardColumn />
+      <PanelDrawer
+        side="left"
+        label="items, pockets and setups"
+        open={workspace.leftPanelOpen}
+        onOpen={openLeft}
+        onClose={() => writeWorkspaceView({ leftPanelOpen: false })}
+      >
+        <RecipeBrowser onLoadDatasetVersion={onLoadDatasetVersion} />
+      </PanelDrawer>
+      <PanelDrawer
+        side="right"
+        label="resources"
+        open={workspace.rightPanelOpen}
+        onOpen={openRight}
+        onClose={() => writeWorkspaceView({ rightPanelOpen: false })}
+      >
+        <InspectorPanel />
+      </PanelDrawer>
+    </main>
   );
 }
 
@@ -305,22 +377,6 @@ function PanelRail({ side, label }: { side: "left" | "right"; label: string }) {
         <span className={side === "right" ? "rotate-180" : undefined}>{label}</span>
       </button>
     </div>
-  );
-}
-
-export function ChevronIcon({ direction }: { direction: "left" | "right" }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      className="h-3.5 w-3.5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {direction === "right" ? <path d="M6 3l5 5-5 5" /> : <path d="M10 3L5 8l5 5" />}
-    </svg>
   );
 }
 

@@ -93,7 +93,7 @@ export function DesignTabs() {
   };
 
   if (!isHydrated) {
-    return <div className="h-11 shrink-0 border-b border-line bg-surface" />;
+    return <div className="h-8 shrink-0 border-b border-line bg-surface" />;
   }
 
   return (
@@ -105,7 +105,10 @@ export function DesignTabs() {
       */}
       <div
         data-help-anchor="tabs"
-        className="flex h-11 min-w-0 shrink-0 items-center gap-1 border-b border-line bg-surface px-2"
+        // h-8, not the 44px this bar used to run: a tab's name is 12px text in
+        // a 24px pill, so the row was carrying 20px of nothing above and below
+        // it. The board gets the difference.
+        className="flex h-8 min-w-0 shrink-0 items-center gap-1 border-b border-line bg-surface px-2"
       >
         {overflow.left ? <ScrollArrow direction={-1} onClick={() => scrollTabs(-1)} /> : null}
 

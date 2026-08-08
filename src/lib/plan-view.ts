@@ -7,6 +7,7 @@ import {
   type CanvasPattern,
   type GlanceMode,
 } from "@/components/flow/board-view";
+import { isCompactViewport } from "./compact-view";
 import type { PlanViewState } from "./model/types";
 import { readWorkspaceViewSnapshot, writeWorkspaceView } from "./workspace-view";
 import { getActiveRateUnit } from "./model/rate-unit";
@@ -104,9 +105,12 @@ function applyViewSettings(view: PlanViewState | undefined): void {
   }
 
   const workspacePatch: Parameters<typeof writeWorkspaceView>[0] = {};
+  // Which columns the author had open is advice for a window with columns. On a
+  // phone they are drawers over the board, one at a time, so a plan that carries
+  // both would land the reader under two stacked panels with nothing to look at.
+  const panelKeys = isCompactViewport() ? [] : (["leftPanelOpen", "rightPanelOpen"] as const);
   for (const key of [
-    "leftPanelOpen",
-    "rightPanelOpen",
+    ...panelKeys,
     "showHiddenResources",
     "favouritesOnly",
     "trendsOpen",

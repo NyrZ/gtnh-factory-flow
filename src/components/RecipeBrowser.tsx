@@ -3,6 +3,8 @@
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Cpu,
   Factory,
   GitBranchPlus,
@@ -51,7 +53,9 @@ import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { OPEN_SETUPS_EVENT } from "@/lib/setups-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
+import { useIsCompactViewport } from "@/lib/compact-view";
 import { ControlsCard } from "./ControlsCard";
+import { ChevronIcon } from "./PanelDrawer";
 import { BlueprintPanel } from "./BlueprintPanel";
 import { SetupsPanel } from "./SetupsPanel";
 import { machineArtPixels } from "./flow/MachinePicker";
@@ -202,6 +206,8 @@ const RESOURCE_PAGER_HEIGHT = 40;
 /** One mouse notch is 100 on most platforms, so one notch is one page. */
 const RESOURCE_WHEEL_PAGE_DELTA = 80;
 const RESOURCE_VIEW_STORAGE_KEY = "gtnh-factory-flow.resource-view.v1";
+/** Whether the filter block under the search box is folded away. */
+const RESOURCE_FILTERS_STORAGE_KEY = "gtnh-factory-flow.resource-filters.v1";
 
 type ResourceSortMode = "relevance" | "name" | "mod" | "recipes";
 type ResourceViewMode = "list" | "grid";
@@ -318,6 +324,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourceMod, setResourceMod] = useState("");
   const [resourceSort, setResourceSort] = useState<ResourceSortMode>("relevance");
   const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [resourceFilter, setResourceFilter] = useState<ResourceFilterMode>("all");
   // The master switch: what the whole left panel is FOR right now — finding
   // items to build with, stamping saved blueprints, or browsing the network's
@@ -488,6 +495,20 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const changeResourceView = useCallback((view: ResourceViewMode) => {
     setResourceView(view);
     window.localStorage.setItem(RESOURCE_VIEW_STORAGE_KEY, view);
+  }, []);
+
+  // Same deal for the filter fold: folded is the saved state, never the default,
+  // so nobody meets this column with its filters already hidden.
+  useEffect(() => {
+    if (window.localStorage.getItem(RESOURCE_FILTERS_STORAGE_KEY) === "folded") {
+      return deferStateUpdate(() => setFiltersOpen(false));
+    }
+    return undefined;
+  }, []);
+
+  const changeFiltersOpen = useCallback((open: boolean) => {
+    setFiltersOpen(open);
+    window.localStorage.setItem(RESOURCE_FILTERS_STORAGE_KEY, open ? "open" : "folded");
   }, []);
 
   const prefetchRecipeMap = useCallback(
@@ -859,7 +880,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     <>
       <aside
         data-help-anchor="browser"
-        className="relative z-40 flex h-full min-h-[360px] flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100"
+        className="relative z-40 flex h-full min-h-[360px] compact:min-h-0 flex-col border-r border-neutral-800 bg-[#25272c] text-neutral-100"
       >
         {/*
           The column's own head row. It carried the game-version picker until
@@ -867,8 +888,12 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           the tabs below level with the board's toolbar rather than riding up
           against the window chrome. The fold-away button sits on the outer
           edge, mirroring the resource panel's on the right.
+
+          Gone on a phone: as a drawer this column has nothing to line up with,
+          and a row holding one button is a row of screen the list wants. The
+          close button moves in beside the tabs.
         */}
-        <div className="flex h-11 shrink-0 items-center border-b border-neutral-800 px-2">
+        <div className="flex h-8 shrink-0 items-center border-b border-neutral-800 px-2 compact:hidden">
           <button
             type="button"
             onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
@@ -900,7 +925,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             type="button"
             onClick={() => setSidebarMode("items")}
             className={[
-              "flex h-9 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
+              "flex h-7 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
               sidebarMode === "items"
                 ? "border-cyan-400 text-cyan-300"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
@@ -913,7 +938,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             type="button"
             onClick={() => setSidebarMode("blueprints")}
             className={[
-              "flex h-9 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
+              "flex h-7 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
               sidebarMode === "blueprints"
                 ? "border-[#8d6fd1] text-[#c9b8ec]"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
@@ -931,7 +956,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             type="button"
             onClick={() => setSidebarMode("setups")}
             className={[
-              "flex h-9 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
+              "flex h-7 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
               sidebarMode === "setups"
                 ? "border-emerald-400 text-emerald-300"
                 : "border-transparent text-neutral-400 hover:text-neutral-200",
@@ -939,6 +964,16 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           >
             <Factory className="h-3 w-3" />
             Setups
+          </button>
+          {/* The drawer's own way out, on the tab row, since the head row that
+              used to carry it is folded away on a phone. */}
+          <button
+            type="button"
+            onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
+            aria-label="Close the items, pockets and setups panel"
+            className="hidden h-7 w-8 shrink-0 items-center justify-center border-b-2 border-transparent text-neutral-400 compact:flex"
+          >
+            <ChevronIcon direction="left" />
           </button>
         </div>
         {sidebarMode === "blueprints" ? (
@@ -955,7 +990,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             thing from the other two, when they are the same thing. */}
         <ControlsCard>
           <div className="flex items-center gap-1.5">
-            <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
+            {/* 16px text on a phone, deliberately: below that, iOS zooms the
+                whole page in the moment the field takes focus, and the way back
+                out is a pinch. */}
+            <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[4px] border border-neutral-700 bg-[#17191d] px-2 text-sm compact:text-base text-neutral-200 shadow-[inset_1px_1px_0_rgba(255,255,255,0.08)]">
               <Search className="h-4 w-4 text-neutral-500" />
               <input
                 value={recipeSearch}
@@ -993,6 +1031,24 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
                 <List className="h-4 w-4" />
               )}
             </button>
+            {/* Folds everything below it away. Six filters and two dropdowns are
+                worth their space when you are narrowing a search down and worth
+                none of it when you are not, which on a phone is most of a screen
+                of results. */}
+            <button
+              type="button"
+              onClick={() => changeFiltersOpen(!filtersOpen)}
+              aria-expanded={filtersOpen}
+              title={filtersOpen ? "Hide the filters" : "Show the filters"}
+              aria-label={filtersOpen ? "Hide the filters" : "Show the filters"}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200"
+            >
+              {filtersOpen ? (
+                <ChevronsDownUp className="h-4 w-4" />
+              ) : (
+                <ChevronsUpDown className="h-4 w-4" />
+              )}
+            </button>
           </div>
 
           {/* What the search had to do to find anything. Only ever shown when it
@@ -1014,7 +1070,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           {/* Two rows of three rather than six across: the column has no room to
               print "Fluids" and "Plants" six abreast, and squeezing them was how
               the labels started clipping. Still one group with one answer on. */}
-          <div className="mt-2 grid grid-cols-3 gap-1">
+          <div className={filtersOpen ? "mt-2 grid grid-cols-3 gap-1" : "hidden"}>
             {RESOURCE_FILTER_CHOICES.map((choice) => (
               <button
                 key={choice.mode}
@@ -1034,7 +1090,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             ))}
           </div>
 
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
+          <div className={filtersOpen ? "mt-2 grid grid-cols-2 gap-1.5" : "hidden"}>
             <select
               value={resourceMod}
               onChange={(event) => setResourceMod(event.target.value)}
@@ -1419,6 +1475,8 @@ interface ResourceQueryCacheEntry {
  * already writes to - so an item opened from a card's slot lands here too.
  */
 const RECENT_STRIP_ROWS = 3;
+/** One row on a phone: the shelf was eating a third of a screen of results. */
+const RECENT_STRIP_ROWS_COMPACT = 1;
 /** More than three rows of the widest column could ever show. */
 const RECENT_STRIP_LIMIT = 24;
 
@@ -1430,6 +1488,8 @@ function RecentResourceStrip({
   const history = useFactoryStore((state) => state.recipeResourceHistory);
   const clearResourceHistory = useFactoryStore((state) => state.clearResourceHistory);
   const activeResource = useFactoryStore((state) => state.recipeBrowserResource);
+  const isCompact = useIsCompactViewport();
+  const rows = isCompact ? RECENT_STRIP_ROWS_COMPACT : RECENT_STRIP_ROWS;
   const recent = history.slice(0, RECENT_STRIP_LIMIT);
 
   if (recent.length === 0) {
@@ -1440,8 +1500,8 @@ function RecentResourceStrip({
     // A card of its own, like the controls at the top of the column: bare, a shelf
     // of loose icons at the foot of a list of icons read as more of the list. The
     // bottom margin keeps it off the very edge of the window.
-    <div className="mx-2 mb-3 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
-      <div className="mb-1.5 flex items-center justify-between">
+    <div className="mx-2 mb-3 compact:mb-2 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2 compact:p-1.5">
+      <div className="mb-1.5 compact:mb-1 flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
           Recent
         </span>
@@ -1457,12 +1517,12 @@ function RecentResourceStrip({
       {/* The same cells the grid view uses, so a recent item is as easy to hit
           and as easy to recognise as one in the list above it. auto-fill picks
           the column count from the width, and the height stops it at three rows
-          rather than letting the strip eat the panel. */}
+          (one on a phone) rather than letting the strip eat the panel. */}
       <div
         className="grid gap-1 overflow-hidden"
         style={{
           gridTemplateColumns: `repeat(auto-fill, minmax(${RESOURCE_GRID_CELL}px, 1fr))`,
-          maxHeight: RECENT_STRIP_ROWS * RESOURCE_GRID_CELL + (RECENT_STRIP_ROWS - 1) * RESOURCE_GRID_GAP,
+          maxHeight: rows * RESOURCE_GRID_CELL + (rows - 1) * RESOURCE_GRID_GAP,
         }}
         aria-label="Recently viewed"
         role="listbox"

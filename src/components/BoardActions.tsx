@@ -43,13 +43,26 @@ import {
 } from "@/lib/import-export/plan-image";
 import { useFactoryStore } from "@/store/factory-store";
 
+interface BoardActionsProps {
+  /**
+   * `bar` is the top bar's row of icons. `list` is the compact menu: the same
+   * actions as labelled rows, with the export dropdown flattened into its three
+   * formats — a menu inside a menu is a trap on a touchscreen — and undo/redo
+   * left out, because on a phone they are two always-visible buttons on the
+   * board itself.
+   */
+  variant?: "bar" | "list";
+  /** Lets the compact menu close itself once one of its rows has fired. */
+  onAction?: () => void;
+}
+
 /**
  * Board actions - undo/redo, clean, import/export, theme.
  *
  * Lives on the right of the design tab strip: everything here acts on the plan
  * that strip is switching between, so the two belong on the same bar.
  */
-export function BoardActions() {
+export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = {}) {
   const projectInputRef = useRef<HTMLInputElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [isExportMenuOpen, setExportMenuOpen] = useState(false);
@@ -215,26 +228,91 @@ export function BoardActions() {
     return () => window.removeEventListener("keydown", handleProjectHistoryShortcut);
   }, [redo, undo]);
 
+  const requestCleanBoard = () => {
+    if (project.nodes.length === 0 && project.edges.length === 0) {
+      return;
+    }
+
+    if (!window.confirm("Clean the board and remove all nodes and links?")) {
+      return;
+    }
+
+    cleanBoard();
+  };
+
+  const planFileInput = (
+    <input
+      ref={projectInputRef}
+      type="file"
+      accept="application/json,image/svg+xml,image/png,.json,.svg,.png"
+      className="hidden"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        if (file) {
+          void importProjectJson(file);
+        }
+      }}
+    />
+  );
+
+  if (variant === "list") {
+    return (
+      <div data-help-anchor="plan-actions" className="flex flex-col">
+        <MenuAction
+          icon={Trash2}
+          label="Clean the board"
+          onClick={() => {
+            requestCleanBoard();
+            onAction?.();
+          }}
+        />
+        <MenuAction
+          icon={Upload}
+          label="Import a plan"
+          disabled={isProjectImporting}
+          onClick={() => {
+            projectInputRef.current?.click();
+            onAction?.();
+          }}
+        />
+        <MenuAction
+          icon={Download}
+          label="Export as JSON"
+          disabled={Boolean(pendingExport)}
+          onClick={() => {
+            void exportJson();
+            onAction?.();
+          }}
+        />
+        <MenuAction
+          icon={FileImage}
+          label="Export as SVG"
+          disabled={Boolean(pendingExport)}
+          onClick={() => {
+            void exportImage("svg");
+            onAction?.();
+          }}
+        />
+        <MenuAction
+          icon={ImageDown}
+          label="Export as PNG"
+          disabled={Boolean(pendingExport)}
+          onClick={() => {
+            void exportImage("png");
+            onAction?.();
+          }}
+        />
+        {planFileInput}
+      </div>
+    );
+  }
+
   return (
     <div data-help-anchor="plan-actions" className="flex shrink-0 items-center gap-1">
       <div className="flex items-center gap-1">
         <ToolbarButton icon={Undo2} label="Undo" disabled={!canUndo} onClick={undo} />
         <ToolbarButton icon={Redo2} label="Redo" disabled={!canRedo} onClick={redo} />
-        <ToolbarButton
-          icon={Trash2}
-          label="Clean board"
-          onClick={() => {
-            if (project.nodes.length === 0 && project.edges.length === 0) {
-              return;
-            }
-
-            if (!window.confirm("Clean the board and remove all nodes and links?")) {
-              return;
-            }
-
-            cleanBoard();
-          }}
-        />
+        <ToolbarButton icon={Trash2} label="Clean board" onClick={requestCleanBoard} />
         <ToolbarButton
           icon={Upload}
           label="Import plan"
@@ -287,19 +365,37 @@ export function BoardActions() {
         </div>
       </div>
 
-      <input
-        ref={projectInputRef}
-        type="file"
-        accept="application/json,image/svg+xml,image/png,.json,.svg,.png"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) {
-            void importProjectJson(file);
-          }
-        }}
-      />
+      {planFileInput}
     </div>
+  );
+}
+
+/**
+ * One row of the compact menu: a 40px tap target with the icon the top bar
+ * would have shown on its own, and the words that icon was relying on a
+ * tooltip for.
+ */
+function MenuAction({
+  icon: Icon,
+  label,
+  disabled = false,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-10 w-full items-center gap-2.5 rounded px-2 text-left text-sm text-fg-subtle hover:bg-surface-sunken disabled:cursor-not-allowed disabled:text-fg-muted"
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 
