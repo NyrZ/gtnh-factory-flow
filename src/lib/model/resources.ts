@@ -168,64 +168,63 @@ export function getChanceMultiplier(output: RecipeOutput): number {
   return output.chance ?? 1;
 }
 
-export function isRecipeInputConsumed(input: Pick<ResourceAmount, "id"> & { consumed?: boolean }): boolean {
+export function isRecipeInputConsumed(
+  input: Pick<ResourceAmount, "id"> & { consumed?: boolean },
+): boolean {
   return input.consumed !== false;
 }
 
+/**
+ * An item is an item and a fluid is a fluid. A filled cell is an ordinary item
+ * that happens to be named after a fluid, and it does NOT satisfy that fluid's
+ * slot — in game you would run the cell through a Canner first, and the planner
+ * says so by leaving the two unconnected until you place one.
+ *
+ * This used to be true only within a kind: a fluid could quietly satisfy a cell
+ * slot and vice versa, converting the amount at a guessed 1000 L per cell. It
+ * made a chain look complete while omitting a real machine, a stack of empty
+ * cells and the power to run them, and it reported item production in litres.
+ *
+ * Cross-form equivalence still exists for SEARCH, where it only helps you find
+ * that the other form exists — see `isFluidEquivalentToFilledCell`.
+ */
 export function resourceMatchesInput(
   resource: Pick<ResourceAmount, "kind" | "id" | "displayName">,
   input: Pick<ResourceAmount, "kind" | "id" | "displayName" | "alternatives">,
 ): boolean {
-  if (resource.kind === input.kind) {
-    return (
-      resource.id === input.id ||
-      Boolean(
-        input.alternatives?.some(
-          (alternative) => alternative.kind === resource.kind && alternative.id === resource.id,
-        ),
-      )
-    );
+  if (resource.kind !== input.kind) {
+    return false;
   }
 
-  if (resource.kind === "fluid" && input.kind === "item") {
-    return isFluidEquivalentToFilledCell(resource, input);
-  }
-
-  if (resource.kind === "item" && input.kind === "fluid") {
-    return isFluidEquivalentToFilledCell(input, resource);
-  }
-
-  return false;
+  return (
+    resource.id === input.id ||
+    Boolean(
+      input.alternatives?.some(
+        (alternative) => alternative.kind === resource.kind && alternative.id === resource.id,
+      ),
+    )
+  );
 }
 
-export function getFilledCellFluidEquivalent<
-  T extends Pick<
-    ResourceAmount,
-    "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor" | "tooltip"
-  > & {
-    amount?: number;
+/**
+ * The fluid a filled cell is named after, for SEARCH ONLY.
+ *
+ * Deliberately carries no amount. Nothing converts between the two forms any
+ * more, so there is no litres-per-cell ratio to get wrong; this only answers
+ * "does a fluid form of this item exist, so the recipe book can offer it too".
+ */
+export function getFilledCellFluidEquivalent(
+  resource: Pick<ResourceAmount, "kind" | "id" | "displayName"> & {
     alternatives?: ResourceAmount["alternatives"];
   },
->(resource: T): (Pick<T, "amount"> &
-  Pick<ResourceAmount, "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor" | "tooltip">) | undefined {
+): Pick<ResourceAmount, "kind" | "id" | "displayName"> | undefined {
   if (resource.kind === "fluid") {
-    return resource as Pick<T, "amount"> &
-      Pick<ResourceAmount, "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor" | "tooltip">;
+    return { kind: "fluid", id: resource.id, displayName: resource.displayName };
   }
 
   const alternative = resource.alternatives?.find((entry) => entry.kind === "fluid");
   if (alternative) {
-    return {
-      ...alternative,
-      kind: "fluid",
-      amount:
-        resource.amount === undefined
-          ? undefined
-          : getFilledCellFluidAmount({
-              amount: resource.amount,
-              cellFluidAmount: alternative.amount,
-            }),
-    };
+    return { kind: "fluid", id: alternative.id, displayName: alternative.displayName };
   }
 
   const fluidName = getFilledCellFluidName(resource);
@@ -233,24 +232,11 @@ export function getFilledCellFluidEquivalent<
     return undefined;
   }
 
-  return {
-    kind: "fluid",
-    id: normalizeFluidId(fluidName),
-    displayName: fluidName,
-    amount:
-      resource.amount === undefined
-        ? undefined
-        : getFilledCellFluidAmount({ amount: resource.amount }),
-  };
+  return { kind: "fluid", id: normalizeFluidId(fluidName), displayName: fluidName };
 }
 
-export function getFilledCellFluidAmount(
-  resource: Pick<ResourceAmount, "amount"> & { cellFluidAmount?: number },
-): number {
-  return resource.amount * (resource.cellFluidAmount ?? 1000);
-}
-
-function isFluidEquivalentToFilledCell(
+/** Search-only, like `getFilledCellFluidEquivalent`. Never a connection rule. */
+export function isFluidEquivalentToFilledCell(
   fluid: Pick<ResourceAmount, "kind" | "id" | "displayName">,
   cell: Pick<ResourceAmount, "kind" | "id" | "displayName" | "alternatives">,
 ): boolean {
@@ -277,7 +263,9 @@ function isFluidEquivalentToFilledCell(
   );
 }
 
-function getFilledCellFluidName(resource: Pick<ResourceAmount, "displayName" | "id">): string | undefined {
+function getFilledCellFluidName(
+  resource: Pick<ResourceAmount, "displayName" | "id">,
+): string | undefined {
   const label = resourceLabel(resource).trim();
   const match = label.match(/^(.+?)\s+Cell$/i);
   if (!match) {

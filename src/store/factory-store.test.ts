@@ -429,7 +429,7 @@ describe("factory resource links", () => {
     expect(useFactoryStore.getState().project.edges).toHaveLength(2);
   });
 
-  it("creates a fluid tank when dragging a filled cell input into storage", () => {
+  it("creates a drawer of cells, not a tank, when dragging a filled cell input", () => {
     useFactoryStore.getState().setProject({
       schemaVersion: PROJECT_SCHEMA_VERSION,
       id: "filled-cell-storage-test",
@@ -488,31 +488,31 @@ describe("factory resource links", () => {
       makeResourceHandleId("input", { kind: "item", id: "gregtech:gt.metaitem.99@143" }, 0),
     );
 
+    // The buffer holds what the slot holds. It used to be rewritten into the
+    // fluid, which turned an item slot into a tank reading litres and quietly
+    // dropped the Canner that crossing the two forms really takes.
     const state = useFactoryStore.getState();
     expect(state.project.storages?.[0]).toEqual(
       expect.objectContaining({
-        kind: "fluid",
-        resourceId: "molten.magmatter",
-        displayName: "Molten Magmatter",
+        kind: "item",
+        resourceId: "gregtech:gt.metaitem.99@143",
+        displayName: "Molten Magmatter Cell",
       }),
     );
     expect(state.project.edges[0]).toEqual(
       expect.objectContaining({
         source: state.project.storages?.[0]?.id,
         target: "cell-consumer-node",
-        resourceKind: "fluid",
-        resourceId: "molten.magmatter",
+        resourceKind: "item",
+        resourceId: "gregtech:gt.metaitem.99@143",
         targetHandle: "input:item:gregtech%3Agt.metaitem.99%40143:0",
       }),
     );
-    expect(state.project.nodes[0]?.recipeInputOverrides?.["0"]).toEqual(
-      expect.objectContaining({
-        kind: "fluid",
-        id: "molten.magmatter",
-        amount: 288,
-        displayName: "Molten Magmatter",
-      }),
-    );
+    // Same kind in, same kind out: the requirement is left exactly as written,
+    // never multiplied by a guessed 1000 L per cell.
+    const override = state.project.nodes[0]?.recipeInputOverrides?.["0"];
+    expect(override?.kind ?? "item").toBe("item");
+    expect(override?.amount ?? 2).toBe(2);
   });
 
   it("connects a new drawer to an overridden concrete recipe input", () => {
@@ -1418,77 +1418,6 @@ describe("factory machine count optimization", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "input-source", machineCount: 1 }),
         expect.objectContaining({ id: "storage-producer", machineCount: 1 }),
-      ]),
-    );
-  });
-
-  it("optimizes filled-cell producers connected to fluid storage consumers", () => {
-    useFactoryStore.getState().setProject({
-      schemaVersion: PROJECT_SCHEMA_VERSION,
-      id: "filled-cell-fluid-storage-optimization",
-      name: "Filled cell fluid storage optimization",
-      recipes: [
-        {
-          id: "oxygen-cell-source",
-          name: "Oxygen Cell Source",
-          machineType: "Dehydrator",
-          minimumTier: "LV",
-          durationTicks: 196,
-          eut: 16,
-          inputs: [{ kind: "item", id: "empty_cell", amount: 14, displayName: "Empty Cell" }],
-          outputs: [{ kind: "item", id: "oxygen_cell", amount: 14, displayName: "Oxygen Cell" }],
-        },
-        {
-          id: "oxygen-consumer",
-          name: "Oxygen Consumer",
-          machineType: "Chemical Reactor",
-          minimumTier: "LV",
-          durationTicks: 160,
-          eut: 30,
-          inputs: [{ kind: "fluid", id: "oxygen", amount: 1000, displayName: "Oxygen" }],
-          outputs: [{ kind: "item", id: "empty_cell", amount: 1, displayName: "Empty Cell" }],
-        },
-      ],
-      nodes: [
-        { ...makeNode("oxygen-cell-source-node", "oxygen-cell-source", 0), machineCount: 1 },
-        { ...makeNode("oxygen-consumer-node", "oxygen-consumer", 220), machineCount: 12 },
-      ],
-      storages: [
-        {
-          id: "oxygen-tank",
-          kind: "fluid",
-          resourceId: "oxygen",
-          displayName: "Oxygen",
-          position: { x: 120, y: 0 },
-        },
-      ],
-      edges: [
-        {
-          id: "oxygen-cell-to-tank",
-          source: "oxygen-cell-source-node",
-          target: "oxygen-tank",
-          resourceKind: "fluid",
-          resourceId: "oxygen",
-          label: "Oxygen Cell",
-        },
-        {
-          id: "oxygen-tank-to-consumer",
-          source: "oxygen-tank",
-          target: "oxygen-consumer-node",
-          resourceKind: "fluid",
-          resourceId: "oxygen",
-          label: "Oxygen",
-        },
-      ],
-      fuelProfiles: [],
-    });
-
-    useFactoryStore.getState().optimizeMachineCounts();
-
-    expect(useFactoryStore.getState().project.nodes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "oxygen-cell-source-node", machineCount: 1 }),
-        expect.objectContaining({ id: "oxygen-consumer-node", machineCount: 11 }),
       ]),
     );
   });

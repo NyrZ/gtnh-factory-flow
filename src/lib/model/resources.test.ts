@@ -51,46 +51,53 @@ describe("resource helpers", () => {
     expect(formatRate(77.123, 1)).toBe("77.1");
   });
 
-  it("matches GT filled cells against their fluid equivalent", () => {
+  // A filled cell is an item. It does not satisfy the fluid's slot, and the
+  // fluid does not satisfy the cell's: crossing the two takes a Canner on the
+  // board, exactly as it does in game.
+  it("refuses to match a filled cell against its fluid", () => {
     expect(
       resourceMatchesInput(
         { kind: "fluid", id: "molten.magmatter", displayName: "Molten Magmatter" },
         { kind: "item", id: "gregtech:gt.metaitem.99@143", displayName: "Molten Magmatter Cell" },
       ),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      resourceMatchesInput(
+        { kind: "item", id: "gregtech:gt.metaitem.01@1", displayName: "Water Cell" },
+        { kind: "fluid", id: "water", displayName: "Water" },
+      ),
+    ).toBe(false);
+  });
+
+  // Search still knows the two forms name the same substance, so looking up a
+  // cell can offer the fluid's recipes too. It carries no amount, because
+  // nothing converts between them any more.
+  it("still names the fluid a cell is a cell of, for search", () => {
     expect(
       getFilledCellFluidEquivalent({
         kind: "item",
         id: "gregtech:gt.metaitem.99@143",
-        amount: 2,
         displayName: "Molten Magmatter Cell",
         alternatives: [
-          {
-            kind: "fluid",
-            id: "molten.magmatter",
-            displayName: "Molten Magmatter",
-            amount: 144,
-          },
+          { kind: "fluid", id: "molten.magmatter", displayName: "Molten Magmatter", amount: 144 },
         ],
       }),
-    ).toEqual({
-      kind: "fluid",
-      id: "molten.magmatter",
-      displayName: "Molten Magmatter",
-      amount: 288,
-    });
+    ).toEqual({ kind: "fluid", id: "molten.magmatter", displayName: "Molten Magmatter" });
+
     expect(
       getFilledCellFluidEquivalent({
         kind: "item",
         id: "gregtech:gt.metaitem.01@1",
-        amount: 2,
         displayName: "Water Cell",
       }),
-    ).toEqual({
-      kind: "fluid",
-      id: "water",
-      displayName: "Water",
-      amount: 2000,
-    });
+    ).toEqual({ kind: "fluid", id: "water", displayName: "Water" });
+
+    expect(
+      getFilledCellFluidEquivalent({
+        kind: "item",
+        id: "gregtech:gt.metaitem.01@0",
+        displayName: "Empty Cell",
+      }),
+    ).toBeUndefined();
   });
 });

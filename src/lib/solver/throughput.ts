@@ -200,7 +200,7 @@ export function calculateThroughput(
   }
 
   const resourceResults = Object.fromEntries(
-    calculateEffectiveBalances(project, nodes, edgeResults, storagesById),
+    calculateEffectiveBalances(project, nodes, edgeResults),
   ) as Record<ResourceKey, ResourceBalance>;
   const { externalInputs, unconsumedOutputs } = splitBalances(Object.values(resourceResults));
 

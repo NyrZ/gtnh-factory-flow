@@ -21,11 +21,11 @@ import type {
 import {
   enrichPassiveProductionRecipe,
   getFilledCellFluidEquivalent,
+  isFluidEquivalentToFilledCell,
   getRecipePowerTier,
   GT_VOLTAGE_TIERS,
   isOreDictionaryResource,
   isVirtualChoiceResource,
-  resourceMatchesInput,
 } from "@/lib/model";
 
 type TierFilter = "all" | Exclude<MachineTier, "DEMO">;
@@ -330,7 +330,8 @@ export async function queryDatasetResources(
     } else if (sort === "recipes") {
       matches.sort((a, b) => {
         const countDelta =
-          (catalog.resourceIndex[b]?.recipeCount ?? 0) - (catalog.resourceIndex[a]?.recipeCount ?? 0);
+          (catalog.resourceIndex[b]?.recipeCount ?? 0) -
+          (catalog.resourceIndex[a]?.recipeCount ?? 0);
         return countDelta !== 0 ? countDelta : nameOf(a).localeCompare(nameOf(b));
       });
     }
@@ -592,7 +593,7 @@ async function queryDatasetRecipesFromLookup(
   return {
     recipes,
     total: matchingRecipeIndexes.length,
-      recipeMaps: sortedRecipeMaps,
+    recipeMaps: sortedRecipeMaps,
     recipeMapIcons: Object.fromEntries(
       sortedRecipeMaps
         .map((recipeMap) => [recipeMap, getRecipeMapIcon(catalog, recipeMap)] as const)
@@ -1460,11 +1461,15 @@ function getFilledCellEquivalentResources(
     return equivalents;
   }
 
+  // Searching a fluid also turns up the cells of it. This is the one place the
+  // two forms are still treated as one substance, and it is deliberate: it only
+  // widens what the recipe book shows you, it never wires anything together or
+  // converts an amount. Connections are strict — see `resourceMatchesInput`.
   for (const candidate of resourcesByKey.values()) {
     if (
       candidate.kind === "item" &&
       !isOreDictionaryResource(candidate) &&
-      resourceMatchesInput(resource, candidate)
+      isFluidEquivalentToFilledCell(resource, candidate)
     ) {
       addEquivalent({ kind: "item", id: candidate.id });
     }

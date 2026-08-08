@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.31.0",
+    date: "2026-08-08",
+    headline: "A cell is an item, and a Canner is a machine you place",
+    notes: [
+      "Cells and fluids used to swap for each other for free. Drag a cell output onto the board and you got a tank measured in litres, and a fluid would quietly satisfy a slot that wanted cells. Your plan looked finished while leaving out a Canner, the empty cells to run it, and the power to run that.",
+      "Now a cell is an item and a fluid is a fluid. To go from one to the other, place a Canner and wire it up, the same as you would in game. Most recipes exist in both a cell version and a fluid version, so usually you can just pick the one that matches what you already make.",
+      "The old swap guessed that every cell holds 1000 L. Hundreds of them do not: every molten metal cell is 144 L, so those chains were reading about seven times too high. Those numbers are right now.",
+      "Opening an older plan removes wires that crossed a cell and its fluid, and the slot settings that came with them. The chain will read short exactly where a Canner is missing, which is where to put one. Your drawers and tanks stay on the board.",
+    ],
+  },
+  {
     version: "1.30.1",
     date: "2026-08-08",
     headline: "New cards stay in the pocket you are standing in",

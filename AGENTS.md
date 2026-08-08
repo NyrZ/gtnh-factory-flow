@@ -68,6 +68,32 @@ gh run watch <run-id> --exit-status
 - Tooltips should not show noisy ore dictionary internals when the node was created from a concrete item context unless that is explicitly useful.
 - Resource matching/handles must use the effective rendered recipe/resource, including concrete oredict overrides, not only the raw recipe.
 
+## Cells Are Items
+
+- A filled cell is an ordinary ITEM. It does not satisfy its fluid's slot, and
+  the fluid does not satisfy the cell's. `resourceMatchesInput` compares kinds
+  strictly; do not reintroduce a cross-kind branch.
+- Crossing the two forms takes a Canner on the board, exactly as it does in
+  game. There are ~4,000 Canner recipes in the dataset (~1,150 fill, ~1,150
+  empty), so the bridge is always a placeable machine, and GT registers ~3,000
+  recipe shapes in BOTH forms so most chains just need the matching variant.
+- The old behaviour auto-converted at a guessed 1000 L per cell. It made chains
+  look complete while omitting a real machine, empty cells and the power to run
+  them, and it reported item production in litres. It also inflated cell inputs
+  1000x. All of that is gone; do not rebuild it.
+- The ONE surviving cross-form rule is SEARCH: `getFilledCellFluidEquivalent`
+  and `isFluidEquivalentToFilledCell` widen what the recipe book shows. They
+  wire nothing and convert no amounts, and carry no litres-per-cell ratio.
+- `dropCrossFormConnections` in `project-normalize.ts` drops legacy cross-form
+  wires and slot overrides on load. It compares KINDS only, never ids, because
+  a slot legitimately carries an id the edge does not (oredict, chosen
+  alternatives) and matching on id would delete honest wires.
+- Note for anyone tempted by the Fluid Canner indexing that used to live in
+  `build-resource-index.mjs`/`enrich.ts`: it matched `recipeMap === "Fluid
+  Canner"` while the dataset says `"Canner"`, so it produced zero links in
+  every published dataset. It was removed as dead code, not as a behaviour
+  change.
+
 ## NEI Layout And Slots
 
 - Prefer NEI-exported slot positions and progress bars over reconstructed layouts.

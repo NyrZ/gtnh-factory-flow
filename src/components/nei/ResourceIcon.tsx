@@ -150,6 +150,12 @@ function isProgrammedCircuit(resource: Pick<ResourceAmount, "kind" | "id">): boo
   );
 }
 
+/**
+ * A slot never accepts the other form, so a fluid listed on a cell (or the
+ * reverse) must not be advertised as a substitute — neither with the marker nor
+ * on the "Accepts:" line. Saying so would promise a wire the board refuses to
+ * draw; crossing the two forms takes a Canner, like it does in game.
+ */
 function shouldShowAlternativeMarker(resource: DisplayResourceAmount): boolean {
   return Boolean(
     resource.alternatives?.some((alternative) => !isFluidCellAlternative(resource, alternative)),

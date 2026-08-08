@@ -8,8 +8,9 @@ export const ALTERNATIVE_CYCLE_INTERVAL_MS = 1500;
  * A single face of a cycling slot: one concrete item an oredict input accepts.
  *
  * `amount` is NOT a stack size. Alternatives carry target-units-per-source-unit
- * (1000 on a cell's fluid, 1 on an ordinary oredict member), so it must never be
- * spread over a recipe input's real amount. See `crossKindInputOverrideAmount`.
+ * (1 on an ordinary oredict member, 4 on a substitute that takes four times as
+ * much), so it must never be spread over a recipe input's real amount. See
+ * `inputOverrideAmount`.
  */
 export type AlternativeCycleFace = Pick<
   ResourceAmount,
@@ -117,10 +118,10 @@ export function advanceAlternativeCycleForTests(steps = 1) {
 /**
  * The faces a slot rotates through, or an empty list when it does not rotate.
  *
- * Cross-kind alternatives are excluded deliberately: a filled cell and its fluid
- * are the same substance counted two ways, not a choice a player makes, and
- * flipping a slot between an item and a fluid would read as a different recipe.
- * This is the same filter that decides whether the slot shows its `+` marker.
+ * Cross-kind alternatives are excluded: a slot takes an item or a fluid, never
+ * either, so the other form is not a face it can rotate onto. Crossing the two
+ * takes a Canner on the board. This is the same filter that decides whether the
+ * slot shows its `+` marker.
  */
 export function getAlternativeCycleFaces(resource: CycleResource): AlternativeCycleFace[] {
   const sameKind = (resource.alternatives ?? []).filter(

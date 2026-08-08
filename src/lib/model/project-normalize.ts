@@ -1,6 +1,5 @@
 import type { FactoryProject } from "./types";
 import { normalizeProjectFuelProfiles } from "./fuels";
-import { repairFilledCellInputOverrides } from "./recipe-input-overrides";
 import { snapPositionToGrid, snapSizeUpToGrid } from "@/lib/board-grid";
 
 /**
@@ -13,8 +12,86 @@ import { snapPositionToGrid, snapSizeUpToGrid } from "@/lib/board-grid";
  */
 export function normalizeLoadedProject(project: FactoryProject): FactoryProject {
   return snapProjectToGrid(
-    repairPocketReferences(repairFilledCellInputOverrides(normalizeProjectFuelProfiles(project))),
+    repairPocketReferences(dropCrossFormConnections(normalizeProjectFuelProfiles(project))),
   );
+}
+
+/**
+ * Plans made while a filled cell could satisfy a fluid slot carry wires and
+ * slot overrides that cross the two forms. Those connections no longer exist:
+ * an item feeds an item slot and a fluid a fluid slot, and crossing the two
+ * takes a Canner on the board like it does in game.
+ *
+ * The wire is dropped rather than quietly left carrying nothing, so the chain
+ * reads as short by exactly the amount the missing Canner would carry, and the
+ * gap is where to put one. Overrides that renamed a slot into the other form go
+ * with them — they also held an amount converted at a guessed 1000 L per cell,
+ * so leaving them behind would keep that guess in the numbers.
+ */
+function dropCrossFormConnections(project: FactoryProject): FactoryProject {
+  const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
+
+  let nodesChanged = false;
+  const nodes = project.nodes.map((node) => {
+    const overrides = node.recipeInputOverrides;
+    const recipe = overrides ? recipesById.get(node.recipeId) : undefined;
+    if (!overrides || !recipe) {
+      return node;
+    }
+
+    let changed = false;
+    const kept: NonNullable<typeof overrides> = {};
+    for (const [slot, override] of Object.entries(overrides)) {
+      const input = recipe.inputs[Number(slot)];
+      if (override && input && override.kind !== input.kind) {
+        changed = true;
+        continue;
+      }
+      kept[slot] = override;
+    }
+
+    if (!changed) {
+      return node;
+    }
+    nodesChanged = true;
+    return { ...node, recipeInputOverrides: kept };
+  });
+
+  // A drawer created from a cell slot was stored as the FLUID, so its wire and
+  // the card itself are both in the wrong form. The wire goes; the drawer stays
+  // and is simply a tank of that fluid with nothing feeding it.
+  //
+  // Only the KIND is compared, never the id. A slot legitimately carries an id
+  // the edge does not — an ore dictionary slot fed a concrete item, a slot with
+  // a chosen alternative — and dropping those would delete honest wires. What
+  // cannot happen is a card with no fluid slot at all on the end of a fluid
+  // wire, and that is exactly the shape cross-form connections left behind.
+  const storagesById = new Map((project.storages ?? []).map((storage) => [storage.id, storage]));
+  const endpointHandles = (id: string, side: "source" | "target", kind: string): boolean => {
+    const storage = storagesById.get(id);
+    if (storage) {
+      return storage.kind === kind;
+    }
+    const node = project.nodes.find((entry) => entry.id === id);
+    const recipe = node ? recipesById.get(node.recipeId) : undefined;
+    if (!recipe) {
+      // A pocket card, or a recipe this plan does not carry. Not ours to judge.
+      return true;
+    }
+    const slots = side === "source" ? recipe.outputs : recipe.inputs;
+    return slots.some((slot) => slot.kind === kind);
+  };
+
+  const edges = project.edges.filter(
+    (edge) =>
+      endpointHandles(edge.source, "source", edge.resourceKind) &&
+      endpointHandles(edge.target, "target", edge.resourceKind),
+  );
+
+  if (!nodesChanged && edges.length === project.edges.length) {
+    return project;
+  }
+  return { ...project, nodes, edges };
 }
 
 /**

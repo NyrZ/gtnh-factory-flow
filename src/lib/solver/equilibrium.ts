@@ -1,10 +1,5 @@
 import { applyRecipeInputOverrides } from "../model/recipe-input-overrides";
-import {
-  getFilledCellFluidEquivalent,
-  isRecipeInputConsumed,
-  makeResourceKey,
-  resourceMatchesInput,
-} from "../model/resources";
+import { isRecipeInputConsumed, makeResourceKey, resourceMatchesInput } from "../model/resources";
 import { collectTrashNodeIds } from "../model/trash";
 import type {
   FactoryProject,
@@ -260,10 +255,7 @@ export function solveEquilibrium(
   const infoById = new Map<string, MachineNodeInfo>();
   const budgetsByOwner = new Map<string, Budget[]>();
   for (const budget of budgets.values()) {
-    budgetsByOwner.set(budget.ownerId, [
-      ...(budgetsByOwner.get(budget.ownerId) ?? []),
-      budget,
-    ]);
+    budgetsByOwner.set(budget.ownerId, [...(budgetsByOwner.get(budget.ownerId) ?? []), budget]);
   }
   const targetShares = calculateProjectTargetShares(project, nodes);
 
@@ -339,7 +331,10 @@ export function solveEquilibrium(
   const runRound = (): RoundOutput => {
     const budgetOffer = new Map<string, number>();
     for (const [budgetKey, budget] of budgets) {
-      budgetOffer.set(budgetKey, budget.makePerSecond * clampUtilization(cap.get(budget.ownerId) ?? 1));
+      budgetOffer.set(
+        budgetKey,
+        budget.makePerSecond * clampUtilization(cap.get(budget.ownerId) ?? 1),
+      );
     }
     const poolOffer = new Map<string, number>();
     for (const [poolKey, pool] of pools) {
@@ -559,7 +554,8 @@ export function solveEquilibrium(
     for (const info of machineNodes) {
       const capDelta = (cap.get(info.id) ?? 1) - (output.capNext.get(info.id) ?? 1);
       const demDelta =
-        clampUtilization(dem.get(info.id) ?? 1) - clampUtilization(output.demNext.get(info.id) ?? 1);
+        clampUtilization(dem.get(info.id) ?? 1) -
+        clampUtilization(output.demNext.get(info.id) ?? 1);
       currentDelta.set(`c|${info.id}`, capDelta);
       currentDelta.set(`d|${info.id}`, demDelta);
       maxDelta = Math.max(maxDelta, Math.abs(capDelta), Math.abs(demDelta));
@@ -731,10 +727,7 @@ function runFill(
       const perEdge = rem / liveEdges.length;
       for (const edge of liveEdges) {
         requestByEdge.set(edge, perEdge);
-        requestsByBudget.set(
-          edge.budgetKey,
-          (requestsByBudget.get(edge.budgetKey) ?? 0) + perEdge,
-        );
+        requestsByBudget.set(edge.budgetKey, (requestsByBudget.get(edge.budgetKey) ?? 0) + perEdge);
       }
     }
 
@@ -959,22 +952,6 @@ export function getCompatibleOutputFlowForResource(
     };
     if (!resourceMatchesInput(resource, outputResource)) {
       continue;
-    }
-
-    if (resource.kind === "fluid" && output.kind === "item") {
-      const fluid = getFilledCellFluidEquivalent({
-        ...outputResource,
-        amount: output.amountPerSecond,
-      });
-      if (fluid?.id === resource.id) {
-        return {
-          key: makeResourceKey("fluid", fluid.id),
-          kind: "fluid",
-          resourceId: fluid.id,
-          displayName: fluid.displayName ?? output.displayName,
-          amountPerSecond: fluid.amount ?? output.amountPerSecond,
-        };
-      }
     }
 
     return output;

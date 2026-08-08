@@ -34,7 +34,6 @@ import {
   getRecipeMachineConfigTierControls,
   getRecipeCoilTierControl,
   applyRecipeInputOverrides,
-  restoreCrossKindInputOverrideVisuals,
   getRecipePowerTier,
   getSelectedMachineHandler,
   getCropsNhStats,
@@ -235,14 +234,9 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     const tgsToolControls = machineConfigControls.filter(isTreeGrowthSimulatorToolControl);
     const overclockedStats = getOverclockedRecipeStats(nodeRecipe, projectNode);
     const toolAdjustedRecipe = applyTreeGrowthSimulatorToolInputs(effectiveRecipe, tgsToolControls);
-    const visualToolAdjustedRecipe = restoreCrossKindInputOverrideVisuals(
-      toolAdjustedRecipe,
-      recipe,
-      projectNode,
-    );
     const displayRecipe = isBeeProductionNode
-      ? stripBeeFrameSlotInputs(visualToolAdjustedRecipe)
-      : visualToolAdjustedRecipe;
+      ? stripBeeFrameSlotInputs(toolAdjustedRecipe)
+      : toolAdjustedRecipe;
     const adjustedRecipe = applyMachineOutputMultipliers(
       displayRecipe,
       projectNode,

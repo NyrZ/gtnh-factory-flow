@@ -1,8 +1,4 @@
-import {
-  getFilledCellFluidEquivalent,
-  makeResourceKey,
-  resourceMatchesInput,
-} from "../model/resources";
+import { makeResourceKey } from "../model/resources";
 import type {
   EdgeThroughput,
   FactoryProject,
@@ -140,7 +136,6 @@ export function calculateEffectiveBalances(
   project: FactoryProject,
   nodes: Record<string, NodeThroughputResult>,
   edgeResults: Record<string, EdgeThroughput>,
-  storagesById: Map<string, FactoryStorage>,
 ): Map<ResourceKey, ResourceBalance> {
   const balances = new Map<ResourceKey, ResourceBalance>();
 
@@ -177,7 +172,6 @@ export function calculateEffectiveBalances(
     }
   }
 
-  applyConvertedStorageOutputBalances(project, nodes, edgeResults, storagesById, balances);
   applyTrashedOutputBalances(project, edgeResults, balances);
   // Last, so it also settles whatever the two passes above left behind.
   settleBalances(balances);
@@ -189,8 +183,7 @@ export function calculateEffectiveBalances(
  * Whatever flows into a trash can never existed as far as the plan's books
  * are concerned: it leaves the produced column (floored at zero, so a mid-
  * convergence overshoot can never mint a phantom deficit) and therefore
- * never appears in the unconsumed-outputs panel. Runs after the cell/fluid
- * conversion pass so a tank-drained fluid subtracts from the converted row.
+ * never appears in the unconsumed-outputs panel.
  */
 function applyTrashedOutputBalances(
   project: FactoryProject,
@@ -223,69 +216,6 @@ function applyTrashedOutputBalances(
   }
 }
 
-function applyConvertedStorageOutputBalances(
-  project: FactoryProject,
-  nodes: Record<string, NodeThroughputResult>,
-  edgeResults: Record<string, EdgeThroughput>,
-  storagesById: Map<string, FactoryStorage>,
-  balances: Map<ResourceKey, ResourceBalance>,
-): void {
-  for (const edge of project.edges) {
-    if (!storagesById.has(edge.target) || storagesById.has(edge.source)) {
-      continue;
-    }
-
-    const transferredPerSecond = edgeResults[edge.id]?.transferredPerSecond ?? 0;
-    if (transferredPerSecond <= EPSILON) {
-      continue;
-    }
-
-    const sourceResult = nodes[edge.source];
-    const output = sourceResult
-      ? Object.values(sourceResult.outputs).find(
-          (candidate) =>
-            candidate.kind !== edge.resourceKind &&
-            resourceMatchesInput(
-              { kind: edge.resourceKind, id: edge.resourceId },
-              {
-                kind: candidate.kind,
-                id: candidate.resourceId,
-                displayName: candidate.displayName,
-              },
-            ),
-        )
-      : undefined;
-    if (!sourceResult || !output) {
-      continue;
-    }
-
-    const outputResource = {
-      kind: output.kind,
-      id: output.resourceId,
-      displayName: output.displayName,
-      alternatives: output.alternatives,
-      amount: transferredPerSecond,
-    };
-    const edgeResource = {
-      kind: edge.resourceKind,
-      id: edge.resourceId,
-      displayName: edge.label,
-      amount: transferredPerSecond,
-    };
-
-    if (edge.resourceKind === "fluid" && output.kind === "item") {
-      const fluid = getFilledCellFluidEquivalent(outputResource);
-      if (fluid?.id !== edge.resourceId || !fluid.amount || fluid.amount <= 0) {
-        continue;
-      }
-
-      const cellAmountPerSecond = transferredPerSecond * (output.amountPerSecond / fluid.amount);
-      subtractBalanceProduction(balances, outputResource, cellAmountPerSecond);
-      addBalanceProduction(balances, edgeResource, transferredPerSecond);
-    }
-  }
-}
-
 /**
  * The two headline lists the books imply: what has to be imported, and what
  * nothing downstream drinks.
@@ -310,9 +240,7 @@ export function splitBalances(balances: Iterable<ResourceBalance>): {
  * Derived here rather than in the panel so the three groups always partition
  * the same book.
  */
-export function selectInternalBalances(
-  balances: Iterable<ResourceBalance>,
-): ResourceBalance[] {
+export function selectInternalBalances(balances: Iterable<ResourceBalance>): ResourceBalance[] {
   return [...balances]
     .filter(
       (balance) =>

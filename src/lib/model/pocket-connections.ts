@@ -9,7 +9,6 @@ import type {
 import { isRecipeInputConsumed, resourceMatchesInput } from "./resources";
 import {
   applyRecipeInputOverrides,
-  restoreCrossKindInputOverrideVisuals,
 } from "./recipe-input-overrides";
 import { applyMachineHandlerToRecipe } from "./recipe-rules";
 import { applyMachineOutputMultipliers } from "../solver/machine-effects";
@@ -40,14 +39,10 @@ export function getEffectiveNodeRecipe(recipe: Recipe, node: FactoryNode): Recip
     node,
     overclockedStats.tier,
   );
-  return restoreCrossKindInputOverrideVisuals(
-    {
-      ...effectiveRecipe,
-      ...adjustedRecipe,
-    },
-    recipe,
-    node,
-  );
+  return {
+    ...effectiveRecipe,
+    ...adjustedRecipe,
+  };
 }
 
 export function isPocketId(project: FactoryProject, id: string): boolean {

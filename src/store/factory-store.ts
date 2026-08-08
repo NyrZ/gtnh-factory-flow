@@ -6,10 +6,7 @@ import type { DatasetManifest, RecipeDataset } from "@/lib/datasets";
 import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { setActiveRateUnit, type RateUnit } from "@/lib/model/rate-unit";
 import { calculateThroughput } from "@/lib/solver";
-import {
-  applyRecipeInputOverrides,
-  crossKindInputOverrideAmount,
-} from "@/lib/model/recipe-input-overrides";
+import { applyRecipeInputOverrides, inputOverrideAmount } from "@/lib/model/recipe-input-overrides";
 import type { AlternativeCycleFace } from "@/lib/nei/alternative-cycle";
 import { createCropFarmPlaceholderRecipe } from "@/lib/model/passive-production";
 import {
@@ -32,7 +29,6 @@ import {
   snapSizeUpToGrid,
 } from "@/lib/board-grid";
 import {
-  getFilledCellFluidEquivalent,
   getResourceKey,
   isOreDictionaryResource,
   isRecipeInputConsumed,
@@ -409,9 +405,7 @@ export function captureBoardSelection(
     storages,
     annotations,
     pockets: (project.pockets ?? []).filter((pocket) => pocketIds.has(pocket.id)),
-    edges: project.edges.filter(
-      (edge) => itemIds.has(edge.source) && itemIds.has(edge.target),
-    ),
+    edges: project.edges.filter((edge) => itemIds.has(edge.source) && itemIds.has(edge.target)),
     recipes: project.recipes.filter((recipe) => recipeIds.has(recipe.id)),
   });
 }
@@ -1131,7 +1125,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   addStorageForConnection: (resource, nodeId, side, position, handleId) => {
     set((state) => {
       const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
-      const storageResource = getStorageResourceForConnection(resource);
+      // Whatever came out of the slot is what the buffer holds. A filled cell
+      // makes a drawer of cells, counted in cells; it used to be rewritten into
+      // its fluid, which is why an item output reported litres.
+      const storageResource = resource;
       const storage: FactoryStorage = {
         id: createId("storage"),
         kind: storageResource.kind,
@@ -1163,7 +1160,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         sourceHandle:
           side === "output"
             ? handleId
-            : makeResourceHandleId("output", { kind: storageResource.kind, id: storageResource.id }),
+            : makeResourceHandleId("output", {
+                kind: storageResource.kind,
+                id: storageResource.id,
+              }),
         targetHandle:
           side === "input"
             ? handleId
@@ -1635,9 +1635,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       // selected; cards pasted deeper inside a pocket are reachable by
       // entering it.
       pastedIds.push(
-        ...nodes
-          .filter((node) => node.pocketId === state.activePocketId)
-          .map((node) => node.id),
+        ...nodes.filter((node) => node.pocketId === state.activePocketId).map((node) => node.id),
         ...storages
           .filter((storage) => storage.pocketId === state.activePocketId)
           .map((storage) => storage.id),
@@ -1720,9 +1718,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         ...state.project,
         nodes: intoPocket(state.project.nodes),
         storages: state.project.storages ? intoPocket(state.project.storages) : undefined,
-        annotations: state.project.annotations
-          ? intoPocket(state.project.annotations)
-          : undefined,
+        annotations: state.project.annotations ? intoPocket(state.project.annotations) : undefined,
         pockets: [
           ...(state.project.pockets ?? []).map((entry) =>
             selected.has(entry.id) ? { ...entry, parentPocketId: pocket.id } : entry,
@@ -1764,9 +1760,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       // member cards plus nested pockets, which surface as their own cards.
       // They arrive selected, so the pile can be dragged somewhere in one go.
       const surfacedIds = [
-        ...state.project.nodes
-          .filter((node) => node.pocketId === pocketId)
-          .map((node) => node.id),
+        ...state.project.nodes.filter((node) => node.pocketId === pocketId).map((node) => node.id),
         ...(state.project.storages ?? [])
           .filter((storage) => storage.pocketId === pocketId)
           .map((storage) => storage.id),
@@ -2211,9 +2205,7 @@ function canConnectPendingSlots(
   const output = first.side === "output" ? firstResource : secondResource;
 
   return (
-    first.side !== second.side &&
-    first.kind === second.kind &&
-    resourceMatchesInput(output, input)
+    first.side !== second.side && first.kind === second.kind && resourceMatchesInput(output, input)
   );
 }
 
@@ -2370,7 +2362,7 @@ function buildRecipeInputPickOverrides(
       // A face's own `amount` is a per-unit ratio, not a stack size, so the
       // recipe's requirement is restated through the shared helper rather than
       // spread over.
-      amount: crossKindInputOverrideAmount(input, face.kind, face),
+      amount: inputOverrideAmount(input, face.kind, face),
       displayName: face.displayName ?? input.displayName,
       iconPath: face.iconPath ?? input.iconPath,
       iconAtlas: face.iconAtlas ?? input.iconAtlas,
@@ -2548,7 +2540,7 @@ function applyEdgeInputOverride(
     // Only converts when the kind actually changes — see the helper. Taking
     // the cell's fluid amount unconditionally inflated same-kind cell wiring
     // by 1000×.
-    amount: resource?.amount ?? crossKindInputOverrideAmount(input, edge.resourceKind, alternative),
+    amount: resource?.amount ?? inputOverrideAmount(input, edge.resourceKind, alternative),
     displayName:
       resource?.displayName ?? edge.label ?? alternative?.displayName ?? input.displayName,
     iconPath: resource?.iconPath ?? alternative?.iconPath ?? input.iconPath,
@@ -2648,8 +2640,8 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
     return (
       edge.resourceKind === targetStorage.kind &&
       edge.resourceId === targetStorage.resourceId &&
-      effectiveSourceRecipe.outputs.some(
-        (output) => resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, output),
+      effectiveSourceRecipe.outputs.some((output) =>
+        resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, output),
       )
     );
   }
@@ -2662,8 +2654,8 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
   const effectiveTargetRecipe = applyRecipeInputOverrides(targetRecipe, targetNode);
 
   return (
-    effectiveSourceRecipe.outputs.some(
-      (output) => resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, output),
+    effectiveSourceRecipe.outputs.some((output) =>
+      resourceMatchesInput({ kind: edge.resourceKind, id: edge.resourceId }, output),
     ) &&
     effectiveTargetRecipe.inputs.some(
       (input) =>
@@ -2935,9 +2927,8 @@ function buildEdgeBetweenNodes(
     const effectiveSourceRecipe = sourceNode
       ? applyRecipeInputOverrides(sourceRecipe, sourceNode)
       : sourceRecipe;
-    const matchedOutput = effectiveSourceRecipe.outputs.find(
-      (output) =>
-        resourceMatchesInput(sourceStorageResource(targetStorage), output),
+    const matchedOutput = effectiveSourceRecipe.outputs.find((output) =>
+      resourceMatchesInput(sourceStorageResource(targetStorage), output),
     );
     if (!matchedOutput) {
       return undefined;
@@ -3144,20 +3135,6 @@ function buildCompatibleEdgesForStorage(
 
 function sourceStorageResource(storage: FactoryStorage): Pick<ResourceAmount, "kind" | "id"> {
   return { kind: storage.kind, id: storage.resourceId };
-}
-
-function getStorageResourceForConnection(
-  resource: Pick<
-    ResourceAmount,
-    "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor"
-  > &
-    Partial<Pick<ResourceAmount, "tooltip" | "amount" | "alternatives">>,
-): Pick<
-  ResourceAmount,
-  "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor" | "tooltip"
-> &
-  Partial<Pick<ResourceAmount, "amount">> {
-  return getFilledCellFluidEquivalent(resource) ?? resource;
 }
 
 function hasDuplicateEdge(edges: FactoryEdge[], edge: FactoryEdge): boolean {
@@ -3523,9 +3500,7 @@ const CLONE_OFFSET = BOARD_GRID * 2;
  * box drawn freehand still ends up a whole number of cells, on a cell corner.
  * Only the keys present in the patch are touched.
  */
-function snapAnnotationToGrid(
-  patch: Partial<FactoryAnnotation>,
-): Partial<FactoryAnnotation> {
+function snapAnnotationToGrid(patch: Partial<FactoryAnnotation>): Partial<FactoryAnnotation> {
   const snapped: Partial<FactoryAnnotation> = {};
   if (patch.position) {
     snapped.position = snapPositionToGrid(patch.position);

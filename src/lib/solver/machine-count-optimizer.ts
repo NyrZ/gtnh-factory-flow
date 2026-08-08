@@ -2,7 +2,6 @@ import { applyRecipeInputOverrides } from "@/lib/model/recipe-input-overrides";
 import { applyMachineHandlerToRecipe } from "@/lib/model/recipe-rules";
 import {
   getChanceMultiplier,
-  getFilledCellFluidEquivalent,
   isRecipeInputConsumed,
   makeResourceKey,
   resourceMatchesInput,
@@ -1469,28 +1468,6 @@ function convertOutputRateForEdge(
 ): number {
   if (!outputKey || outputRate <= EPSILON) {
     return 0;
-  }
-
-  const edgeKey = makeResourceKey(edge.resourceKind, edge.resourceId);
-  if (outputKey === edgeKey) {
-    return outputRate;
-  }
-
-  const output = plan.effectiveRecipe?.outputs.find(
-    (entry) => makeResourceKey(entry.kind, entry.id) === outputKey,
-  );
-  if (!output) {
-    return outputRate;
-  }
-
-  if (edge.resourceKind === "fluid" && output.kind === "item") {
-    const fluid = getFilledCellFluidEquivalent({
-      ...output,
-      amount: outputRate,
-    });
-    if (fluid?.id === edge.resourceId && fluid.amount !== undefined) {
-      return fluid.amount;
-    }
   }
 
   return outputRate;
