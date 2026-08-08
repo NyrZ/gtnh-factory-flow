@@ -152,9 +152,9 @@ function isProgrammedCircuit(resource: Pick<ResourceAmount, "kind" | "id">): boo
 
 /**
  * A slot never accepts the other form, so a fluid listed on a cell (or the
- * reverse) must not be advertised as a substitute — neither with the marker nor
- * on the "Accepts:" line. Saying so would promise a wire the board refuses to
- * draw; crossing the two forms takes a Canner, like it does in game.
+ * reverse) must not be advertised as a substitute, marker included. Saying so
+ * would promise a wire the board refuses to draw; crossing the two forms takes a
+ * Canner, like it does in game.
  */
 function shouldShowAlternativeMarker(resource: DisplayResourceAmount): boolean {
   return Boolean(
@@ -188,7 +188,10 @@ function buildTooltipLabel(
     ? [
         resourceLabel(resource),
         ...resource.tooltip.filter(
-          (line) => stripOreDictionaryPrefix(line) && !isNbtTooltipLine(line),
+          (line) =>
+            stripOreDictionaryPrefix(line) &&
+            !isNbtTooltipLine(line) &&
+            !isOreDictionaryNoiseLine(line),
         ),
       ]
     : [resourceLabel(resource)].filter(Boolean);
@@ -200,29 +203,31 @@ function buildTooltipLabel(
     resource.consumed === false && !resource.tooltip?.some(isNotConsumedTooltipLine)
       ? "Not consumed"
       : undefined;
-  const visibleAlternatives =
-    resource.alternatives?.filter(
-      (alternative) => !isFluidCellAlternative(resource, alternative),
-    ) ?? [];
-  const alternativesLine = visibleAlternatives.length
-    ? `Accepts: ${visibleAlternatives
-        .slice(0, 12)
-        .map((alternative) => resourceLabel(alternative))
-        .join(
-          ", ",
-        )}${visibleAlternatives.length > 12 ? `, +${visibleAlternatives.length - 12} more` : ""}`
-    : undefined;
-
+  // Both short enough to sit on one line at the panel's width: a hint that wraps
+  // mid-sentence reads worse than no hint at all.
   const cycleLine =
     alternativeState === "locked"
-      ? "Set to this one. Scroll to change."
+      ? "Scroll to change."
       : alternativeState === "cycling"
         ? "Scroll to pick one."
         : undefined;
 
-  return [...baseLines, alternativesLine, cycleLine, chanceLine, consumedLine]
-    .filter(Boolean)
-    .join("\n");
+  return [...baseLines, cycleLine, chanceLine, consumedLine].filter(Boolean).join("\n");
+}
+
+/**
+ * Ore dictionary bookkeeping, which is not what you asked about.
+ *
+ * Hovering a slot that rotates through what it accepts used to answer with the
+ * group's name and then every member of it, twice: once from the dataset's own
+ * tooltip and once built here. On a group like `logWood` that is eight wrapped
+ * lines of names covering the card, in front of the one thing you pointed at.
+ * The rotating art and the "+" already say there are alternatives, and the wheel
+ * shows them one at a time, so the tip only names what is on the slot right now.
+ */
+function isOreDictionaryNoiseLine(line: string): boolean {
+  const normalized = line.trim().toLowerCase();
+  return normalized.startsWith("accepts:") || normalized.startsWith("ore dictionary:");
 }
 
 function isBeeSpeciesResource(resource: Pick<ResourceAmount, "id">) {

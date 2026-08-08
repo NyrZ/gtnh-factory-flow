@@ -11,6 +11,12 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+/**
+ * Marks an element that turns the wheel into its own state change rather than
+ * scrolling: it stays put, so a tooltip over it stays too.
+ */
+export const WHEEL_STEPS_IN_PLACE_ATTRIBUTE = "data-tooltip-wheel-steps";
+
 export function MinecraftTooltip({
   label,
   content,
@@ -113,15 +119,31 @@ export function MinecraftTooltip({
     }
 
     const clearOnInteraction = () => clearTooltip();
+    // A wheel normally scrolls the thing out from under the pointer, so the tip
+    // has to go with it. A slot that rotates through what it accepts is the
+    // exception: it EATS the wheel to step through its items and never moves, so
+    // clearing there made the tip blink out on every notch, exactly while you
+    // were reading which item you had landed on. Marked slots keep theirs, and
+    // it re-labels itself as the slot steps.
+    const clearOnWheel = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest?.(`[${WHEEL_STEPS_IN_PLACE_ATTRIBUTE}]`) &&
+        rootRef.current?.contains(target)
+      ) {
+        return;
+      }
+      clearTooltip();
+    };
     const options = { capture: true, passive: true } as const;
 
-    window.addEventListener("wheel", clearOnInteraction, options);
+    window.addEventListener("wheel", clearOnWheel, options);
     window.addEventListener("pointerdown", clearOnInteraction, options);
     window.addEventListener("pointercancel", clearOnInteraction, options);
     window.addEventListener("resize", clearOnInteraction, options);
     window.addEventListener("blur", clearOnInteraction, options);
     return () => {
-      window.removeEventListener("wheel", clearOnInteraction, options);
+      window.removeEventListener("wheel", clearOnWheel, options);
       window.removeEventListener("pointerdown", clearOnInteraction, options);
       window.removeEventListener("pointercancel", clearOnInteraction, options);
       window.removeEventListener("resize", clearOnInteraction, options);

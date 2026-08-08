@@ -126,6 +126,39 @@ describe("ResourceIcon", () => {
     expect(screen.queryByText("Not consumed")).toBeNull();
   });
 
+  it("names only the item on a slot that rotates through what it accepts", async () => {
+    // The group's name and every member of it, twice over, buried the one thing
+    // being pointed at under eight wrapped lines.
+    render(
+      <ResourceIcon
+        resource={{
+          kind: "item",
+          id: "minecraft:log",
+          amount: 16,
+          displayName: "Oak Log",
+          iconPath: "/textures/rendered/oak_log.png",
+          tooltip: ["Ore dictionary: logWood", "Accepts: Oak Log, Spruce Log, Birch Log"],
+          alternatives: [
+            { kind: "item", id: "minecraft:log@1", displayName: "Spruce Log" },
+            { kind: "item", id: "minecraft:log@2", displayName: "Birch Log" },
+          ],
+        }}
+        alternativeState="cycling"
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByAltText("Oak Log").parentElement as HTMLElement, {
+      clientX: 120,
+      clientY: 80,
+      buttons: 0,
+    });
+
+    expect(await screen.findByText("Oak Log")).toBeTruthy();
+    expect(screen.getByText("Scroll to pick one.")).toBeTruthy();
+    expect(screen.queryByText(/Accepts:/)).toBeNull();
+    expect(screen.queryByText(/Ore dictionary:/)).toBeNull();
+  });
+
   it("colorizes fallback Thaumcraft aspect icons", () => {
     render(
       <ResourceIcon
