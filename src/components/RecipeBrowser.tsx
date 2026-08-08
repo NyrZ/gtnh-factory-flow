@@ -66,8 +66,8 @@ const NEI_CANVAS_WIDTH = 170;
 // than the recipe it draws.
 const CARD_ADD_GUTTER = 0;
 const CARD_GAP = 12;
-// The time strip along the foot of the panel.
-const CARD_CHROME_HEIGHT = 30;
+// The time and circuit strip along the foot of the panel.
+const CARD_CHROME_HEIGHT = 38;
 const NEI_CANVAS_HEIGHT_DEFAULT = 82;
 const NEI_CANVAS_HEIGHT_NATIVE = 120;
 const RECIPE_CARD_MAX_COLUMNS = 3;
@@ -107,8 +107,11 @@ interface RecipeBookViewport {
  * column can still hold it, so a narrow book shows one large readable recipe
  * rather than two clipped ones.
  */
-function chooseRecipeGrid(width: number): { columns: number; scale: number } {
-  const cardAtScaleTwo = NEI_CANVAS_WIDTH * 2 + CARD_ADD_GUTTER;
+function chooseRecipeGrid(
+  width: number,
+  unitWidth: number = NEI_CANVAS_WIDTH,
+): { columns: number; scale: number } {
+  const cardAtScaleTwo = unitWidth * 2 + CARD_ADD_GUTTER;
   const columnWidth = (columns: number) => (width - CARD_GAP * (columns - 1)) / columns;
 
   let columns = 1;
@@ -122,12 +125,12 @@ function chooseRecipeGrid(width: number): { columns: number; scale: number } {
   const column = columnWidth(columns);
   if (column < cardAtScaleTwo) {
     // A phone. One recipe, drawn as large as the screen allows.
-    return { columns: 1, scale: width >= NEI_CANVAS_WIDTH * 2 ? 2 : 1 };
+    return { columns: 1, scale: width >= unitWidth * 2 ? 2 : 1 };
   }
 
   // A column with room to spare draws the recipe larger rather than leaving it
   // small in the middle of an empty card.
-  return { columns, scale: Math.min(3, Math.floor(column / NEI_CANVAS_WIDTH)) };
+  return { columns, scale: Math.min(3, Math.floor(column / unitWidth)) };
 }
 
 function recipeRowHeight(scale: number, native: boolean) {
@@ -1794,8 +1797,44 @@ function VirtualRecipeResultList({
   // growing this array (120, 240, 360...), so it must not run on every scroll
   // frame.
   const native = useMemo(() => recipes.some(usesNativeNeiChrome), [recipes]);
-  const { columns: columnCount, scale } = chooseRecipeGrid(viewport.width);
+  // How wide a recipe actually draws cannot be worked out ahead of time: the
+  // panel grows to fit whatever slots the recipe has, and nothing in the
+  // dataset records the result. Assuming the common width laid out columns
+  // narrower than the cards in them, so cards overlapped their neighbours and
+  // the corner of one disappeared under the next. So the cards are measured,
+  // and the answer is thrown away whenever the list changes rather than
+  // letting one wide category narrow every later one.
+  const listKey = recipes.length > 0 ? `${recipes[0].id}:${recipes.length}` : "";
+  const [measured, setMeasured] = useState({ key: "", unit: NEI_CANVAS_WIDTH });
+  const unitWidth = measured.key === listKey ? measured.unit : NEI_CANVAS_WIDTH;
+  const { columns: columnCount, scale } = chooseRecipeGrid(viewport.width, unitWidth);
   const rowHeight = recipeRowHeight(scale, native);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      let widest = 0;
+      for (const card of grid.children) {
+        widest = Math.max(widest, card.getBoundingClientRect().width);
+      }
+      if (widest <= 0) {
+        return;
+      }
+      // Cards are drawn at the current scale; the unscaled width is what the
+      // next scale choice has to be made from.
+      const unit = Math.ceil(widest / scale);
+      setMeasured((current) =>
+        current.key === listKey && current.unit >= unit ? current : { key: listKey, unit },
+      );
+    });
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, [listKey, scale]);
   const overscan = 1;
   const rowCount = Math.ceil(recipes.length / columnCount);
   const startRow = Math.max(0, Math.floor(viewport.scrollTop / rowHeight) - overscan);
@@ -1866,6 +1905,7 @@ function VirtualRecipeResultList({
     >
       <div style={{ height: topPadding }} />
       <div
+        ref={gridRef}
         className="grid items-start justify-items-center gap-3"
         style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
       >
@@ -1959,7 +1999,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
           onSlotClick={onSlotBrowse ? (slot, mode) => onSlotBrowse(slot.resource, mode) : undefined}
         />
         <div
-          className="flex h-6 items-center gap-2 px-1.5 text-[11px] leading-none"
+          className="flex h-8 items-center gap-2 px-1.5 text-[11px] leading-none"
           style={{ color: NEI_PALETTE.borderDark }}
         >
           <span className="min-w-0 flex-1 truncate">
@@ -2017,26 +2057,28 @@ function CircuitSetting({ recipe }: { recipe: Recipe }) {
           ? `Programmed circuit: set to ${setting}`
           : "No circuit setting: runs whatever the circuit is set to"
       }
-      className="flex h-5 shrink-0 items-center gap-1 px-1"
-      style={{
-        backgroundColor: NEI_PALETTE.panelDark,
-        boxShadow: `inset 1px 1px 0 ${NEI_PALETTE.borderDark}, inset -1px -1px 0 ${NEI_PALETTE.panelLight}`,
-      }}
+      className="flex h-7 shrink-0 items-center gap-1"
     >
       {circuit ? (
+        // The circuit's own art is dark and small, and it sits on the panel's
+        // grey in the corner of an already small card, so it is lifted rather
+        // than boxed: a box would only take more of the card.
         <ResourceIcon
           resource={{ ...circuit, amount: 1 }}
           size="sm"
           bare
           showAmount={false}
           tooltip={false}
-          className="!h-4 !w-4"
-          iconPixelSize={32}
+          className="!h-5 !w-5 [&_img]:brightness-125 [&_img]:contrast-125"
+          iconPixelSize={20}
         />
       ) : (
-        <Cpu className="h-3.5 w-3.5 opacity-40" />
+        <Cpu className="h-5 w-5" style={{ color: NEI_PALETTE.borderDark }} />
       )}
-      <span className="tabular-nums" style={{ color: NEI_PALETTE.borderDarker }}>
+      <span
+        className="text-[13px] font-bold leading-none tabular-nums"
+        style={{ color: NEI_PALETTE.borderDarker }}
+      >
         {setting ?? "-"}
       </span>
     </span>

@@ -82,7 +82,7 @@ function ResourceIconComponent({
       {resource && showAmount ? <AmountLabel resource={resource} /> : null}
       {resource?.chance !== undefined ? <ChanceLabel chance={resource.chance} /> : null}
 
-      {showConsumedState && resource?.consumed === false ? (
+      {showConsumedState && resource?.consumed === false && !isProgrammedCircuit(resource) ? (
         <span
           title="Not consumed"
           className="absolute left-0 top-0 font-mono text-[8px] font-black leading-none text-[#ffff55] drop-shadow-[1px_1px_0_#000]"
@@ -130,6 +130,19 @@ function ResourceIconComponent({
  * joins and inline style objects.
  */
 export const ResourceIcon = memo(ResourceIconComponent);
+
+/**
+ * A machine's circuit slot: the setting the recipe runs on, not an ingredient.
+ *
+ * It is never consumed, so the "NC" flag says nothing a player does not
+ * already know and only crowds a slot that is small to begin with.
+ */
+function isProgrammedCircuit(resource: Pick<ResourceAmount, "kind" | "id">): boolean {
+  return (
+    resource.kind === "item" &&
+    resource.id.replace(/@\d+$/, "") === "gregtech:gt.integrated_circuit"
+  );
+}
 
 function shouldShowAlternativeMarker(resource: DisplayResourceAmount): boolean {
   return Boolean(
