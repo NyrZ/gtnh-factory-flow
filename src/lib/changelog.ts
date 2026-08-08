@@ -18,10 +18,13 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "1.34.1",
     date: "2026-08-08",
-    headline: "One set of filters, not two",
+    headline: "The items column, tidied up",
     notes: [
-      "Items, fluids, board, plants and bees were split across two rows, which read as though you had to pick one from each. You pick one, full stop: All, Items, Fluids, Board, Plants or Bees. Six buttons, two rows, one of them on.",
-      "The list and grid switch has moved up next to the search box, where it belongs: it changes how results are drawn, not which ones you get.",
+      "One set of filters instead of two rows that looked like they combined. You pick one: All, Items, Fluids, Placed, Plants or Bees. The list and grid switch moved up beside the search box, since it changes how results are drawn rather than which ones you get.",
+      "Icons in the grid are much bigger. The art always had a wide empty margin around it; the cell now crops that away instead of drawing it.",
+      "The Recent shelf sits on a card of its own, uses the same size icons as the grid, and no longer hugs the bottom of the window.",
+      "Scrolling anywhere in the column turns the page, so you can flick through results without going for the arrows.",
+      "While an icon is still loading you get a quiet outline instead of the item's name printed in a font far too big for the box. Icons that arrive quickly show nothing at all.",
     ],
   },
   {

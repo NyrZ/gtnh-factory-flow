@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import type { PointerEvent, RefObject } from "react";
+import type { PointerEvent, RefObject, WheelEvent } from "react";
 import { DEFAULT_DATASET_MANIFEST_URL } from "@/lib/datasets";
 import {
   getRecipeDatasetRecipe,
@@ -184,7 +184,23 @@ const RESOURCE_ROW_HEIGHT = 40;
 const RESOURCE_ROW_GAP = 2;
 const RESOURCE_GRID_CELL = 56;
 const RESOURCE_GRID_GAP = 4;
+/**
+ * How the art sits in a grid cell.
+ *
+ * A rendered sprite carries a wide transparent margin: measured across the
+ * dataset's textures, the art itself covers a median of 44% of its PNG and as
+ * little as 19% on the small piles. Drawn honestly that reads as a stamp
+ * floating in a box. So the icon fills the cell, draws well past its own edges,
+ * and the cell crops the margin away - big art, same cell.
+ *
+ * 1.4 puts the median sprite slightly over the cell edge, which is the point of
+ * it. The handful of sprites that fill 59% of their PNG do lose their corners
+ * here; that is the trade, and much past this even ordinary items start to clip.
+ */
+const RESOURCE_GRID_ART = "!h-full !w-full scale-[1.4]";
 const RESOURCE_PAGER_HEIGHT = 40;
+/** One mouse notch is 100 on most platforms, so one notch is one page. */
+const RESOURCE_WHEEL_PAGE_DELTA = 80;
 const RESOURCE_VIEW_STORAGE_KEY = "gtnh-factory-flow.resource-view.v1";
 
 type ResourceSortMode = "relevance" | "name" | "mod" | "recipes";
@@ -213,8 +229,8 @@ const RESOURCE_FILTER_CHOICES: Array<{
   { mode: "fluid", label: "Fluids", title: "Fluids only" },
   {
     mode: "board",
-    label: "Board",
-    title: "Only what the cards and drawers already on this board use or make",
+    label: "Placed",
+    title: "Only what the cards and drawers you have placed on this board use or make",
   },
   { mode: "plants", label: "Plants", title: "Only what a crop farm or a tree can grow" },
   { mode: "bees", label: "Bees", title: "Only what bees produce" },
@@ -323,6 +339,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const debouncedRecipeSearch = useDebouncedValue(recipeSearch, RESOURCE_SEARCH_DEBOUNCE_MS);
   const debouncedRecipeBookSearch = useDebouncedValue(recipeBookSearch, RECIPE_SEARCH_DEBOUNCE_MS);
 
+  const resourceWheelRef = useRef(0);
   const onBoard = resourceFilter === "board";
   // The board filter is answered here, from the cards themselves, so it needs no
   // request and cannot go stale. Everything else comes back from the server.
@@ -337,6 +354,39 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const displayedTotal = onBoard ? boardResults.total : resourceTotal;
   const displayedMods = onBoard ? boardResults.mods : resourceMods;
   const displayedOutcome = onBoard ? boardResults.outcome : resourceSearchOutcome;
+  const resourcePageCount = Math.max(
+    1,
+    Math.ceil(displayedTotal / Math.max(1, resourcePageSize)),
+  );
+
+  /**
+   * The wheel turns the page, anywhere in the column.
+   *
+   * The list does not scroll - it is paged, a screenful at a time - so a wheel
+   * over it did nothing at all, which reads as a dead panel. Notches are
+   * accumulated rather than acted on one for one, so a trackpad flick moves a
+   * page or two instead of forty.
+   */
+  const handleResourceWheel = useCallback(
+    (event: WheelEvent<HTMLDivElement>) => {
+      if (!event.deltaY) {
+        return;
+      }
+      // Turning back the other way starts over, or the notches left over from
+      // scrolling down would have to be spent before the page moved up.
+      if (Math.sign(event.deltaY) !== Math.sign(resourceWheelRef.current)) {
+        resourceWheelRef.current = 0;
+      }
+      resourceWheelRef.current += event.deltaY;
+      const steps = Math.trunc(resourceWheelRef.current / RESOURCE_WHEEL_PAGE_DELTA);
+      if (steps === 0) {
+        return;
+      }
+      resourceWheelRef.current -= steps * RESOURCE_WHEEL_PAGE_DELTA;
+      setResourcePage((page) => clamp(page + steps, 0, resourcePageCount - 1));
+    },
+    [resourcePageCount],
+  );
 
   // Buttons far from this column ("My setups" in the account menu, the share
   // dialog's shelf link) can land the sidebar on the Setups shelf.
@@ -896,7 +946,10 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         ) : sidebarMode === "setups" ? (
           <SetupsPanel />
         ) : (
-          <>
+          // The wheel pages the list from anywhere in the column, including over
+          // the controls and the recent shelf: nothing here scrolls, so a wheel
+          // that did nothing was just a panel that felt broken.
+          <div className="flex min-h-0 flex-1 flex-col" onWheel={handleResourceWheel}>
         {/* The same card the pocket and setup shelves put their search and
             filters in. Bare, this tab's controls read as a different kind of
             thing from the other two, when they are the same thing. */}
@@ -1029,7 +1082,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
               error={resourceQueryError}
               emptyLabel={
                 onBoard
-                  ? "Nothing on the board yet."
+                  ? "Nothing placed on the board yet."
                   : resourceFilter === "plants"
                     ? "No crop grows that."
                     : resourceFilter === "bees"
@@ -1046,7 +1099,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         </div>
 
         <RecentResourceStrip onBrowse={browseResource} />
-          </>
+          </div>
         )}
       </aside>
 
@@ -1365,8 +1418,9 @@ interface ResourceQueryCacheEntry {
  * The list itself is the store's browse history, which every panel on the board
  * already writes to - so an item opened from a card's slot lands here too.
  */
-const RECENT_STRIP_COLUMNS = 8;
 const RECENT_STRIP_ROWS = 3;
+/** More than three rows of the widest column could ever show. */
+const RECENT_STRIP_LIMIT = 24;
 
 function RecentResourceStrip({
   onBrowse,
@@ -1376,15 +1430,18 @@ function RecentResourceStrip({
   const history = useFactoryStore((state) => state.recipeResourceHistory);
   const clearResourceHistory = useFactoryStore((state) => state.clearResourceHistory);
   const activeResource = useFactoryStore((state) => state.recipeBrowserResource);
-  const recent = history.slice(0, RECENT_STRIP_COLUMNS * RECENT_STRIP_ROWS);
+  const recent = history.slice(0, RECENT_STRIP_LIMIT);
 
   if (recent.length === 0) {
     return null;
   }
 
   return (
-    <div className="shrink-0 border-t border-neutral-800 px-3 pb-2 pt-1.5">
-      <div className="mb-1 flex items-center justify-between">
+    // A card of its own, like the controls at the top of the column: bare, a shelf
+    // of loose icons at the foot of a list of icons read as more of the list. The
+    // bottom margin keeps it off the very edge of the window.
+    <div className="mx-2 mb-3 shrink-0 rounded-[6px] border border-neutral-700 bg-[#2a2d33] p-2">
+      <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
           Recent
         </span>
@@ -1397,9 +1454,16 @@ function RecentResourceStrip({
           Clear
         </button>
       </div>
+      {/* The same cells the grid view uses, so a recent item is as easy to hit
+          and as easy to recognise as one in the list above it. auto-fill picks
+          the column count from the width, and the height stops it at three rows
+          rather than letting the strip eat the panel. */}
       <div
-        className="grid gap-1"
-        style={{ gridTemplateColumns: `repeat(${RECENT_STRIP_COLUMNS}, minmax(0, 1fr))` }}
+        className="grid gap-1 overflow-hidden"
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(${RESOURCE_GRID_CELL}px, 1fr))`,
+          maxHeight: RECENT_STRIP_ROWS * RESOURCE_GRID_CELL + (RECENT_STRIP_ROWS - 1) * RESOURCE_GRID_GAP,
+        }}
         aria-label="Recently viewed"
         role="listbox"
       >
@@ -1434,12 +1498,11 @@ function RecentResourceStrip({
               >
                 <ResourceIcon
                   resource={{ ...resource, amount: 1 }}
-                  size="sm"
+                  size="md"
                   bare
                   showAmount={false}
                   tooltip={false}
-                  // Zoom the art without growing the cell (see the crop picker).
-                  className="scale-[1.4]"
+                  className={RESOURCE_GRID_ART}
                 />
               </button>
             </MinecraftTooltip>
@@ -1671,8 +1734,7 @@ function ResourceResultPage({
                   bare
                   showAmount={false}
                   tooltip={false}
-                  // Zoom the art without growing the cell (see crop picker).
-                  className="scale-[1.5]"
+                  className={RESOURCE_GRID_ART}
                 />
               </button>
             </MinecraftTooltip>
