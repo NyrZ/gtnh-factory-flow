@@ -8,7 +8,7 @@ import { setActiveRateUnit, type RateUnit } from "@/lib/model/rate-unit";
 import { calculateThroughput } from "@/lib/solver";
 import { applyRecipeInputOverrides, inputOverrideAmount } from "@/lib/model/recipe-input-overrides";
 import type { AlternativeCycleFace } from "@/lib/nei/alternative-cycle";
-import { createCropFarmPlaceholderRecipe } from "@/lib/model/passive-production";
+import { createCropFarmPlaceholderRecipe, isCropFarmRecipe } from "@/lib/model/passive-production";
 import {
   createCustomRatePlaceholderRecipe,
   getCustomRateDial,
@@ -148,6 +148,7 @@ interface FactoryStore {
   setHighlightSearch: (query: string) => void;
   setMaxTierFilter: (tier: TierFilter) => void;
   hydrateResourceHistory: (history: RecipeBrowserResource[]) => void;
+  clearResourceHistory: () => void;
   browseResource: (resource: RecipeBrowserResource, mode?: RecipeBrowserMode) => void;
   clearResourceBrowser: () => void;
   cleanBoard: () => void;
@@ -651,6 +652,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   },
   hydrateResourceHistory: (history) => {
     set({ recipeResourceHistory: normalizeResourceHistory(history) });
+  },
+  clearResourceHistory: () => {
+    set({ recipeResourceHistory: [] });
+    scheduleIdleBrowserWork(() => saveResourceHistory([]));
   },
   browseResource: (resource, mode = "recipes") => {
     let nextHistory: RecipeBrowserResource[] | undefined;
@@ -2263,7 +2268,9 @@ function addRecipeNodeToState(
       resource ? buildRecipeInputOverrides(recipe, resource) : undefined,
       buildRecipeInputPickOverrides(recipe, options?.inputPicks),
     ),
-    colorTag: options?.colorTag,
+    // A crop picked out of the recipe book is the same card the Sprout button
+    // drops, so it spawns green like that one rather than as a grey machine.
+    colorTag: options?.colorTag ?? (isCropFarmRecipe(recipe) ? "green" : undefined),
     enabled: true,
     position:
       viewportPosition ??

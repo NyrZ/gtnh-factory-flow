@@ -30,6 +30,16 @@ import {
   resourceLabel,
   resourceMatchesInput,
 } from "@/lib/model";
+import { applyRecipeInputOverrides } from "@/lib/model/recipe-input-overrides";
+import {
+  buildSearchVocabulary,
+  matchSearchEntry,
+  parseSearchQuery,
+  resolveSearchPhases,
+  splitSearchTokens,
+  type SearchCorrection,
+  type SearchPhase,
+} from "@/lib/search";
 import { useFactoryStore } from "@/store/factory-store";
 import type { RecipeInputPicks, TierFilter } from "@/store/factory-store";
 import {
@@ -47,6 +57,7 @@ import { SetupsPanel } from "./SetupsPanel";
 import { machineArtPixels } from "./flow/MachinePicker";
 import { useMachineHandlerIcons } from "./flow/machine-icons";
 import { NEI_PALETTE } from "@/lib/nei-renderer/theme/palette";
+import { MinecraftTooltip } from "./nei/MinecraftTooltip";
 import { NeiRecipeWindow } from "./nei/NeiRecipeWindow";
 import { ResourceIcon } from "./nei/ResourceIcon";
 
@@ -180,6 +191,52 @@ type ResourceKindFilter = "all" | "item" | "fluid";
 type ResourceSortMode = "relevance" | "name" | "mod" | "recipes";
 type ResourceViewMode = "list" | "grid";
 
+/**
+ * Where the listed things have to come from.
+ *
+ * "Board" is answered here rather than by the server: the cards on the board are
+ * already in memory, and nothing the dataset knows could answer it anyway.
+ */
+type ResourceSourceMode = "all" | "board" | "plants" | "bees";
+
+const RESOURCE_SOURCE_CHOICES: Array<{
+  mode: ResourceSourceMode;
+  label: string;
+  title: string;
+}> = [
+  { mode: "all", label: "All", title: "Everything in the loaded dataset" },
+  {
+    mode: "board",
+    label: "Board",
+    title: "Only what the cards and drawers already on this board use or make",
+  },
+  { mode: "plants", label: "Plants", title: "Only what a crop farm or a tree can grow" },
+  { mode: "bees", label: "Bees", title: "Only what bees produce" },
+];
+
+/**
+ * What a cell with no room for words says when you hover it.
+ *
+ * The same two lines a list row prints - the name, then where it came from and
+ * how many recipes touch it - followed by whatever the dataset itself has to say
+ * about the thing. First line white, the rest blue, like every other tooltip in
+ * the app.
+ */
+function resourceTooltipLines(resource: IndexedResource): string[] {
+  const subtitle = [
+    getResourceModLabel(resource),
+    resource.recipeCount > 0 ? `${resource.recipeCount} recipes` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const name = resourceLabel(resource);
+  return [
+    name,
+    subtitle,
+    ...(resource.tooltip ?? []).filter((line) => line.trim() && line !== name),
+  ].filter(Boolean);
+}
+
 /** Mod is the id prefix ("gregtech:..."); bare fluid ids group as "fluids". */
 function getResourceModLabel(resource: { id: string; kind: string }): string {
   const colon = resource.id.indexOf(":");
@@ -231,12 +288,14 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const [resourceMod, setResourceMod] = useState("");
   const [resourceSort, setResourceSort] = useState<ResourceSortMode>("relevance");
   const [resourceView, setResourceView] = useState<ResourceViewMode>("list");
+  const [resourceSource, setResourceSource] = useState<ResourceSourceMode>("all");
   // The master switch: what the whole left panel is FOR right now — finding
   // items to build with, stamping saved blueprints, or browsing the network's
   // shared setups. One at a time, full column each; the old bottom-strip
   // library never had room to breathe.
   const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints" | "setups">("items");
   const [resourceMods, setResourceMods] = useState<Array<{ id: string; count: number }>>([]);
+  const [resourceSearchOutcome, setResourceSearchOutcome] = useState<SearchOutcome>(EXACT_SEARCH);
   const [resourceQueryLoading, setResourceQueryLoading] = useState(false);
   const [resourceQueryError, setResourceQueryError] = useState<string | undefined>();
   const [recipeMapIcons, setRecipeMapIcons] = useState<Record<string, DatasetResourceIndexEntry>>(
@@ -249,6 +308,22 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const pendingRecipePrefetchesRef = useRef<Set<string>>(new Set());
   const debouncedRecipeSearch = useDebouncedValue(recipeSearch, RESOURCE_SEARCH_DEBOUNCE_MS);
   const debouncedRecipeBookSearch = useDebouncedValue(recipeBookSearch, RECIPE_SEARCH_DEBOUNCE_MS);
+
+  // The board filter is answered here, from the cards themselves, so it needs no
+  // request and cannot go stale. Everything else comes back from the server.
+  const boardResults = useBoardResourceResults(resourceSource === "board", {
+    query: debouncedRecipeSearch.trim(),
+    kind: resourceKind,
+    mod: resourceMod,
+    sort: resourceSort,
+    offset: resourcePage * resourcePageSize,
+    limit: resourcePageSize,
+  });
+  const onBoard = resourceSource === "board";
+  const displayedResources = onBoard ? boardResults.resources : resourceResults;
+  const displayedTotal = onBoard ? boardResults.total : resourceTotal;
+  const displayedMods = onBoard ? boardResults.mods : resourceMods;
+  const displayedOutcome = onBoard ? boardResults.outcome : resourceSearchOutcome;
 
   // Buttons far from this column ("My setups" in the account menu, the share
   // dialog's shelf link) can land the sidebar on the Setups shelf.
@@ -325,6 +400,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             kind: resourceKind,
             mod: resourceMod,
             sort: resourceSort,
+            source: resourceSource,
           })
         : "",
     [
@@ -333,6 +409,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       resourceMod,
       resourcePageSize,
       resourceSort,
+      resourceSource,
       selectedDatasetVersion,
     ],
   );
@@ -359,7 +436,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
       }
 
       const query = activeRecipeQuery;
-      if (!activeResource && query.length < 2) {
+      // Map tabs only exist inside the book, which only opens on a resource.
+      if (!activeResource) {
         return;
       }
 
@@ -463,7 +541,14 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
 
   useEffect(() => {
     return deferStateUpdate(() => setResourcePage(0));
-  }, [debouncedRecipeSearch, resourceKind, resourceMod, resourceSort, selectedDatasetVersion?.id]);
+  }, [
+    debouncedRecipeSearch,
+    resourceKind,
+    resourceMod,
+    resourceSort,
+    resourceSource,
+    selectedDatasetVersion?.id,
+  ]);
 
   // Kind/search changes can empty the selected mod's scope; drop a stale pick.
   useEffect(() => {
@@ -482,7 +567,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   }, [resourcePage, resourcePageSize, resourceTotal]);
 
   useEffect(() => {
-    if (!selectedDatasetVersion) {
+    // The board's own resources are answered from memory, below: no request.
+    if (!selectedDatasetVersion || resourceSource === "board") {
       return deferStateUpdate(() => {
         setResourceResults([]);
         setResourceTotal(0);
@@ -499,6 +585,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         setResourceResults(cached.resources);
         setResourceTotal(cached.total);
         setResourceMods(cached.mods ?? []);
+        setResourceSearchOutcome(searchOutcomeOf(cached));
         setResourceQueryLoading(false);
         setResourceQueryError(undefined);
       });
@@ -523,6 +610,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         kind: resourceKind === "all" ? undefined : resourceKind,
         mod: resourceMod || undefined,
         sort: resourceSort,
+        source: resourceSource === "all" ? undefined : resourceSource,
       },
       { signal: controller.signal },
     )
@@ -535,6 +623,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         setResourceResults(result.resources);
         setResourceTotal(result.total);
         setResourceMods(result.mods ?? []);
+        setResourceSearchOutcome(searchOutcomeOf(result));
         setResourceQueryLoading(false);
       })
       .catch((error) => {
@@ -560,6 +649,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     resourcePage,
     resourcePageSize,
     resourceSort,
+    resourceSource,
     selectedDatasetVersion,
   ]);
 
@@ -591,7 +681,11 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     }
 
     const query = activeRecipeQuery;
-    if (!activeResource && query.length < 2) {
+    // Nothing on screen reads these until a resource is being browsed - the book
+    // IS the resource view, and it opens with its own search box. Running the
+    // query anyway meant every keystroke in the item box searched 270,000
+    // recipes for a list no one ever saw.
+    if (!activeResource) {
       return deferStateUpdate(() => {
         setFilteredRecipes([]);
         setRecipeTotal(0);
@@ -821,6 +915,19 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             ) : null}
           </label>
 
+          {/* What the search had to do to find anything. Only ever shown when it
+              had to do something: a spelling stood in, or the words were taken
+              one at a time because no item has all of them. */}
+          {displayedOutcome.phase !== "exact" ? (
+            <p className="mt-1.5 truncate text-[11px] leading-tight text-amber-300/80">
+              {displayedOutcome.phase === "corrected"
+                ? `Showing results for ${displayedOutcome.corrections
+                    .map((correction) => correction.to)
+                    .join(", ")}`
+                : "No item has all those words. Showing the closest."}
+            </p>
+          ) : null}
+
           <div className="mt-2 flex items-center gap-1">
             {(
               [
@@ -858,6 +965,29 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             </button>
           </div>
 
+          {/* Where the thing has to come from. "Board" is answered from the
+              cards in front of you; the other two are what the dataset says can
+              be grown or coaxed out of a bee. */}
+          <div className="mt-2 flex items-center gap-1">
+            {RESOURCE_SOURCE_CHOICES.map((choice) => (
+              <button
+                key={choice.mode}
+                type="button"
+                onClick={() => setResourceSource(choice.mode)}
+                title={choice.title}
+                aria-pressed={resourceSource === choice.mode}
+                className={[
+                  "h-7 flex-1 rounded-[4px] border text-xs font-medium",
+                  resourceSource === choice.mode
+                    ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+                    : "border-neutral-700 bg-[#17191d] text-neutral-400 hover:text-neutral-200",
+                ].join(" ")}
+              >
+                {choice.label}
+              </button>
+            ))}
+          </div>
+
           <div className="mt-2 grid grid-cols-2 gap-1.5">
             <select
               value={resourceMod}
@@ -867,7 +997,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
               className="h-7 min-w-0 rounded-[4px] border border-neutral-700 bg-[#17191d] px-1.5 text-xs text-neutral-100 outline-none"
             >
               <option value="">All mods</option>
-              {resourceMods.map((mod) => (
+              {displayedMods.map((mod) => (
                 <option key={mod.id} value={mod.id}>
                   {mod.id} ({mod.count})
                 </option>
@@ -899,11 +1029,20 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             </div>
           ) : (
             <VirtualResourceResultList
-              resources={resourceResults}
-              total={resourceTotal}
+              resources={displayedResources}
+              total={displayedTotal}
               currentPage={resourcePage}
-              isLoading={resourceQueryLoading}
+              isLoading={resourceQueryLoading && resourceSource !== "board"}
               error={resourceQueryError}
+              emptyLabel={
+                resourceSource === "board"
+                  ? "Nothing on the board yet."
+                  : resourceSource === "plants"
+                    ? "No crop grows that."
+                    : resourceSource === "bees"
+                      ? "No bee makes that."
+                      : undefined
+              }
               activeResource={activeResource}
               view={resourceView}
               onPageChange={setResourcePage}
@@ -912,6 +1051,8 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
             />
           )}
         </div>
+
+        <RecentResourceStrip onBrowse={browseResource} />
           </>
         )}
       </aside>
@@ -1027,6 +1168,183 @@ interface IndexedResource extends Pick<
   recipeCount: number;
 }
 
+/** What the search had to do to answer, for the line under the box. */
+interface SearchOutcome {
+  phase: SearchPhase;
+  corrections: SearchCorrection[];
+}
+
+const EXACT_SEARCH: SearchOutcome = { phase: "exact", corrections: [] };
+
+function searchOutcomeOf(result: {
+  searchPhase?: SearchPhase;
+  corrections?: SearchCorrection[];
+}): SearchOutcome {
+  return result.searchPhase && result.searchPhase !== "exact"
+    ? { phase: result.searchPhase, corrections: result.corrections ?? [] }
+    : EXACT_SEARCH;
+}
+
+/**
+ * Every item and fluid the board already touches.
+ *
+ * Read off the project rather than the dataset, because that is where the answer
+ * is: a card's inputs and outputs (with whatever alternative was picked for a
+ * slot) plus every drawer and tank. One entry per resource, however many cards
+ * use it.
+ */
+function useBoardResources(enabled: boolean): IndexedResource[] {
+  const nodes = useFactoryStore((state) => state.project.nodes);
+  const recipes = useFactoryStore((state) => state.project.recipes);
+  const storages = useFactoryStore((state) => state.project.storages);
+
+  return useMemo(() => {
+    if (!enabled) {
+      return [];
+    }
+
+    const byKey = new Map<string, IndexedResource>();
+    // Unlike the dataset list, an entry with no icon is kept: it is genuinely on
+    // the board, and its name is what identifies it. Only the demo plan and
+    // hand-imported plans hit this.
+    const add = (resource: Omit<IndexedResource, "recipeCount">) => {
+      if (!resource.id) {
+        return;
+      }
+      const key = `${resource.kind}:${resource.id}`;
+      if (!byKey.has(key)) {
+        byKey.set(key, { ...resource, recipeCount: 0 });
+      }
+    };
+
+    const recipesById = new Map(recipes.map((recipe) => [recipe.id, recipe] as const));
+    for (const node of nodes) {
+      const recipe = recipesById.get(node.recipeId);
+      if (!recipe) {
+        continue;
+      }
+      const effectiveRecipe = applyRecipeInputOverrides(recipe, node);
+      for (const resource of [...effectiveRecipe.inputs, ...effectiveRecipe.outputs]) {
+        add(resource);
+      }
+    }
+    for (const storage of storages ?? []) {
+      add({
+        kind: storage.kind,
+        id: storage.resourceId,
+        displayName: storage.displayName,
+        iconPath: storage.iconPath,
+        iconAtlas: storage.iconAtlas,
+        dominantColor: storage.dominantColor,
+      });
+    }
+
+    return [...byKey.values()];
+  }, [enabled, nodes, recipes, storages]);
+}
+
+/**
+ * The same search, run over the board's own resources.
+ *
+ * It is the identical matcher the server uses, so typing "steal" finds the steel
+ * on your board exactly as it finds the steel in the dataset - a filter that
+ * behaved differently from the list it replaces would just read as broken.
+ */
+function useBoardResourceResults(
+  enabled: boolean,
+  request: {
+    query: string;
+    kind: ResourceKindFilter;
+    mod: string;
+    sort: ResourceSortMode;
+    offset: number;
+    limit: number;
+  },
+) {
+  const resources = useBoardResources(enabled);
+
+  return useMemo(() => {
+    if (!enabled) {
+      return { resources: [], total: 0, mods: [], outcome: EXACT_SEARCH };
+    }
+
+    const fields = resources.map((resource) => ({
+      nameText: (resource.displayName ?? resource.id).toLowerCase(),
+      name: splitSearchTokens(resource.displayName ?? ""),
+      id: splitSearchTokens(resource.id),
+    }));
+    const vocabulary = buildSearchVocabulary(
+      resources.map((resource) => resource.displayName ?? ""),
+    );
+    const modCounts = new Map<string, number>();
+
+    const resolved = resolveSearchPhases(
+      parseSearchQuery(request.query),
+      vocabulary,
+      (query, options) => {
+        modCounts.clear();
+        const matches: Array<{ resource: IndexedResource; score: number }> = [];
+        resources.forEach((resource, index) => {
+          if (request.kind !== "all" && resource.kind !== request.kind) {
+            return;
+          }
+          const score = matchSearchEntry(query, fields[index], options);
+          if (score === undefined) {
+            return;
+          }
+          const modId = getResourceModLabel(resource);
+          modCounts.set(modId, (modCounts.get(modId) ?? 0) + 1);
+          if (request.mod && modId !== request.mod) {
+            return;
+          }
+          matches.push({ resource, score });
+        });
+        return matches;
+      },
+    );
+
+    const nameOf = (match: { resource: IndexedResource }) =>
+      (match.resource.displayName ?? match.resource.id).toLowerCase();
+    const sorted = [...resolved.results].sort((left, right) => {
+      if (request.sort === "name") {
+        return nameOf(left).localeCompare(nameOf(right));
+      }
+      if (request.sort === "mod") {
+        return (
+          getResourceModLabel(left.resource).localeCompare(getResourceModLabel(right.resource)) ||
+          nameOf(left).localeCompare(nameOf(right))
+        );
+      }
+      // "Most recipes" has nothing to sort by here (a board resource carries no
+      // recipe count), so it falls back to the same order as best match.
+      return right.score - left.score || nameOf(left).localeCompare(nameOf(right));
+    });
+
+    return {
+      resources: sorted
+        .slice(request.offset, request.offset + request.limit)
+        .map((match) => match.resource),
+      total: sorted.length,
+      mods: [...modCounts.entries()]
+        .map(([id, count]) => ({ id, count }))
+        .sort((left, right) => right.count - left.count || left.id.localeCompare(right.id)),
+      outcome:
+        resolved.phase === "exact"
+          ? EXACT_SEARCH
+          : { phase: resolved.phase, corrections: resolved.query.corrections },
+    };
+  }, [
+    enabled,
+    request.kind,
+    request.limit,
+    request.mod,
+    request.offset,
+    request.query,
+    request.sort,
+    resources,
+  ]);
+}
+
 export type PreviewContextResource = Pick<
   ResourceAmount,
   "kind" | "id" | "displayName" | "iconPath" | "iconAtlas" | "dominantColor"
@@ -1051,12 +1369,106 @@ interface ResourceQueryCacheEntry {
   expiresAt: number;
 }
 
+/**
+ * The last things looked up, three rows of them under the results.
+ *
+ * A build keeps coming back to the same dozen items, and this is the shelf they
+ * sit on: click for recipes, right click for uses, exactly like a result row.
+ * The list itself is the store's browse history, which every panel on the board
+ * already writes to - so an item opened from a card's slot lands here too.
+ */
+const RECENT_STRIP_COLUMNS = 8;
+const RECENT_STRIP_ROWS = 3;
+
+function RecentResourceStrip({
+  onBrowse,
+}: {
+  onBrowse: (resource: IndexedResource, mode: "recipes" | "uses") => void;
+}) {
+  const history = useFactoryStore((state) => state.recipeResourceHistory);
+  const clearResourceHistory = useFactoryStore((state) => state.clearResourceHistory);
+  const activeResource = useFactoryStore((state) => state.recipeBrowserResource);
+  const recent = history.slice(0, RECENT_STRIP_COLUMNS * RECENT_STRIP_ROWS);
+
+  if (recent.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="shrink-0 border-t border-neutral-800 px-3 pb-2 pt-1.5">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+          Recent
+        </span>
+        <button
+          type="button"
+          onClick={clearResourceHistory}
+          title="Forget these"
+          className="text-[10px] font-medium text-neutral-500 hover:text-neutral-200"
+        >
+          Clear
+        </button>
+      </div>
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${RECENT_STRIP_COLUMNS}, minmax(0, 1fr))` }}
+        aria-label="Recently viewed"
+        role="listbox"
+      >
+        {recent.map((resource) => {
+          const active =
+            activeResource?.kind === resource.kind && activeResource.id === resource.id;
+          const indexed: IndexedResource = { ...resource, recipeCount: 0 };
+          return (
+            <MinecraftTooltip
+              key={`${resource.kind}:${resource.id}`}
+              label={[
+                ...resourceTooltipLines(indexed),
+                "Click for recipes, right click for uses",
+              ]}
+            >
+              <button
+                type="button"
+                onClick={() => onBrowse(indexed, "recipes")}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  onBrowse(indexed, "uses");
+                }}
+                aria-label={resourceLabel(resource)}
+                className={[
+                  "minecraft-pixel-art flex aspect-square items-center justify-center overflow-hidden rounded-[4px] border",
+                  active
+                    ? "border-cyan-400 bg-cyan-500/10"
+                    : "border-transparent hover:border-neutral-500 hover:bg-white/5",
+                ].join(" ")}
+                role="option"
+                aria-selected={active}
+              >
+                <ResourceIcon
+                  resource={{ ...resource, amount: 1 }}
+                  size="sm"
+                  bare
+                  showAmount={false}
+                  tooltip={false}
+                  // Zoom the art without growing the cell (see the crop picker).
+                  className="scale-[1.4]"
+                />
+              </button>
+            </MinecraftTooltip>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function VirtualResourceResultList({
   resources,
   total,
   currentPage,
   isLoading,
   error,
+  emptyLabel,
   activeResource,
   view,
   onPageChange,
@@ -1068,6 +1480,8 @@ function VirtualResourceResultList({
   currentPage: number;
   isLoading: boolean;
   error?: string;
+  /** What "nothing here" means under the current filter. */
+  emptyLabel?: string;
   activeResource?: IndexedResource;
   view: ResourceViewMode;
   onPageChange: (page: number) => void;
@@ -1094,7 +1508,7 @@ function VirtualResourceResultList({
         <ResourceResultSkeleton view={view} pageSize={pageSize} gridColumns={gridColumns} />
       ) : resources.length === 0 ? (
         <div className="rounded border border-dashed border-neutral-600 p-4 text-sm text-neutral-300">
-          No matching resource.
+          {emptyLabel ?? "No matching resource."}
         </div>
       ) : (
         <ResourceResultPage
@@ -1238,32 +1652,42 @@ function ResourceResultPage({
           const active =
             activeResource?.kind === resource.kind && activeResource.id === resource.id;
           return (
-            <button
+            // A grid cell is art and nothing else, so the name and the line under
+            // it in list view are only ever a hover away. The icon's own tooltip
+            // is off: the nearest tooltip to the pointer wins, and this one knows
+            // more than the icon does.
+            <MinecraftTooltip
               key={`${resource.kind}:${resource.id}`}
-              type="button"
-              onClick={() => browse(resource, "recipes")}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                browse(resource, "uses");
-              }}
-              className={[
-                "minecraft-pixel-art flex aspect-square items-center justify-center overflow-hidden rounded-[4px] border",
-                active
-                  ? "border-cyan-400 bg-cyan-500/10"
-                  : "border-transparent hover:border-neutral-500 hover:bg-white/5",
-              ].join(" ")}
-              role="option"
-              aria-selected={active}
+              label={resourceTooltipLines(resource)}
             >
-              <ResourceIcon
-                resource={{ ...resource, amount: 1 }}
-                size="md"
-                bare
-                showAmount={false}
-                // Zoom the art without growing the cell (see crop picker).
-                className="scale-[1.5]"
-              />
-            </button>
+              <button
+                type="button"
+                onClick={() => browse(resource, "recipes")}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  browse(resource, "uses");
+                }}
+                aria-label={resourceLabel(resource)}
+                className={[
+                  "minecraft-pixel-art flex aspect-square items-center justify-center overflow-hidden rounded-[4px] border",
+                  active
+                    ? "border-cyan-400 bg-cyan-500/10"
+                    : "border-transparent hover:border-neutral-500 hover:bg-white/5",
+                ].join(" ")}
+                role="option"
+                aria-selected={active}
+              >
+                <ResourceIcon
+                  resource={{ ...resource, amount: 1 }}
+                  size="md"
+                  bare
+                  showAmount={false}
+                  tooltip={false}
+                  // Zoom the art without growing the cell (see crop picker).
+                  className="scale-[1.5]"
+                />
+              </button>
+            </MinecraftTooltip>
           );
         })}
       </div>
@@ -2550,6 +2974,7 @@ function getResourceQueryCacheKey({
   kind,
   mod,
   sort,
+  source,
 }: {
   versionId: string;
   query: string;
@@ -2558,8 +2983,9 @@ function getResourceQueryCacheKey({
   kind: ResourceKindFilter;
   mod: string;
   sort: ResourceSortMode;
+  source: ResourceSourceMode;
 }) {
-  return [versionId, query.trim().toLowerCase(), offset, limit, kind, mod, sort].join("|");
+  return [versionId, query.trim().toLowerCase(), offset, limit, kind, mod, sort, source].join("|");
 }
 
 
