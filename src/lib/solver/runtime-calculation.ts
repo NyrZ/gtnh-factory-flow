@@ -1,4 +1,5 @@
 import { getVoltageTierIndex, GT_VOLTAGE_TIERS } from "@/lib/model/tiers";
+import { getMachineBehaviour } from "@/lib/machines/machine-table";
 import type {
   FactoryNode,
   MachineTier,
@@ -9,12 +10,35 @@ import type {
 
 type VoltageTier = Exclude<MachineTier, "DEMO">;
 
+/**
+ * Runtime variants come from the game's own `OverclockCalculator`, which is
+ * exactly what it says: the overclock math for ONE recipe run. It never saw
+ * `GTParallelHelper`, so every variant in the dataset reports `parallel: 1`,
+ * and its duration bottoms out at a single tick.
+ *
+ * For a singleblock that is the whole truth. For a multiblock it is most of
+ * the answer missing its most important half: a Boldarnator's exported ladder
+ * runs 16, 8, 4, 2, 1, 1, 1 ticks, so the planner showed cobble stalling at
+ * 20/s from IV upward while the parallel count on the card kept climbing.
+ *
+ * So a machine we have verified in the curated table is calculated by our own
+ * engine instead, which knows its parallels, spends the voltage on them before
+ * overclocking, and banks sub-tick speed the way the machine does. Everything
+ * else still uses the runtime data, which remains the best source we have.
+ */
+export function prefersCuratedMachineMath(recipe: { machineType?: string }): boolean {
+  return getMachineBehaviour(recipe.machineType) !== undefined;
+}
+
 export function selectRuntimeCalculationVariant(
-  recipe: Pick<Recipe, "runtimeCalculation">,
+  recipe: Pick<Recipe, "runtimeCalculation"> & { machineType?: string },
   node: Pick<FactoryNode, "machineHandlerId" | "overclockTier" | "coilTier" | "machineConfigTiers">,
 ): RuntimeCalculationVariant | undefined {
   const variants = recipe.runtimeCalculation?.variants ?? [];
   if (recipe.runtimeCalculation?.status !== "computed" || variants.length === 0) {
+    return undefined;
+  }
+  if (prefersCuratedMachineMath(recipe)) {
     return undefined;
   }
 
@@ -27,7 +51,7 @@ export function selectRuntimeCalculationVariant(
 }
 
 export function getRuntimeCalculationOutputs(
-  recipe: Pick<Recipe, "runtimeCalculation" | "outputs">,
+  recipe: Pick<Recipe, "runtimeCalculation" | "outputs"> & { machineType?: string },
   node: Pick<FactoryNode, "machineHandlerId" | "overclockTier" | "coilTier" | "machineConfigTiers">,
 ): RecipeOutput[] | undefined {
   const variant = selectRuntimeCalculationVariant(recipe, node);
@@ -59,7 +83,7 @@ export function getRuntimeCalculationOutputs(
 }
 
 export function runtimeCalculationWarning(
-  recipe: Pick<Recipe, "runtimeCalculation" | "name">,
+  recipe: Pick<Recipe, "runtimeCalculation" | "name"> & { machineType?: string },
   node: Pick<FactoryNode, "machineHandlerId" | "overclockTier" | "coilTier" | "machineConfigTiers">,
 ): string | undefined {
   const runtimeCalculation = recipe.runtimeCalculation;

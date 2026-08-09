@@ -154,10 +154,10 @@ export function getOverclockedRecipeStats(
     tier,
     minimumTier,
     overclockSteps: steps,
-    durationTicks: Math.max(
-      1,
+    durationTicks: quantiseDurationToTicks(
       (effectiveRecipe.durationTicks / rule.multiplier ** perfectSteps / 2 ** normalSteps) *
         durationMultiplier,
+      canSubTick(recipe, effectiveRecipe),
     ),
     eut:
       effectiveRecipe.eut *
@@ -166,6 +166,45 @@ export function getOverclockedRecipeStats(
       rule.multiplier ** perfectSteps *
       4 ** normalSteps,
   };
+}
+
+/**
+ * A recipe runs in whole ticks, and the leftover is not wasted the same way by
+ * every machine.
+ *
+ * Above one tick, GT truncates: a recipe computed at 18.75 ticks runs in 18,
+ * which quietly favours the player. Everything truncates, singleblock or not.
+ *
+ * Below one tick, a machine cannot run a recipe faster than the game's clock.
+ * A multiblock spends the leftover on extra parallels instead, so its
+ * throughput keeps climbing and modelling it as a fractional duration gives
+ * the same answer. A singleblock has no parallels to spend it on, so it sits
+ * at one tick and the rest is simply lost.
+ */
+export function quantiseDurationToTicks(durationTicks: number, subTickCapable: boolean): number {
+  if (!Number.isFinite(durationTicks) || durationTicks <= 0) {
+    return 1;
+  }
+  if (durationTicks > 1) {
+    return Math.floor(durationTicks);
+  }
+  return subTickCapable ? durationTicks : 1;
+}
+
+/**
+ * Whether this machine converts sub-tick speed into parallels.
+ *
+ * A handler exported with the recipe knows its own kind, so it decides. When
+ * the recipe carries no handlers at all, `getRecipeMachineHandlers` invents one
+ * and stamps it `single` as a placeholder; that is not evidence, so fall back
+ * to the curated table, which only lists multiblocks. Anything unrecognised
+ * stays at the one-tick floor rather than suddenly claiming more output.
+ */
+function canSubTick(recipe: OverclockRecipeInput, effectiveRecipe: OverclockRecipeInput): boolean {
+  if ((recipe.machineHandlers?.length ?? 0) > 0) {
+    return effectiveRecipe.machineProfile?.kind === "multiblock";
+  }
+  return getMachineBehaviour(effectiveRecipe.machineType) !== undefined;
 }
 
 /**

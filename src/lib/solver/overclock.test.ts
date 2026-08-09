@@ -171,7 +171,8 @@ describe("GT overclocking", () => {
     // Two imperfect overclocks halve the duration twice; nichrome coils then
     // run the oven at 150% speed. A heat overclock would have quartered a step.
     expect(stats.overclockSteps).toBe(2);
-    expect(stats.durationTicks).toBeCloseTo((1280 / 4) * (2 / 3), 6);
+    // 1280 ticks over four, then 150% coil speed, is 213.33; the game runs 213.
+    expect(stats.durationTicks).toBe(Math.floor((1280 / 4) * (2 / 3)));
     expect(stats.eut).toBe(96 * 16);
   });
 
@@ -201,6 +202,64 @@ describe("GT overclocking", () => {
     expect(stats.eut % 1).toBe(0);
   });
 
+  it("truncates a fractional duration to whole ticks, which favours the player", () => {
+    // 600 ticks at 200% coil speed is 300; five overclocks would be 9.375, and
+    // the game runs that in 9.
+    const stats = getOverclockedRecipeStats(NITROBENZENE, {
+      overclockTier: "UV",
+      coilTier: "tpv",
+      machineConfigTiers: { pipeCasing: "titanium" },
+    });
+
+    expect(Number.isInteger(stats.durationTicks)).toBe(true);
+    expect(stats.durationTicks).toBe(Math.floor(300 / 2 ** stats.overclockSteps));
+  });
+
+  it("lets a multiblock run under one tick, spending the rest on parallels", () => {
+    // A one-tick recipe cannot go faster than the clock, so a multiblock turns
+    // the leftover speed into parallels. Modelling it as a fractional duration
+    // gives the same throughput, so the duration must not be floored at 1.
+    const oneTick = {
+      machineType: "Large Chemical Reactor",
+      machineProfile: { machineType: "Large Chemical Reactor", minimumTier: "MV", kind: "multiblock" as const },
+      minimumTier: "MV",
+      durationTicks: 1,
+      eut: 120,
+    };
+
+    const stats = getOverclockedRecipeStats(oneTick, { overclockTier: "EV" });
+
+    // Two perfect steps: 1 tick becomes a sixteenth of one.
+    expect(stats.overclockSteps).toBe(2);
+    expect(stats.durationTicks).toBeCloseTo(1 / 16, 10);
+    expect(stats.eut).toBe(120 * 16);
+  });
+
+  it("holds a singleblock at one tick, where the leftover speed is lost", () => {
+    const oneTick = {
+      machineType: "Macerator",
+      machineProfile: { machineType: "Macerator", minimumTier: "MV", kind: "single" as const },
+      minimumTier: "MV",
+      durationTicks: 1,
+      eut: 120,
+    };
+
+    const stats = getOverclockedRecipeStats(oneTick, { overclockTier: "EV" });
+
+    // The power is still drawn: a singleblock overclocks and wastes the speed.
+    expect(stats.durationTicks).toBe(1);
+    expect(stats.eut).toBe(120 * 16);
+  });
+
+  it("treats a machine it cannot identify as a singleblock", () => {
+    const stats = getOverclockedRecipeStats(
+      { machineType: "Some Unknown Machine", minimumTier: "MV", durationTicks: 1, eut: 120 },
+      { overclockTier: "EV" },
+    );
+
+    expect(stats.durationTicks).toBe(1);
+  });
+
   it("still grants heat overclocks to the blast furnace family", () => {
     const stats = getOverclockedRecipeStats(
       {
@@ -217,7 +276,8 @@ describe("GT overclocking", () => {
     // Naquadah coils sit 5901 K over the recipe's 1500 K, which is worth two
     // 4x steps and a 0.95^6 EU discount.
     expect(stats.overclockSteps).toBe(2);
-    expect(stats.durationTicks).toBe(1000 / 16);
+    // 62.5 ticks truncates to 62.
+    expect(stats.durationTicks).toBe(62);
     expect(stats.eut).toBeCloseTo(120 * 0.95 ** 6 * 16, 6);
   });
 });

@@ -139,6 +139,12 @@ export interface MachineProfile {
   eutLimit?: number;
   /** True when the machine performs 4x speed / 4x power overclocks. */
   perfectOverclock?: boolean;
+  /**
+   * Carried through from the selected handler. Multiblocks turn speed they
+   * cannot spend below one tick into extra parallels; singleblocks cannot,
+   * and waste it. See `overclock.ts`.
+   */
+  kind?: "single" | "multiblock" | "crafting" | "automation";
   notes?: string;
 }
 

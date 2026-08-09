@@ -120,6 +120,14 @@ export interface MachineBehaviour {
    * with no changes, and merged over any control of the same id.
    */
   controls?: MachineConfigControl[];
+  /**
+   * Dataset control ids to drop for this machine, for knobs the scraper
+   * invented that the machine does not have. The industrial mixing machine is
+   * offered the fluid pipe casings (bronze to tungstensteel) when it actually
+   * takes item pipe casings (tin to black plutonium), so showing both would be
+   * worse than showing the wrong one.
+   */
+  hidesControls?: string[];
   /** Names this machine also goes by, including the reference's own name. */
   aliases?: string[];
   /** A known gap, carried over from the reference. */
@@ -332,6 +340,40 @@ const PLASMA_MIXER_PARALLEL_CONTROL = countControl(
   "Parallels",
   [1, 2, 4, 8, 16, 32, 64, 128, 256],
 );
+/**
+ * Heat difference tiers for the Utupu-Tanuri: how far its coils sit above the
+ * heat the recipe asks for, counted in 900 K steps. The reference leaves this
+ * to the player because the requirement is not in the recipe export.
+ */
+const HEAT_INCREMENTS = "heatIncrements";
+const HEAT_INCREMENT_CONTROL = countControl(
+  HEAT_INCREMENTS,
+  "Heat Difference Tiers",
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+);
+
+/**
+ * The dataset's own coke oven knobs. Its slice options are keyed "slice-1"
+ * upward rather than by number, so the count is the option's position plus one
+ * and `value` would not read it.
+ */
+const COKE_CASING = "cokeOvenCasing";
+const COKE_SLICES = "cokeOvenSlices";
+
+const SPIN_MODE = "spinmatronMode";
+const TURBINE_TIER = "sumTurbineTier";
+const SPIN_FUEL = "spinmatronFuel";
+const SPIN_MODE_CONTROL = choiceControl(SPIN_MODE, "Mode", ["Standard", "Light", "Heavy"]);
+const SPIN_FUEL_CONTROL = choiceControl(SPIN_FUEL, "Fuel", [
+  "Kerosene",
+  "Biocatalysed Propulsion Fluid",
+]);
+const TURBINE_TIER_CONTROL = countControl(
+  TURBINE_TIER,
+  "Sum Turbine Tier",
+  [1, 2, 3, 4, 6, 8, 12, 16, 24, 32],
+);
+
 /** The reference's speeding pipe casing count starts at 4. */
 const NEUTRON_PIPE_CONTROL = countControl(
   "speedingPipeCasing",
@@ -439,7 +481,9 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
   "Dissolution Tank": { overclock: OVERCLOCK.normal() },
   "Distillation Tower": { overclock: OVERCLOCK.normal() },
-  Furnace: { overclock: OVERCLOCK.normal() },
+  // The reference's "Furnace" is the singleblock, and it carries no
+  // coefficients worth having. Listing it here would only tell the sub-tick
+  // check it is a multiblock, which it is not.
   "Implosion Compressor": { overclock: OVERCLOCK.normal() },
   "Industrial Centrifuge": {
     overclock: OVERCLOCK.normal(),
@@ -551,6 +595,25 @@ const MACHINES: Record<string, MachineBehaviour> = {
     speed: (c) => 2 + c.tier(ITEM_PIPE),
     parallels: (c) => c.voltageTier * 8,
     controls: [ITEM_PIPE_CONTROL],
+    // The recipe map is what a node carries until a handler is chosen, and the
+    // scraper gave it the fluid pipe casings. This machine takes item ones.
+    aliases: ["Multiblock Mixer"],
+    hidesControls: [PIPE],
+  },
+  /**
+   * The Utupu-Tanuri, which our dataset lists under its recipe map. Its coils
+   * set the machine's heat, and every 900 K over what the recipe asks for is a
+   * heat difference tier: two of them buy a perfect overclock, and each one is
+   * worth 5% speed on top of the machine's base 220%.
+   */
+  "Multiblock Dehydrator": {
+    aliases: ["Utupu-Tanuri"],
+    overclock: (c) => OVERCLOCK.perfectThenNormal(Math.floor(c.value(HEAT_INCREMENTS) / 2)),
+    speed: (c) => 2.2 * Math.pow(1.05, c.value(HEAT_INCREMENTS)),
+    power: 0.5,
+    parallels: 4,
+    controls: [HEAT_INCREMENT_CONTROL],
+    note: "Set the heat difference your coils give over the recipe's requirement.",
   },
   "Industrial Wire Factory": {
     overclock: OVERCLOCK.normal(),
@@ -613,6 +676,62 @@ const MACHINES: Record<string, MachineBehaviour> = {
     note: "Assumes a perfect fill rate.",
   },
   "Research Station": { overclock: OVERCLOCK.normal(), aliases: ["Research station"] },
+
+  // -- Machines our dataset names differently from the reference -----------
+  "Multiblock Electrolyzer": {
+    aliases: ["Industrial Electrolyzer"],
+    overclock: OVERCLOCK.normal(),
+    speed: 2.8,
+    power: 0.9,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  "Large Sifter": {
+    aliases: ["Large Sifter Control Block"],
+    overclock: OVERCLOCK.normal(),
+    speed: 5,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  "Industrial Forming Press": {
+    aliases: ["Industrial Material Press"],
+    overclock: OVERCLOCK.normal(),
+    speed: 6,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  "Coke Oven": {
+    aliases: ["Industrial Coke Oven"],
+    overclock: OVERCLOCK.normal(),
+    // Coils are a 2% EU discount each, compounding, and nothing else. The
+    // dataset's own coil control is kept so the tier list and icons stay.
+    power: (c) => 0.98 ** (c.tier(COIL) - 1),
+    parallels: (c) => {
+      const heatProof = c.tier(COKE_CASING) === 1;
+      const base = heatProof ? 32 : 16;
+      const perSlice = heatProof ? 16 : 8;
+      return base + (c.value(COKE_SLICES) - 1) * perSlice;
+    },
+    note: "Eternal coils are needed for more than 15 slices.",
+  },
+
+  // -- Remaining machines whose formulas need no recipe metadata -----------
+  "Pseudostable Black Hole Containment Field": {
+    overclock: OVERCLOCK.normal(),
+    speed: 5,
+    power: 0.7,
+    parallels: (c) => c.voltageTier * 8,
+    note: "Parallels also depend on stability, which is not modelled.",
+  },
+  "Spinmatron-2737": {
+    overclock: OVERCLOCK.normal(),
+    speed: (c) => 3 * (c.tier(SPIN_MODE) === 1 ? 2 : 1),
+    power: (c) => 0.7 * (c.tier(SPIN_MODE) === 2 ? 16 : 1),
+    parallels: (c) =>
+      Math.ceil(
+        (c.value(TURBINE_TIER) * 4 * (c.tier(SPIN_FUEL) === 1 ? 1.25 : 1)) /
+          (c.tier(SPIN_MODE) === 2 ? 32 : 1),
+      ),
+    controls: [SPIN_MODE_CONTROL, TURBINE_TIER_CONTROL, SPIN_FUEL_CONTROL],
+  },
 };
 
 const BY_NAME = new Map<string, MachineBehaviour>();
@@ -630,6 +749,11 @@ export function getMachineBehaviour(machineType: string | undefined): MachineBeh
 /** Config knobs this machine contributes on top of whatever the dataset carries. */
 export function getMachineTableControls(machineType: string | undefined): MachineConfigControl[] {
   return getMachineBehaviour(machineType)?.controls ?? [];
+}
+
+/** Dataset control ids this machine does not actually have. */
+export function getMachineHiddenControlIds(machineType: string | undefined): string[] {
+  return getMachineBehaviour(machineType)?.hidesControls ?? [];
 }
 
 /** Resolves the overclock rule, which for the heat machines depends on the recipe. */

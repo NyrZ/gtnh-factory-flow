@@ -1,9 +1,22 @@
 "use client";
 
-import { Check, Compass, Download, Factory, Play, Plus, ScrollText } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Compass,
+  Download,
+  Factory,
+  Play,
+  Plus,
+  ScrollText,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { ChangelogDialog } from "@/components/ChangelogDialog";
-import { downloadCommunityPlan, listCommunityPlans, tagPlanWithCommunityId } from "@/lib/community/client";
+import {
+  downloadCommunityPlan,
+  listCommunityPlans,
+  tagPlanWithCommunityId,
+} from "@/lib/community/client";
 import type { CommunityPlanSummary } from "@/lib/community/types";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { applyPlanView } from "@/lib/plan-view";
@@ -15,6 +28,160 @@ import { leaveWelcomeTab, setWelcomeOnStartup, useWelcomeTab } from "@/lib/tour/
 import { APP_VERSION } from "@/lib/version";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import { useDesignStore } from "@/store/design-store";
+
+/**
+ * How many multiblocks currently run on figures checked against the game's
+ * code, out of the ones the planner knows about. Kept as plain numbers rather
+ * than computed at runtime: working it out means walking every recipe in the
+ * dataset, and this is a line of text on a page that has to open instantly.
+ * Update it when `machine-table.ts` grows.
+ */
+const VERIFIED_MACHINE_COUNT = 49;
+const TOTAL_MULTIBLOCK_COUNT = 81;
+
+/**
+ * The machines still running on unchecked figures, so a player can see whether
+ * the one in front of them is affected instead of doubting every number.
+ *
+ * Steam is a group rather than a list: all eight are the same story, and eight
+ * names would crowd out the two that matter. The other two groups are named in
+ * full, because "some machines" is what makes people distrust all of them.
+ *
+ * Keep in step with `machine-table.ts`: a machine leaves this list on the
+ * commit that adds it there.
+ */
+const UNVERIFIED_MACHINE_GROUPS: Array<{ label: string; note?: string; machines: string[] }> = [
+  {
+    label: "Steam machines",
+    note: "all eight, speed not yet confirmed",
+    machines: [],
+  },
+  {
+    label: "Fusion reactors",
+    machines: [
+      "Fusion Control Computer Mark I",
+      "Fusion Control Computer Mark II",
+      "Fusion Control Computer Mark III",
+      "FusionTech MK IV",
+      "FusionTech MK V",
+    ],
+  },
+  {
+    label: "Everything else",
+    machines: [
+      "Exo-Foundry",
+      "Mass Solidifier",
+      "Helioflare Power Forge",
+      "Precise Auto-Assembler MT-3662",
+      "Industrial Chisel",
+      "Industrial Bending Machine",
+      "Cable Coating",
+      "Industrial Chemical Bath",
+      "Dangote Distillus",
+      "Space Mining Module MK-I",
+      "Space Mining Module MK-II",
+      "Space Mining Module MK-III",
+      "Bose-Einstein Condensate Observation Array",
+      "Observation Array Teleportation Node",
+      "PCB Factory",
+      "Solar Factory",
+      "Space Assembler Module MK-I",
+      "Space Assembler Module MK-II",
+      "Space Assembler Module MK-III",
+      "Precise Assembler",
+      "Beam Crafter",
+      "Vacuum Furnace",
+      "Naquadah Fuel Refinery",
+      "Foundry Module Components",
+      "Large Bronze Boiler",
+      "Large Steel Boiler",
+      "Large Titanium Boiler",
+      "Large Tungstensteel Boiler",
+    ],
+  },
+];
+
+/**
+ * Same form the header's report button uses, with the version prefilled. Spelt
+ * out here rather than imported so this page does not depend on the header's
+ * internals; if a third caller appears, lift both into one module.
+ */
+const BUG_REPORT_URL = `https://github.com/jackwrichards/gtnh-factory-flow/issues/new?template=bug_report.yml&version=${encodeURIComponent(
+  APP_VERSION,
+)}`;
+
+/**
+ * Says plainly that machine rates are still being worked through, and points
+ * at the one thing a player can do about a number that looks wrong.
+ *
+ * Worth saying out loud on the way in rather than leaving people to find out
+ * from a surprising number: the rates for a machine come from three places of
+ * decreasing confidence, and which one a given machine falls into is not
+ * something a player can see. Until every multiblock is on checked figures,
+ * the honest thing is to name the gap and make reporting easy.
+ */
+function MachineAccuracyNotice() {
+  return (
+    <section className="flex items-start gap-2.5 rounded border border-amber-600 bg-amber-500/15 p-3">
+      <AlertTriangle className="mt-px h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-wide text-amber-300">
+          Machine rates are still being checked
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-100/90">
+          {`${VERIFIED_MACHINE_COUNT} of ${TOTAL_MULTIBLOCK_COUNT} multiblocks are verified against the game's code. The rest may be off, and steam and fusion are not converted yet. `}
+          <a
+            href={BUG_REPORT_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-amber-200 underline underline-offset-2 hover:text-amber-100"
+          >
+            Report a wrong rate
+          </a>
+          .
+        </p>
+
+        {/* Folded away by default: the two sentences above are the point, and
+            the list is only wanted by someone whose machine might be in it. */}
+        <details className="group mt-2">
+          <summary className="w-fit cursor-pointer list-none text-xs font-semibold text-amber-300/90 underline-offset-2 hover:text-amber-200 hover:underline">
+            Which ones?
+            <span className="ml-1 inline-block transition-transform group-open:rotate-90">›</span>
+          </summary>
+          <div className="mt-2 flex flex-col gap-2">
+            {UNVERIFIED_MACHINE_GROUPS.map((group) => (
+              <div key={group.label}>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-amber-300/70">
+                  {group.label}
+                  {group.note ? (
+                    <>
+                      {" "}
+                      <span className="font-medium normal-case tracking-normal text-amber-100/60">
+                        {group.note}
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+                {group.machines.length > 0 ? (
+                  <ul className="mt-1 flex flex-wrap gap-1">
+                    {group.machines.map((machine) => (
+                      <li
+                        key={machine}
+                        className="rounded border border-amber-600/40 bg-amber-500/10 px-1.5 py-px text-[11px] leading-relaxed text-amber-100/90"
+                      >
+                        {machine}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </details>
+      </div>
+    </section>
+  );
+}
 
 /**
  * What the Welcome tab shows: a way in for someone who has never opened the
@@ -155,6 +322,8 @@ export function WelcomePage() {
             Show this tab when the planner opens
           </label>
         </footer>
+
+        <MachineAccuracyNotice />
       </div>
       {isChangelogOpen ? <ChangelogDialog onClose={() => setChangelogOpen(false)} /> : null}
     </div>

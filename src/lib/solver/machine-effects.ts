@@ -73,14 +73,21 @@ export function buildMachineContext(
       if (!control) {
         return 0;
       }
-      // Count knobs key their options by the number itself.
-      const parsed = Number(control.current.key);
-      return Number.isFinite(parsed)
-        ? parsed
-        : Math.max(
-            0,
-            control.tiers.findIndex((entry) => entry.key === control.current.key),
-          );
+      // Count knobs key their options by the number itself ("8"), or embed it
+      // ("slice-3"). Either way the formulas want the count, not the position.
+      const key = control.current.key;
+      const parsed = Number(key);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+      const trailing = /(\d+)$/.exec(key);
+      if (trailing) {
+        return Number(trailing[1]);
+      }
+      return Math.max(
+        0,
+        control.tiers.findIndex((entry) => entry.key === key),
+      );
     },
     voltageTier: getVoltageTierIndex(getRunVoltageTier(recipe as Recipe, node.overclockTier)),
   };
