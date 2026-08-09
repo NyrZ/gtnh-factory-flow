@@ -218,15 +218,15 @@ export function FactoryPlannerApp() {
   return (
     // h-dvh, not h-screen: a phone browser's address bar comes and goes, and
     // `vh` measures the window as if it never did, so the bottom row of the
-    // board spent its life under the chrome. The 720px floor is a desktop
-    // guarantee that all three columns have room; a phone in landscape has 390px
-    // and must fit anyway.
-    <div
-      className={[
-        "flex h-dvh flex-col bg-canvas text-fg",
-        isCompact ? "" : "min-h-[720px]",
-      ].join(" ")}
-    >
+    // board spent its life under the chrome.
+    //
+    // And no minimum height. It used to guarantee 720px for the three columns,
+    // which on a laptop window ~660px tall meant the app was taller than the
+    // window: the page itself scrolled, the board's bottom toolbars sat below the
+    // fold, and a classic scrollbar appeared and threw off every measurement made
+    // against `window.innerWidth`. The board and the panels carry their own
+    // floors, which is where the guarantee belongs.
+    <div className="flex h-dvh flex-col bg-canvas text-fg">
       <AppHeader onLoadDatasetVersion={loadDatasetVersion} />
       {isCompact ? (
         <CompactWorkspace workspace={workspace} onLoadDatasetVersion={loadDatasetVersion} />

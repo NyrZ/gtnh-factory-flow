@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.35.1",
+    date: "2026-08-08",
+    headline: "The wide resource row lands on the row you point at",
+    notes: [
+      "Pointing at a resource redraws it wide so you can read the whole name and reach its buttons. On a short window it was landing beside the row rather than on it: the app insisted on 720px of height, so on a laptop the page itself scrolled, and everything measured against the window came out a scrollbar's width off. It now fits whatever window it is given, which also keeps the board's bottom-corner buttons on screen.",
+      "The wide row sticks to its row while the list scrolls, and stays out of the way when the row is only half in view.",
+    ],
+  },
+  {
     version: "1.35.0",
     date: "2026-08-08",
     headline: "The planner fits on a phone",

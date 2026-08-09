@@ -3647,11 +3647,12 @@ export function FactoryFlow() {
       // React subscription.
       data-glance-mode={boardView.glanceMode}
       className={[
-        // The 520px floor keeps a desktop board usable; a phone in landscape has
-        // about 320px of window left after the bars and has to live with it,
-        // because a floor taller than the window is a page that scrolls the board
-        // out of sight.
-        "factory-flow-board relative h-full min-h-[520px] compact:min-h-0 overflow-hidden border-x border-line bg-canvas",
+        // The 480px floor keeps a desktop board usable, and clears the shortest
+        // window that is not compact (560px) with the two bars above it. A phone
+        // in landscape has about 320px left after the bars and has to live with
+        // it: a floor taller than the window is a page that scrolls the board out
+        // of sight.
+        "factory-flow-board relative h-full min-h-[480px] compact:min-h-0 overflow-hidden border-x border-line bg-canvas",
         isNodeDragging ? "factory-flow-board--dragging" : "",
         paintCursor ? "factory-flow-board--painting" : "",
         annotationTool ? "factory-flow-board--annotating" : "",
