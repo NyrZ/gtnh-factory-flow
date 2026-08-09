@@ -390,24 +390,47 @@ textarea {
  * "this is selected" (which a new card also is); white belongs to neither.
  */
 .board-card-placed {
-  animation: board-card-placed 460ms ease-out 2;
+  /* Half a second before the first pulse: the card has just appeared and the
+     panel that placed it is still sliding away, and a flash underneath all that
+     is one more thing happening at the same time. It waits until the eye is
+     free. Then four slow pulses, which reads as a beacon rather than a glitch. */
+  outline: 4px solid transparent;
+  outline-offset: 4px;
+  animation: board-card-placed 620ms ease-in-out 500ms 4;
+}
+
+/* Not just a frame. On a board of framed cards an outline alone is another frame;
+   the wash is what carries at a glance, the same trick the hovered-resource glow
+   uses. Opacity on one absolutely positioned layer, so the card's own contents
+   are never repainted. */
+.board-card-placed::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+  animation: board-card-placed-wash 620ms ease-in-out 500ms 4;
 }
 
 @keyframes board-card-placed {
-  0% {
-    outline: 4px solid rgba(255, 255, 255, 0.95);
-    outline-offset: 4px;
-    filter: brightness(1.35);
+  50% {
+    outline-color: rgba(255, 255, 255, 0.95);
+    filter: brightness(1.28);
   }
-  100% {
-    outline: 4px solid rgba(255, 255, 255, 0);
-    outline-offset: 10px;
-    filter: brightness(1);
+}
+
+@keyframes board-card-placed-wash {
+  50% {
+    opacity: 0.26;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .board-card-placed {
+  .board-card-placed,
+  .board-card-placed::after {
     animation: none;
   }
 }
@@ -1494,4 +1517,5 @@ img {
 .factory-flow-board--calm .board-edit-chrome {
   display: none;
 }
+
 

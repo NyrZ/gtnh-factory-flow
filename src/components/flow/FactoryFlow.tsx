@@ -306,9 +306,9 @@ const CANVAS_PATTERN_VARIANT: Record<
 /** Module-level so the board never re-renders on a fresh object identity. */
 const PRO_OPTIONS = { hideAttribution: true };
 
-/** Two pulses of the keyframes in globals.css, plus a little slack. */
+/** The delay plus four pulses of the keyframes in globals.css, plus some slack. */
 const PLACED_FLASH_CLASS = "board-card-placed";
-const PLACED_FLASH_MS = 1000;
+const PLACED_FLASH_MS = 3100;
 
 /**
  * On a touchscreen a card moves only once it is selected: tap it, then drag it.

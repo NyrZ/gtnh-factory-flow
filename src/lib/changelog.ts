@@ -16,11 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.37.1",
+    date: "2026-08-08",
+    headline: "The placement flash is easier to catch",
+    notes: [
+      "It waits half a second before starting, so it is not competing with the card appearing and the panel sliding away, then pulses four times slowly instead of twice quickly. It washes the whole card now rather than only outlining it, which on a board made of framed cards is the difference between noticing and not.",
+    ],
+  },
+  {
     version: "1.37.0",
     date: "2026-08-08",
     headline: "Whatever you just placed says where it is",
     notes: [
-      "Anything landing on the board now flashes twice: a machine, a crop farm, a trash can, a custom rate, a drawer, a pocket, a pasted selection, a blueprint. On a big plan a new card is otherwise indistinguishable from the two hundred already there.",
+      "Anything landing on the board now flashes: a machine, a crop farm, a trash can, a custom rate, a drawer, a pocket, a pasted selection, a blueprint. On a big plan a new card is otherwise indistinguishable from the two hundred already there.",
       "On a phone, placing something also closes the panel you placed it from, because that panel was covering the board it just landed on.",
     ],
   },
