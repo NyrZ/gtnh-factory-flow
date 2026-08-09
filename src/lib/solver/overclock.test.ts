@@ -221,7 +221,11 @@ describe("GT overclocking", () => {
     // gives the same throughput, so the duration must not be floored at 1.
     const oneTick = {
       machineType: "Large Chemical Reactor",
-      machineProfile: { machineType: "Large Chemical Reactor", minimumTier: "MV", kind: "multiblock" as const },
+      machineProfile: {
+        machineType: "Large Chemical Reactor",
+        minimumTier: "MV",
+        kind: "multiblock" as const,
+      },
       minimumTier: "MV",
       durationTicks: 1,
       eut: 120,
@@ -258,6 +262,31 @@ describe("GT overclocking", () => {
     );
 
     expect(stats.durationTicks).toBe(1);
+  });
+
+  it("pays the dehydrator its coil heat bonus against a zero requirement", () => {
+    // Dehydrator recipes start from 0 K, so the whole of a coil's heat counts.
+    // Nichrome is 3601 K: four 5% discounts and two perfect overclocks.
+    const dehydrator = {
+      machineType: "Multiblock Dehydrator",
+      minimumTier: "LuV",
+      durationTicks: 400,
+      eut: 1920,
+      nei: { additionalInfo: ["Special value: 0"] },
+    };
+
+    const stats = getOverclockedRecipeStats(dehydrator, {
+      overclockTier: "LuV",
+      coilTier: "nichrome",
+    });
+
+    // At its own tier there is no spare voltage, so no step is taken and only
+    // the discount and the 220% speed show up.
+    expect(stats.overclockSteps).toBe(0);
+    expect(stats.durationTicks).toBe(Math.floor(400 / 2.2));
+    // Machine heat is the coil plus 100 K per tier over MV, so LuV nichrome
+    // clears 4001 K: floor(4001/900) = 4 discounts on top of the flat half.
+    expect(stats.eut).toBeCloseTo(1920 * 0.5 * 0.95 ** 4, 6);
   });
 
   it("still grants heat overclocks to the blast furnace family", () => {

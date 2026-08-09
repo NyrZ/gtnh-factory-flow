@@ -341,16 +341,46 @@ const PLASMA_MIXER_PARALLEL_CONTROL = countControl(
   [1, 2, 4, 8, 16, 32, 64, 128, 256],
 );
 /**
- * Heat difference tiers for the Utupu-Tanuri: how far its coils sit above the
- * heat the recipe asks for, counted in 900 K steps. The reference leaves this
- * to the player because the requirement is not in the recipe export.
+ * The fourteen heating coils and the heat each one gives the machine, for
+ * machines whose coil the dataset does not offer as a knob. Keys match the
+ * dataset's own coil control so a saved `coilTier` carries straight over.
  */
-const HEAT_INCREMENTS = "heatIncrements";
-const HEAT_INCREMENT_CONTROL = countControl(
-  HEAT_INCREMENTS,
-  "Heat Difference Tiers",
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-);
+const HEATING_COIL_TIERS: Array<[key: string, label: string, heat: number, block: string]> = [
+  ["cupronickel", "Cupronickel", 1801, "gregtech:gt.blockcasings5"],
+  ["kanthal", "Kanthal", 2701, "gregtech:gt.blockcasings5@1"],
+  ["nichrome", "Nichrome", 3601, "gregtech:gt.blockcasings5@2"],
+  ["tpv", "TPV-Alloy", 4501, "gregtech:gt.blockcasings5@3"],
+  ["hss_g", "HSS-G", 5401, "gregtech:gt.blockcasings5@4"],
+  ["hss_s", "HSS-S", 6301, "gregtech:gt.blockcasings5@9"],
+  ["naquadah", "Naquadah", 7201, "gregtech:gt.blockcasings5@5"],
+  ["naquadah_alloy", "Naquadah Alloy", 8101, "gregtech:gt.blockcasings5@6"],
+  ["trinium", "Trinium", 9001, "gregtech:gt.blockcasings5@10"],
+  ["electrum_flux", "Electrum Flux", 9901, "gregtech:gt.blockcasings5@7"],
+  ["awakened_draconium", "Awakened Draconium", 10801, "gregtech:gt.blockcasings5@8"],
+  ["infinity", "Infinity", 11701, "gregtech:gt.blockcasings5@11"],
+  ["hypogen", "Hypogen", 12601, "gregtech:gt.blockcasings5@12"],
+  ["eternal", "Eternal", 13501, "gregtech:gt.blockcasings5@13"],
+];
+
+const HEATING_COIL_CONTROL: MachineConfigControl = {
+  id: "heatingCoil",
+  label: "Heating Coil",
+  minimumKey: "cupronickel",
+  defaultKey: "cupronickel",
+  tiers: HEATING_COIL_TIERS.map(([key, label, heat, block]) => ({
+    key,
+    label,
+    heat,
+    resource: {
+      kind: "item" as const,
+      id: block,
+      amount: 1,
+      displayName: `${label} Coil Block`,
+      tooltip: ["Heating coil tier", `Heat capacity: ${heat} K`],
+      consumed: false,
+    },
+  })),
+};
 
 /**
  * The dataset's own coke oven knobs. Its slice options are keyed "slice-1"
@@ -606,14 +636,34 @@ const MACHINES: Record<string, MachineBehaviour> = {
    * heat difference tier: two of them buy a perfect overclock, and each one is
    * worth 5% speed on top of the machine's base 220%.
    */
+  /**
+   * The Utupu-Tanuri, which our dataset lists under its recipe map.
+   *
+   * 220% speed, half the EU/t and a fixed four parallels, plus the ordinary
+   * heat efficiency bonus off its coils: a 5% EU discount for every 900 K over
+   * the recipe's requirement, and a perfect overclock for every 1800 K over.
+   * That is the same mechanic the blast furnace runs on, so it uses the same
+   * heat path rather than a bonus of its own.
+   *
+   * The requirement is genuinely zero here. Dehydrator recipes are low
+   * temperature and always start from 0 K, which is why all 88 of them report
+   * a special value of 0 - that is the real number, not a gap in the export.
+   * So the coil tier alone settles the bonus, and a coil picker answers it
+   * exactly.
+   *
+   * This deliberately parts company with the reference, which cannot read the
+   * requirement out of its own export and so asks the player for the finished
+   * difference in 900 K steps, then spends it as a 5% SPEED bonus per step.
+   * The wiki is explicit that the bonus is an energy discount and perfect
+   * overclocks, so the coefficient check skips this machine.
+   */
   "Multiblock Dehydrator": {
     aliases: ["Utupu-Tanuri"],
-    overclock: (c) => OVERCLOCK.perfectThenNormal(Math.floor(c.value(HEAT_INCREMENTS) / 2)),
-    speed: (c) => 2.2 * Math.pow(1.05, c.value(HEAT_INCREMENTS)),
+    overclock: HEAT_OVERCLOCK,
+    speed: 2.2,
     power: 0.5,
     parallels: 4,
-    controls: [HEAT_INCREMENT_CONTROL],
-    note: "Set the heat difference your coils give over the recipe's requirement.",
+    controls: [HEATING_COIL_CONTROL],
   },
   "Industrial Wire Factory": {
     overclock: OVERCLOCK.normal(),

@@ -250,9 +250,13 @@ function getHeatOverclockStats(
         node,
       )
     : undefined;
+  // A requirement of zero is a real number, not a gap: dehydrator recipes are
+  // low temperature and start from 0 K, so every coil clears them outright.
+  // Only the machine list keeps this off machines with no heat mechanic; the
+  // value itself is trusted whenever the machine is one that reads it.
   if (
     specialValue === undefined ||
-    specialValue <= 0 ||
+    specialValue < 0 ||
     !coilControl?.current.heat ||
     !isHeatOverclockMachine(recipe.machineType)
   ) {

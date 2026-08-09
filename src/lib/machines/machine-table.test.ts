@@ -171,9 +171,13 @@ describe("curated machine table", () => {
     const problems: string[] = [];
     let checked = 0;
 
+    // Machines we deliberately model differently from the reference, with the
+    // reason recorded on their table entry.
+    const DIVERGES_FROM_REFERENCE = new Set(["Utupu-Tanuri"]);
+
     for (const [name, entry] of Object.entries(reference)) {
       const behaviour = getMachineBehaviour(name);
-      if (!behaviour) {
+      if (!behaviour || DIVERGES_FROM_REFERENCE.has(name)) {
         continue;
       }
 
