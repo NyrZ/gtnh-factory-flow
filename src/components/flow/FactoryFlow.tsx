@@ -166,6 +166,8 @@ import {
 import { isTrashRecipe, TRASH_ANY_RESOURCE_ID } from "@/lib/model/trash";
 import { rateUnitSuffix, type RateUnit } from "@/lib/model/rate-unit";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { browseHoveredPort } from "./port-browse";
+import { useBoardTouchGestures } from "./board-touch-gestures";
 import { getSupplyCeiling } from "@/components/inspector/usage-limits";
 import {
   EDGE_DETAIL_ARROWS,
@@ -303,6 +305,34 @@ const CANVAS_PATTERN_VARIANT: Record<
 
 /** Module-level so the board never re-renders on a fresh object identity. */
 const PRO_OPTIONS = { hideAttribution: true };
+
+/**
+ * On a touchscreen a card moves only once it is selected: tap it, then drag it.
+ *
+ * A finger has no hover and no precision, and every drag that began on a card was
+ * a card being moved — so panning the board meant finding a gap between cards, and
+ * a plan dense enough to be worth panning has no gaps. Selection makes the intent
+ * explicit: one tap says which card, the drag then moves it, and a drag starting
+ * anywhere else pans as it should.
+ *
+ * `nodesDraggable` is off wholesale on compact, and a selected card overrides it
+ * with its own `draggable`. Identity is preserved for every card that does not
+ * change, because the node memos are built on it.
+ */
+function withTouchDragRule(nodes: BoardFlowNode[], compact: boolean): BoardFlowNode[] {
+  let changed = false;
+  const next = nodes.map((node) => {
+    // Off compact nothing carries the flag, so a window that grows back into a
+    // desktop hands every card its drag back.
+    const draggable = compact && node.selected ? true : undefined;
+    if (node.draggable === draggable) {
+      return node;
+    }
+    changed = true;
+    return { ...node, draggable };
+  });
+  return changed ? next : nodes;
+}
 
 /**
  * Thickness-mode widths come from the lane-fraction menu in
@@ -1530,6 +1560,9 @@ export function FactoryFlow() {
   const exportInProgressRef = useRef(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const flowInstanceRef = useRef<ReactFlowInstance<BoardFlowNode, ResourceFlowEdge> | null>(null);
+  // A phone changes several things about the board: which cards can be dragged,
+  // which toolbars are folded, where the centred banners sit.
+  const isCompact = useIsCompactViewport();
 
   useEffect(() => {
     if (draggingNodeRef.current) {
@@ -1581,9 +1614,9 @@ export function FactoryFlow() {
         changed = true;
         return merged;
       });
-      return changed ? next : current;
+      return withTouchDragRule(changed ? next : current, isCompact);
     });
-  }, [nodesFromProject, setPendingBoardSelection]);
+  }, [isCompact, nodesFromProject, setPendingBoardSelection]);
 
   // Switching pulse mode off has to empty the canvas registry: the edges stay
   // mounted and simply stop publishing, so without this the last frame's
@@ -1854,9 +1887,17 @@ export function FactoryFlow() {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<BoardFlowNode>[]) => {
-      setFlowNodes((currentNodes) => applyNodeChanges(changes, currentNodes) as BoardFlowNode[]);
+      setFlowNodes((currentNodes) => {
+        const next = applyNodeChanges(changes, currentNodes) as BoardFlowNode[];
+        // Only when the selection moved. This runs on every frame of a drag, and
+        // walking every card each frame is the kind of per-frame O(nodes) work
+        // ARCHITECTURE.md rules out.
+        return changes.some((change) => change.type === "select")
+          ? withTouchDragRule(next, isCompact)
+          : next;
+      });
     },
-    [],
+    [isCompact],
   );
 
   const edges = useMemo<ResourceFlowEdge[]>(() => {
@@ -3199,6 +3240,22 @@ export function FactoryFlow() {
         return;
       }
 
+      // R and U on the port row under the pointer: the same two questions its
+      // left and right click ask. A hand already on the keyboard should not have
+      // to go and find the mouse button, and on a rail of five ports the keys are
+      // faster than aiming at any of them.
+      if (event.key === "r" || event.key === "R" || event.key === "u" || event.key === "U") {
+        if (isEditableKeyboardTarget(event.target) || event.shiftKey) {
+          return;
+        }
+
+        const mode = event.key === "r" || event.key === "R" ? "recipes" : "uses";
+        if (browseHoveredPort(mode)) {
+          event.preventDefault();
+        }
+        return;
+      }
+
       if (event.key === "Escape") {
         if (isEditableKeyboardTarget(event.target)) {
           return;
@@ -3371,10 +3428,17 @@ export function FactoryFlow() {
   );
   const handleFitView = useCallback(() => frameBoardCards(), [frameBoardCards]);
 
+  // Double tap to zoom, double tap and slide to keep zooming, and a swipe in from
+  // either side to pull that drawer out. Off while a tool owns the pointer.
+  useBoardTouchGestures({
+    boardRef,
+    instanceRef: flowInstanceRef,
+    enabled: nodeColorPaintMode === undefined && annotationTool === undefined && !isDeleteMode,
+  });
+
   // Compact windows fold each toolbar into a single button, and only one of them
   // unfolds at a time: expanded, any two of these rows would cross each other on
   // a 390px board, which is the mess they are being folded away to avoid.
-  const isCompact = useIsCompactViewport();
   const [openToolGroup, setOpenToolGroup] = useState<ToolGroupId | undefined>(undefined);
   const handleToolGroupToggle = useCallback((group: ToolGroupId | undefined) => {
     setOpenToolGroup((current) => (current === group ? undefined : group));
@@ -3743,6 +3807,8 @@ export function FactoryFlow() {
         // Always. Cards are whole cells; a card between cells is just wrong.
         snapToGrid
         snapGrid={BOARD_GRID_SNAP}
+        // A finger drags a card only after selecting it; see withTouchDragRule.
+        nodesDraggable={!isCompact}
       >
         <NodeDetailController boardRef={boardRef} />
         <HopMapController boardRef={boardRef} />

@@ -3,13 +3,16 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   memo,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, ChevronDown, Copy, Minus, Plus, Sprout } from "lucide-react";
 import type {
   FactoryNode,
@@ -71,7 +74,14 @@ import {
   machineArtPixels,
 } from "./MachinePicker";
 import { NodeGlanceText, glanceTileStyle } from "./NodeGlance";
-import { isWiringConnection } from "./connection-drag";
+import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
+import {
+  clearHoveredPortBrowse,
+  setHoveredPortBrowse,
+  PORT_LONG_PRESS_MS,
+  PORT_LONG_PRESS_SLOP,
+  type PortBrowseMode,
+} from "./port-browse";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./machine-icons";
 import { publishDockTopInset } from "./dock-insets";
 import { useRenderedHandles } from "./use-rendered-handles";
@@ -1823,6 +1833,168 @@ function buildPortFlowScope(nodeId: string, port: RailPort) {
   return { edges, ports, nodes };
 }
 
+/**
+ * What a port row does when you point at it.
+ *
+ * It used to be the little item icon and nothing else: a 28px square inside a
+ * 40px row, carrying click-for-recipes and right-click-for-uses, while the rest
+ * of the row — the name, the rate, the bar — was only a wire drag. Aiming at the
+ * icon to ask "what makes this?" is a game of darts, and on a touchscreen the
+ * icon has no right button to press and no hover to reveal itself.
+ *
+ * So the whole row answers now, and every input device gets a way in:
+ *   click       recipes that make it
+ *   right click recipes that use it
+ *   drag        a wire, exactly as before
+ *   R / U       the same two, for the row under the pointer
+ *   long press  a menu offering both, for a finger
+ */
+function usePortRowBrowse({
+  nodeId,
+  port,
+  browse,
+}: {
+  nodeId: string;
+  port: RailPort;
+  browse: (mode: PortBrowseMode) => void;
+}) {
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | undefined>(undefined);
+  // One gesture's worth of state, and never read during a render.
+  const pressRef = useRef<{
+    x: number;
+    y: number;
+    touch: boolean;
+    timer?: number;
+    dragged: boolean;
+  }>({ x: 0, y: 0, touch: false, dragged: false });
+
+  const cancelLongPress = () => {
+    window.clearTimeout(pressRef.current.timer);
+    pressRef.current.timer = undefined;
+  };
+
+  useEffect(() => cancelLongPress, []);
+
+  const handlers = {
+    onPointerEnter: () => {
+      setHoveredPortBrowse({ nodeId, handleId: port.handleId, open: browse });
+    },
+    onPointerLeave: () => {
+      clearHoveredPortBrowse(nodeId, port.handleId);
+      cancelLongPress();
+    },
+    onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+      const touch = event.pointerType !== "mouse";
+      pressRef.current = { x: event.clientX, y: event.clientY, touch, dragged: false };
+      if (!touch) {
+        return;
+      }
+
+      const { clientX, clientY } = event;
+      pressRef.current.timer = window.setTimeout(() => {
+        pressRef.current.timer = undefined;
+        setMenuAt({ x: clientX, y: clientY });
+      }, PORT_LONG_PRESS_MS);
+    },
+    onPointerMove: (event: ReactPointerEvent<HTMLElement>) => {
+      const press = pressRef.current;
+      const travelled = Math.hypot(event.clientX - press.x, event.clientY - press.y);
+      if (travelled > PORT_LONG_PRESS_SLOP) {
+        press.dragged = true;
+        cancelLongPress();
+      }
+    },
+    onPointerUp: cancelLongPress,
+    onPointerCancel: cancelLongPress,
+    onClick: (event: React.MouseEvent<HTMLElement>) => {
+      // A finger gets the menu, not this: a tap is how you select the card the
+      // port sits on, and opening the book on it would fire constantly.
+      if (pressRef.current.touch) {
+        return;
+      }
+      // Dropping a wire back on the row it came from is a pointerdown and a
+      // pointerup on one element, which is also the definition of a click.
+      if (pressRef.current.dragged || wasRecentWireDrop()) {
+        return;
+      }
+      event.stopPropagation();
+      browse("recipes");
+    },
+    onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
+      // Android raises this on a long press too, where the menu is the answer.
+      event.preventDefault();
+      event.stopPropagation();
+      if (pressRef.current.touch) {
+        return;
+      }
+      browse("uses");
+    },
+  };
+
+  const menu =
+    menuAt && typeof document !== "undefined"
+      ? createPortal(
+          <PortBrowseMenu
+            at={menuAt}
+            name={port.displayName}
+            onPick={(mode) => {
+              setMenuAt(undefined);
+              browse(mode);
+            }}
+            onDismiss={() => setMenuAt(undefined)}
+          />,
+          document.body,
+        )
+      : null;
+
+  return { handlers, menu };
+}
+
+/** The long-press menu: the two questions a port answers, as words. */
+function PortBrowseMenu({
+  at,
+  name,
+  onPick,
+  onDismiss,
+}: {
+  at: { x: number; y: number };
+  name: string;
+  onPick: (mode: PortBrowseMode) => void;
+  onDismiss: () => void;
+}) {
+  const width = 168;
+  const left = Math.min(Math.max(8, at.x - width / 2), window.innerWidth - width - 8);
+  const top = Math.min(at.y + 12, window.innerHeight - 132);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[79]" onPointerDown={onDismiss} />
+      <div
+        style={{ left, top, width }}
+        className="fixed z-[80] border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-1 font-mono shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.45)]"
+      >
+        <p className="truncate px-1 pb-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
+          {name}
+        </p>
+        <button
+          type="button"
+          onClick={() => onPick("recipes")}
+          className="flex h-10 w-full items-center px-2 text-left text-[13px] font-bold text-white hover:bg-[var(--mc-61)]"
+        >
+          What makes it
+        </button>
+        <button
+          type="button"
+          onClick={() => onPick("uses")}
+          className="flex h-10 w-full items-center px-2 text-left text-[13px] font-bold text-white hover:bg-[var(--mc-61)]"
+        >
+          What uses it
+        </button>
+      </div>
+    </>
+  );
+}
+
 export function PortChip({
   nodeId,
   port,
@@ -1851,7 +2023,7 @@ export function PortChip({
     port.resource?.alternatives,
     port.handleId,
   );
-  const browse = (mode: "recipes" | "uses") =>
+  const browse = (mode: PortBrowseMode) =>
     browseResource(
       {
         kind: port.kind,
@@ -1864,6 +2036,9 @@ export function PortChip({
       },
       mode,
     );
+  // Everything the row answers with, in one place: the pointer, the keyboard and
+  // the long-press menu all end up here.
+  const rowBrowse = usePortRowBrowse({ nodeId, port, browse });
   const toneClass =
     port.tone === "bind"
       ? "flow-port--bind"
@@ -1929,18 +2104,38 @@ export function PortChip({
           : undefined
       }
       // Inside a socket row the ROW is the anchor (wires dock at the plug's
-      // right edge) and owns the hover scope; a second anchor here would win
-      // the DOM lookup and pull edges back to the chip.
+      // right edge) and owns the flow-scope hover; a second anchor here would
+      // win the DOM lookup and pull edges back to the chip.
       {...(plugRow
         ? {}
         : {
             "data-resource-edge-anchor": "true",
             "data-resource-node-id": nodeId,
             "data-resource-handle-id": port.handleId,
-            onPointerEnter: () =>
-              isWiringConnection() ? undefined : setHoveredFlowScope(buildPortFlowScope(nodeId, port)),
-            onPointerLeave: () => setHoveredFlowScope(undefined),
           })}
+      // The row is what you point at, so the row is what answers: recipes on a
+      // click, uses on a right click, a menu on a long press, and the R/U keys
+      // for whichever row the pointer is over. Merged by hand rather than spread
+      // twice, because the flow-scope highlight shares these two events.
+      onPointerEnter={(event) => {
+        rowBrowse.handlers.onPointerEnter();
+        if (!plugRow && !isWiringConnection()) {
+          setHoveredFlowScope(buildPortFlowScope(nodeId, port));
+        }
+        void event;
+      }}
+      onPointerLeave={() => {
+        rowBrowse.handlers.onPointerLeave();
+        if (!plugRow) {
+          setHoveredFlowScope(undefined);
+        }
+      }}
+      onPointerDown={rowBrowse.handlers.onPointerDown}
+      onPointerMove={rowBrowse.handlers.onPointerMove}
+      onPointerUp={rowBrowse.handlers.onPointerUp}
+      onPointerCancel={rowBrowse.handlers.onPointerCancel}
+      onClick={rowBrowse.handlers.onClick}
+      onContextMenu={rowBrowse.handlers.onContextMenu}
     >
       {slotState !== "idle" ? (
         <span
@@ -1951,22 +2146,11 @@ export function PortChip({
           ].join(" ")}
         />
       ) : null}
-      <span
-        role="button"
-        tabIndex={-1}
-        className="nodrag relative z-40 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden cursor-pointer hover:brightness-125"
-        title={`${port.displayName} — click: recipes, right-click: uses`}
-        onClick={(event) => {
-          event.stopPropagation();
-          browse("recipes");
-        }}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          browse("uses");
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
+      {/* Art, not a button. It used to be the only part of the row that opened
+          the book, which made a 28px square the target for a question the whole
+          row can now answer. Nothing here claims the pointer, so the handle
+          above it gets the drag and the row gets the click. */}
+      <span className="pointer-events-none relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
         {port.resource ? (
           <ResourceIcon
             resource={{ ...port.resource, amount: 1, chance: undefined }}
@@ -2051,7 +2235,7 @@ export function PortChip({
           data-resource-handle="true"
           data-resource-node-id={nodeId}
           data-resource-handle-id={port.handleId}
-          title={`${isInput ? "Input" : "Output"}: ${port.displayName}`}
+          title={`${isInput ? "Input" : "Output"}: ${port.displayName} — click for what makes it, right click for what uses it (R and U do the same), drag to wire`}
           className={[
             "resource-slot-handle nodrag !absolute !left-0 !right-auto !top-0 !z-30 !h-full !w-full !min-w-0 !translate-x-0 !translate-y-0",
             "!rounded-none !border-0 !bg-transparent !opacity-0",
@@ -2059,6 +2243,7 @@ export function PortChip({
           ].join(" ")}
         />
       </MinecraftTooltip>
+      {rowBrowse.menu}
     </div>
   );
 }

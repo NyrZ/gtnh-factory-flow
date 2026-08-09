@@ -309,6 +309,17 @@ function CompactWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
   const openLeft = () => writeWorkspaceView({ leftPanelOpen: true, rightPanelOpen: false });
   const openRight = () => writeWorkspaceView({ leftPanelOpen: false, rightPanelOpen: true });
 
+  // Asking a port what makes it opens the recipe book, and on a phone the book
+  // lives in the left drawer: the answer has to bring its own window with it, or
+  // the tap does nothing at all. The resource is a fresh object on every ask, so
+  // asking the same one twice reopens the drawer.
+  const browsedResource = useFactoryStore((state) => state.recipeBrowserResource);
+  useEffect(() => {
+    if (browsedResource) {
+      writeWorkspaceView({ leftPanelOpen: true, rightPanelOpen: false });
+    }
+  }, [browsedResource]);
+
   return (
     <main className="relative min-h-0 flex-1 overflow-hidden">
       <BoardColumn />

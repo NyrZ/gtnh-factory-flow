@@ -196,6 +196,27 @@ gh run watch <run-id> --exit-status
 - Do not put minimum heights in the way of a short window; pair them with
   `compact:min-h-0` as the shell, the board and both panels do.
 
+## Board Gestures
+
+- A port ROW answers, not its little item icon: left click opens what makes the
+  resource, right click what uses it, R and U do the same for the row under the
+  pointer (`port-browse.ts` holds the pointed-at row imperatively — do not
+  subscribe cards to it), a long press opens a two-item menu for a finger, and a
+  drag still wires. The icon is art with `pointer-events-none`; the full-row
+  React Flow handle underneath it takes the drag.
+- Touch gestures on the board live in `board-touch-gestures.ts`, in native
+  capture-phase listeners: React Flow's pan sits on the pane below, and stopping
+  the event before it gets there is the only way to take a gesture off it
+  mid-flight. Double tap zooms, double tap and slide keeps zooming (both anchored
+  on the tap point), and a swipe in from the outer third of either side pulls that
+  drawer out. Claiming an edge swipe restores the viewport captured at touchstart,
+  so opening a drawer never leaves the board panned.
+- A drawer follows the finger through `panel-pull.ts`: the gesture starts on the
+  board, the drawer does the moving, and the registry is how the two meet.
+- On compact, a card is draggable only while selected (`withTouchDragRule` in
+  `FactoryFlow.tsx`, plus `nodesDraggable={!isCompact}`). Apply it where the
+  selection changes, never per drag frame.
+
 ## The Board Grid
 
 - `src/lib/board-grid.ts` owns `BOARD_GRID = 20` and every card size derived

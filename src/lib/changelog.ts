@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.36.0",
+    date: "2026-08-08",
+    headline: "Every slot answers now, and the board takes a finger properly",
+    notes: [
+      "Click anywhere on an input or output row to see what makes that resource, right click for what uses it. It used to be the little item icon only, which was a 28px target for the question you ask most. Dragging from the row still pulls a wire, exactly as before.",
+      "With the pointer over a row, R opens what makes it and U opens what uses it. No aiming at all.",
+      "On a touchscreen, press and hold a row for a small menu with both.",
+      "Double tap the board to zoom in on the spot you tapped. Double tap and slide up or down to zoom in and out smoothly, like a map. Pinching still works.",
+      "Swiping a drawer out no longer means hitting the little tab: a swipe in from anywhere down the left or right side of the board pulls that side's drawer out, and it follows your thumb. With one open, a swipe anywhere at all puts it away.",
+      "On a touchscreen a card now moves only after you tap to select it. Dragging an unselected card pans the board, so a plan too dense to have gaps in it can still be moved around.",
+    ],
+  },
+  {
     version: "1.35.2",
     date: "2026-08-08",
     headline: "The wide resource row, actually on the row",

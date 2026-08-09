@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { registerPanelPull } from "./flow/panel-pull";
 
 /**
  * A side column as a drawer over the board, for windows too narrow to give it a
@@ -149,6 +150,20 @@ export function PanelDrawer({
     setDragging(true);
   };
 
+  // The same pull, driven from the board's own touch layer: a swipe from anywhere
+  // down this side of the board opens the drawer, and the drawer still follows the
+  // finger. See panel-pull.ts for why it is a registry and not a prop.
+  useEffect(
+    () =>
+      registerPanelPull(side, {
+        start: startDrag,
+        move: (travelled) => paint(Math.min(1, travelled / getPanelWidth())),
+        end: (travelled) => settle(travelled > getPanelWidth() * COMMIT_FRACTION),
+      }),
+    // Re-registered on every render: the three closures read state that changes,
+    // and the registry only ever holds the latest.
+  );
+
   // Pulling the drawer OUT, from the strip down the edge of the board.
   useSlideGesture({
     elementRef: stripRef,
@@ -168,6 +183,20 @@ export function PanelDrawer({
     enabled: open,
     towards: side === "left" ? -1 : 1,
     claimAtOnce: false,
+    getWidth: getPanelWidth,
+    onStart: startDrag,
+    onMove: (travelled, width) => paint(Math.max(0, 1 - travelled / width)),
+    onEnd: (travelled, width) => settle(travelled < width * COMMIT_FRACTION),
+  });
+
+  // And from the board behind it. With a drawer up, the only thing the board can
+  // be asked for is to put it away, so every part of the screen answers: a tap
+  // anywhere, or a swipe anywhere, in any direction that means "away".
+  useSlideGesture({
+    elementRef: scrimRef,
+    enabled: open,
+    towards: side === "left" ? -1 : 1,
+    claimAtOnce: true,
     getWidth: getPanelWidth,
     onStart: startDrag,
     onMove: (travelled, width) => paint(Math.max(0, 1 - travelled / width)),
