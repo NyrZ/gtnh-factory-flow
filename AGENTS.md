@@ -142,8 +142,28 @@ gh run watch <run-id> --exit-status
     stamped a heat capacity on every coil, which handed four machines
     overclocks they do not get.
 - Parallels are paid for with power BEFORE overclocks, and only the leftover
-  voltage buys overclock steps. See `src/lib/solver/overclock.ts`. Only the
-  Electric Blast Furnace, Volcanus and the Exothermic Hearth overclock on heat.
+  voltage buys overclock steps. See `src/lib/solver/overclock.ts`. Heat
+  overclocks belong to the Electric Blast Furnace, Volcanus, the Exothermic
+  Hearth and the Utupu-Tanuri (our "Multiblock Dehydrator") and nothing else.
+- A recipe runs in WHOLE TICKS. Over one tick GT truncates, which favours the
+  player. Under one tick a multiblock banks the leftover speed as parallels
+  while a singleblock wastes it, so duration is only floored at 1 for
+  singleblocks. `canSubTick` in `overclock.ts` decides, and note the trap it
+  documents: when a recipe carries no handlers, `getRecipeMachineHandlers`
+  invents one stamped `kind: "single"` as a placeholder, which is NOT evidence.
+- Recipes carrying `runtimeCalculation` are NOT authoritative for multiblocks.
+  That export is the game's `OverclockCalculator` alone; it never saw
+  `GTParallelHelper`, so all 202,322 of them say `parallel: 1` and 145,231
+  flatline at one tick. `prefersCuratedMachineMath` makes the curated table win
+  for machines it covers. Everything else still uses the runtime data.
+- A special value of 0 can be a REAL heat requirement, not a gap: dehydrator
+  recipes start from 0 K. Do not reintroduce a `specialValue > 0` guard; the
+  machine list is what keeps heat off machines with no heat mechanic.
+- Where the reference punts and the wiki gives a real mechanic, follow the
+  wiki. It asks the player for the Utupu-Tanuri's heat difference because it
+  cannot read the requirement, and spends it as speed; the wiki says energy
+  discount plus perfect overclocks, and that is what we implement. Machines
+  that diverge on purpose are listed in `machine-table.test.ts`.
 - Machine config controls are structured data, not frontend hardcoding. Use `machineConfigControls`.
 - Existing supported tier effects include:
   - `parallelMultiplier`

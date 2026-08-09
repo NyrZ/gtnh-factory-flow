@@ -16,6 +16,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.40.0",
+    date: "2026-08-08",
+    headline: "Machine rates now match the game",
+    notes: [
+      "Parallels are paid for with power before any speed from a higher tier. A chem plant with titanium pipe casings on IV spends all of it on its six parallels, so nitrobenzene reads 2,000 L/s instead of 32,000 L/s, which is what the machine really does.",
+      "Machines no longer stall when a recipe gets down to one tick. A Boldarnator on EV makes 128 cobble/s, the same as one measured in game, and it keeps climbing above IV instead of sitting at 20/s.",
+      "The Multiblock Dehydrator has a coil slot at last. Its coils are worth a 5% power saving every 900K and a free speed doubling every 1,800K, and it runs at 220% speed on half the power.",
+      "The Multiblock Mixer was offering the wrong casings. It takes item pipe casings, tin through black plutonium, not the fluid ones.",
+      "Arc furnace electrodes, cutting factory sawblades, electromagnets, anvils, containment blocks, maceration chips and laser amperage are all pickable now. Pick the part and the rates follow.",
+      "49 multiblocks are on figures checked against the game's code, up from none a week ago. The Welcome tab lists the ones that are not there yet.",
+      "Some plans will read lower than before and some higher. Either way the new number is the one your factory will actually hit.",
+    ],
+  },
+  {
     version: "1.39.0",
     date: "2026-08-08",
     headline: "A Welcome tab, and two guided tours",
@@ -23,7 +37,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "There is a Welcome tab at the head of the tab strip now, the way an editor has one. It has the tours on it, a couple of quick ways to start, and your designs. Untick the box at the bottom and it stops opening on it.",
       "The first tour walks you round the whole screen: the board, all four toolbars, both columns, the tabs, and where sharing lives. It dims everything except the thing it is talking about and points at it, and Esc leaves at any point.",
       "The second one teaches you to read a card. It opens a real titanium line off the shelf, clears the side columns out of the way, and flies right in on one machine: what the left side is asking for and which ingredient is actually holding it back, what the percentage on the right is really telling you, and what FULL, STARVED, BOTTLENECK and BLOCKED each mean in the machine's own words. It finishes on drawers, which trip people up: what one actually is, and the case for using one, pointing at a drawer on that line that is quietly keeping a machine at 100%. It arrives as a tab of its own so nothing you were working on is touched, and your columns come back when it ends.",
-      "The \"?\" in the bottom left corner has had the same treatment. It was a wall of small print; it is now the same cards the tours use, saying much less, and the tours themselves are sitting on it so you can start one from the corner you already go to when you are stuck.",
+      'The "?" in the bottom left corner has had the same treatment. It was a wall of small print; it is now the same cards the tours use, saying much less, and the tours themselves are sitting on it so you can start one from the corner you already go to when you are stuck.',
       "Closed the Welcome tab and want it back? The compass in the top right, or Welcome and tours in the menu on a phone.",
     ],
   },
@@ -32,8 +46,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-08",
     headline: "Inside a pocket, the trail is at the top where you can see it",
     notes: [
-      "On a phone the \"Board ▸ Pocket\" trail was sitting a fifth of the way down the screen with empty board above it, because it was keeping clear of the tool buttons. It takes the top line now and the tool buttons step down a line instead.",
-      "\"Compact into pocket\" moved to the bottom of the board on a phone, where a thumb can reach it, rather than competing for the top line with everything else.",
+      'On a phone the "Board ▸ Pocket" trail was sitting a fifth of the way down the screen with empty board above it, because it was keeping clear of the tool buttons. It takes the top line now and the tool buttons step down a line instead.',
+      '"Compact into pocket" moved to the bottom of the board on a phone, where a thumb can reach it, rather than competing for the top line with everything else.',
     ],
   },
   {
@@ -41,7 +55,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-08",
     headline: "The tier dropdown filters the search and nothing else",
     notes: [
-      "Setting a maximum voltage tier in the recipe book used to also put a red ring and a \"TIER REQUIRED\" warning on every card on your board above that tier. Narrowing a search is not a judgement about your factory, so it no longer says anything about it. The dropdown still hides recipes above the tier you pick, which is all it was ever for.",
+      'Setting a maximum voltage tier in the recipe book used to also put a red ring and a "TIER REQUIRED" warning on every card on your board above that tier. Narrowing a search is not a judgement about your factory, so it no longer says anything about it. The dropdown still hides recipes above the tier you pick, which is all it was ever for.',
     ],
   },
   {
@@ -50,7 +64,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "The recipe book's head reads in the order you decide things",
     notes: [
       "On a phone the book now opens with the item, the Makes and Uses buttons, and the way out all on its first line, and the machine underneath them. It read backwards before: you would pick a machine, then find the Makes and Uses switch below it, and changing that changed the machine list above. The mode comes first because it decides what machines there are to pick from.",
-      "The \"Recipes for\" caption is gone. The two buttons say which one you are looking at, and you can press them.",
+      'The "Recipes for" caption is gone. The two buttons say which one you are looking at, and you can press them.',
       "The close button moved up beside the item's name, where a window's close button belongs, rather than sitting on the machine's row looking like it would close the machine.",
     ],
   },
@@ -59,8 +73,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-08",
     headline: "Uses, from the items list and from inside the book",
     notes: [
-      "Tapping an item in the items column now asks which question you meant: what makes it, or what uses it. On a phone \"uses\" was simply unreachable there, since a tap could only be one of the two and there is no second mouse button to hold in reserve. Holding opens the same menu. A mouse still goes straight there with its left and right buttons.",
-      "Inside the recipe book, the caption that said \"Recipes for\" or \"Uses of\" is now a pair of buttons that switch between them, so you can turn a recipe list into a uses list without going back to the search. On desktop it sits at the top of the category rail; on a phone it is on the bar under the name.",
+      'Tapping an item in the items column now asks which question you meant: what makes it, or what uses it. On a phone "uses" was simply unreachable there, since a tap could only be one of the two and there is no second mouse button to hold in reserve. Holding opens the same menu. A mouse still goes straight there with its left and right buttons.',
+      'Inside the recipe book, the caption that said "Recipes for" or "Uses of" is now a pair of buttons that switch between them, so you can turn a recipe list into a uses list without going back to the search. On desktop it sits at the top of the category rail; on a phone it is on the bar under the name.',
       "That bar has stopped trying to fit the category name on a phone: it was already in the dropdown right above it, and the pair of them were crushing the machine icons.",
       "The Recent shelf is one row of smaller icons on a phone, so it stops eating the results above it.",
       "The two buttons in the press-and-hold menu look like buttons now.",
@@ -110,7 +124,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "Asking a slot works with the column closed, and the press shows itself",
     notes: [
       "Clicking a slot, or pressing R or U on one, did nothing at all unless the items column happened to be open: the answer was being written into a panel that was not on screen. Asking now opens the column it answers in, on desktop and on a phone.",
-      "Pressing and holding a slot lights it up straight away, so you can see the press registering rather than waiting to find out. Holding no longer starts a wire it then drops somewhere unintended, and you can slide from the press straight onto \"what makes it\" or \"what uses it\" and let go there to pick it. Letting go first and tapping still works.",
+      'Pressing and holding a slot lights it up straight away, so you can see the press registering rather than waiting to find out. Holding no longer starts a wire it then drops somewhere unintended, and you can slide from the press straight onto "what makes it" or "what uses it" and let go there to pick it. Letting go first and tapping still works.',
       "Recipes in the book fill the width of the column on a phone instead of sitting small in the middle of it, at nearly twice the size.",
     ],
   },
@@ -178,7 +192,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-08",
     headline: "The search box forgives you, and crops are recipes now",
     notes: [
-      "Searching finally works the way you type. Plurals find the singular, so \"oak logs\" finds Oak Log. Spelling mistakes get fixed for you: \"vaccum tube\" finds the Vacuum Tube, \"steal ingot\" finds Steel. Two words run together still work, and nicknames like \"ebf\" find the Electric Blast Furnace. Names now beat registry ids, so the item you meant is at the top.",
+      'Searching finally works the way you type. Plurals find the singular, so "oak logs" finds Oak Log. Spelling mistakes get fixed for you: "vaccum tube" finds the Vacuum Tube, "steal ingot" finds Steel. Two words run together still work, and nicknames like "ebf" find the Electric Blast Furnace. Names now beat registry ids, so the item you meant is at the top.',
       "Crops are real recipes. Look up Oak Log and a Crop Farm sits in the list next to the machines, so you can see a crop can grow it. Click it and the crop card lands ready to run, with the crop already picked. No more hunting for the sprout button and setting one up by hand.",
       "New filters under the search box: only what is already on your board, only what a crop or tree can grow, only what bees make.",
       "A Recent strip along the bottom of the items column remembers the last things you looked up, so coming back to the same ingredient is one click. In the icon grid, hovering an item now names it and says which mod it is from.",
