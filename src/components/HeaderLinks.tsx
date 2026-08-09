@@ -1,6 +1,7 @@
 "use client";
 
-import { Bug } from "lucide-react";
+import { Bug, Compass } from "lucide-react";
+import { openWelcomeTab } from "@/lib/tour/welcome-tab";
 import { APP_VERSION } from "@/lib/version";
 
 const GITHUB_URL = "https://github.com/jackwrichards/gtnh-factory-flow";
@@ -31,6 +32,17 @@ const BUG_REPORT_URL = `${GITHUB_URL}/issues/new?template=bug_report.yml&version
 export function HeaderLinks() {
   return (
     <div className="flex shrink-0 items-center gap-1">
+      {/* The way back to the Welcome tab once it has been closed, which is the
+          only way back to the guided tours. */}
+      <button
+        type="button"
+        onClick={openWelcomeTab}
+        title="Welcome: what everything is, and the guided tours"
+        aria-label="Open the Welcome tab"
+        className="inline-flex h-7 w-7 items-center justify-center rounded border border-line-strong bg-surface text-fg-subtle hover:bg-surface-raised hover:text-fg"
+      >
+        <Compass className="h-3.5 w-3.5" />
+      </button>
       <HeaderLink href={GITHUB_URL} label="Source code on GitHub">
         <GithubMark />
       </HeaderLink>
@@ -65,9 +77,22 @@ export function ReportBugButton() {
  * a phone can read at a glance are still two brand marks nobody can hover for a
  * tooltip, so up here they carry their names.
  */
-export function MenuLinks() {
+export function MenuLinks({ onAction }: { onAction?: () => void }) {
   return (
     <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={() => {
+          openWelcomeTab();
+          onAction?.();
+        }}
+        className="flex h-10 items-center gap-2.5 rounded px-2 text-left text-sm text-fg-subtle hover:bg-surface-sunken"
+      >
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+          <Compass className="h-3.5 w-3.5" aria-hidden />
+        </span>
+        <span className="truncate">Welcome and tours</span>
+      </button>
       <MenuLink href={GITHUB_URL} label="Source on GitHub">
         <GithubMark />
       </MenuLink>

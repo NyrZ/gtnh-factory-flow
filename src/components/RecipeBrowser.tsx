@@ -52,6 +52,7 @@ import type { Recipe, ResourceAmount } from "@/lib/model/types";
 import { usesNativeNeiChrome } from "@/lib/nei/layout";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { OPEN_SETUPS_EVENT } from "@/lib/setups-tab";
+import { OPEN_SIDEBAR_TAB_EVENT, takePendingSidebarTab } from "@/lib/sidebar-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { isEchoOfTouch } from "@/lib/pointer-kind";
@@ -337,7 +338,12 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   // items to build with, stamping saved blueprints, or browsing the network's
   // shared setups. One at a time, full column each; the old bottom-strip
   // library never had room to breathe.
-  const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints" | "setups">("items");
+  // A request that arrived before this column was mounted (a phone's drawer is
+  // unmounted while closed) is waiting in module state, so the tab it asked for
+  // is collected here as well as by the listener below.
+  const [sidebarMode, setSidebarMode] = useState<"items" | "blueprints" | "setups">(
+    () => takePendingSidebarTab() ?? "items",
+  );
   const [resourceMods, setResourceMods] = useState<Array<{ id: string; count: number }>>([]);
   const [resourceSearchOutcome, setResourceSearchOutcome] = useState<SearchOutcome>(EXACT_SEARCH);
   const [resourceQueryLoading, setResourceQueryLoading] = useState(false);
@@ -408,6 +414,19 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
     const openSetups = () => setSidebarMode("setups");
     window.addEventListener(OPEN_SETUPS_EVENT, openSetups);
     return () => window.removeEventListener(OPEN_SETUPS_EVENT, openSetups);
+  }, []);
+
+  // And the general form of the same thing: the guided tour walks all three
+  // tabs, so it needs to be able to name one.
+  useEffect(() => {
+    const openTab = () => {
+      const tab = takePendingSidebarTab();
+      if (tab) {
+        setSidebarMode(tab);
+      }
+    };
+    window.addEventListener(OPEN_SIDEBAR_TAB_EVENT, openTab);
+    return () => window.removeEventListener(OPEN_SIDEBAR_TAB_EVENT, openTab);
   }, []);
 
   // Publish the settled query to the canvas. Highlighting every node, storage and
@@ -944,6 +963,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           <button
             type="button"
             onClick={() => setSidebarMode("blueprints")}
+            data-tour-anchor="pockets-tab"
             className={[
               "flex h-7 flex-1 items-center justify-center gap-1 border-b-2 text-[11px] font-medium",
               sidebarMode === "blueprints"

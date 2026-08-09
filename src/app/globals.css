@@ -435,6 +435,61 @@ textarea {
   }
 }
 
+/*
+ * The guided tour's hole in the screen (see TourOverlay).
+ *
+ * One element does both jobs: the border rings whatever the step points at, and
+ * a spread far larger than any window dims everything else. That means moving
+ * between steps is a transition of four numbers rather than a re-composited
+ * mask, and there is no second full-screen layer to keep in step with it.
+ *
+ * The heartbeat is a separate ring on ::after, animating opacity and transform
+ * only. Pulsing the big shadow instead would repaint the whole window every
+ * frame for the sake of a glow a few pixels wide.
+ */
+.tour-spotlight {
+  border: 2px solid #22d3ee;
+  border-radius: 4px;
+  box-shadow: 0 0 0 9999px rgba(6, 9, 13, 0.74);
+  transition:
+    left 220ms ease-out,
+    top 220ms ease-out,
+    width 220ms ease-out,
+    height 220ms ease-out;
+}
+
+.tour-spotlight::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 2px solid #22d3ee;
+  border-radius: 7px;
+  animation: tour-spotlight-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tour-spotlight-pulse {
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.012);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight {
+    transition: none;
+  }
+
+  .tour-spotlight::after {
+    animation: none;
+    opacity: 0.4;
+  }
+}
+
 .react-flow__edge-textbg {
   fill: var(--canvas);
 }

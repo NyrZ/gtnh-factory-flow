@@ -18,7 +18,10 @@ import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { useWelcomeTab } from "@/lib/tour/welcome-tab";
 import { AppHeader } from "./AppHeader";
+import { TourOverlay } from "./tour/TourOverlay";
+import { WelcomePage } from "./tour/WelcomePage";
 import { BlueprintSaveDialog } from "./BlueprintSaveDialog";
 import { DesignTabs } from "./DesignTabs";
 import { FactoryFlow } from "./flow/FactoryFlow";
@@ -238,6 +241,9 @@ export function FactoryPlannerApp() {
       {/* Every pocket-to-shelf path (card save, share-a-pocket,
           overwrite) confirms through this one dialog. */}
       <BlueprintSaveDialog />
+      {/* A running tour points at the toolbars and columns above, so it hangs
+          off the app root and portals to the body from there. */}
+      <TourOverlay />
     </div>
   );
 }
@@ -304,6 +310,8 @@ function PlacementRevealer() {
 
 /** The board with the tab strip over it: the same on any window. */
 function BoardColumn() {
+  const welcome = useWelcomeTab();
+
   return (
     /*
       The tab strip belongs to the canvas, not the window: designs switch
@@ -312,7 +320,21 @@ function BoardColumn() {
     */
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]">
       <DesignTabs />
-      <FactoryFlow />
+      {/*
+        Welcome COVERS the board rather than replacing it. Unmounting the board
+        would throw away the camera, the routed wires and the solve, and put
+        them all back a moment later for a page that is only ever a click from
+        being stepped off - and a tour started from that page has to point at
+        the board underneath it.
+      */}
+      <div className="relative min-h-0">
+        <FactoryFlow />
+        {welcome.active ? (
+          <div className="absolute inset-0 z-40">
+            <WelcomePage />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

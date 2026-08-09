@@ -1614,6 +1614,10 @@ function PortRail({
   const isInput = side === "input";
   return (
     <div
+      // What a guided tour rings when it explains a card: the whole column of
+      // asks, or the whole column of makes. Static attributes, so they cost the
+      // board nothing.
+      data-tour-part={isInput ? "inputs" : "outputs"}
       className={[
         // No gap between rows: the row IS the grid unit (40px = two cells),
         // and a gap would put every row after the first off the grid.

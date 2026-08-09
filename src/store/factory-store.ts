@@ -76,10 +76,35 @@ const PROJECT_HISTORY_LIMIT = 100;
  * out until every named card is on screen at once, and an empty `nodeIds`
  * under `fit` means the whole board.
  */
+/**
+ * How hard a `fit` is allowed to push, when the default framing is wrong for
+ * the caller.
+ *
+ * The board's own framing is deliberately timid: it never magnifies past 1:1,
+ * because arriving at a plan blown up reads as a bug. A guided tour wants the
+ * opposite - "look at THIS card" has to actually fill the eye - so it says so
+ * rather than every caller inheriting one compromise.
+ */
+export interface BoardFraming {
+  /** How far in the fit may zoom. Defaults to BOARD_CAMERA_MAX_ZOOM. */
+  maxZoom?: number;
+  /** Slack around the framed cards, as a fraction. Defaults to BOARD_CAMERA_PADDING. */
+  padding?: number;
+  /**
+   * Screen pixels down the right-hand side to leave clear, and to frame
+   * AROUND: the cards land centred in what is left, not behind the panel or
+   * the tour card sitting there. Clamped so a phone cannot inset itself to
+   * nothing.
+   */
+  insetRight?: number;
+}
+
 export interface BoardCameraRequest {
   mode: "centre" | "fit";
   nodeIds: string[];
   token: number;
+  /** `fit` only. */
+  framing?: BoardFraming;
 }
 
 interface FactoryStore {
@@ -328,7 +353,7 @@ interface FactoryStore {
    * camera was, so opening one built thousands of cells from the origin used
    * to leave the viewer looking at blank canvas.
    */
-  frameBoardNodes: (nodeIds?: string[]) => void;
+  frameBoardNodes: (nodeIds?: string[], framing?: BoardFraming) => void;
   connectNodes: (
     sourceNodeId: string,
     targetNodeId: string,
@@ -1904,11 +1929,12 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       },
     }));
   },
-  frameBoardNodes: (nodeIds) => {
+  frameBoardNodes: (nodeIds, framing) => {
     set((state) => ({
       boardFocusRequest: {
         mode: "fit",
         nodeIds: nodeIds ?? [],
+        framing,
         token: (state.boardFocusRequest?.token ?? 0) + 1,
       },
     }));

@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.39.0",
+    date: "2026-08-08",
+    headline: "A Welcome tab, and two guided tours",
+    notes: [
+      "There is a Welcome tab at the head of the tab strip now, the way an editor has one. It has the tours on it, a couple of quick ways to start, and your designs. Untick the box at the bottom and it stops opening on it.",
+      "The first tour walks you round the whole screen: the board, all four toolbars, both columns, the tabs, and where sharing lives. It dims everything except the thing it is talking about and points at it, and Esc leaves at any point.",
+      "The second one teaches you to read a card. It opens a real titanium line off the shelf, clears the side columns out of the way, and flies right in on one machine: what the left side is asking for and which ingredient is actually holding it back, what the percentage on the right is really telling you, and what FULL, STARVED, BOTTLENECK and BLOCKED each mean in the machine's own words. It finishes on drawers, which trip people up: what one actually is, and the case for using one, pointing at a drawer on that line that is quietly keeping a machine at 100%. It arrives as a tab of its own so nothing you were working on is touched, and your columns come back when it ends.",
+      "The \"?\" in the bottom left corner has had the same treatment. It was a wall of small print; it is now the same cards the tours use, saying much less, and the tours themselves are sitting on it so you can start one from the corner you already go to when you are stuck.",
+      "Closed the Welcome tab and want it back? The compass in the top right, or Welcome and tours in the menu on a phone.",
+    ],
+  },
+  {
     version: "1.38.3",
     date: "2026-08-08",
     headline: "Inside a pocket, the trail is at the top where you can see it",

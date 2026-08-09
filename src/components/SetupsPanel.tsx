@@ -383,6 +383,7 @@ export function SetupsPanel() {
               disabled={!hasBoardContent}
               onClick={() => setShareOpen(true)}
               aria-label="Share the open design as a setup"
+              data-tour-anchor="share-setup"
               className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 bg-[#17191d] text-neutral-400 enabled:hover:border-emerald-600 enabled:hover:text-emerald-300 disabled:opacity-50"
             >
               <Share2 className="h-3.5 w-3.5" />

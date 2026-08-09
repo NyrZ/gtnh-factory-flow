@@ -3,20 +3,25 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Board view preferences: how the canvas looks, whether drags snap, and which
- * of the read-only display modes are on.
+ * Board view settings: how the canvas looks, and which of the read-only display
+ * modes are on.
  *
- * These are personal taste, not part of the plan — switching between your own
- * designs must not carry your grid setting from one to the next or turn the
- * heatmap on. So they live in localStorage rather than in the project, and
- * outside the Zustand store so they can be read straight out of localStorage
+ * This module holds the LIVE settings, the ones the board is drawing with right
+ * now, in localStorage and outside the Zustand store so they can be read
  * without an effect.
  *
- * SHARING a setup is the one exception. The author arranged the view to make
- * their build readable, so a snapshot of these settings is captured into the
- * uploaded plan and applied when someone opens it — see `plan-view.ts`. That
- * is a one-shot copy at share time and at open time; nothing here is ever
- * read from or written to a project the user is merely working on.
+ * They are not global taste, though. How a factory is drawn belongs to the
+ * factory: one build wants rate labels and fat lines, the next wants a clean
+ * board, and a plan that was dressed to be readable should still be wearing
+ * that when you come back to it. So a snapshot goes into every design as it is
+ * saved and comes back out when you switch to it (`plan-view.ts`, and
+ * `showProject` in the design store), which is the same snapshot a SHARED setup
+ * has always carried. Switching tabs therefore rewrites what is here — the
+ * localStorage copy is what the board reads, not the record of what any one
+ * plan wants.
+ *
+ * The columns and the resource marks deliberately do NOT work this way; see
+ * PlanViewScope.
  *
  * Read through useSyncExternalStore: localStorage does not exist during SSR,
  * so the server renders the defaults and the browser swaps in the saved values

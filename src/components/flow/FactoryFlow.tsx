@@ -103,6 +103,7 @@ import {
   collectPocketConvergenceWarnings,
   useFactoryStore,
   type BoardClipboardPayload,
+  type BoardFraming,
   type PocketConvergenceWarning,
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
@@ -305,6 +306,13 @@ const CANVAS_PATTERN_VARIANT: Record<
 
 /** Module-level so the board never re-renders on a fresh object identity. */
 const PRO_OPTIONS = { hideAttribution: true };
+
+/**
+ * Narrower than this and a framing request's reserved strip is ignored: about
+ * two cards, below which there is no framing left to do and giving a slice
+ * away costs more than whatever was going to sit in it. See frameBoardCards.
+ */
+const MIN_FRAMED_WIDTH = 420;
 
 /** The delay plus four pulses of the keyframes in globals.css, plus some slack. */
 const PLACED_FLASH_CLASS = "board-card-placed";
@@ -1701,27 +1709,48 @@ export function FactoryFlow() {
    * omitted - is on screen, zooming out as far as it takes.
    */
   const frameBoardCards = useCallback(
-    (nodeIds?: string[]) => {
+    (nodeIds?: string[], framing?: BoardFraming) => {
       const instance = flowInstanceRef.current;
       const board = boardRef.current;
       if (!instance || !board) {
         return;
       }
 
-      const { cards, measuredById } = cameraCards(nodeIds);
-      const rect = framingRect(cards, measuredById);
       const size = board.getBoundingClientRect();
-      if (!rect || size.width === 0 || size.height === 0) {
+      if (size.width === 0 || size.height === 0) {
         return;
       }
 
+      const { cards, measuredById } = cameraCards(nodeIds);
+      const rect = framingRect(cards, measuredById);
+      if (!rect) {
+        // Nothing to frame: go home rather than sit wherever the last plan left
+        // the camera. Switching to an empty tab is the common way here, and
+        // landing on blank canvas a thousand cells from the origin is how the
+        // first card you place ends up somewhere you have to go looking for.
+        void instance.setCenter(0, 0, { zoom: 1, duration: BOARD_CAMERA_DURATION });
+        return;
+      }
+
+      // A caller may reserve a strip down the right and ask to be framed in
+      // what is left. It is a luxury, though: on a board too narrow to give the
+      // strip away there is no framing left to do, so the whole width is used
+      // and whatever sits in the strip is left to overlap.
+      const wanted = Math.max(framing?.insetRight ?? 0, 0);
+      const inset = size.width - wanted >= MIN_FRAMED_WIDTH ? wanted : 0;
+      const usable = { width: size.width - inset, height: size.height };
+
+      const zoom = zoomForRect(rect, usable, {
+        padding: framing?.padding ?? BOARD_CAMERA_PADDING,
+        minZoom: BOARD_MIN_ZOOM,
+        maxZoom: framing?.maxZoom ?? BOARD_CAMERA_MAX_ZOOM,
+      });
+      // setCenter puts a board point at the middle of the WHOLE viewport, so
+      // landing the cards in the middle of the usable part means handing it a
+      // point half the inset further right.
       const centre = rectCentre(rect);
-      void instance.setCenter(centre.x, centre.y, {
-        zoom: zoomForRect(rect, size, {
-          padding: BOARD_CAMERA_PADDING,
-          minZoom: BOARD_MIN_ZOOM,
-          maxZoom: BOARD_CAMERA_MAX_ZOOM,
-        }),
+      void instance.setCenter(centre.x + inset / 2 / zoom, centre.y, {
+        zoom,
         duration: BOARD_CAMERA_DURATION,
       });
     },
@@ -1746,7 +1775,7 @@ export function FactoryFlow() {
     servedFocusTokenRef.current = boardFocusRequest.token;
 
     if (boardFocusRequest.mode === "fit") {
-      frameBoardCards(boardFocusRequest.nodeIds);
+      frameBoardCards(boardFocusRequest.nodeIds, boardFocusRequest.framing);
       return;
     }
 
@@ -3759,6 +3788,7 @@ export function FactoryFlow() {
       // controller and the glance CSS can read the mode in force without any
       // React subscription.
       data-glance-mode={boardView.glanceMode}
+      data-tour-anchor="board"
       className={[
         // The 480px floor keeps a desktop board usable, and clears the shortest
         // window that is not compact (560px) with the two bars above it. A phone
@@ -4295,6 +4325,11 @@ function ToolGroup({
     <button
       type="button"
       onClick={() => onToggle(id)}
+      // Folded, the trigger IS the toolbar as far as a guided tour is
+      // concerned: the row above is still in the DOM, invisible, and the tour
+      // skips invisible anchors, so a phone gets a ring around this button
+      // instead of one around empty board.
+      data-tour-anchor={id}
       aria-expanded={isOpen}
       aria-label={isOpen ? `Hide ${label}` : `Show ${label}`}
       title={isOpen ? `Hide ${label}` : label}

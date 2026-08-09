@@ -1,8 +1,14 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Compass } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  closeWelcomeTab,
+  leaveWelcomeTab,
+  openWelcomeTab,
+  useWelcomeTab,
+} from "@/lib/tour/welcome-tab";
 import { useDesignStore } from "@/store/design-store";
 
 const MENU_WIDTH = 190;
@@ -32,6 +38,7 @@ export function DesignTabs() {
   const renameDesign = useDesignStore((state) => state.renameDesign);
   const removeDesign = useDesignStore((state) => state.removeDesign);
   const removeDesigns = useDesignStore((state) => state.removeDesigns);
+  const welcome = useWelcomeTab();
 
   const [renamingId, setRenamingId] = useState<string>();
   const [openMenu, setOpenMenu] = useState<OpenMenu>();
@@ -110,6 +117,44 @@ export function DesignTabs() {
         // it. The board gets the difference.
         className="flex h-8 min-w-0 shrink-0 items-center gap-1 border-b border-line bg-surface px-2"
       >
+        {/*
+          Welcome rides at the head of the strip and outside the scroller, so it
+          never scrolls out of reach. It is not a design: it covers the board
+          rather than switching what is on it, which is why the design tabs read
+          their active state off `welcome.active` too - exactly one tab in this
+          row can look current.
+        */}
+        {welcome.open ? (
+          <div
+            data-tour-anchor="welcome-tab"
+            className={[
+              "group flex h-6 shrink-0 items-center rounded-t border-b-2 pl-2 pr-1",
+              welcome.active
+                ? "border-cyan-500 bg-surface-raised text-fg"
+                : "border-transparent text-fg-muted hover:bg-surface-sunken hover:text-fg",
+            ].join(" ")}
+          >
+            <button
+              type="button"
+              onClick={openWelcomeTab}
+              title="Welcome: what everything is, and the guided tours"
+              className="flex items-center gap-1 text-xs font-medium"
+            >
+              <Compass className="h-3 w-3" aria-hidden />
+              Welcome
+            </button>
+            <button
+              type="button"
+              onClick={closeWelcomeTab}
+              aria-label="Close the Welcome tab"
+              title="Close the Welcome tab"
+              className="ml-1 rounded px-1 text-xs text-fg-muted opacity-0 hover:bg-surface hover:text-fg focus:opacity-100 group-hover:opacity-100"
+            >
+              ✕
+            </button>
+          </div>
+        ) : null}
+
         {overflow.left ? <ScrollArrow direction={-1} onClick={() => scrollTabs(-1)} /> : null}
 
         {/*
@@ -125,7 +170,7 @@ export function DesignTabs() {
         >
           <nav ref={trackRef} aria-label="Designs" className="flex w-max items-center gap-1">
             {designs.map((design) => {
-              const isActive = design.id === activeDesignId;
+              const isActive = design.id === activeDesignId && !welcome.active;
 
               return (
                 <div
@@ -150,7 +195,12 @@ export function DesignTabs() {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => void switchToDesign(design.id)}
+                      onClick={() => {
+                        // Clicking a design is also how you step off Welcome,
+                        // including when it is the design already loaded.
+                        leaveWelcomeTab();
+                        void switchToDesign(design.id);
+                      }}
                       onDoubleClick={() => setRenamingId(design.id)}
                       title={`${design.name} — double-click to rename`}
                       className="max-w-[150px] truncate text-xs font-medium"
@@ -198,7 +248,10 @@ export function DesignTabs() {
             out of reach the way it would be inside the list. */}
         <button
           type="button"
-          onClick={() => void addDesign()}
+          onClick={() => {
+            leaveWelcomeTab();
+            void addDesign();
+          }}
           title="New design"
           aria-label="New design"
           className="shrink-0 rounded px-2 py-0.5 text-sm text-fg-muted hover:bg-surface-sunken hover:text-fg"

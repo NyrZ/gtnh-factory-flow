@@ -48,12 +48,26 @@ export function capturePlanView(): PlanViewState {
 }
 
 /**
- * Put the author's arrangement, and the setup itself, on screen.
+ * How much of a saved arrangement to put back.
  *
- * Only ever called when a shared setup is OPENED.
+ * `all` is someone OPENING a shared setup: they asked to see it the way its
+ * author left it, columns and resource marks included.
+ *
+ * `board` is switching between your own tabs. The board's own look belongs to
+ * the plan - a build you dressed in rate labels and thick lines should still be
+ * wearing them when you come back to it - but the COLUMNS do not. Those are
+ * where you are working, not what you are working on, and having them slide
+ * open and shut every time you touch a tab is the kind of help nobody asked
+ * for. Hidden and starred resources stay out for the same reason: someone who
+ * never wants to see Water never wants to see it on any board.
  */
-export function applyPlanView(view: PlanViewState | undefined): void {
-  applyViewSettings(view);
+export type PlanViewScope = "all" | "board";
+
+/**
+ * Put a saved arrangement, and the plan itself, on screen.
+ */
+export function applyPlanView(view: PlanViewState | undefined, scope: PlanViewScope = "all"): void {
+  applyViewSettings(view, scope);
 
   // Last, so the panel toggles above have already given the board its width.
   //
@@ -70,7 +84,7 @@ export function applyPlanView(view: PlanViewState | undefined): void {
  * cannot leave the board in a state with no control that undoes it. Absent
  * fields leave the viewer's own setting alone.
  */
-function applyViewSettings(view: PlanViewState | undefined): void {
+function applyViewSettings(view: PlanViewState | undefined, scope: PlanViewScope): void {
   if (!view) {
     return;
   }
@@ -102,6 +116,15 @@ function applyViewSettings(view: PlanViewState | undefined): void {
   }
   if (Object.keys(boardPatch).length > 0) {
     writeBoardView(boardPatch);
+  }
+
+  if (scope === "board") {
+    // Everything below here is the workspace around the board rather than the
+    // board itself, and a tab switch leaves it alone. See PlanViewScope.
+    if (view.rateUnit) {
+      useFactoryStore.getState().setRateUnit(view.rateUnit);
+    }
+    return;
   }
 
   const workspacePatch: Parameters<typeof writeWorkspaceView>[0] = {};

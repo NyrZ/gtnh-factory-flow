@@ -81,7 +81,7 @@ export function AppMenu({ onLoadDatasetVersion }: AppMenuProps) {
             <BoardActions variant="list" onAction={() => setOpen(false)} />
           </MenuSection>
           <MenuSection label="Planner">
-            <MenuLinks />
+            <MenuLinks onAction={() => setOpen(false)} />
             <div className="flex px-2 py-1">
               <AccountMenu />
             </div>

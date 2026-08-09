@@ -23,6 +23,7 @@ import {
   writeDesignSummary,
 } from "@/lib/designs/design-storage";
 import { parseFactoryProjectJson } from "@/lib/import-export";
+import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import type { FactoryProject } from "@/lib/model/types";
 import { LOCAL_STORAGE_KEY, useFactoryStore } from "./factory-store";
 
@@ -63,13 +64,39 @@ interface DesignStore {
   saveActiveProject: (designId: string | undefined, project: FactoryProject) => Promise<void>;
 }
 
-/** Loads a plan onto the canvas without marking it edited. */
+/**
+ * Loads a plan onto the canvas without marking it edited, dressed the way that
+ * plan was last left and framed so you can see it.
+ *
+ * A tab is a whole factory, and how a factory is DRAWN is part of it: one build
+ * wants rate labels and fat lines, the next wants a clean board. Sharing a
+ * setup has always carried those settings along with it, so a tab not carrying
+ * them between switches was the odd one out. See PlanViewScope for the line
+ * between the board's look (per plan) and the workspace around it (yours).
+ *
+ * The framing comes free with `applyPlanView` and is wanted on every switch:
+ * plans are built wherever their author happened to be on the canvas, so
+ * arriving at one with the last tab's camera means arriving at blank board.
+ */
 function showProject(project: FactoryProject) {
   useFactoryStore.getState().markHydratedProject(project);
+  applyPlanView(project.view, "board");
 }
 
 function currentProject(): FactoryProject {
   return useFactoryStore.getState().project;
+}
+
+/**
+ * The plan as it should be SAVED: what is on the canvas, plus how the canvas is
+ * dressed right now.
+ *
+ * Stamped at the moment of writing rather than tracked as the settings change:
+ * every path that persists a design comes through here, and the view is cheap
+ * to read.
+ */
+function withCurrentView(project: FactoryProject): FactoryProject {
+  return { ...project, view: capturePlanView() };
 }
 
 /**
@@ -84,7 +111,7 @@ async function flushCanvasInto(summary: DesignSummary | undefined): Promise<void
     return;
   }
 
-  const project = currentProject();
+  const project = withCurrentView(currentProject());
   await writeDesign(updateDesignProject({ ...summary, project }, project));
 }
 
@@ -305,7 +332,8 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
 
     set({ saveState: "saving" });
     try {
-      await writeDesign(updateDesignProject({ ...summary, project }, project));
+      const saved = withCurrentView(project);
+      await writeDesign(updateDesignProject({ ...summary, project: saved }, saved));
       set({ saveState: "saved", designs: sortDesigns(await listDesignSummaries()) });
     } catch (error) {
       set({

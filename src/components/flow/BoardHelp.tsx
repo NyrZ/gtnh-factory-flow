@@ -2,46 +2,50 @@ import {
   Anchor,
   Box,
   Cable,
-  Ellipsis,
   Download,
+  Ellipsis,
   Factory,
   Focus,
   Gauge,
   Grid3x3,
-  MoveUpRight,
   Paintbrush,
   Palette,
+  Play,
   Presentation,
   Search,
-  Sprout,
   Square,
   Tag,
   Trash,
   Trash2,
-  Type,
   Undo2,
   Upload,
-  type LucideIcon,
 } from "lucide-react";
-import {
-  Fragment,
-  memo,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { Fragment, memo, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import {
+  GLANCE_CARD_CLASS,
+  GLANCE_LINE,
+  GLANCE_QUIET,
+  GlanceRows,
+  GlanceTitle,
+  type GlanceRow,
+} from "@/components/tour/card-parts";
+import { TOUR_LESSONS } from "@/lib/tour/lessons";
+import { startLesson } from "@/lib/tour/tour-state";
 
 /**
  * The board's help corner: a "?" where the zoom buttons used to live.
+ *
  * Hovering it lays a glance sheet over the whole window: every toolbar and
- * panel gets a dashed ring, a solid arrow, and a card naming EVERY button in
- * it — the same icon you see on the board, beside what pressing it does. A
- * tips card above the button covers the gestures no button reveals (wiring,
- * pockets, waypoint dots). Pure glance layer: pointer-events stay off, and
- * moving away folds the whole thing up again.
+ * panel gets a dashed ring, a solid arrow, and a card naming what is in it,
+ * using the same card the guided tour uses (see `card-parts.tsx`) so the two
+ * ways of being shown around read as one thing. Beside the button sit the
+ * guided tours themselves, because "what does this do" and "show me" are the
+ * same question asked twice, and this corner is where people ask it.
+ *
+ * Pure glance layer with one exception: pointer events stay off everywhere
+ * except the tours card, which you can actually press. Moving away folds the
+ * whole thing up again.
  *
  * The sheet portals to <body>: the board, the browser and the inspector each
  * sit in their own stacking contexts, so a scrim rendered inside the board
@@ -70,21 +74,19 @@ type CalloutAlign = "start" | "center" | "end";
 const CALLOUT_GAP = 18;
 const RING_PAD = 5;
 const ARROW_HEAD = 12;
-/** Long enough to cross the gap from the button to the tips card. */
+/** Long enough to cross the gap from the button to the tours card. */
 const HIDE_GRACE_MS = 160;
 
 /**
- * The whole sheet is one soft blue-grey. Loud enough to read over a dimmed
- * board, quiet enough that eight cards at once do not shout.
+ * The sheet's own accent: one soft blue-grey.
+ *
+ * Not the tour's cyan. The tour rings ONE thing at a time and can afford to
+ * shout; this draws seven rings and eight cards over the whole window at once,
+ * and in cyan that reads as an alarm going off. Cyan is kept for the single
+ * card down here you can actually click.
  */
-const ACCENT = "#93a4bb";
+const ACCENT = GLANCE_QUIET;
 const ACCENT_DIM = "rgba(147, 164, 187, 0.5)";
-
-/**
- * One line of a card: the button's own icon (or a text chip, for the ones
- * that are text), and what it does.
- */
-type HelpRow = { icon?: LucideIcon; chip?: string; text: string };
 
 const CALLOUTS: Array<{
   anchor: string;
@@ -95,32 +97,30 @@ const CALLOUTS: Array<{
   /** Slide along the anchor's edge, in px, after align. */
   shift?: number;
   title: string;
-  rows: HelpRow[];
+  rows: GlanceRow[];
 }> = [
   {
-    // One card for the whole column: its three tabs, then how the item
-    // search is meant to flow. Two cards up here fought the Designs card
-    // for the same corner.
+    // One card for the whole column: its three tabs, and nothing about how to
+    // use them. Two cards up here fought the Designs card for the same corner.
     anchor: "browser",
     side: "right",
     align: "center",
+    // Lifted off centre into the one clear band on this side: the build tools
+    // card takes the top of the board and the moves-and-tours stack takes the
+    // bottom, so dead centre would land on the stack.
+    shift: -120,
     title: "The left column",
     rows: [
-      { icon: Search, text: "Items: every item and fluid in the pack" },
-      { chip: "✦", text: "Pockets: chunks you saved, and everyone else's" },
-      { icon: Factory, text: "Setups: whole factories people have shared" },
-      { text: "Search an item, click it, pick a recipe" },
-      { text: "The machine lands on the board" },
-      { text: "Hover any row for what it needs and makes" },
+      { icon: Search, text: "*Items*: search the whole pack" },
+      { chip: "✦", text: "*Pockets*: saved chunks" },
+      { icon: Factory, text: "*Setups*: shared factories" },
     ],
   },
   {
-    // The top-right band is three deep (header buttons, paint row, view
-    // row), so this card slides right until it clears the paint ring and
-    // rides over the inspector's dimmed head instead. Rows stay short to
-    // keep it narrow enough for that gap. The design tabs get their line
-    // here rather than a card of their own: every spot below them is a
-    // toolbar, and a card there covered one.
+    // The top-right band is three deep (header buttons, paint row, view row),
+    // so this card slides right until it clears the paint ring and rides over
+    // the inspector's dimmed head instead. Rows stay short to keep it narrow
+    // enough for that gap.
     anchor: "plan-actions",
     side: "below",
     align: "end",
@@ -131,7 +131,6 @@ const CALLOUTS: Array<{
       { icon: Trash2, text: "Clean the board" },
       { icon: Upload, text: "Import a plan" },
       { icon: Download, text: "Export it out" },
-      { text: "Tabs left: one tab, one board" },
     ],
   },
   {
@@ -142,11 +141,10 @@ const CALLOUTS: Array<{
     offset: 50,
     title: "Build tools",
     rows: [
-      { icon: Undo2, text: "Undo, and redo beside it (Ctrl+Z)" },
-      { icon: Sprout, text: "Crop farm: pick a crop, it grows at the right rate" },
-      { icon: Trash, text: "Trash can: wire spare output in, it stops counting" },
-      { icon: Gauge, text: "Custom rate: dial any number in or out by hand" },
-      { chip: "/s", text: "Per second, minute or hour, everywhere at once" },
+      { icon: Undo2, text: "Undo and redo" },
+      { icon: Trash, text: "*Crop farm* and *trash can*" },
+      { icon: Gauge, text: "*Custom rate*: dial by hand" },
+      { chip: "/s", text: "Per second, minute or hour" },
     ],
   },
   {
@@ -157,11 +155,9 @@ const CALLOUTS: Array<{
     offset: 56,
     title: "Dressing it up",
     rows: [
-      { icon: Paintbrush, text: "Pick a colour, then click cards to paint them" },
-      { icon: Square, text: "Draw a box around a section" },
-      { icon: MoveUpRight, text: "Draw an arrow" },
-      { icon: Type, text: "Drop a text note" },
-      { icon: Trash2, text: "Bin: click anything to delete it" },
+      { icon: Paintbrush, text: "Paint cards" },
+      { icon: Square, text: "Box, arrow, note" },
+      { icon: Trash2, text: "*Bin*: delete anything" },
     ],
   },
   {
@@ -170,25 +166,25 @@ const CALLOUTS: Array<{
     align: "end",
     title: "How it looks",
     rows: [
-      { text: "These change the view, never the plan" },
-      { icon: Grid3x3, text: "Background: dots, lines, crosses or none" },
-      { icon: Palette, text: "Colour wires by how much they carry" },
-      { icon: Cable, text: "Thicken wires by how much they carry" },
-      { icon: Ellipsis, text: "Marching dashes show which way things flow" },
-      { icon: Tag, text: "Rate labels on the wires" },
-      { icon: Anchor, text: "Wires dock anywhere, or at fixed ports" },
-      { icon: Presentation, text: "Calm colours: drops the alarm reds" },
+      { text: "View only, *never the plan*" },
+      { icon: Grid3x3, text: "Background pattern" },
+      { icon: Palette, text: "Shade lines by volume" },
+      { icon: Cable, text: "Thicken lines by volume" },
+      { icon: Ellipsis, text: "Marching dashes" },
+      { icon: Tag, text: "Rate labels on the lines" },
+      { icon: Anchor, text: "Free or fixed wire ends" },
+      { icon: Presentation, text: "Calm colours" },
     ],
   },
   {
     anchor: "glance",
     side: "above",
     align: "end",
-    title: "Faces and framing",
+    title: "Framing",
     rows: [
-      { icon: Focus, text: "Fit the whole plan back on the screen" },
-      { icon: Box, text: "What each card IS: its machine, big when zoomed out" },
-      { icon: Gauge, text: "How hard it runs: red idle, green flat out" },
+      { icon: Focus, text: "Fit the plan on screen" },
+      { icon: Box, text: "Cards show their machine" },
+      { icon: Gauge, text: "Cards show how hard they run" },
     ],
   },
   {
@@ -197,32 +193,23 @@ const CALLOUTS: Array<{
     align: "center",
     title: "Plan totals",
     rows: [
-      { text: "NEED: you must bring this in" },
-      { text: "OUTPUT: this leaves the plan" },
-      { text: "INTERNAL: made and used here" },
+      { chip: "NEED", tone: "need", text: "Bring this in yourself" },
+      { chip: "OUT", tone: "output", text: "Leaves the plan" },
+      { chip: "IN", tone: "internal", text: "Made and used here" },
       { text: "Hover a row to light up the board" },
-      { text: "Select cards to total just those" },
     ],
   },
 ];
 
-const TIPS: Array<{ chip: string; result: string }> = [
-  { chip: "Drag a slot", result: "wires it to another card" },
-  { chip: "Drop on empty", result: "becomes a storage drawer" },
-  { chip: "Shift+drag", result: "box-selects cards" },
-  { chip: "Shift+click", result: "adds one to the selection" },
-  { chip: "Ctrl+G", result: "packs them into a pocket" },
-  { chip: "Dbl-click pocket", result: "steps inside, Esc backs out" },
-  { chip: "Ctrl+C/X/V", result: "copy, cut, paste" },
-  { chip: "Delete", result: "removes the selection" },
-  { chip: "Scroll / drag", result: "zoom and pan" },
-  { chip: "Dbl-click a wire", result: "pins a steering dot" },
+/** The gestures no button reveals. Six, not ten: this is a reminder, not a manual. */
+const MOVES: GlanceRow[] = [
+  { mouse: "left", text: "Drag a slot to *wire it*" },
+  { mouse: "left", text: "Drop on empty board for *a drawer*" },
+  { mouse: "right", text: "Right click for *what uses it*" },
+  { chip: "Shift", text: "Box-select, or add one" },
+  { chip: "Ctrl+G", text: "Pack it into *a pocket*" },
+  { chip: "Del", text: "Remove the selection" },
 ];
-
-const CARD_CLASS =
-  "absolute border border-[#48546857] bg-[#151a21] font-mono text-[#dbe3ec] shadow-[6px_6px_0_rgba(0,0,0,0.55)]";
-const TITLE_CLASS =
-  "border-b border-[#48546857] bg-[#1e2630] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#aebccd]";
 
 function toHelpRect(rect: DOMRect): HelpRect {
   return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
@@ -338,12 +325,28 @@ function CalloutArrow({
   // The head aims at the anchor, so it leads on the anchor-facing end.
   const head: CSSProperties =
     side === "below"
-      ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: `${ARROW_HEAD}px solid ${ACCENT}` }
+      ? {
+          borderLeft: "8px solid transparent",
+          borderRight: "8px solid transparent",
+          borderBottom: `${ARROW_HEAD}px solid ${ACCENT}`,
+        }
       : side === "above"
-        ? { borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderTop: `${ARROW_HEAD}px solid ${ACCENT}` }
+        ? {
+            borderLeft: "8px solid transparent",
+            borderRight: "8px solid transparent",
+            borderTop: `${ARROW_HEAD}px solid ${ACCENT}`,
+          }
         : side === "right"
-          ? { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderRight: `${ARROW_HEAD}px solid ${ACCENT}` }
-          : { borderTop: "8px solid transparent", borderBottom: "8px solid transparent", borderLeft: `${ARROW_HEAD}px solid ${ACCENT}` };
+          ? {
+              borderTop: "8px solid transparent",
+              borderBottom: "8px solid transparent",
+              borderRight: `${ARROW_HEAD}px solid ${ACCENT}`,
+            }
+          : {
+              borderTop: "8px solid transparent",
+              borderBottom: "8px solid transparent",
+              borderLeft: `${ARROW_HEAD}px solid ${ACCENT}`,
+            };
   const headFirst = side === "below" || side === "right";
   const stem: CSSProperties = vertical
     ? { width: 3, backgroundColor: ACCENT }
@@ -360,85 +363,60 @@ function CalloutArrow({
   );
 }
 
-/** One card line: the button's own icon (or a text chip), then the words. */
-function HelpRowLine({ row, wrap = false }: { row: HelpRow; wrap?: boolean }) {
-  const Icon = row.icon;
+/** One of the sheet's cards: a headline, then its rows. */
+function GlanceCard({
+  title,
+  rows,
+  className,
+  style,
+}: {
+  title: string;
+  rows: GlanceRow[];
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
-    <li className={wrap ? "flex items-start gap-2" : "flex items-center gap-2"}>
-      <span className="flex h-4 w-5 shrink-0 items-center justify-center">
-        {Icon ? (
-          <Icon className="h-3.5 w-3.5" style={{ color: ACCENT }} />
-        ) : row.chip ? (
-          <span
-            className="text-[10px] font-black leading-none"
-            style={{ color: ACCENT }}
-          >
-            {row.chip}
-          </span>
-        ) : (
-          <span className="text-[10px] leading-none" style={{ color: ACCENT_DIM }}>
-            ▸
-          </span>
-        )}
-      </span>
-      <span className={wrap ? undefined : "whitespace-nowrap"}>{row.text}</span>
-    </li>
+    <div
+      className={[GLANCE_CARD_CLASS, "px-3 py-2.5", className].filter(Boolean).join(" ")}
+      style={{ border: `2px solid ${GLANCE_LINE}`, ...style }}
+    >
+      <GlanceTitle dense>{title}</GlanceTitle>
+      <div className="mt-2">
+        <GlanceRows rows={rows} accent={ACCENT} dense />
+      </div>
+    </div>
   );
 }
 
 /**
- * The same help, as one scrolling sheet.
- *
- * The glance layer is built out of rings and arrows pointing at the toolbars it
- * describes; on a phone those toolbars are folded into single buttons, three of
- * its eight cards are wider than the screen, and there is no hover to open it
- * with. So compact windows get the content and drop the pointing: every card in
- * a column, wrapped, over a full-screen sheet with one way out.
+ * The one thing down here you can press: the guided tours, offered where people
+ * already come looking for help. Cyan, because everything else on this sheet is
+ * only there to be read.
  */
-function HelpSheet({ onClose }: { onClose: () => void }) {
+function ToursCard({ onStart }: { onStart: (lessonId: string) => void }) {
   return (
-    <div className="fixed inset-0 z-[120] flex flex-col bg-[#101419] font-mono text-[#dbe3ec]">
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#48546857] px-3">
-        <span className="text-[12px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
-          What everything does
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close help"
-          className="flex h-9 w-9 items-center justify-center border border-[#48546857] text-[16px] text-[#aebccd]"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
-        {CALLOUTS.map((callout) => (
-          <section key={callout.anchor} className="border border-[#48546857] bg-[#151a21]">
-            <p className={TITLE_CLASS}>{callout.title}</p>
-            <ul className="flex flex-col gap-1.5 p-2.5 pt-2 text-[12px] leading-snug">
-              {callout.rows.map((row) => (
-                <HelpRowLine key={row.text} row={row} wrap />
-              ))}
-            </ul>
-          </section>
+    <div
+      className={`${GLANCE_CARD_CLASS} pointer-events-auto px-3 py-2.5`}
+      style={{ border: "2px solid #1c4a56" }}
+    >
+      <GlanceTitle dense>Or be shown around</GlanceTitle>
+      <div className="mt-2 flex flex-col gap-1">
+        {TOUR_LESSONS.map((lesson) => (
+          <button
+            key={lesson.id}
+            type="button"
+            onClick={() => onStart(lesson.id)}
+            className="flex items-center gap-2 border border-transparent px-1.5 py-1 text-left text-[12px] leading-tight text-[#a5f3fc] hover:border-cyan-800 hover:bg-cyan-500/10"
+          >
+            <Play className="h-3 w-3 shrink-0" aria-hidden />
+            <span className="flex-1">{lesson.title}</span>
+            <span className="shrink-0 text-[10px] text-[#5e7183]">{lesson.steps.length}</span>
+          </button>
         ))}
-        <section className="border border-[#48546857] bg-[#151a21]">
-          <p className={TITLE_CLASS}>Moves worth knowing</p>
-          <div className="grid grid-cols-[auto_1fr] items-start gap-x-2.5 gap-y-1.5 p-2.5 pt-2">
-            {TIPS.map((tip) => (
-              <Fragment key={tip.chip}>
-                <span
-                  className="justify-self-start border bg-[#1b2430] px-1.5 py-[1px] text-[10px] font-bold leading-[14px]"
-                  style={{ borderColor: ACCENT_DIM, color: "#b9c7d8" }}
-                >
-                  {tip.chip}
-                </span>
-                <span className="text-[12px] leading-snug">{tip.result}</span>
-              </Fragment>
-            ))}
-          </div>
-        </section>
       </div>
+      <p className="mt-1.5 px-1.5 text-[10px] leading-snug text-[#5e7183]">
+        Esc leaves at any point.
+      </p>
     </div>
   );
 }
@@ -446,19 +424,67 @@ function HelpSheet({ onClose }: { onClose: () => void }) {
 const HELP_BUTTON_CLASS =
   "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] font-mono text-[16px] font-black text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110";
 
+/**
+ * The same help, as one scrolling sheet.
+ *
+ * The glance layer is built out of rings and arrows pointing at the toolbars it
+ * describes; on a phone those toolbars are folded into single buttons, its cards
+ * are wider than the screen, and there is no hover to open it with. So compact
+ * windows get the content and drop the pointing: every card in a column, over a
+ * full-screen sheet with one way out.
+ */
+function HelpSheet({
+  onClose,
+  onStart,
+}: {
+  onClose: () => void;
+  onStart: (lessonId: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[120] flex flex-col bg-[#101419] font-mono text-[#dbe3ec]">
+      <div
+        className="flex h-11 shrink-0 items-center justify-between px-3"
+        style={{ borderBottom: `1px solid ${GLANCE_LINE}` }}
+      >
+        <span className="text-[12px] font-black uppercase tracking-[0.14em] text-[#aebccd]">
+          What everything does
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close help"
+          className="flex h-9 w-9 items-center justify-center border text-[16px] text-[#aebccd]"
+          style={{ borderColor: GLANCE_LINE }}
+        >
+          ✕
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+        <ToursCard onStart={onStart} />
+        {CALLOUTS.map((callout) => (
+          <GlanceCard key={callout.anchor} title={callout.title} rows={callout.rows} />
+        ))}
+        <GlanceCard title="Moves worth knowing" rows={MOVES} />
+      </div>
+    </div>
+  );
+}
+
 function HelpGlanceSheet({
   measured,
   onEnter,
   onLeave,
+  onStart,
 }: {
   measured: Measured;
   onEnter: () => void;
   onLeave: () => void;
+  onStart: (lessonId: string) => void;
 }) {
   const { rects, button, vw, vh } = measured;
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[120]"
+      className="pointer-events-none fixed inset-0 z-[120] font-mono"
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
@@ -480,18 +506,15 @@ function HelpGlanceSheet({
                 height: rect.bottom - rect.top + RING_PAD * 2,
               }}
             />
-            <div className={CARD_CLASS} style={calloutStyle(callout, rect, vw, vh)}>
-              <CalloutArrow
-                side={callout.side}
-                align={callout.align}
-                length={CALLOUT_GAP + (callout.offset ?? 0)}
-              />
-              <p className={TITLE_CLASS}>{callout.title}</p>
-              <ul className="flex flex-col gap-1.5 p-2.5 pt-2 text-[12px] leading-snug">
-                {callout.rows.map((row) => (
-                  <HelpRowLine key={row.text} row={row} />
-                ))}
-              </ul>
+            <div className="absolute" style={calloutStyle(callout, rect, vw, vh)}>
+              <div className="relative">
+                <CalloutArrow
+                  side={callout.side}
+                  align={callout.align}
+                  length={CALLOUT_GAP + (callout.offset ?? 0)}
+                />
+                <GlanceCard title={callout.title} rows={callout.rows} />
+              </div>
             </div>
           </Fragment>
         );
@@ -513,24 +536,14 @@ function HelpGlanceSheet({
           >
             ?
           </div>
+          {/* Stacked over the button: the moves you cannot see, then the tours
+              you can press, nearest to the hand that opened this. */}
           <div
-            className={`${CARD_CLASS} pointer-events-auto`}
-            style={{ left: button.left, bottom: vh - button.top + 8 }}
+            className="absolute flex w-[360px] flex-col gap-2"
+            style={{ left: button.left, bottom: vh - button.top + 10 }}
           >
-            <p className={TITLE_CLASS}>Moves worth knowing</p>
-            <div className="grid grid-cols-[auto_1fr] items-center gap-x-2.5 gap-y-1.5 p-2.5 pt-2">
-              {TIPS.map((tip) => (
-                <Fragment key={tip.chip}>
-                  <span
-                    className="justify-self-start border bg-[#1b2430] px-1.5 py-[1px] text-[10px] font-bold leading-[14px]"
-                    style={{ borderColor: ACCENT_DIM, color: "#b9c7d8" }}
-                  >
-                    {tip.chip}
-                  </span>
-                  <span className="whitespace-nowrap text-[12px] leading-snug">{tip.result}</span>
-                </Fragment>
-              ))}
-            </div>
+            <GlanceCard title="Moves worth knowing" rows={MOVES} />
+            <ToursCard onStart={onStart} />
           </div>
         </Fragment>
       ) : null}
@@ -560,12 +573,23 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
   }, []);
   useEffect(() => () => window.clearTimeout(hideTimerRef.current), []);
 
+  // Starting a tour takes the sheet down with it: the tour is about to dim the
+  // same screen and ring things on it, and two glance layers at once is one too
+  // many. It also cannot be hovered away, since the tour blocks the pointer.
+  const startTour = useCallback((lessonId: string) => {
+    window.clearTimeout(hideTimerRef.current);
+    setMeasured(undefined);
+    setSheetOpen(false);
+    startLesson(lessonId);
+  }, []);
+
   if (compact) {
     return (
       <div className="absolute bottom-3 left-3 z-30">
         <button
           type="button"
           onClick={() => setSheetOpen(true)}
+          data-tour-anchor="help"
           className={HELP_BUTTON_CLASS}
           title="What does everything do?"
           aria-label="Show board help"
@@ -573,7 +597,10 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
           ?
         </button>
         {isSheetOpen && typeof document !== "undefined"
-          ? createPortal(<HelpSheet onClose={() => setSheetOpen(false)} />, document.body)
+          ? createPortal(
+              <HelpSheet onClose={() => setSheetOpen(false)} onStart={startTour} />,
+              document.body,
+            )
           : null}
       </div>
     );
@@ -590,6 +617,7 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
         type="button"
         onFocus={show}
         onBlur={scheduleHide}
+        data-tour-anchor="help"
         className={HELP_BUTTON_CLASS}
         title="What does everything do?"
         aria-label="Show board help"
@@ -598,7 +626,12 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
       </button>
       {measured
         ? createPortal(
-            <HelpGlanceSheet measured={measured} onEnter={show} onLeave={scheduleHide} />,
+            <HelpGlanceSheet
+              measured={measured}
+              onEnter={show}
+              onLeave={scheduleHide}
+              onStart={startTour}
+            />,
             document.body,
           )
         : null}
