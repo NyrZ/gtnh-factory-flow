@@ -40,6 +40,68 @@ const VERIFIED_MACHINE_COUNT = 49;
 const TOTAL_MULTIBLOCK_COUNT = 81;
 
 /**
+ * The machines still running on unchecked figures, so a player can see whether
+ * the one in front of them is affected instead of doubting every number.
+ *
+ * Steam is a group rather than a list: all eight are the same story, and eight
+ * names would crowd out the two that matter. The other two groups are named in
+ * full, because "some machines" is what makes people distrust all of them.
+ *
+ * Keep in step with `machine-table.ts`: a machine leaves this list on the
+ * commit that adds it there.
+ */
+const UNVERIFIED_MACHINE_GROUPS: Array<{ label: string; note?: string; machines: string[] }> = [
+  {
+    label: "Steam machines",
+    note: "all eight, speed not yet confirmed",
+    machines: [],
+  },
+  {
+    label: "Fusion reactors",
+    machines: [
+      "Fusion Control Computer Mark I",
+      "Fusion Control Computer Mark II",
+      "Fusion Control Computer Mark III",
+      "FusionTech MK IV",
+      "FusionTech MK V",
+    ],
+  },
+  {
+    label: "Everything else",
+    machines: [
+      "Exo-Foundry",
+      "Mass Solidifier",
+      "Helioflare Power Forge",
+      "Precise Auto-Assembler MT-3662",
+      "Industrial Chisel",
+      "Industrial Bending Machine",
+      "Cable Coating",
+      "Industrial Chemical Bath",
+      "Dangote Distillus",
+      "Space Mining Module MK-I",
+      "Space Mining Module MK-II",
+      "Space Mining Module MK-III",
+      "Bose-Einstein Condensate Observation Array",
+      "Observation Array Teleportation Node",
+      "PCB Factory",
+      "Solar Factory",
+      "Space Assembler Module MK-I",
+      "Space Assembler Module MK-II",
+      "Space Assembler Module MK-III",
+      "Precise Assembler",
+      "Beam Crafter",
+      "Vacuum Furnace",
+      "Naquadah Fuel Refinery",
+      "Foundry Module Components",
+      "Large Bronze Boiler",
+      "Large Steel Boiler",
+      "Large Titanium Boiler",
+      "Large Tungstensteel Boiler",
+    ],
+  },
+];
+
+/**
  * Same form the header's report button uses, with the version prefilled. Spelt
  * out here rather than imported so this page does not depend on the header's
  * internals; if a third caller appears, lift both into one module.
@@ -78,6 +140,44 @@ function MachineAccuracyNotice() {
           </a>
           .
         </p>
+
+        {/* Folded away by default: the two sentences above are the point, and
+            the list is only wanted by someone whose machine might be in it. */}
+        <details className="group mt-2">
+          <summary className="w-fit cursor-pointer list-none text-xs font-semibold text-amber-300/90 underline-offset-2 hover:text-amber-200 hover:underline">
+            Which ones?
+            <span className="ml-1 inline-block transition-transform group-open:rotate-90">›</span>
+          </summary>
+          <div className="mt-2 flex flex-col gap-2">
+            {UNVERIFIED_MACHINE_GROUPS.map((group) => (
+              <div key={group.label}>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-amber-300/70">
+                  {group.label}
+                  {group.note ? (
+                    <>
+                      {" "}
+                      <span className="font-medium normal-case tracking-normal text-amber-100/60">
+                        {group.note}
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+                {group.machines.length > 0 ? (
+                  <ul className="mt-1 flex flex-wrap gap-1">
+                    {group.machines.map((machine) => (
+                      <li
+                        key={machine}
+                        className="rounded border border-amber-600/40 bg-amber-500/10 px-1.5 py-px text-[11px] leading-relaxed text-amber-100/90"
+                      >
+                        {machine}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </details>
       </div>
     </section>
   );
