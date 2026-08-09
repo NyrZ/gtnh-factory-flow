@@ -20,7 +20,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-08",
     headline: "One wire between two slots, not two",
     notes: [
-      "Dragging a wire between two slots that were already wired used to lay a second line on top of the first, most often over a link the board had already made for you. The two copies split the rate between them, so the number on the line read half of what was really moving. That drag now unwires instead of doubling up.",
+      "Custom rate cards were the worst of it: every drag onto one added another line, so a card could sit under five wires stacked on the same pixels, each carrying a fifth of the rate you dialled. A card now takes one wire per slot, and offering it the same slot again changes nothing.",
+      "Two machines could double up the same way, most often over a link the board had already made for you. That drag now unwires instead of laying a second line on top.",
       "Plans already carrying doubled lines are tidied up the next time they open.",
     ],
   },

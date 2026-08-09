@@ -754,6 +754,118 @@ describe("factory resource links", () => {
     expect(useFactoryStore.getState().project.edges).toHaveLength(1);
   });
 
+  describe("custom rate cards", () => {
+    /** A fresh unadopted card, plus the wire the board would hand it. */
+    const wireSupplyIntoTarget = (customNodeId: string) =>
+      useFactoryStore.getState().connectCustomRate(
+        customNodeId,
+        "output",
+        {
+          nodeId: "item-target",
+          handleId: makeResourceHandleId("input", { kind: "item", id: "dust" }),
+        },
+        { kind: "item", id: "dust", displayName: "Dust" },
+      );
+
+    const addCard = () => {
+      useFactoryStore.getState().addCustomRateNode();
+      const nodes = useFactoryStore.getState().project.nodes;
+      return nodes[nodes.length - 1]!.id;
+    };
+
+    it("wires a supplying card once however many times the same port is offered", () => {
+      const card = addCard();
+
+      wireSupplyIntoTarget(card);
+      expect(useFactoryStore.getState().project.edges).toHaveLength(1);
+
+      wireSupplyIntoTarget(card);
+      wireSupplyIntoTarget(card);
+      wireSupplyIntoTarget(card);
+      expect(useFactoryStore.getState().project.edges).toHaveLength(1);
+    });
+
+    it("wires a requesting card once however many times the same port is offered", () => {
+      const card = addCard();
+      const request = () =>
+        useFactoryStore.getState().connectCustomRate(
+          card,
+          "input",
+          {
+            nodeId: "item-source",
+            handleId: makeResourceHandleId("output", { kind: "item", id: "dust" }),
+          },
+          { kind: "item", id: "dust", displayName: "Dust" },
+        );
+
+      request();
+      expect(useFactoryStore.getState().project.edges).toHaveLength(1);
+
+      request();
+      request();
+      expect(useFactoryStore.getState().project.edges).toHaveLength(1);
+    });
+
+    it("still lets one card supply two different machines", () => {
+      const card = addCard();
+
+      wireSupplyIntoTarget(card);
+      useFactoryStore.getState().connectCustomRate(
+        card,
+        "output",
+        {
+          nodeId: "fluid-target",
+          handleId: makeResourceHandleId("input", { kind: "fluid", id: "water" }),
+        },
+        { kind: "fluid", id: "water", displayName: "Water" },
+      );
+
+      // The second machine wants a different resource, so the card lets go of
+      // dust and adopts water: one wire, to the machine that asked last.
+      expect(useFactoryStore.getState().project.edges).toEqual([
+        expect.objectContaining({ source: card, target: "fluid-target", resourceId: "water" }),
+      ]);
+
+      // Now the same resource to a second taker: that is a second real wire.
+      useFactoryStore.getState().connectCustomRate(
+        card,
+        "output",
+        {
+          nodeId: "water-tank",
+          handleId: makeResourceHandleId("input", { kind: "fluid", id: "water" }),
+        },
+        { kind: "fluid", id: "water", displayName: "Water" },
+      );
+      expect(
+        useFactoryStore
+          .getState()
+          .project.edges.map((edge) => `${edge.source}->${edge.target}`)
+          .sort(),
+      ).toEqual([`${card}->fluid-target`, `${card}->water-tank`]);
+    });
+
+    it("drops the old wire when the card is handed a different resource", () => {
+      const card = addCard();
+
+      wireSupplyIntoTarget(card);
+      useFactoryStore.getState().connectCustomRate(
+        card,
+        "input",
+        {
+          nodeId: "item-source",
+          handleId: makeResourceHandleId("output", { kind: "item", id: "dust" }),
+        },
+        { kind: "item", id: "dust", displayName: "Dust" },
+      );
+
+      // Flipping the card from supply to request turns the line around rather
+      // than leaving both directions wired.
+      expect(useFactoryStore.getState().project.edges).toEqual([
+        expect.objectContaining({ source: "item-source", target: card, resourceId: "dust" }),
+      ]);
+    });
+  });
+
   it("removes an orphan drawer or tank when its last edge is deleted", () => {
     useFactoryStore.getState().connectNodes("fluid-source", "water-tank", {
       kind: "fluid",

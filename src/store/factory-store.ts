@@ -996,6 +996,18 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
               (entry) => entry.source !== customNodeId && entry.target !== customNodeId,
             )
           : state.project.edges;
+      // One line per port the card is wired to, like the trash can below. This
+      // is the only adopt-on-wire card whose resource can be re-offered
+      // unchanged - drag the same port onto it again and nothing about the card
+      // moves, so without this the wire was simply appended again and the drag
+      // stacked copies on the same pixels, each carrying a share of the dial.
+      //
+      // Nothing to unwire on a repeat, either: a card holds its resource only
+      // while something is wired to it, so toggling the line off would hand back
+      // an empty card in answer to being asked to wire it.
+      if (findDuplicateEdge(keptEdges, edge)) {
+        return state;
+      }
       const project = touchProject({
         ...state.project,
         // The side you wired IS the direction, so the dial follows it.
