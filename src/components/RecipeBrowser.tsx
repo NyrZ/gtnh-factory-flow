@@ -2145,68 +2145,71 @@ function RecipeBookOverlay({
             />
           ) : null}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {layout.showRail ? null : (
-            <CategoryPicker
+          {layout.sheet ? (
+            <SheetBookHeader
               activeResource={activeResource}
               mode={mode}
               tabs={recipeMapTabs}
               activeRecipeMap={activeRecipeMap}
+              machineRecipe={filteredRecipes[0]}
               onRecipeMapChange={onRecipeMapChange}
               onModeChange={switchMode}
-              showModeSwitch={!layout.sheet}
+              onClose={onClose}
             />
-          )}
-          <div className="px-2 pt-2">
-            <div
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              className="flex h-11 cursor-move select-none items-center gap-3 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)]"
-            >
-              {/* The title takes the slack so the machines and the close
-                  button stay pinned to the right rather than floating in the
-                  middle of a wide bar.
-
-                  Not on a phone. The category is named twice up here — in the
-                  picker's dropdown right above this bar and again in this title —
-                  and on a 390px screen the pair of them were crushing the machine
-                  strip and each other into a tangle of three lines of caption. The
-                  bar keeps the machines and the way out. */}
-              {layout.sheet ? (
-                <span className="min-w-0 flex-1">
-                  <RecipeModeSwitch mode={mode} onModeChange={switchMode} dense />
-                </span>
-              ) : (
-                <span className="min-w-0 flex-1 leading-[1.1]">
-                  <span className="block text-[8px] font-bold uppercase tracking-[0.14em] text-[#ececec] [text-shadow:1px_1px_0_#4a4a4a]">
-                    Category · recipe map
-                  </span>
-                  <span className="minecraft-title block truncate text-[17px] leading-[20px] text-white [text-shadow:2px_2px_0_var(--mc-24)]">
-                    {activeRecipeMap ||
-                      filteredRecipes[0]?.machineType ||
-                      resourceLabel(activeResource)}
-                  </span>
-                </span>
+          ) : (
+            <>
+              {layout.showRail ? null : (
+                <CategoryPicker
+                  activeResource={activeResource}
+                  mode={mode}
+                  tabs={recipeMapTabs}
+                  activeRecipeMap={activeRecipeMap}
+                  onRecipeMapChange={onRecipeMapChange}
+                  onModeChange={switchMode}
+                  showModeSwitch
+                />
               )}
-              <CategoryMachineStrip recipe={filteredRecipes[0]} compact={layout.sheet} />
-              {/*
-                The book used to be closed only by clicking the board around
-                it. Now that it can cover the whole screen there may be no
-                board left to click, so it says how to leave.
-              */}
-              <button
-                type="button"
-                title="Close recipe book (Esc)"
-                aria-label="Close recipe book"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={onClose}
-                className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-71)] text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+              <div className="px-2 pt-2">
+                <div
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  className="flex h-11 cursor-move select-none items-center gap-3 border-2 border-[var(--mc-33)] bg-[var(--mc-61)] px-2 shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-29)]"
+                >
+                  {/* The title takes the slack so the machines and the close
+                      button stay pinned to the right rather than floating in the
+                      middle of a wide bar. */}
+                  <span className="min-w-0 flex-1 leading-[1.1]">
+                    <span className="block text-[8px] font-bold uppercase tracking-[0.14em] text-[#ececec] [text-shadow:1px_1px_0_#4a4a4a]">
+                      Category · recipe map
+                    </span>
+                    <span className="minecraft-title block truncate text-[17px] leading-[20px] text-white [text-shadow:2px_2px_0_var(--mc-24)]">
+                      {activeRecipeMap ||
+                        filteredRecipes[0]?.machineType ||
+                        resourceLabel(activeResource)}
+                    </span>
+                  </span>
+                  <CategoryMachineStrip recipe={filteredRecipes[0]} />
+                  {/*
+                    The book used to be closed only by clicking the board around
+                    it. Now that it can cover the whole screen there may be no
+                    board left to click, so it says how to leave.
+                  */}
+                  <button
+                    type="button"
+                    title="Close recipe book (Esc)"
+                    aria-label="Close recipe book"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={onClose}
+                    className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-71)] text-[var(--mc-ink)] hover:bg-[var(--mc-85)]"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex gap-2 px-3 pt-2">
             <label className="flex h-9 min-w-0 flex-1 items-center gap-2 border-2 border-[var(--mc-33)] bg-[#17191d] px-2 text-sm text-neutral-100 shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]">
@@ -2355,6 +2358,91 @@ function CategoryPicker({
           ))}
         </select>
       </label>
+    </div>
+  );
+}
+
+/**
+ * The book's head on a phone, in the order the questions are actually asked.
+ *
+ * It used to read bottom-up: an item, a caption saying which mode you were in, the
+ * category to look in — and then, on the line BELOW that, the switch between the
+ * two modes. But the mode decides which categories exist at all, so changing it
+ * changed the dropdown above it, which is the wrong way round for a person to read.
+ * And the way out sat on that lower bar, where it looked like it belonged to the
+ * category rather than to the window.
+ *
+ * So: what you are looking at, which question you are asking, and how to leave, all
+ * on the first line; the category and the machines that run it on the second. The
+ * "Recipes for" caption is gone — the two buttons say it, and say it better for
+ * being pressable.
+ */
+function SheetBookHeader({
+  activeResource,
+  mode,
+  tabs,
+  activeRecipeMap,
+  machineRecipe,
+  onRecipeMapChange,
+  onModeChange,
+  onClose,
+}: {
+  activeResource: IndexedResource;
+  mode: "recipes" | "uses";
+  tabs: RecipeMapTab[];
+  activeRecipeMap: string;
+  machineRecipe?: RecipeSummary;
+  onRecipeMapChange: (recipeMap: string) => void;
+  onModeChange: (mode: "recipes" | "uses") => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="shrink-0 border-b-2 border-[var(--mc-55)] bg-[var(--mc-71)] p-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--mc-55)] shadow-[inset_2px_2px_0_var(--mc-25),inset_-2px_-2px_0_var(--mc-100)]">
+          <ResourceIcon
+            resource={{ ...activeResource, amount: 1 }}
+            size="sm"
+            bare
+            showAmount={false}
+            tooltip={false}
+            className="!h-full !w-full"
+            iconPixelSize={machineArtPixels(36)}
+          />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[15px] font-bold leading-tight text-[var(--mc-ink)]">
+          {resourceLabel(activeResource)}
+        </span>
+        <RecipeModeSwitch mode={mode} onModeChange={onModeChange} dense />
+        {/* On the title's line, where a window's close button lives, rather than
+            down beside the category where it read as closing the category. */}
+        <button
+          type="button"
+          title="Close recipe book (Esc)"
+          aria-label="Close recipe book"
+          onClick={onClose}
+          className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-[var(--mc-33)] bg-[var(--mc-61)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="mt-2 flex min-w-0 items-center gap-2">
+        <label className="flex min-w-0 flex-1 items-center">
+          <span className="sr-only">Category</span>
+          <select
+            value={activeRecipeMap}
+            onChange={(event) => onRecipeMapChange(event.target.value)}
+            className="h-9 w-full min-w-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
+          >
+            {tabs.map((tab) => (
+              <option key={tab.id} value={tab.id}>
+                {tab.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <CategoryMachineStrip recipe={machineRecipe} compact />
+      </div>
     </div>
   );
 }

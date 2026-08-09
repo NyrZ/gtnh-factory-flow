@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.38.1",
+    date: "2026-08-08",
+    headline: "The recipe book's head reads in the order you decide things",
+    notes: [
+      "On a phone the book now opens with the item, the Makes and Uses buttons, and the way out all on its first line, and the machine underneath them. It read backwards before: you would pick a machine, then find the Makes and Uses switch below it, and changing that changed the machine list above. The mode comes first because it decides what machines there are to pick from.",
+      "The \"Recipes for\" caption is gone. The two buttons say which one you are looking at, and you can press them.",
+      "The close button moved up beside the item's name, where a window's close button belongs, rather than sitting on the machine's row looking like it would close the machine.",
+    ],
+  },
+  {
     version: "1.38.0",
     date: "2026-08-08",
     headline: "Uses, from the items list and from inside the book",
