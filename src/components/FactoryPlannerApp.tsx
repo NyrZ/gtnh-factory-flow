@@ -227,6 +227,7 @@ export function FactoryPlannerApp() {
     // against `window.innerWidth`. The board and the panels carry their own
     // floors, which is where the guarantee belongs.
     <div className="flex h-dvh flex-col bg-canvas text-fg">
+      <RecipeBookOpener />
       <AppHeader onLoadDatasetVersion={loadDatasetVersion} />
       {isCompact ? (
         <CompactWorkspace workspace={workspace} onLoadDatasetVersion={loadDatasetVersion} />
@@ -243,6 +244,36 @@ export function FactoryPlannerApp() {
 interface WorkspaceProps {
   workspace: ReturnType<typeof useWorkspaceView>;
   onLoadDatasetVersion: (versionId: string) => void;
+}
+
+/**
+ * Asking what makes a resource has to bring its own window with it.
+ *
+ * The recipe book lives in the left column, and every way of asking — a click or
+ * R on a port row, a storage drawer, a slot in the book itself — only wrote the
+ * question into the store. With that column folded away (a rail on the desktop, a
+ * closed drawer on a phone) the answer was rendering into nothing, so clicking a
+ * slot appeared to do nothing at all. The column is the answer's window; opening
+ * it is part of answering.
+ *
+ * The resource is a fresh object on every ask, so asking the same one twice opens
+ * the column twice.
+ */
+function RecipeBookOpener() {
+  const browsedResource = useFactoryStore((state) => state.recipeBrowserResource);
+  const isCompact = useIsCompactViewport();
+
+  useEffect(() => {
+    if (!browsedResource) {
+      return;
+    }
+    // On a phone the two columns are drawers over the board, one at a time.
+    writeWorkspaceView(
+      isCompact ? { leftPanelOpen: true, rightPanelOpen: false } : { leftPanelOpen: true },
+    );
+  }, [browsedResource, isCompact]);
+
+  return null;
 }
 
 /** The board with the tab strip over it: the same on any window. */
@@ -308,17 +339,6 @@ function ColumnWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
 function CompactWorkspace({ workspace, onLoadDatasetVersion }: WorkspaceProps) {
   const openLeft = () => writeWorkspaceView({ leftPanelOpen: true, rightPanelOpen: false });
   const openRight = () => writeWorkspaceView({ leftPanelOpen: false, rightPanelOpen: true });
-
-  // Asking a port what makes it opens the recipe book, and on a phone the book
-  // lives in the left drawer: the answer has to bring its own window with it, or
-  // the tap does nothing at all. The resource is a fresh object on every ask, so
-  // asking the same one twice reopens the drawer.
-  const browsedResource = useFactoryStore((state) => state.recipeBrowserResource);
-  useEffect(() => {
-    if (browsedResource) {
-      writeWorkspaceView({ leftPanelOpen: true, rightPanelOpen: false });
-    }
-  }, [browsedResource]);
 
   return (
     <main className="relative min-h-0 flex-1 overflow-hidden">

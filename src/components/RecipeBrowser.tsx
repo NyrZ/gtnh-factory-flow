@@ -170,8 +170,13 @@ function chooseRecipeGrid(
 
   const column = columnWidth(columns);
   if (column < cardAtScaleTwo) {
-    // A phone. One recipe, drawn as large as the screen allows.
-    return { columns: 1, scale: width >= unitWidth * 2 ? 2 : 1 };
+    // A phone. One recipe, drawn to fill the width it has rather than sitting
+    // small in the middle of it: a recipe is a grid of 18px slots, and at scale 1
+    // on a 390px screen it was a postage stamp with two thirds of the drawer
+    // empty beside it. Quantised to quarter steps, because the art is pixels and
+    // a whole-pixel-ish scale keeps slot borders from smearing.
+    const filling = Math.floor(((width - CARD_ADD_GUTTER) / unitWidth) * 4) / 4;
+    return { columns: 1, scale: Math.max(1, Math.min(3, filling)) };
   }
 
   // A column with room to spare draws the recipe larger rather than leaving it

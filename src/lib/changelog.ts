@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.36.1",
+    date: "2026-08-08",
+    headline: "Asking a slot works with the column closed, and the press shows itself",
+    notes: [
+      "Clicking a slot, or pressing R or U on one, did nothing at all unless the items column happened to be open: the answer was being written into a panel that was not on screen. Asking now opens the column it answers in, on desktop and on a phone.",
+      "Pressing and holding a slot lights it up straight away, so you can see the press registering rather than waiting to find out. Holding no longer starts a wire it then drops somewhere unintended, and you can slide from the press straight onto \"what makes it\" or \"what uses it\" and let go there to pick it. Letting go first and tapping still works.",
+      "Recipes in the book fill the width of the column on a phone instead of sitting small in the middle of it, at nearly twice the size.",
+    ],
+  },
+  {
     version: "1.36.0",
     date: "2026-08-08",
     headline: "Every slot answers now, and the board takes a finger properly",
