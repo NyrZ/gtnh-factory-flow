@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.38.3",
+    date: "2026-08-08",
+    headline: "Inside a pocket, the trail is at the top where you can see it",
+    notes: [
+      "On a phone the \"Board ▸ Pocket\" trail was sitting a fifth of the way down the screen with empty board above it, because it was keeping clear of the tool buttons. It takes the top line now and the tool buttons step down a line instead.",
+      "\"Compact into pocket\" moved to the bottom of the board on a phone, where a thumb can reach it, rather than competing for the top line with everything else.",
+    ],
+  },
+  {
     version: "1.38.2",
     date: "2026-08-08",
     headline: "The tier dropdown filters the search and nothing else",

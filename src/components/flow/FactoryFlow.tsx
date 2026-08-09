@@ -3432,6 +3432,11 @@ export function FactoryFlow() {
   );
   const handleFitView = useCallback(() => frameBoardCards(), [frameBoardCards]);
 
+  // On a phone the pocket breadcrumb takes the board's top line, because where you
+  // are is the first thing to know and it was previously stranded a fifth of the
+  // way down the screen keeping clear of these. They step down a line instead.
+  const toolsStepAside = isCompact && Boolean(activePocketId);
+
   // Whatever just landed says so, twice. Done to the DOM rather than through the
   // node objects on purpose: a transient outline is not state the board should
   // rebuild for, and threading it through would hand every card a new identity
@@ -3888,6 +3893,7 @@ export function FactoryFlow() {
         compact={isCompact}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
+        shiftedDown={toolsStepAside}
       />
       <BoardViewToolbar
         view={boardView}
@@ -3896,19 +3902,22 @@ export function FactoryFlow() {
         compact={isCompact}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
+        shiftedDown={toolsStepAside}
       />
       <SourceToolbar
         compact={isCompact}
         openGroup={openToolGroup}
         onToggleGroup={handleToolGroupToggle}
+        shiftedDown={toolsStepAside}
       />
       <BoardHelp compact={isCompact} />
       {overwritePicking ? (
         <div
           className={[
-            "pointer-events-none absolute left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 border-2 border-amber-500 bg-[#2a1e07]/95 px-3 py-1.5 font-mono text-[12px] text-amber-200 shadow-[4px_4px_0_rgba(0,0,0,0.45)]",
-            // Below the breadcrumbs when a pocket dimension is open.
-            centredBannerTop(isCompact, Boolean(activePocketId)),
+            "pointer-events-none absolute left-1/2 z-40 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-2 border-2 border-amber-500 bg-[#2a1e07]/95 px-3 py-1.5 font-mono text-[12px] text-amber-200 shadow-[4px_4px_0_rgba(0,0,0,0.45)]",
+            // An instruction about what to do next, so on a phone it goes to the
+            // bottom with the other actions. Above the compact bar if both are up.
+            actionBarPosition(isCompact, false),
           ].join(" ")}
         >
           {overwritePicking.create ? (
@@ -4082,7 +4091,25 @@ function SelectionHandoffController({
  */
 function centredBannerTop(compact: boolean, second: boolean): string {
   if (compact) {
-    return second ? "top-[8.5rem]" : "top-24";
+    // The top line, and the tool triggers move down out of its way (see
+    // `bannerShiftsTools`). It used to sit on the third line to stay clear of
+    // them, which left it stranded a fifth of the way down the screen with an
+    // empty band above it — a breadcrumb belongs at the top of what it describes.
+    return second ? "top-14" : "top-3";
+  }
+  return second ? "top-14" : "top-3";
+}
+
+/**
+ * A bar of actions, at the bottom on a phone.
+ *
+ * Where you are goes at the top; what you can do goes within reach of a thumb.
+ * Both were competing for the top line, and the top line already has the three
+ * tool triggers on it.
+ */
+function actionBarPosition(compact: boolean, second: boolean): string {
+  if (compact) {
+    return second ? "bottom-28" : "bottom-16";
   }
   return second ? "top-14" : "top-3";
 }
@@ -4177,17 +4204,18 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
   return (
     <div
       data-board-toolbar
-      // Sits below the breadcrumb strip when both are up.
+      // A button, so on a phone it sits at the bottom in reach of a thumb; on a
+      // desktop it stays at the top, below the breadcrumb strip when both are up.
       className={[
         "nodrag pointer-events-auto absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-2",
-        centredBannerTop(isCompact, Boolean(activePocketId)),
+        actionBarPosition(isCompact, Boolean(activePocketId)),
       ].join(" ")}
     >
       <button
         type="button"
         onClick={onCompact}
         title="Compact the selected cards into a pocket dimension (Ctrl+G): they become one card with the group's inputs and outputs, and you can dive in any time"
-        className="flex h-9 items-center gap-1.5 border-2 border-[#8d6fd1] bg-[#3b2d52] px-3 font-mono text-[12px] font-bold text-white shadow-[inset_2px_2px_0_#5e4a85,inset_-2px_-2px_0_#241b33] hover:brightness-110"
+        className="flex h-9 items-center gap-1.5 whitespace-nowrap border-2 border-[#8d6fd1] bg-[#3b2d52] px-3 font-mono text-[12px] font-bold text-white shadow-[inset_2px_2px_0_#5e4a85,inset_-2px_-2px_0_#241b33] hover:brightness-110"
       >
         <Box className="h-4 w-4" />
         Compact {selectionCount} into pocket
@@ -4364,10 +4392,13 @@ const SourceToolbar = memo(function SourceToolbar({
   compact,
   openGroup,
   onToggleGroup,
+  shiftedDown,
 }: {
   compact: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
+  /** A banner has the top line: step down one. */
+  shiftedDown: boolean;
 }) {
   const addCropFarmNode = useFactoryStore((state) => state.addCropFarmNode);
   const addTrashNode = useFactoryStore((state) => state.addTrashNode);
@@ -4390,7 +4421,13 @@ const SourceToolbar = memo(function SourceToolbar({
     <div
       data-board-toolbar
       data-help-anchor="build"
-      className="nodrag pointer-events-none absolute left-3 top-3 z-20 flex items-start gap-2"
+      className={[
+        "nodrag pointer-events-none absolute left-3 z-20 flex items-start gap-2",
+        // Inside a pocket the breadcrumb takes the top line and every trigger row
+        // steps down to make room; its fold-out follows, since that is positioned
+        // against this root.
+        shiftedDown ? "top-14" : "top-3",
+      ].join(" ")}
     >
       {/* History first, and set apart: it undoes everything the rest of the
           board does, so it does not belong inside the add-a-node group. */}
@@ -5026,6 +5063,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
   compact,
   openGroup,
   onToggleGroup,
+  shiftedDown,
 }: {
   view: BoardView;
   onChange: (patch: Partial<BoardView>) => void;
@@ -5034,6 +5072,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
   compact: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
+  shiftedDown: boolean;
 }) {
   const {
     canvasPattern,
@@ -5069,7 +5108,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         // Folded, this is one button, and it joins the paint trigger on the top
         // line rather than holding a line of its own below it — which also keeps
         // both fold-out rows on the same clear second line.
-        compact ? "right-14 top-3" : "right-3 top-16",
+        compact ? (shiftedDown ? "right-14 top-14" : "right-14 top-3") : "right-3 top-16",
       ].join(" ")}
     >
       <ToolGroup
@@ -5211,6 +5250,7 @@ const PaintToolbar = memo(function PaintToolbar({
   compact,
   openGroup,
   onToggleGroup,
+  shiftedDown,
 }: {
   paintMode?: FactoryNodeColorTag | null;
   onPaintModeChange: (tag: FactoryNodeColorTag | null | undefined) => void;
@@ -5223,6 +5263,7 @@ const PaintToolbar = memo(function PaintToolbar({
   compact: boolean;
   openGroup?: ToolGroupId;
   onToggleGroup: (group: ToolGroupId | undefined) => void;
+  shiftedDown: boolean;
 }) {
   const activeColor = GT_NODE_COLORS[activeColorTag];
   const [isPaletteOpen, setPaletteOpen] = useState(false);
@@ -5242,7 +5283,8 @@ const PaintToolbar = memo(function PaintToolbar({
     <div
       data-board-toolbar
       className={[
-        "nodrag pointer-events-none absolute right-3 top-3 flex items-start",
+        "nodrag pointer-events-none absolute right-3 flex items-start",
+        shiftedDown ? "top-14" : "top-3",
         // An open palette hangs below its own row and crosses the view
         // toolbar underneath. Both toolbars sit at z-20 and the view row is
         // later in the DOM, so it painted OVER the swatches and took the
