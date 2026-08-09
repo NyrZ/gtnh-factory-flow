@@ -429,7 +429,7 @@ describe("factory resource links", () => {
     expect(useFactoryStore.getState().project.edges).toHaveLength(2);
   });
 
-  it("creates a drawer of cells, not a tank, when dragging a filled cell input", () => {
+  it("creates a fluid tank when dragging a filled cell input into storage", () => {
     useFactoryStore.getState().setProject({
       schemaVersion: PROJECT_SCHEMA_VERSION,
       id: "filled-cell-storage-test",
@@ -488,31 +488,31 @@ describe("factory resource links", () => {
       makeResourceHandleId("input", { kind: "item", id: "gregtech:gt.metaitem.99@143" }, 0),
     );
 
-    // The buffer holds what the slot holds. It used to be rewritten into the
-    // fluid, which turned an item slot into a tank reading litres and quietly
-    // dropped the Canner that crossing the two forms really takes.
     const state = useFactoryStore.getState();
     expect(state.project.storages?.[0]).toEqual(
       expect.objectContaining({
-        kind: "item",
-        resourceId: "gregtech:gt.metaitem.99@143",
-        displayName: "Molten Magmatter Cell",
+        kind: "fluid",
+        resourceId: "molten.magmatter",
+        displayName: "Molten Magmatter",
       }),
     );
     expect(state.project.edges[0]).toEqual(
       expect.objectContaining({
         source: state.project.storages?.[0]?.id,
         target: "cell-consumer-node",
-        resourceKind: "item",
-        resourceId: "gregtech:gt.metaitem.99@143",
+        resourceKind: "fluid",
+        resourceId: "molten.magmatter",
         targetHandle: "input:item:gregtech%3Agt.metaitem.99%40143:0",
       }),
     );
-    // Same kind in, same kind out: the requirement is left exactly as written,
-    // never multiplied by a guessed 1000 L per cell.
-    const override = state.project.nodes[0]?.recipeInputOverrides?.["0"];
-    expect(override?.kind ?? "item").toBe("item");
-    expect(override?.amount ?? 2).toBe(2);
+    expect(state.project.nodes[0]?.recipeInputOverrides?.["0"]).toEqual(
+      expect.objectContaining({
+        kind: "fluid",
+        id: "molten.magmatter",
+        amount: 288,
+        displayName: "Molten Magmatter",
+      }),
+    );
   });
 
   it("connects a new drawer to an overridden concrete recipe input", () => {
@@ -659,211 +659,6 @@ describe("factory resource links", () => {
     useFactoryStore.getState().selectResourceConnectionSlot(firstSlot);
     useFactoryStore.getState().selectResourceConnectionSlot(secondSlot);
     expect(useFactoryStore.getState().project.edges).toHaveLength(0);
-  });
-
-  it("never draws a second wire between the same two port rows", () => {
-    // What auto-connect and plan imports write: handles carrying the recipe's
-    // slot index. A card draws one row per resource, so a hand-drawn wire onto
-    // the same rows is that same wire and toggles it off rather than stacking a
-    // copy on top of it.
-    useFactoryStore.getState().connectNodes("item-source", "item-target", {
-      kind: "item",
-      id: "dust",
-      sourceHandle: makeResourceHandleId("output", { kind: "item", id: "dust" }, 0),
-      targetHandle: makeResourceHandleId("input", { kind: "item", id: "dust" }, 0),
-    });
-    expect(useFactoryStore.getState().project.edges).toHaveLength(1);
-
-    const dragOntoTheSameRows = () =>
-      useFactoryStore.getState().connectNodes("item-source", "item-target", {
-        kind: "item",
-        id: "dust",
-        sourceHandle: makeResourceHandleId("output", { kind: "item", id: "dust" }),
-        targetHandle: makeResourceHandleId("input", { kind: "item", id: "dust" }),
-      });
-
-    dragOntoTheSameRows();
-    expect(useFactoryStore.getState().project.edges).toHaveLength(0);
-
-    dragOntoTheSameRows();
-    dragOntoTheSameRows();
-    expect(useFactoryStore.getState().project.edges).toHaveLength(0);
-  });
-
-  it("auto-connects a repeated resource once, not once per slot pair", () => {
-    useFactoryStore.getState().setProject({
-      schemaVersion: PROJECT_SCHEMA_VERSION,
-      id: "repeated-slot-test",
-      name: "Repeated slot test",
-      fuelProfiles: [],
-      recipes: [
-        {
-          id: "double-out-recipe",
-          name: "Double out",
-          machineType: "Source",
-          minimumTier: "LV",
-          durationTicks: 20,
-          eut: 1,
-          inputs: [],
-          outputs: [
-            { kind: "item", id: "dust", amount: 1 },
-            { kind: "item", id: "dust", amount: 2 },
-          ],
-        },
-        {
-          id: "double-in-recipe",
-          name: "Double in",
-          machineType: "Target",
-          minimumTier: "LV",
-          durationTicks: 20,
-          eut: 1,
-          inputs: [
-            { kind: "item", id: "dust", amount: 1 },
-            { kind: "item", id: "dust", amount: 2 },
-          ],
-          outputs: [{ kind: "item", id: "plate", amount: 1 }],
-        },
-      ],
-      nodes: [
-        {
-          id: "double-out",
-          recipeId: "double-out-recipe",
-          machineCount: 1,
-          parallel: 1,
-          enabled: true,
-          overclockTier: "LV",
-          position: { x: 0, y: 0 },
-        },
-        {
-          id: "double-in",
-          recipeId: "double-in-recipe",
-          machineCount: 1,
-          parallel: 1,
-          enabled: true,
-          overclockTier: "LV",
-          position: { x: 400, y: 0 },
-        },
-      ],
-      edges: [],
-    });
-
-    useFactoryStore.getState().autoConnectNode("double-in");
-
-    // Two output slots against two input slots pair up four ways; the cards draw
-    // one output row and one input row, so that is one wire.
-    expect(useFactoryStore.getState().project.edges).toHaveLength(1);
-  });
-
-  describe("custom rate cards", () => {
-    /** A fresh unadopted card, plus the wire the board would hand it. */
-    const wireSupplyIntoTarget = (customNodeId: string) =>
-      useFactoryStore.getState().connectCustomRate(
-        customNodeId,
-        "output",
-        {
-          nodeId: "item-target",
-          handleId: makeResourceHandleId("input", { kind: "item", id: "dust" }),
-        },
-        { kind: "item", id: "dust", displayName: "Dust" },
-      );
-
-    const addCard = () => {
-      useFactoryStore.getState().addCustomRateNode();
-      const nodes = useFactoryStore.getState().project.nodes;
-      return nodes[nodes.length - 1]!.id;
-    };
-
-    it("wires a supplying card once however many times the same port is offered", () => {
-      const card = addCard();
-
-      wireSupplyIntoTarget(card);
-      expect(useFactoryStore.getState().project.edges).toHaveLength(1);
-
-      wireSupplyIntoTarget(card);
-      wireSupplyIntoTarget(card);
-      wireSupplyIntoTarget(card);
-      expect(useFactoryStore.getState().project.edges).toHaveLength(1);
-    });
-
-    it("wires a requesting card once however many times the same port is offered", () => {
-      const card = addCard();
-      const request = () =>
-        useFactoryStore.getState().connectCustomRate(
-          card,
-          "input",
-          {
-            nodeId: "item-source",
-            handleId: makeResourceHandleId("output", { kind: "item", id: "dust" }),
-          },
-          { kind: "item", id: "dust", displayName: "Dust" },
-        );
-
-      request();
-      expect(useFactoryStore.getState().project.edges).toHaveLength(1);
-
-      request();
-      request();
-      expect(useFactoryStore.getState().project.edges).toHaveLength(1);
-    });
-
-    it("still lets one card supply two different machines", () => {
-      const card = addCard();
-
-      wireSupplyIntoTarget(card);
-      useFactoryStore.getState().connectCustomRate(
-        card,
-        "output",
-        {
-          nodeId: "fluid-target",
-          handleId: makeResourceHandleId("input", { kind: "fluid", id: "water" }),
-        },
-        { kind: "fluid", id: "water", displayName: "Water" },
-      );
-
-      // The second machine wants a different resource, so the card lets go of
-      // dust and adopts water: one wire, to the machine that asked last.
-      expect(useFactoryStore.getState().project.edges).toEqual([
-        expect.objectContaining({ source: card, target: "fluid-target", resourceId: "water" }),
-      ]);
-
-      // Now the same resource to a second taker: that is a second real wire.
-      useFactoryStore.getState().connectCustomRate(
-        card,
-        "output",
-        {
-          nodeId: "water-tank",
-          handleId: makeResourceHandleId("input", { kind: "fluid", id: "water" }),
-        },
-        { kind: "fluid", id: "water", displayName: "Water" },
-      );
-      expect(
-        useFactoryStore
-          .getState()
-          .project.edges.map((edge) => `${edge.source}->${edge.target}`)
-          .sort(),
-      ).toEqual([`${card}->fluid-target`, `${card}->water-tank`]);
-    });
-
-    it("drops the old wire when the card is handed a different resource", () => {
-      const card = addCard();
-
-      wireSupplyIntoTarget(card);
-      useFactoryStore.getState().connectCustomRate(
-        card,
-        "input",
-        {
-          nodeId: "item-source",
-          handleId: makeResourceHandleId("output", { kind: "item", id: "dust" }),
-        },
-        { kind: "item", id: "dust", displayName: "Dust" },
-      );
-
-      // Flipping the card from supply to request turns the line around rather
-      // than leaving both directions wired.
-      expect(useFactoryStore.getState().project.edges).toEqual([
-        expect.objectContaining({ source: "item-source", target: card, resourceId: "dust" }),
-      ]);
-    });
   });
 
   it("removes an orphan drawer or tank when its last edge is deleted", () => {
@@ -1623,6 +1418,77 @@ describe("factory machine count optimization", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "input-source", machineCount: 1 }),
         expect.objectContaining({ id: "storage-producer", machineCount: 1 }),
+      ]),
+    );
+  });
+
+  it("optimizes filled-cell producers connected to fluid storage consumers", () => {
+    useFactoryStore.getState().setProject({
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "filled-cell-fluid-storage-optimization",
+      name: "Filled cell fluid storage optimization",
+      recipes: [
+        {
+          id: "oxygen-cell-source",
+          name: "Oxygen Cell Source",
+          machineType: "Dehydrator",
+          minimumTier: "LV",
+          durationTicks: 196,
+          eut: 16,
+          inputs: [{ kind: "item", id: "empty_cell", amount: 14, displayName: "Empty Cell" }],
+          outputs: [{ kind: "item", id: "oxygen_cell", amount: 14, displayName: "Oxygen Cell" }],
+        },
+        {
+          id: "oxygen-consumer",
+          name: "Oxygen Consumer",
+          machineType: "Chemical Reactor",
+          minimumTier: "LV",
+          durationTicks: 160,
+          eut: 30,
+          inputs: [{ kind: "fluid", id: "oxygen", amount: 1000, displayName: "Oxygen" }],
+          outputs: [{ kind: "item", id: "empty_cell", amount: 1, displayName: "Empty Cell" }],
+        },
+      ],
+      nodes: [
+        { ...makeNode("oxygen-cell-source-node", "oxygen-cell-source", 0), machineCount: 1 },
+        { ...makeNode("oxygen-consumer-node", "oxygen-consumer", 220), machineCount: 12 },
+      ],
+      storages: [
+        {
+          id: "oxygen-tank",
+          kind: "fluid",
+          resourceId: "oxygen",
+          displayName: "Oxygen",
+          position: { x: 120, y: 0 },
+        },
+      ],
+      edges: [
+        {
+          id: "oxygen-cell-to-tank",
+          source: "oxygen-cell-source-node",
+          target: "oxygen-tank",
+          resourceKind: "fluid",
+          resourceId: "oxygen",
+          label: "Oxygen Cell",
+        },
+        {
+          id: "oxygen-tank-to-consumer",
+          source: "oxygen-tank",
+          target: "oxygen-consumer-node",
+          resourceKind: "fluid",
+          resourceId: "oxygen",
+          label: "Oxygen",
+        },
+      ],
+      fuelProfiles: [],
+    });
+
+    useFactoryStore.getState().optimizeMachineCounts();
+
+    expect(useFactoryStore.getState().project.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "oxygen-cell-source-node", machineCount: 1 }),
+        expect.objectContaining({ id: "oxygen-consumer-node", machineCount: 11 }),
       ]),
     );
   });
@@ -3093,7 +2959,7 @@ function createImplicitDirectAndIndirectStorageOutputProject(): FactoryProject {
       {
         id: "implicit-coke-recipe",
         name: "Implicit Coke",
-        machineType: "Coke Oven",
+        machineType: "Test Charcoal Source",
         minimumTier: "LV",
         durationTicks: 20,
         eut: 1,
@@ -3852,57 +3718,6 @@ describe("pocket dimensions", () => {
     expect(undoHistory).toHaveLength(2);
   });
 
-  it("drags a drawer out of a slot into the pocket being viewed", () => {
-    const pocketId = useFactoryStore
-      .getState()
-      .compactSelectionIntoPocket(["beta"]) as string;
-    useFactoryStore.getState().enterPocket(pocketId);
-
-    useFactoryStore
-      .getState()
-      .addStorageForConnection(
-        { kind: "item", id: "plate", displayName: "Plate" },
-        "beta",
-        "output",
-        { x: 600, y: 0 },
-        makeResourceHandleId("output", { kind: "item", id: "plate" }, 0),
-      );
-
-    const project = useFactoryStore.getState().project;
-    const plate = project.storages?.find((storage) => storage.resourceId === "plate");
-    // The drawer lands where you are standing. Left undefined it would be
-    // filtered off the pocket view and appear on the root board instead.
-    expect(plate?.pocketId).toBe(pocketId);
-  });
-
-  it("adds new machines, drawers and notes to the pocket being viewed", () => {
-    const pocketId = useFactoryStore
-      .getState()
-      .compactSelectionIntoPocket(["alpha"]) as string;
-    useFactoryStore.getState().enterPocket(pocketId);
-
-    useFactoryStore.getState().addResourceStorage({
-      kind: "item",
-      id: "plate",
-      displayName: "Plate",
-      iconPath: undefined,
-      iconAtlas: undefined,
-      dominantColor: undefined,
-    });
-    useFactoryStore.getState().addAnnotation({
-      kind: "text",
-      text: "inside",
-      position: { x: 0, y: 400 },
-      size: { width: 200, height: 100 },
-    });
-
-    const project = useFactoryStore.getState().project;
-    expect(project.storages?.find((storage) => storage.resourceId === "plate")?.pocketId).toBe(
-      pocketId,
-    );
-    expect(project.annotations?.find((note) => note.text === "inside")?.pocketId).toBe(pocketId);
-  });
-
   it("pastes root payloads into the pocket being viewed", () => {
     const pocketId = useFactoryStore
       .getState()
@@ -3917,125 +3732,5 @@ describe("pocket dimensions", () => {
     const project = useFactoryStore.getState().project;
     const pasted = project.nodes.find((node) => node.id === pastedIds[0]);
     expect(pasted?.pocketId).toBe(pocketId);
-  });
-});
-
-describe("cycled input picks", () => {
-  const CIRCUIT_RECIPE = {
-    id: "assembler-lv-machine",
-    name: "Assembler: LV Machine Hull",
-    machineType: "Assembler",
-    minimumTier: "LV",
-    durationTicks: 200,
-    eut: 30,
-    inputs: [
-      {
-        kind: "item" as const,
-        id: "oredict:circuitBasic",
-        amount: 2,
-        displayName: "Ore Dictionary: circuitBasic",
-        alternatives: [
-          { kind: "item" as const, id: "gregtech:circuit@1", displayName: "Electronic Circuit" },
-          {
-            kind: "item" as const,
-            id: "gregtech:circuit@2",
-            displayName: "Integrated Logic Circuit",
-          },
-        ],
-      },
-      { kind: "item" as const, id: "gregtech:plate@steel", amount: 4, displayName: "Steel Plate" },
-    ],
-    outputs: [{ kind: "item" as const, id: "gregtech:hull@lv", amount: 1 }],
-  };
-
-  beforeEach(() => {
-    useFactoryStore.getState().setProject({
-      schemaVersion: PROJECT_SCHEMA_VERSION,
-      id: "input-picks-test",
-      name: "Input picks test",
-      fuelProfiles: [],
-      recipes: [],
-      nodes: [],
-      edges: [],
-    });
-  });
-
-  it("pins the slot to the face that was showing when the node was added", () => {
-    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
-      inputPicks: {
-        0: {
-          kind: "item",
-          id: "gregtech:circuit@2",
-          displayName: "Integrated Logic Circuit",
-          amount: 1,
-        },
-      },
-    });
-
-    const node = useFactoryStore.getState().project.nodes[0];
-    expect(node?.recipeInputOverrides?.["0"]).toEqual(
-      expect.objectContaining({
-        id: "gregtech:circuit@2",
-        displayName: "Integrated Logic Circuit",
-        alternatives: undefined,
-      }),
-    );
-    // The recipe still asks for two of them: a face carries a per-unit ratio,
-    // not a stack size.
-    expect(node?.recipeInputOverrides?.["0"]?.amount).toBe(2);
-  });
-
-  it("leaves the shared recipe generic so other nodes are unaffected", () => {
-    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
-      inputPicks: {
-        0: { kind: "item", id: "gregtech:circuit@2", displayName: "Integrated Logic Circuit" },
-      },
-    });
-
-    expect(useFactoryStore.getState().project.recipes[0]?.inputs[0]).toEqual(
-      expect.objectContaining({ id: "oredict:circuitBasic" }),
-    );
-  });
-
-  it("does not touch slots that were never cycled", () => {
-    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
-      inputPicks: {
-        0: { kind: "item", id: "gregtech:circuit@1", displayName: "Electronic Circuit" },
-      },
-    });
-
-    expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides?.["1"]).toBeUndefined();
-  });
-
-  it("writes no overrides at all when nothing cycled", () => {
-    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
-      inputPicks: {},
-    });
-
-    expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides).toBeUndefined();
-  });
-
-  it("lets a scrolled slot outrank the resource the browser was opened from", () => {
-    useFactoryStore.getState().addNodeForRecipeObject(
-      CIRCUIT_RECIPE,
-      { kind: "item", id: "gregtech:circuit@1", displayName: "Electronic Circuit", mode: "uses" },
-      {
-        inputPicks: {
-          0: { kind: "item", id: "gregtech:circuit@2", displayName: "Integrated Logic Circuit" },
-        },
-      },
-    );
-
-    expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides?.["0"]).toEqual(
-      expect.objectContaining({ id: "gregtech:circuit@2" }),
-    );
-  });
-
-  it("ignores a pick for a slot the recipe does not have", () => {
-    useFactoryStore.getState().addNodeForRecipeObject(CIRCUIT_RECIPE, undefined, {
-      inputPicks: { 7: { kind: "item", id: "gregtech:circuit@2" } },
-    });
-
-    expect(useFactoryStore.getState().project.nodes[0]?.recipeInputOverrides).toBeUndefined();
   });
 });

@@ -352,6 +352,28 @@ const HEAT_INCREMENT_CONTROL = countControl(
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
 );
 
+/**
+ * The dataset's own coke oven knobs. Its slice options are keyed "slice-1"
+ * upward rather than by number, so the count is the option's position plus one
+ * and `value` would not read it.
+ */
+const COKE_CASING = "cokeOvenCasing";
+const COKE_SLICES = "cokeOvenSlices";
+
+const SPIN_MODE = "spinmatronMode";
+const TURBINE_TIER = "sumTurbineTier";
+const SPIN_FUEL = "spinmatronFuel";
+const SPIN_MODE_CONTROL = choiceControl(SPIN_MODE, "Mode", ["Standard", "Light", "Heavy"]);
+const SPIN_FUEL_CONTROL = choiceControl(SPIN_FUEL, "Fuel", [
+  "Kerosene",
+  "Biocatalysed Propulsion Fluid",
+]);
+const TURBINE_TIER_CONTROL = countControl(
+  TURBINE_TIER,
+  "Sum Turbine Tier",
+  [1, 2, 3, 4, 6, 8, 12, 16, 24, 32],
+);
+
 /** The reference's speeding pipe casing count starts at 4. */
 const NEUTRON_PIPE_CONTROL = countControl(
   "speedingPipeCasing",
@@ -654,6 +676,62 @@ const MACHINES: Record<string, MachineBehaviour> = {
     note: "Assumes a perfect fill rate.",
   },
   "Research Station": { overclock: OVERCLOCK.normal(), aliases: ["Research station"] },
+
+  // -- Machines our dataset names differently from the reference -----------
+  "Multiblock Electrolyzer": {
+    aliases: ["Industrial Electrolyzer"],
+    overclock: OVERCLOCK.normal(),
+    speed: 2.8,
+    power: 0.9,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  "Large Sifter": {
+    aliases: ["Large Sifter Control Block"],
+    overclock: OVERCLOCK.normal(),
+    speed: 5,
+    power: 0.75,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  "Industrial Forming Press": {
+    aliases: ["Industrial Material Press"],
+    overclock: OVERCLOCK.normal(),
+    speed: 6,
+    parallels: (c) => c.voltageTier * 4,
+  },
+  "Coke Oven": {
+    aliases: ["Industrial Coke Oven"],
+    overclock: OVERCLOCK.normal(),
+    // Coils are a 2% EU discount each, compounding, and nothing else. The
+    // dataset's own coil control is kept so the tier list and icons stay.
+    power: (c) => 0.98 ** (c.tier(COIL) - 1),
+    parallels: (c) => {
+      const heatProof = c.tier(COKE_CASING) === 1;
+      const base = heatProof ? 32 : 16;
+      const perSlice = heatProof ? 16 : 8;
+      return base + (c.value(COKE_SLICES) - 1) * perSlice;
+    },
+    note: "Eternal coils are needed for more than 15 slices.",
+  },
+
+  // -- Remaining machines whose formulas need no recipe metadata -----------
+  "Pseudostable Black Hole Containment Field": {
+    overclock: OVERCLOCK.normal(),
+    speed: 5,
+    power: 0.7,
+    parallels: (c) => c.voltageTier * 8,
+    note: "Parallels also depend on stability, which is not modelled.",
+  },
+  "Spinmatron-2737": {
+    overclock: OVERCLOCK.normal(),
+    speed: (c) => 3 * (c.tier(SPIN_MODE) === 1 ? 2 : 1),
+    power: (c) => 0.7 * (c.tier(SPIN_MODE) === 2 ? 16 : 1),
+    parallels: (c) =>
+      Math.ceil(
+        (c.value(TURBINE_TIER) * 4 * (c.tier(SPIN_FUEL) === 1 ? 1.25 : 1)) /
+          (c.tier(SPIN_MODE) === 2 ? 32 : 1),
+      ),
+    controls: [SPIN_MODE_CONTROL, TURBINE_TIER_CONTROL, SPIN_FUEL_CONTROL],
+  },
 };
 
 const BY_NAME = new Map<string, MachineBehaviour>();
