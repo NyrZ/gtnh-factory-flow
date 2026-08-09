@@ -459,7 +459,9 @@ const MACHINES: Record<string, MachineBehaviour> = {
   },
   "Dissolution Tank": { overclock: OVERCLOCK.normal() },
   "Distillation Tower": { overclock: OVERCLOCK.normal() },
-  Furnace: { overclock: OVERCLOCK.normal() },
+  // The reference's "Furnace" is the singleblock, and it carries no
+  // coefficients worth having. Listing it here would only tell the sub-tick
+  // check it is a multiblock, which it is not.
   "Implosion Compressor": { overclock: OVERCLOCK.normal() },
   "Industrial Centrifuge": {
     overclock: OVERCLOCK.normal(),

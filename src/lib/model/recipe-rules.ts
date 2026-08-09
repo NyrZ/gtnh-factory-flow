@@ -120,6 +120,7 @@ export function applyMachineHandlerToRecipe(
       maxParallel: handler.maxParallel ?? recipe.machineProfile?.maxParallel,
       eutLimit: handler.eutLimit ?? recipe.machineProfile?.eutLimit,
       perfectOverclock: handler.perfectOverclock ?? recipe.machineProfile?.perfectOverclock,
+      kind: handler.kind ?? recipe.machineProfile?.kind,
       notes: handler.notes ?? recipe.machineProfile?.notes,
     },
   };
