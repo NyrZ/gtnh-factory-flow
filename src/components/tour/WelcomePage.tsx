@@ -67,22 +67,16 @@ function MachineAccuracyNotice() {
           Machine rates are still being checked
         </p>
         <p className="mt-1 text-xs leading-relaxed text-amber-100/90">
-          {VERIFIED_MACHINE_COUNT} of {TOTAL_MULTIBLOCK_COUNT} multiblocks use speeds, parallels and
-          overclocks checked against the game&rsquo;s own code. The rest are close but unconfirmed,
-          and some read low at high voltage. Steam machines and fusion reactors are not converted
-          yet.
-        </p>
-        <p className="mt-1.5 text-xs leading-relaxed text-amber-100/90">
-          Rate not matching your world?{" "}
+          {`${VERIFIED_MACHINE_COUNT} of ${TOTAL_MULTIBLOCK_COUNT} multiblocks are verified against the game's code. The rest may be off, and steam and fusion are not converted yet. `}
           <a
             href={BUG_REPORT_URL}
             target="_blank"
             rel="noreferrer"
             className="font-semibold text-amber-200 underline underline-offset-2 hover:text-amber-100"
           >
-            Report it
-          </a>{" "}
-          with the machine and what you measured. That is how the last few were found.
+            Report a wrong rate
+          </a>
+          .
         </p>
       </div>
     </section>
