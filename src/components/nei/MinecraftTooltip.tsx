@@ -17,6 +17,38 @@ import { createPortal } from "react-dom";
  */
 export const WHEEL_STEPS_IN_PLACE_ATTRIBUTE = "data-tooltip-wheel-steps";
 
+/**
+ * Whether the last thing to touch the screen was a finger.
+ *
+ * A tap fires a full set of MOUSE events after its touch ones — mousemove,
+ * mousedown, mouseup, click — because that is how the web keeps hover-driven
+ * pages usable. So a tap opened every tooltip it crossed, and then nothing ever
+ * closed them: `mouseleave` needs a pointer to leave, and the finger is already
+ * gone. They sat there until the next tap.
+ *
+ * Pointer events do carry the truth, so they are what gets asked. A real mouse
+ * moving sets this false on its first move, which is what keeps a laptop with a
+ * touchscreen working both ways round.
+ */
+let lastPointerWasTouch = false;
+let pointerWatchAttached = false;
+
+function isTouchPointer(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  if (!pointerWatchAttached) {
+    pointerWatchAttached = true;
+    const remember = (event: PointerEvent) => {
+      lastPointerWasTouch = event.pointerType !== "mouse";
+    };
+    // Capture, and passive: this only ever writes one boolean.
+    window.addEventListener("pointerdown", remember, { capture: true, passive: true });
+    window.addEventListener("pointermove", remember, { capture: true, passive: true });
+  }
+  return lastPointerWasTouch;
+}
+
 export function MinecraftTooltip({
   label,
   content,
@@ -49,6 +81,12 @@ export function MinecraftTooltip({
 
   const handleMouseMove = (event: MouseEvent) => {
     if (lines.length === 0 && !hasContent) {
+      return;
+    }
+
+    // A finger has no hover to answer, and no way to stop hovering.
+    if (isTouchPointer()) {
+      clearTooltip();
       return;
     }
 

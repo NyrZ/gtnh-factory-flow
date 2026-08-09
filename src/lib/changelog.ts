@@ -26,6 +26,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Double tap the board to zoom in on the spot you tapped. Double tap and slide up or down to zoom in and out smoothly, like a map. Pinching still works.",
       "Swiping a drawer out no longer means hitting the little tab: a swipe in from anywhere down the left or right side of the board pulls that side's drawer out, and it follows your thumb. With one open, a swipe anywhere at all puts it away.",
       "On a touchscreen a card now moves only after you tap to select it. Dragging an unselected card pans the board, so a plan too dense to have gaps in it can still be moved around.",
+      "Hover panels no longer stick to the screen on a touchscreen. A tap makes the browser pretend a mouse arrived, so every tooltip you crossed opened and then had nothing to close it, and they piled up until the next tap. They only answer a real pointer now.",
     ],
   },
   {

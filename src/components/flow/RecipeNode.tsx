@@ -1965,11 +1965,62 @@ function PortBrowseMenu({
   const width = 168;
   const left = Math.min(Math.max(8, at.x - width / 2), window.innerWidth - width - 8);
   const top = Math.min(at.y + 12, window.innerHeight - 132);
+  // The finger that opened this menu is still on the screen, and lifting it fires
+  // the compatibility mouse events every tap fires — which read as a tap on the
+  // backdrop and closed the menu before it could be read. The gesture that opened
+  // it cannot also dismiss it.
+  const [openedAt] = useState(() => performance.now());
+  const settled = () => performance.now() - openedAt > 350;
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // The backdrop below catches a tap anywhere, but a menu that outlives what it
+  // was pointing at is worse than no menu: the board moving, the window changing
+  // size or Escape all put it away too. Capture phase, so nothing that swallows
+  // its own events can keep the menu alive.
+  //
+  // No `blur` listener, deliberately. In the capture phase that fires for EVERY
+  // element that loses focus, not just the window — and lifting the finger that
+  // opened this menu moves focus, so the menu closed itself on release.
+  useEffect(() => {
+    const dismiss = () => onDismiss();
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onDismiss();
+      }
+    };
+    // The next press anywhere but the menu. A window listener rather than a
+    // handler on the shield below, so it fires wherever the press lands — the
+    // shield is only there to keep that press off the board.
+    const dismissOnPress = (event: PointerEvent) => {
+      // `HTMLElement`, not `Node`: in this file `Node` is React Flow's.
+      if (!settled() || menuRef.current?.contains(event.target as HTMLElement | null)) {
+        return;
+      }
+      onDismiss();
+    };
+    const options = { capture: true, passive: true } as const;
+
+    window.addEventListener("pointerdown", dismissOnPress, options);
+    window.addEventListener("wheel", dismiss, options);
+    window.addEventListener("scroll", dismiss, options);
+    window.addEventListener("resize", dismiss, options);
+    window.addEventListener("keydown", dismissOnEscape, { capture: true });
+    return () => {
+      window.removeEventListener("pointerdown", dismissOnPress, options);
+      window.removeEventListener("wheel", dismiss, options);
+      window.removeEventListener("scroll", dismiss, options);
+      window.removeEventListener("resize", dismiss, options);
+      window.removeEventListener("keydown", dismissOnEscape, { capture: true });
+    };
+  });
 
   return (
     <>
-      <div className="fixed inset-0 z-[79]" onPointerDown={onDismiss} />
+      {/* A shield, not a button: it keeps the dismissing press off the board
+          underneath, while the listener above is what actually dismisses. */}
+      <div className="fixed inset-0 z-[79]" />
       <div
+        ref={menuRef}
         style={{ left, top, width }}
         className="fixed z-[80] border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-1 font-mono shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.45)]"
       >
