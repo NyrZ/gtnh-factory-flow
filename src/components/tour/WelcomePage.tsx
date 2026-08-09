@@ -1,6 +1,15 @@
 "use client";
 
-import { Check, Compass, Download, Factory, Play, Plus, ScrollText } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Compass,
+  Download,
+  Factory,
+  Play,
+  Plus,
+  ScrollText,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { ChangelogDialog } from "@/components/ChangelogDialog";
 import {
@@ -51,27 +60,31 @@ const BUG_REPORT_URL = `https://github.com/jackwrichards/gtnh-factory-flow/issue
  */
 function MachineAccuracyNotice() {
   return (
-    <section className="rounded border border-line-strong bg-surface p-3">
-      <p className="text-xs font-semibold text-fg">Machine rates are still being checked</p>
-      <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-        {VERIFIED_MACHINE_COUNT} of {TOTAL_MULTIBLOCK_COUNT} multiblocks now use speeds, parallels
-        and overclocks checked against the game&rsquo;s own code. The rest are close but not
-        confirmed, and a few read low at high voltage. Steam machines and the fusion reactors are
-        not converted yet.
-      </p>
-      <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-        If a rate does not match your world, please{" "}
-        <a
-          href={BUG_REPORT_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="font-semibold text-cyan-400 underline-offset-2 hover:underline"
-        >
-          report it
-        </a>
-        . Say which machine and what you measured in game: that is exactly how the last few were
-        found and fixed.
-      </p>
+    <section className="flex items-start gap-2.5 rounded border border-amber-600 bg-amber-500/15 p-3">
+      <AlertTriangle className="mt-px h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-wide text-amber-300">
+          Machine rates are still being checked
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-100/90">
+          {VERIFIED_MACHINE_COUNT} of {TOTAL_MULTIBLOCK_COUNT} multiblocks use speeds, parallels and
+          overclocks checked against the game&rsquo;s own code. The rest are close but unconfirmed,
+          and some read low at high voltage. Steam machines and fusion reactors are not converted
+          yet.
+        </p>
+        <p className="mt-1.5 text-xs leading-relaxed text-amber-100/90">
+          Rate not matching your world?{" "}
+          <a
+            href={BUG_REPORT_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-amber-200 underline underline-offset-2 hover:text-amber-100"
+          >
+            Report it
+          </a>{" "}
+          with the machine and what you measured. That is how the last few were found.
+        </p>
+      </div>
     </section>
   );
 }
@@ -204,8 +217,6 @@ export function WelcomePage() {
           <RecentUploads onOpened={leaveWelcomeTab} />
         </div>
 
-        <MachineAccuracyNotice />
-
         <footer className="mt-auto border-t border-line pt-3">
           <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-fg-muted hover:text-fg">
             <input
@@ -217,6 +228,8 @@ export function WelcomePage() {
             Show this tab when the planner opens
           </label>
         </footer>
+
+        <MachineAccuracyNotice />
       </div>
       {isChangelogOpen ? <ChangelogDialog onClose={() => setChangelogOpen(false)} /> : null}
     </div>
