@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.37.2",
+    date: "2026-08-08",
+    headline: "One wire between two slots, not two",
+    notes: [
+      "Dragging a wire between two slots that were already wired used to lay a second line on top of the first, most often over a link the board had already made for you. The two copies split the rate between them, so the number on the line read half of what was really moving. That drag now unwires instead of doubling up.",
+      "Plans already carrying doubled lines are tidied up the next time they open.",
+    ],
+  },
+  {
     version: "1.37.1",
     date: "2026-08-08",
     headline: "The placement flash is easier to catch",

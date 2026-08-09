@@ -3,6 +3,11 @@
 import { create } from "zustand";
 import { createEmptyProject } from "@/examples";
 import type { DatasetManifest, RecipeDataset } from "@/lib/datasets";
+import {
+  canonicalizeResourceHandleId,
+  dedupeEdgeWires,
+  findDuplicateEdge,
+} from "@/lib/model/edge-identity";
 import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { setActiveRateUnit, type RateUnit } from "@/lib/model/rate-unit";
 import { calculateThroughput } from "@/lib/solver";
@@ -3117,7 +3122,10 @@ function buildCompatibleEdgesBetweenNodes(
     });
   });
 
-  return edges;
+  // Slots, not rows: a recipe holding the same resource in two output slots and
+  // a taker holding it in two input slots pairs up four ways, and all four land
+  // on the one pair of rows the cards actually draw.
+  return dedupeEdgeWires(edges);
 }
 
 function buildCompatibleEdgesForStorage(
@@ -3179,14 +3187,7 @@ function buildCompatibleEdgesForStorage(
     });
   }
 
-  const deduped: FactoryEdge[] = [];
-  for (const edge of edges) {
-    if (!hasDuplicateEdge(deduped, edge)) {
-      deduped.push(edge);
-    }
-  }
-
-  return deduped;
+  return dedupeEdgeWires(edges);
 }
 
 function sourceStorageResource(storage: FactoryStorage): Pick<ResourceAmount, "kind" | "id"> {
@@ -3195,18 +3196,6 @@ function sourceStorageResource(storage: FactoryStorage): Pick<ResourceAmount, "k
 
 function hasDuplicateEdge(edges: FactoryEdge[], edge: FactoryEdge): boolean {
   return Boolean(findDuplicateEdge(edges, edge));
-}
-
-function findDuplicateEdge(edges: FactoryEdge[], edge: FactoryEdge): FactoryEdge | undefined {
-  return edges.find(
-    (existing) =>
-      existing.source === edge.source &&
-      existing.target === edge.target &&
-      existing.resourceKind === edge.resourceKind &&
-      existing.resourceId === edge.resourceId &&
-      existing.sourceHandle === edge.sourceHandle &&
-      existing.targetHandle === edge.targetHandle,
-  );
 }
 
 function hasStorageEndpointConflict(project: FactoryProject, edge: FactoryEdge): boolean {
@@ -3239,12 +3228,14 @@ function getRecipeEndpointKey(project: FactoryProject, edge: FactoryEdge): strin
   const sourceIsStorage = (project.storages ?? []).some((storage) => storage.id === edge.source);
   const targetIsStorage = (project.storages ?? []).some((storage) => storage.id === edge.target);
 
+  // The port ROW is the endpoint, so the slot index comes off: one drawer per
+  // row, however the wire already on it happens to spell its handle.
   if (sourceIsStorage && !targetIsStorage) {
-    return `target:${edge.target}:${edge.targetHandle ?? ""}`;
+    return `target:${edge.target}:${canonicalizeResourceHandleId(edge.targetHandle) ?? ""}`;
   }
 
   if (targetIsStorage && !sourceIsStorage) {
-    return `source:${edge.source}:${edge.sourceHandle ?? ""}`;
+    return `source:${edge.source}:${canonicalizeResourceHandleId(edge.sourceHandle) ?? ""}`;
   }
 
   return undefined;

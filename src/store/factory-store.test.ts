@@ -661,6 +661,99 @@ describe("factory resource links", () => {
     expect(useFactoryStore.getState().project.edges).toHaveLength(0);
   });
 
+  it("never draws a second wire between the same two port rows", () => {
+    // What auto-connect and plan imports write: handles carrying the recipe's
+    // slot index. A card draws one row per resource, so a hand-drawn wire onto
+    // the same rows is that same wire and toggles it off rather than stacking a
+    // copy on top of it.
+    useFactoryStore.getState().connectNodes("item-source", "item-target", {
+      kind: "item",
+      id: "dust",
+      sourceHandle: makeResourceHandleId("output", { kind: "item", id: "dust" }, 0),
+      targetHandle: makeResourceHandleId("input", { kind: "item", id: "dust" }, 0),
+    });
+    expect(useFactoryStore.getState().project.edges).toHaveLength(1);
+
+    const dragOntoTheSameRows = () =>
+      useFactoryStore.getState().connectNodes("item-source", "item-target", {
+        kind: "item",
+        id: "dust",
+        sourceHandle: makeResourceHandleId("output", { kind: "item", id: "dust" }),
+        targetHandle: makeResourceHandleId("input", { kind: "item", id: "dust" }),
+      });
+
+    dragOntoTheSameRows();
+    expect(useFactoryStore.getState().project.edges).toHaveLength(0);
+
+    dragOntoTheSameRows();
+    dragOntoTheSameRows();
+    expect(useFactoryStore.getState().project.edges).toHaveLength(0);
+  });
+
+  it("auto-connects a repeated resource once, not once per slot pair", () => {
+    useFactoryStore.getState().setProject({
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "repeated-slot-test",
+      name: "Repeated slot test",
+      fuelProfiles: [],
+      recipes: [
+        {
+          id: "double-out-recipe",
+          name: "Double out",
+          machineType: "Source",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 1,
+          inputs: [],
+          outputs: [
+            { kind: "item", id: "dust", amount: 1 },
+            { kind: "item", id: "dust", amount: 2 },
+          ],
+        },
+        {
+          id: "double-in-recipe",
+          name: "Double in",
+          machineType: "Target",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 1,
+          inputs: [
+            { kind: "item", id: "dust", amount: 1 },
+            { kind: "item", id: "dust", amount: 2 },
+          ],
+          outputs: [{ kind: "item", id: "plate", amount: 1 }],
+        },
+      ],
+      nodes: [
+        {
+          id: "double-out",
+          recipeId: "double-out-recipe",
+          machineCount: 1,
+          parallel: 1,
+          enabled: true,
+          overclockTier: "LV",
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: "double-in",
+          recipeId: "double-in-recipe",
+          machineCount: 1,
+          parallel: 1,
+          enabled: true,
+          overclockTier: "LV",
+          position: { x: 400, y: 0 },
+        },
+      ],
+      edges: [],
+    });
+
+    useFactoryStore.getState().autoConnectNode("double-in");
+
+    // Two output slots against two input slots pair up four ways; the cards draw
+    // one output row and one input row, so that is one wire.
+    expect(useFactoryStore.getState().project.edges).toHaveLength(1);
+  });
+
   it("removes an orphan drawer or tank when its last edge is deleted", () => {
     useFactoryStore.getState().connectNodes("fluid-source", "water-tank", {
       kind: "fluid",

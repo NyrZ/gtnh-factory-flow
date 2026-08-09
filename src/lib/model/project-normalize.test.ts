@@ -121,3 +121,34 @@ describe("dropping cross-form connections on load", () => {
     ).toBeUndefined();
   });
 });
+
+describe("dropping doubled wires on load", () => {
+  it("keeps one wire when the same two rows were wired twice", () => {
+    const doubled = createCrossFormProject();
+    doubled.edges = [
+      {
+        id: "auto-connected",
+        source: "source",
+        target: "consumer",
+        sourceHandle: "output:item:oxygen_cell:0",
+        targetHandle: "input:item:oxygen_cell:0",
+        resourceKind: "item",
+        resourceId: "oxygen_cell",
+        label: "Oxygen Cell",
+      },
+      {
+        id: "hand-drawn",
+        source: "source",
+        target: "consumer",
+        sourceHandle: "output:item:oxygen_cell",
+        targetHandle: "input:item:oxygen_cell",
+        resourceKind: "item",
+        resourceId: "oxygen_cell",
+        label: "Oxygen Cell",
+      },
+    ];
+
+    const normalized = normalizeLoadedProject(doubled);
+    expect(normalized.edges.map((edge) => edge.id)).toEqual(["auto-connected"]);
+  });
+});

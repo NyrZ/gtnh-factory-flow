@@ -1,6 +1,7 @@
 import type { FactoryProject } from "./types";
 import { normalizeProjectFuelProfiles } from "./fuels";
 import { isCustomRateRecipe, releaseCustomRates } from "./custom-rate";
+import { dedupeEdgeWires } from "./edge-identity";
 import { snapPositionToGrid, snapSizeUpToGrid } from "@/lib/board-grid";
 
 /**
@@ -15,10 +16,27 @@ export function normalizeLoadedProject(project: FactoryProject): FactoryProject 
   return snapProjectToGrid(
     repairPocketReferences(
       unpaintCustomRateCards(
-        releaseCustomRates(dropCrossFormConnections(normalizeProjectFuelProfiles(project))),
+        releaseCustomRates(
+          dropDuplicateEdges(dropCrossFormConnections(normalizeProjectFuelProfiles(project))),
+        ),
       ),
     ),
   );
+}
+
+/**
+ * Drops wires that another wire on the board already draws.
+ *
+ * A card shows one port row per resource per side, so two wires between the
+ * same two rows carrying the same resource are one line drawn twice: they sit on
+ * the same pixels and split the rate between them, so each pill reads half of
+ * what is really moving. Boards collected them because a hand-drawn wire and an
+ * auto-connected one spelled the same port differently - one with the recipe's
+ * slot index, one without - and nothing recognised the pair as the same wire.
+ */
+function dropDuplicateEdges(project: FactoryProject): FactoryProject {
+  const edges = dedupeEdgeWires(project.edges);
+  return edges === project.edges ? project : { ...project, edges };
 }
 
 /**
