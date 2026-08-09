@@ -299,11 +299,57 @@ body {
   height: 100%;
 }
 
+/*
+ * The page is not a document, and a phone must stop treating it like one.
+ *
+ * `pan-x pan-y` leaves scrolling inside the panels alone and takes away the two
+ * gestures the browser was stealing: pinch, which zoomed the PAGE instead of the
+ * board — including from the top bar, where there is nothing to zoom — and double
+ * tap, which is the board's own zoom gesture and was being read as "zoom the text"
+ * as well. `overscroll-behavior: none` takes the third: a drag that begins at the
+ * top of the board was arming pull-to-refresh, so double-tap-and-drag reloaded the
+ * app instead of zooming it.
+ *
+ * CSS rather than `user-scalable=no` in the viewport tag, which iOS has ignored
+ * since iOS 10 — and quite right, since a page of text should always be
+ * zoomable. This is not a page of text.
+ */
+html,
+body {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: none;
+}
+
 button,
 input,
 select,
 textarea {
   font: inherit;
+}
+
+/*
+ * The board owns every touch that lands on it.
+ *
+ * `touch-action: none` is what React Flow already asks of its own pane; saying it
+ * on the whole board extends it to the toolbars and cards, so no drag that starts
+ * on the board can be taken by the browser as a scroll, a pull-to-refresh or a
+ * page zoom.
+ *
+ * And no text selection. A press and hold on a card used to raise the blue
+ * selection band and the copy/lookup callout over half the screen — the exact
+ * gesture that opens a slot's menu. Fields keep their own selection below.
+ */
+.factory-flow-board {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.factory-flow-board input,
+.factory-flow-board textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .react-flow__edge-textbg {

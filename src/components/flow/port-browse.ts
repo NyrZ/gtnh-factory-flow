@@ -58,3 +58,26 @@ export const PORT_LONG_PRESS_MS = 450;
 
 /** Past this much movement the finger is dragging a wire, not pressing. */
 export const PORT_LONG_PRESS_SLOP = 10;
+
+let lastPickAt = 0;
+
+/**
+ * One gesture, one answer.
+ *
+ * A menu is dismissed by the same release that chooses from it, and both the
+ * release and the synthesised click that follows can find a live menu to act on —
+ * in development React's double-mounting can even leave two of them listening.
+ * Two answers from one tap meant the second overwrote the first, so the wrong half
+ * of the menu won. Only one pick lands per gesture, whoever gets there first.
+ *
+ * Module-level because only one of these menus can be open at a time anywhere on
+ * the board.
+ */
+export function claimPortPick(): boolean {
+  const now = performance.now();
+  if (now - lastPickAt < 400) {
+    return false;
+  }
+  lastPickAt = now;
+  return true;
+}

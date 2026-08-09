@@ -109,12 +109,20 @@ describe("compact side panels", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("closes when the dimmed board behind it is tapped", () => {
+  it("closes when the dimmed board behind it is tapped, but not by the tap that opened it", () => {
+    // Tapping "what makes it" on a port opens the recipe book, which lives in this
+    // drawer — and that tap ends with a synthesised click, landing on a scrim that
+    // did not exist when the finger went down. Obeyed, the drawer closed again the
+    // instant it opened.
+    const now = vi.spyOn(performance, "now").mockReturnValue(0);
     const { container, onClose } = renderDrawer({ open: true });
-    const scrim = container.querySelector(".bg-black\\/50");
+    const scrim = container.querySelector(".bg-black\\/50") as Element;
 
-    fireEvent.click(scrim as Element);
+    fireEvent.click(scrim);
+    expect(onClose).not.toHaveBeenCalled();
 
+    now.mockReturnValue(1000);
+    fireEvent.click(scrim);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

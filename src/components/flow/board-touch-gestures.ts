@@ -40,9 +40,16 @@ const DOUBLE_TAP_ZOOM_FACTOR = 1.7;
 /** Sliding this far doubles (up) or halves (down) the zoom. */
 const SLIDE_ZOOM_DISTANCE = 180;
 
-/** How much of the board's width answers a swipe from either edge. */
-const EDGE_ZONE_MAX = 160;
-const EDGE_ZONE_FRACTION = 0.35;
+/**
+ * How much of the board's width answers a swipe from either edge: a thumb's width
+ * at the very edge, down the whole height.
+ *
+ * A third of the board was far too much — it swallowed drags aimed at the canvas
+ * from anywhere near the sides. The height is what makes this findable, not the
+ * width: there is no wrong place to start down the edge, only a wrong distance in
+ * from it.
+ */
+const EDGE_ZONE = 36;
 /** Sideways travel before an edge swipe is a drawer and not a pan. */
 const EDGE_CLAIM_DISTANCE = 26;
 
@@ -129,11 +136,10 @@ export function useBoardTouchGestures({
         return undefined;
       }
 
-      const zone = Math.min(EDGE_ZONE_MAX, rect.width * EDGE_ZONE_FRACTION);
-      if (clientX - rect.left <= zone) {
+      if (clientX - rect.left <= EDGE_ZONE) {
         return "left";
       }
-      if (rect.right - clientX <= zone) {
+      if (rect.right - clientX <= EDGE_ZONE) {
         return "right";
       }
       return undefined;

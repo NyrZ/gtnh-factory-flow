@@ -51,6 +51,11 @@ export function PanelDrawer({
   const [isDragging, setDragging] = useState(false);
   const [isSlidIn, setSlidIn] = useState(false);
   const settleTimerRef = useRef<number | undefined>(undefined);
+  // A drawer often opens because a finger asked for it — tapping "what makes it"
+  // on a port opens the recipe book, which lives in here. The tap that asked then
+  // finishes with a synthesised click, which lands on a scrim that did not exist
+  // when the finger went down, and the drawer closed again the instant it opened.
+  const openedAtRef = useRef(0);
   // A touch that turned into a drag still ends with a synthesised click on
   // whatever was under the finger, which on the edge strip is the handle: the
   // drag would settle and then be re-opened by its own click.
@@ -61,6 +66,9 @@ export function PanelDrawer({
   // going. Closing resets it while the panel is already unmounted, ready for the
   // next time.
   useEffect(() => {
+    if (open) {
+      openedAtRef.current = performance.now();
+    }
     const frame = requestAnimationFrame(() => setSlidIn(open));
     return () => cancelAnimationFrame(frame);
   }, [open]);
@@ -218,6 +226,9 @@ export function PanelDrawer({
           // nothing, and a full-screen button in the tab order ahead of the panel
           // is a trap.
           onClick={() => {
+            if (performance.now() - openedAtRef.current < 400) {
+              return;
+            }
             startDrag();
             settle(false);
           }}

@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.36.2",
+    date: "2026-08-08",
+    headline: "The phone stops fighting the board",
+    notes: [
+      "Pinching and double tapping used to zoom the WEB PAGE as well as the board, including from the top bar where there is nothing to zoom, and a drag that began near the top armed pull-to-refresh, so a double-tap-and-drag zoom could reload the app. The board owns those gestures now.",
+      "Holding a slot no longer raises the blue text selection band and the copy menu over half the screen.",
+      "A tap on a slot opens its two answers, the same menu a press and hold opens. Choosing one no longer opens the other as well, and the drawer it opens in no longer closes itself the instant it arrives.",
+      "The swipe-out zone for the side panels was a third of the board, which swallowed drags meant for the canvas. It is a thumb's width at the very edge now, still the full height of the board.",
+    ],
+  },
+  {
     version: "1.36.1",
     date: "2026-08-08",
     headline: "Asking a slot works with the column closed, and the press shows itself",
