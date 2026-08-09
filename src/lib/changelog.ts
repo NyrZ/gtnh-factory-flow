@@ -16,6 +16,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.38.2",
+    date: "2026-08-08",
+    headline: "The tier dropdown filters the search and nothing else",
+    notes: [
+      "Setting a maximum voltage tier in the recipe book used to also put a red ring and a \"TIER REQUIRED\" warning on every card on your board above that tier. Narrowing a search is not a judgement about your factory, so it no longer says anything about it. The dropdown still hides recipes above the tier you pick, which is all it was ever for.",
+    ],
+  },
+  {
     version: "1.38.1",
     date: "2026-08-08",
     headline: "The recipe book's head reads in the order you decide things",

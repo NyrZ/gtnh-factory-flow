@@ -10,7 +10,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { AlertTriangle, ChevronDown, Copy, Minus, Plus, Sprout } from "lucide-react";
+import { ChevronDown, Copy, Minus, Plus, Sprout } from "lucide-react";
 import type {
   FactoryNode,
   MachineConfigTierOption,
@@ -48,7 +48,6 @@ import {
   isCropProductionConfigControl,
   isCropProductionRecipe,
   isIndustrialApiaryMachineType,
-  isVoltageTierAbove,
   makeResourceKey,
   resourceMatchesInput,
   resourceLabel,
@@ -157,7 +156,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const duplicateNode = useFactoryStore((state) => state.duplicateNode);
   const updateNode = useFactoryStore((state) => state.updateNode);
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
-  const maxTierFilter = useFactoryStore((state) => state.maxTierFilter);
   const pendingResourceConnection = useFactoryStore((state) => state.pendingResourceConnection);
   const dataset = useFactoryStore((state) => state.dataset);
   const isSearchHighlighted = recipeContainsSearchResource(recipe, recipeSearch);
@@ -334,7 +332,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     machineHandlers,
     selectedMachineHandler,
     effectiveRecipe,
-    recipePowerTier,
     tierControl,
     coilControl,
     coilResource,
@@ -383,10 +380,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             ...rails.outputs.map((port) => port.handleId),
           ],
   );
-  const exceedsMaxTier =
-    tierControl !== undefined &&
-    maxTierFilter !== "all" &&
-    isVoltageTierAbove(recipePowerTier, maxTierFilter);
   const updateTier = (direction: -1 | 1) => {
     if (!tierControl) {
       return;
@@ -527,13 +520,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     "dead-loop-breathe",
   );
   // The outlines the card is wearing, innermost first. They STACK rather than
-  // override: each ring starts where the one inside it stopped, so a card that
-  // is selected AND over tier says both. Selection is innermost, which is also
-  // the ring painted on top — clicking a card has to show that it landed, and
-  // a 2px line inside a breathing red dead-loop glow was being lost in it.
+  // override: each ring starts where the one inside it stopped. Selection is
+  // innermost, which is also the ring painted on top — clicking a card has to
+  // show that it landed, and a 2px line inside a breathing red dead-loop glow was
+  // being lost in it.
+  //
+  // The recipe book's tier dropdown used to put a red ring and a "TIER REQUIRED"
+  // badge on every card above it. That dropdown narrows a SEARCH; it says nothing
+  // about what the plan is allowed to contain, and reading it as a verdict meant
+  // filtering the book to LV accused a third of the board of being wrong.
   const cardOutlineRings = [
     ...(selected ? [{ width: 2, color: "#a855f7" }] : []),
-    ...(exceedsMaxTier && !calmMode ? [{ width: 4, color: "#ef4444" }] : []),
     ...(isSearchHighlighted ? [{ width: 4, color: "#7dd3fc" }] : []),
   ];
 
@@ -696,26 +693,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
         />
       )}
-      {exceedsMaxTier ? (
-        <div
-          className={[
-            "pointer-events-none absolute -right-3 -top-3 z-40 flex max-w-[210px] items-center gap-2 border-4 px-2 py-1 font-mono text-[13px] font-black uppercase leading-tight shadow-[4px_4px_0_rgba(0,0,0,0.45)]",
-            // Calm mode keeps the fact and drops the siren: same badge, steel.
-            calmMode
-              ? "border-[#28323d] bg-[#4a5a6c] text-white"
-              : "border-red-700 bg-[#facc15] text-red-950 [text-shadow:1px_1px_0_rgba(255,255,255,0.45)]",
-          ].join(" ")}
-        >
-          <AlertTriangle
-            className={
-              calmMode
-                ? "h-7 w-7 shrink-0 text-white"
-                : "h-7 w-7 shrink-0 fill-red-700 text-red-950"
-            }
-          />
-          <span>{recipePowerTier} Required</span>
-        </div>
-      ) : null}
       {/* No vertical padding: the head, the rails, the panels and the footer
           each own a whole number of cells, and any padding here would push
           all of them off the grid. Horizontal padding is 8, which is what

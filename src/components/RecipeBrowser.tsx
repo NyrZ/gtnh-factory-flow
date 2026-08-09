@@ -2235,7 +2235,7 @@ function RecipeBookOverlay({
             <select
               value={maxTier}
               onChange={(event) => onMaxTierChange(event.target.value as TierFilter)}
-              title="Hide recipes above this voltage tier (also flags too-high nodes on the board)"
+              title="Hide recipes above this voltage tier"
               aria-label="Maximum machine tier"
               className="h-9 w-28 shrink-0 border-2 border-[var(--mc-33)] bg-[#17191d] px-1.5 text-sm text-neutral-100 outline-none shadow-[inset_2px_2px_0_#30343b,inset_-2px_-2px_0_#050607]"
             >
