@@ -3,16 +3,13 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   memo,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import { AlertTriangle, ChevronDown, Copy, Minus, Plus, Sprout } from "lucide-react";
 import type {
   FactoryNode,
@@ -75,14 +72,12 @@ import {
 } from "./MachinePicker";
 import { NodeGlanceText, glanceTileStyle } from "./NodeGlance";
 import { isWiringConnection, wasRecentWireDrop } from "./connection-drag";
+import { clearHoveredPortBrowse, setHoveredPortBrowse } from "./port-browse";
 import {
-  claimPortPick,
-  clearHoveredPortBrowse,
-  setHoveredPortBrowse,
-  PORT_LONG_PRESS_MS,
-  PORT_LONG_PRESS_SLOP,
-  type PortBrowseMode,
-} from "./port-browse";
+  isFromBrowseMenu,
+  useBrowseMenu,
+  type BrowseMode as PortBrowseMode,
+} from "@/components/browse-menu";
 import { isEchoOfTouch } from "@/lib/pointer-kind";
 import { useMachineHandlerIcons, type MachineHandlerIcon } from "./machine-icons";
 import { publishDockTopInset } from "./dock-insets";
@@ -1861,52 +1856,23 @@ function usePortRowBrowse({
   port: RailPort;
   browse: (mode: PortBrowseMode) => void;
 }) {
-  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | undefined>(undefined);
-  // Lit from the moment a finger lands, so the press is visibly registering
-  // rather than the row sitting there while you wonder if it heard you.
-  const [isPressing, setPressing] = useState(false);
-  // One gesture's worth of state, and never read during a render.
-  const pressRef = useRef<{
-    x: number;
-    y: number;
-    touch: boolean;
-    timer?: number;
-    dragged: boolean;
-  }>({ x: 0, y: 0, touch: false, dragged: false });
-  const closedAtRef = useRef(0);
-
-  const cancelLongPress = () => {
-    window.clearTimeout(pressRef.current.timer);
-    pressRef.current.timer = undefined;
-  };
-
-  const endPress = () => {
-    cancelLongPress();
-    setPressing(false);
-  };
-
-  /**
-   * Whether an event came out of this row's own menu.
-   *
-   * The menu renders through a portal, which puts it outside the row in the DOM
-   * but leaves it INSIDE the row in the React tree — so every tap on a menu item
-   * bubbles back through the row's handlers. Untouched, choosing "what uses it"
-   * also ran the row's own click, which asks for recipes: two answers from one
-   * tap, and the second one won.
-   */
-  const fromMenu = (event: { target: EventTarget | null }) =>
-    Boolean((event.target as HTMLElement | null)?.closest?.("[data-port-browse-menu]"));
-
-  const closeMenu = () => {
-    // When, so the tap that closed it cannot be the tap that reopens it: choosing
-    // an item ends with a synthesised click on whatever is underneath, and
-    // underneath is the row.
-    closedAtRef.current = performance.now();
-    setMenuAt(undefined);
-    setPressing(false);
-  };
-
-  useEffect(() => cancelLongPress, []);
+  // The press gesture, the menu it opens and the one-answer-per-gesture rule are
+  // shared with the items column — see browse-menu.tsx. What stays here is what is
+  // particular to a port: the mouse's two buttons, the keyboard's two keys, and
+  // the fact that a drag from here is a wire.
+  const { pressHandlers, isPressing, menu, wasDragged, wasTouch, openFromTap } = useBrowseMenu({
+    name: port.displayName,
+    onPick: browse,
+    onPressBecomesMenu: ({ x, y }) => {
+      // React Flow began pulling a wire the instant the finger landed — it has no
+      // way to know a press was coming — and the finger is now going to travel
+      // down onto a menu item. Left alone it would drop that wire wherever the
+      // finger let go. `mouseup` on the document is what its connection listens
+      // for, so this is the wire being put down where it started, which wires
+      // nothing.
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, clientX: x, clientY: y }));
+    },
+  });
 
   const handlers = {
     onPointerEnter: () => {
@@ -1914,50 +1880,14 @@ function usePortRowBrowse({
     },
     onPointerLeave: () => {
       clearHoveredPortBrowse(nodeId, port.handleId);
-      endPress();
+      pressHandlers.onPointerCancel();
     },
-    onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
-      if (fromMenu(event)) {
-        return;
-      }
-      const touch = event.pointerType !== "mouse";
-      pressRef.current = { x: event.clientX, y: event.clientY, touch, dragged: false };
-      if (!touch) {
-        return;
-      }
-
-      setPressing(true);
-      const { clientX, clientY } = event;
-      pressRef.current.timer = window.setTimeout(() => {
-        pressRef.current.timer = undefined;
-        // React Flow began pulling a wire the instant the finger landed — it has
-        // no way to know a press was coming — and the finger is now going to
-        // travel down onto a menu item. Left alone it would drop that wire
-        // wherever the finger let go. `mouseup` on the document is what its
-        // connection listens for, so this is the wire being put down where it
-        // started, which wires nothing.
-        document.dispatchEvent(
-          new MouseEvent("mouseup", { bubbles: true, clientX, clientY }),
-        );
-        setMenuAt({ x: clientX, y: clientY });
-      }, PORT_LONG_PRESS_MS);
-    },
-    onPointerMove: (event: ReactPointerEvent<HTMLElement>) => {
-      const press = pressRef.current;
-      const travelled = Math.hypot(event.clientX - press.x, event.clientY - press.y);
-      if (travelled > PORT_LONG_PRESS_SLOP) {
-        press.dragged = true;
-        // Moving off before the menu opens is a wire being pulled, so the press
-        // stands down — but a press that already opened the menu keeps its light
-        // on while the finger travels down to pick something.
-        cancelLongPress();
-        setPressing(false);
-      }
-    },
-    onPointerUp: endPress,
-    onPointerCancel: endPress,
+    onPointerDown: pressHandlers.onPointerDown,
+    onPointerMove: pressHandlers.onPointerMove,
+    onPointerUp: pressHandlers.onPointerUp,
+    onPointerCancel: pressHandlers.onPointerCancel,
     onClick: (event: React.MouseEvent<HTMLElement>) => {
-      if (fromMenu(event)) {
+      if (isFromBrowseMenu(event)) {
         return;
       }
       // A finger gets the menu — a tap and a press open the same two answers, the
@@ -1967,208 +1897,35 @@ function usePortRowBrowse({
       // `isEchoOfTouch`, not the pointerdown this row saw: the click a tap
       // synthesises claims to be a mouse, and on some engines so does the
       // pointerdown before it, so only the timing gives them away.
-      if (pressRef.current.touch || isEchoOfTouch()) {
-        if (!pressRef.current.dragged && performance.now() - closedAtRef.current > 400) {
+      if (wasTouch() || isEchoOfTouch()) {
+        if (openFromTap({ x: event.clientX, y: event.clientY })) {
           event.stopPropagation();
-          setMenuAt((current) => current ?? { x: event.clientX, y: event.clientY });
         }
         return;
       }
       // Dropping a wire back on the row it came from is a pointerdown and a
       // pointerup on one element, which is also the definition of a click.
-      if (pressRef.current.dragged || wasRecentWireDrop()) {
+      if (wasDragged() || wasRecentWireDrop()) {
         return;
       }
       event.stopPropagation();
       browse("recipes");
     },
     onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
-      if (fromMenu(event)) {
+      if (isFromBrowseMenu(event)) {
         return;
       }
       // Android raises this on a long press too, where the menu is the answer.
       event.preventDefault();
       event.stopPropagation();
-      if (pressRef.current.touch || isEchoOfTouch()) {
+      if (wasTouch() || isEchoOfTouch()) {
         return;
       }
       browse("uses");
     },
   };
 
-  const menu =
-    menuAt && typeof document !== "undefined"
-      ? createPortal(
-          <PortBrowseMenu
-            at={menuAt}
-            name={port.displayName}
-            onPick={(mode) => {
-              closeMenu();
-              browse(mode);
-            }}
-            onDismiss={closeMenu}
-          />,
-          document.body,
-        )
-      : null;
-
-  return { handlers, menu, isPressing: isPressing || menuAt !== undefined };
-}
-
-/** The long-press menu: the two questions a port answers, as words. */
-function PortBrowseMenu({
-  at,
-  name,
-  onPick,
-  onDismiss,
-}: {
-  at: { x: number; y: number };
-  name: string;
-  onPick: (mode: PortBrowseMode) => void;
-  onDismiss: () => void;
-}) {
-  const width = 168;
-  const left = Math.min(Math.max(8, at.x - width / 2), window.innerWidth - width - 8);
-  const top = Math.min(at.y + 12, window.innerHeight - 132);
-  // The finger that opened this menu is still on the screen, and lifting it fires
-  // the compatibility mouse events every tap fires — which read as a tap on the
-  // backdrop and closed the menu before it could be read. The gesture that opened
-  // it cannot also dismiss it.
-  const [openedAt] = useState(() => performance.now());
-  const settled = () => performance.now() - openedAt > 350;
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  // Read by the window listeners below, which are attached once per menu. Without
-  // that the listeners were re-bound on every render and a single release could
-  // reach two of them, which picked twice — the second time on whichever item had
-  // moved under the finger once the first pick closed the menu.
-  const actionsRef = useRef({ onPick, onDismiss, settled });
-  useEffect(() => {
-    actionsRef.current = { onPick, onDismiss, settled };
-  });
-  /** One menu answers once, and one gesture answers once — see claimPortPick. */
-  const pickedRef = useRef(false);
-  const pick = (mode: PortBrowseMode) => {
-    if (pickedRef.current || !claimPortPick()) {
-      return;
-    }
-    pickedRef.current = true;
-    actionsRef.current.onPick(mode);
-  };
-
-  // The backdrop below catches a tap anywhere, but a menu that outlives what it
-  // was pointing at is worse than no menu: the board moving, the window changing
-  // size or Escape all put it away too. Capture phase, so nothing that swallows
-  // its own events can keep the menu alive.
-  //
-  // No `blur` listener, deliberately. In the capture phase that fires for EVERY
-  // element that loses focus, not just the window — and lifting the finger that
-  // opened this menu moves focus, so the menu closed itself on release.
-  const [slidOver, setSlidOver] = useState<PortBrowseMode | undefined>(undefined);
-  useEffect(() => {
-    const dismiss = () => actionsRef.current.onDismiss();
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        actionsRef.current.onDismiss();
-      }
-    };
-    // The next press anywhere but the menu. A window listener rather than a
-    // handler on the shield below, so it fires wherever the press lands — the
-    // shield is only there to keep that press off the board.
-    const dismissOnPress = (event: PointerEvent) => {
-      // `HTMLElement`, not `Node`: in this file `Node` is React Flow's.
-      const inside = Boolean(menuRef.current?.contains(event.target as HTMLElement | null));
-      if (!actionsRef.current.settled() || inside) {
-        return;
-      }
-      actionsRef.current.onDismiss();
-    };
-
-    // Carrying on from the press: the finger that opened this menu may still be
-    // down, so it can slide onto an item and let go there to choose it, the way a
-    // native long-press menu works. Lifting anywhere else leaves the menu up to be
-    // tapped instead, which is the other half of what people try. Touch events
-    // rather than pointer events: this menu only ever opens from a finger.
-    const modeUnder = (x: number, y: number): PortBrowseMode | undefined => {
-      const element = document.elementFromPoint(x, y);
-      const item = element?.closest?.<HTMLElement>("[data-port-browse-mode]");
-      const mode = item?.dataset.portBrowseMode;
-      return mode === "recipes" || mode === "uses" ? mode : undefined;
-    };
-    const follow = (event: TouchEvent) => {
-      const point = event.touches[0];
-      if (point) {
-        setSlidOver(modeUnder(point.clientX, point.clientY));
-      }
-    };
-    const release = (event: TouchEvent) => {
-      const point = event.changedTouches[0] ?? event.touches[0];
-      const mode = point ? modeUnder(point.clientX, point.clientY) : undefined;
-      setSlidOver(undefined);
-      if (mode) {
-        pick(mode);
-      }
-    };
-    const options = { capture: true, passive: true } as const;
-
-    window.addEventListener("pointerdown", dismissOnPress, options);
-    window.addEventListener("wheel", dismiss, options);
-    window.addEventListener("scroll", dismiss, options);
-    window.addEventListener("resize", dismiss, options);
-    window.addEventListener("keydown", dismissOnEscape, { capture: true });
-    window.addEventListener("touchmove", follow, options);
-    window.addEventListener("touchend", release, options);
-    return () => {
-      window.removeEventListener("pointerdown", dismissOnPress, options);
-      window.removeEventListener("wheel", dismiss, options);
-      window.removeEventListener("scroll", dismiss, options);
-      window.removeEventListener("resize", dismiss, options);
-      window.removeEventListener("keydown", dismissOnEscape, { capture: true });
-      window.removeEventListener("touchmove", follow, options);
-      window.removeEventListener("touchend", release, options);
-    };
-    // Attached once per menu. Everything they need lives in refs, because a
-    // re-attach on every render let one release reach two listeners.
-  }, []);
-
-  const itemClass = (mode: PortBrowseMode) =>
-    [
-      "flex h-11 w-full items-center px-2 text-left text-[13px] font-bold text-white",
-      slidOver === mode ? "bg-[var(--mc-85)]" : "hover:bg-[var(--mc-61)]",
-    ].join(" ");
-
-  return (
-    <>
-      {/* A shield, not a button: it keeps the dismissing press off the board
-          underneath, while the listener above is what actually dismisses. */}
-      <div data-port-browse-menu="" className="fixed inset-0 z-[79]" />
-      <div
-        ref={menuRef}
-        data-port-browse-menu=""
-        style={{ left, top, width }}
-        className="fixed z-[80] border-2 border-[var(--mc-15)] bg-[var(--mc-49)] p-1 font-mono shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25),4px_4px_0_rgba(0,0,0,0.45)]"
-      >
-        <p className="truncate px-1 pb-1 text-[11px] font-bold text-[var(--mc-ink-muted)]">
-          {name}
-        </p>
-        <button
-          type="button"
-          data-port-browse-mode="recipes"
-          onClick={() => pick("recipes")}
-          className={itemClass("recipes")}
-        >
-          What makes it
-        </button>
-        <button
-          type="button"
-          data-port-browse-mode="uses"
-          onClick={() => pick("uses")}
-          className={itemClass("uses")}
-        >
-          What uses it
-        </button>
-      </div>
-    </>
-  );
+  return { handlers, menu, isPressing };
 }
 
 export function PortChip({

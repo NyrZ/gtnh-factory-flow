@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.38.0",
+    date: "2026-08-08",
+    headline: "Uses, from the items list and from inside the book",
+    notes: [
+      "Tapping an item in the items column now asks which question you meant: what makes it, or what uses it. On a phone \"uses\" was simply unreachable there, since a tap could only be one of the two and there is no second mouse button to hold in reserve. Holding opens the same menu. A mouse still goes straight there with its left and right buttons.",
+      "Inside the recipe book, the caption that said \"Recipes for\" or \"Uses of\" is now a pair of buttons that switch between them, so you can turn a recipe list into a uses list without going back to the search. On desktop it sits at the top of the category rail; on a phone it is on the bar under the name.",
+      "That bar has stopped trying to fit the category name on a phone: it was already in the dropdown right above it, and the pair of them were crushing the machine icons.",
+      "The Recent shelf is one row of smaller icons on a phone, so it stops eating the results above it.",
+      "The two buttons in the press-and-hold menu look like buttons now.",
+    ],
+  },
+  {
     version: "1.37.2",
     date: "2026-08-08",
     headline: "One wire between two slots, not two",

@@ -54,6 +54,8 @@ import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { OPEN_SETUPS_EVENT } from "@/lib/setups-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { isEchoOfTouch } from "@/lib/pointer-kind";
+import { isFromBrowseMenu, useBrowseMenu } from "./browse-menu";
 import { ControlsCard } from "./ControlsCard";
 import { ChevronIcon } from "./PanelDrawer";
 import { BlueprintPanel } from "./BlueprintPanel";
@@ -1482,6 +1484,8 @@ interface ResourceQueryCacheEntry {
 const RECENT_STRIP_ROWS = 3;
 /** One row on a phone: the shelf was eating a third of a screen of results. */
 const RECENT_STRIP_ROWS_COMPACT = 1;
+/** And a smaller cell in that row, so the one row still holds a useful handful. */
+const RECENT_STRIP_CELL_COMPACT = 44;
 /** More than three rows of the widest column could ever show. */
 const RECENT_STRIP_LIMIT = 24;
 
@@ -1495,7 +1499,9 @@ function RecentResourceStrip({
   const activeResource = useFactoryStore((state) => state.recipeBrowserResource);
   const isCompact = useIsCompactViewport();
   const rows = isCompact ? RECENT_STRIP_ROWS_COMPACT : RECENT_STRIP_ROWS;
+  const cell = isCompact ? RECENT_STRIP_CELL_COMPACT : RESOURCE_GRID_CELL;
   const recent = history.slice(0, RECENT_STRIP_LIMIT);
+  const rowBrowse = useResourceBrowseMenu(onBrowse);
 
   if (recent.length === 0) {
     return null;
@@ -1519,15 +1525,17 @@ function RecentResourceStrip({
           Clear
         </button>
       </div>
-      {/* The same cells the grid view uses, so a recent item is as easy to hit
-          and as easy to recognise as one in the list above it. auto-fill picks
-          the column count from the width, and the height stops it at three rows
-          (one on a phone) rather than letting the strip eat the panel. */}
+      {/* The same cells the grid view uses, so a recent item is as easy to hit and
+          as easy to recognise as one in the list above it. auto-fill picks the
+          column count from the width, and the height stops it at three rows.
+          A phone gets one row of smaller cells: three rows of 56px was a third of
+          the screen given to what you looked at last rather than what you are
+          looking for, and the cells past the first row were only ever clipped. */}
       <div
         className="grid gap-1 overflow-hidden"
         style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(${RESOURCE_GRID_CELL}px, 1fr))`,
-          maxHeight: rows * RESOURCE_GRID_CELL + (rows - 1) * RESOURCE_GRID_GAP,
+          gridTemplateColumns: `repeat(auto-fill, minmax(${cell}px, 1fr))`,
+          maxHeight: rows * cell + (rows - 1) * RESOURCE_GRID_GAP,
         }}
         aria-label="Recently viewed"
         role="listbox"
@@ -1546,11 +1554,20 @@ function RecentResourceStrip({
             >
               <button
                 type="button"
-                onClick={() => onBrowse(indexed, "recipes")}
+                onClick={(event) => {
+                  if (rowBrowse.claimedByMenu(event) || rowBrowse.openOnTap(event)) {
+                    return;
+                  }
+                  onBrowse(indexed, "recipes");
+                }}
                 onContextMenu={(event) => {
                   event.preventDefault();
+                  if (rowBrowse.claimedByMenu(event)) {
+                    return;
+                  }
                   onBrowse(indexed, "uses");
                 }}
+                {...rowBrowse.pressProps(indexed)}
                 aria-label={resourceLabel(resource)}
                 className={[
                   "minecraft-pixel-art flex aspect-square items-center justify-center overflow-hidden rounded-[4px] border",
@@ -1574,6 +1591,7 @@ function RecentResourceStrip({
           );
         })}
       </div>
+      {rowBrowse.menu}
     </div>
   );
 }
@@ -1729,6 +1747,69 @@ function ResourcePager({
   );
 }
 
+/**
+ * A finger's way to choose between the two questions a resource answers.
+ *
+ * A mouse has a left button for "what makes it" and a right one for "what uses
+ * it". A finger has one tap, and here it opens the pair as a menu rather than
+ * guessing: unlike a port on the board, a row in this list has no third gesture to
+ * protect — no wire to drag out of it — so there is nothing to lose by asking, and
+ * "uses" was otherwise unreachable on a phone. Holding opens the same menu, which
+ * is the gesture the board taught.
+ *
+ * One menu for the whole list rather than one per row: which resource is being
+ * pressed is captured when the press starts, so this costs a ref and not a hook
+ * per item in a list that can run to hundreds.
+ */
+function useResourceBrowseMenu(
+  browse: (resource: IndexedResource, mode: "recipes" | "uses") => void,
+) {
+  const pressedRef = useRef<IndexedResource | undefined>(undefined);
+  const [pressedName, setPressedName] = useState("");
+  const menu = useBrowseMenu({
+    name: pressedName,
+    onPick: (mode) => {
+      const resource = pressedRef.current;
+      if (resource) {
+        browse(resource, mode);
+      }
+    },
+  });
+
+  return {
+    menu: menu.menu,
+    /** Spread on the row, after its own click and context-menu handlers. */
+    pressProps: (resource: IndexedResource) => ({
+      onPointerDown: (event: PointerEvent<HTMLElement>) => {
+        pressedRef.current = resource;
+        if (event.pointerType !== "mouse") {
+          setPressedName(resourceLabel(resource));
+        }
+        menu.pressHandlers.onPointerDown(event);
+      },
+      onPointerMove: menu.pressHandlers.onPointerMove,
+      onPointerUp: menu.pressHandlers.onPointerUp,
+      onPointerCancel: menu.pressHandlers.onPointerCancel,
+    }),
+    /**
+     * Whether the row's own click should stand down: the menu is open, or has just
+     * closed and this click is the trailing half of the tap that chose from it.
+     */
+    claimedByMenu: (event: { target: EventTarget | null }) =>
+      isFromBrowseMenu(event) || menu.isPressing || menu.isSettling(),
+    /**
+     * A tap from a finger opens the menu. `isEchoOfTouch` as well as the row's own
+     * pointerdown, because the click a tap synthesises claims to be a mouse.
+     */
+    openOnTap: (event: React.MouseEvent<HTMLElement>) => {
+      if (!menu.wasTouch() && !isEchoOfTouch()) {
+        return false;
+      }
+      return menu.openFromTap({ x: event.clientX, y: event.clientY });
+    },
+  };
+}
+
 function ResourceResultPage({
   resources,
   activeResource,
@@ -1752,6 +1833,7 @@ function ResourceResultPage({
     },
     [onBrowseResource, startBrowseTransition],
   );
+  const rowBrowse = useResourceBrowseMenu(browse);
 
   if (view === "grid") {
     return (
@@ -1778,11 +1860,20 @@ function ResourceResultPage({
             >
               <button
                 type="button"
-                onClick={() => browse(resource, "recipes")}
+                onClick={(event) => {
+                  if (rowBrowse.claimedByMenu(event) || rowBrowse.openOnTap(event)) {
+                    return;
+                  }
+                  browse(resource, "recipes");
+                }}
                 onContextMenu={(event) => {
                   event.preventDefault();
+                  if (rowBrowse.claimedByMenu(event)) {
+                    return;
+                  }
                   browse(resource, "uses");
                 }}
+                {...rowBrowse.pressProps(resource)}
                 aria-label={resourceLabel(resource)}
                 className={[
                   "minecraft-pixel-art flex aspect-square items-center justify-center overflow-hidden rounded-[4px] border",
@@ -1805,6 +1896,7 @@ function ResourceResultPage({
             </MinecraftTooltip>
           );
         })}
+        {rowBrowse.menu}
       </div>
     );
   }
@@ -1825,11 +1917,20 @@ function ResourceResultPage({
           <button
             key={`${resource.kind}:${resource.id}`}
             type="button"
-            onClick={() => browse(resource, "recipes")}
+            onClick={(event) => {
+              if (rowBrowse.claimedByMenu(event) || rowBrowse.openOnTap(event)) {
+                return;
+              }
+              browse(resource, "recipes");
+            }}
             onContextMenu={(event) => {
               event.preventDefault();
+              if (rowBrowse.claimedByMenu(event)) {
+                return;
+              }
               browse(resource, "uses");
             }}
+            {...rowBrowse.pressProps(resource)}
             title={resourceLabel(resource)}
             className={[
               "flex h-10 w-full shrink-0 items-center gap-2.5 overflow-hidden rounded-[4px] border px-1.5 text-left text-sm text-neutral-50",
@@ -1864,6 +1965,7 @@ function ResourceResultPage({
           </button>
         );
       })}
+      {rowBrowse.menu}
     </div>
   );
 }
@@ -1921,6 +2023,14 @@ function RecipeBookOverlay({
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const layout = useRecipeBookViewport();
+  // Flipping between what makes this and what uses it is the same act as opening
+  // the book on it, just with the other answer asked for — so it goes through the
+  // same door rather than inventing a second one.
+  const switchMode = (next: "recipes" | "uses") => {
+    if (next !== mode) {
+      onBrowseResource({ ...activeResource, amount: 1 }, next);
+    }
+  };
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [measured, setMeasured] = useState<MeasuredCard>({
     key: "",
@@ -2031,6 +2141,7 @@ function RecipeBookOverlay({
               activeRecipeMap={activeRecipeMap}
               onRecipeMapChange={onRecipeMapChange}
               onRecipeMapHover={onRecipeMapHover}
+              onModeChange={switchMode}
             />
           ) : null}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -2041,6 +2152,8 @@ function RecipeBookOverlay({
               tabs={recipeMapTabs}
               activeRecipeMap={activeRecipeMap}
               onRecipeMapChange={onRecipeMapChange}
+              onModeChange={switchMode}
+              showModeSwitch={!layout.sheet}
             />
           )}
           <div className="px-2 pt-2">
@@ -2053,18 +2166,30 @@ function RecipeBookOverlay({
             >
               {/* The title takes the slack so the machines and the close
                   button stay pinned to the right rather than floating in the
-                  middle of a wide bar. */}
-              <span className="min-w-0 flex-1 leading-[1.1]">
-                <span className="block text-[8px] font-bold uppercase tracking-[0.14em] text-[#ececec] [text-shadow:1px_1px_0_#4a4a4a]">
-                  Category · recipe map
+                  middle of a wide bar.
+
+                  Not on a phone. The category is named twice up here — in the
+                  picker's dropdown right above this bar and again in this title —
+                  and on a 390px screen the pair of them were crushing the machine
+                  strip and each other into a tangle of three lines of caption. The
+                  bar keeps the machines and the way out. */}
+              {layout.sheet ? (
+                <span className="min-w-0 flex-1">
+                  <RecipeModeSwitch mode={mode} onModeChange={switchMode} dense />
                 </span>
-                <span className="minecraft-title block truncate text-[17px] leading-[20px] text-white [text-shadow:2px_2px_0_var(--mc-24)]">
-                  {activeRecipeMap ||
-                    filteredRecipes[0]?.machineType ||
-                    resourceLabel(activeResource)}
+              ) : (
+                <span className="min-w-0 flex-1 leading-[1.1]">
+                  <span className="block text-[8px] font-bold uppercase tracking-[0.14em] text-[#ececec] [text-shadow:1px_1px_0_#4a4a4a]">
+                    Category · recipe map
+                  </span>
+                  <span className="minecraft-title block truncate text-[17px] leading-[20px] text-white [text-shadow:2px_2px_0_var(--mc-24)]">
+                    {activeRecipeMap ||
+                      filteredRecipes[0]?.machineType ||
+                      resourceLabel(activeResource)}
+                  </span>
                 </span>
-              </span>
-              <CategoryMachineStrip recipe={filteredRecipes[0]} />
+              )}
+              <CategoryMachineStrip recipe={filteredRecipes[0]} compact={layout.sheet} />
               {/*
                 The book used to be closed only by clicking the board around
                 it. Now that it can cover the whole screen there may be no
@@ -2177,12 +2302,16 @@ function CategoryPicker({
   tabs,
   activeRecipeMap,
   onRecipeMapChange,
+  onModeChange,
+  showModeSwitch,
 }: {
   activeResource: IndexedResource;
   mode: "recipes" | "uses";
   tabs: RecipeMapTab[];
   activeRecipeMap: string;
   onRecipeMapChange: (recipeMap: string) => void;
+  onModeChange: (mode: "recipes" | "uses") => void;
+  showModeSwitch: boolean;
 }) {
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-2 border-b-2 border-[var(--mc-55)] bg-[var(--mc-71)] p-2">
@@ -2198,10 +2327,17 @@ function CategoryPicker({
         />
       </span>
       <span className="min-w-0 flex-1 leading-[1.15]">
-        <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink-muted)]">
-          {mode === "uses" ? "Uses of" : "Recipes for"}
-        </span>
-        <span className="block truncate text-[14px] font-bold text-[var(--mc-ink)]">
+        {/* On a full-screen sheet the switch sits on the bar below instead, where
+            the category title used to be: here it would be fighting the category
+            dropdown for the same 340px. */}
+        {showModeSwitch ? (
+          <RecipeModeSwitch mode={mode} onModeChange={onModeChange} />
+        ) : (
+          <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink-muted)]">
+            {mode === "uses" ? "Uses of" : "Recipes for"}
+          </span>
+        )}
+        <span className="mt-0.5 block truncate text-[14px] font-bold text-[var(--mc-ink)]">
           {resourceLabel(activeResource)}
         </span>
       </span>
@@ -2223,6 +2359,54 @@ function CategoryPicker({
   );
 }
 
+/**
+ * Which question the book is answering, as two pills.
+ *
+ * It used to be a caption — "Recipes for" or "Uses of" — which stated the mode and
+ * gave no way to change it: the only way to the other half was to go back to the
+ * list and use the other mouse button, and on a phone there was no other button.
+ * The label was already there, in the right place, saying the right thing; making
+ * it the control costs no room at all.
+ */
+function RecipeModeSwitch({
+  mode,
+  onModeChange,
+  dense = false,
+}: {
+  mode: "recipes" | "uses";
+  onModeChange: (mode: "recipes" | "uses") => void;
+  /** On a phone's bar it shares 340px with the machine strip and the way out. */
+  dense?: boolean;
+}) {
+  const pill = (value: "recipes" | "uses", label: string, title: string) => (
+    <button
+      key={value}
+      type="button"
+      onClick={() => onModeChange(value)}
+      title={title}
+      aria-pressed={mode === value}
+      className={[
+        "h-5 shrink-0 whitespace-nowrap font-bold uppercase",
+        dense ? "px-1 text-[9px]" : "px-1.5 text-[10px] tracking-[0.1em]",
+        mode === value
+          ? "bg-[var(--mc-85)] text-white shadow-[inset_1px_1px_0_var(--mc-100)]"
+          : "text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    // `max-w-full`: in a flex row that has shrunk, a `w-fit` child otherwise
+    // overflows its share rather than shrinking, and lands under its neighbour.
+    <span className="flex w-fit max-w-full items-center overflow-hidden border-2 border-[var(--mc-33)] bg-[var(--mc-61)]">
+      {pill("recipes", "Makes", "Recipes that make this")}
+      {pill("uses", "Uses", "Recipes that use this")}
+    </span>
+  );
+}
+
 /** Vertical category (recipe map) rail: the master picker's first level. */
 function CategoryRail({
   activeResource,
@@ -2231,6 +2415,7 @@ function CategoryRail({
   activeRecipeMap,
   onRecipeMapChange,
   onRecipeMapHover,
+  onModeChange,
 }: {
   activeResource: IndexedResource;
   mode: "recipes" | "uses";
@@ -2238,6 +2423,7 @@ function CategoryRail({
   activeRecipeMap: string;
   onRecipeMapChange: (recipeMap: string) => void;
   onRecipeMapHover: (recipeMap: string) => void;
+  onModeChange: (mode: "recipes" | "uses") => void;
 }) {
   return (
     <div className="flex w-[290px] shrink-0 flex-col border-r-2 border-[var(--mc-47)] bg-[var(--mc-71)]">
@@ -2254,10 +2440,8 @@ function CategoryRail({
           />
         </span>
         <span className="min-w-0 leading-[1.15]">
-          <span className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--mc-ink-muted)]">
-            {mode === "uses" ? "Uses of" : "Recipes for"}
-          </span>
-          <span className="block truncate text-[16px] font-bold text-[var(--mc-ink)]">
+          <RecipeModeSwitch mode={mode} onModeChange={onModeChange} />
+          <span className="mt-0.5 block truncate text-[16px] font-bold text-[var(--mc-ink)]">
             {resourceLabel(activeResource)}
           </span>
         </span>
@@ -2306,7 +2490,14 @@ function CategoryRail({
 }
 
 /** Mini strip of the machines that can run the open category. */
-function CategoryMachineStrip({ recipe }: { recipe?: RecipeSummary }) {
+function CategoryMachineStrip({
+  recipe,
+  compact = false,
+}: {
+  recipe?: RecipeSummary;
+  /** A phone's bar shares its width with the mode switch: icons only, and fewer. */
+  compact?: boolean;
+}) {
   const machineIcons = useMachineHandlerIcons();
   const handlers = useMemo(
     () => (recipe ? getRecipeMachineHandlers(summaryToPreviewRecipe(recipe)) : []),
@@ -2317,10 +2508,12 @@ function CategoryMachineStrip({ recipe }: { recipe?: RecipeSummary }) {
   }
   return (
     <span className="ml-auto flex shrink-0 items-center gap-1">
-      <span className="pr-1 text-[8px] font-bold uppercase tracking-[0.1em] text-[#ececec] [text-shadow:1px_1px_0_#4a4a4a]">
-        {handlers.length} machines
-      </span>
-      {handlers.slice(0, 8).map((handler) => {
+      {compact ? null : (
+        <span className="pr-1 text-[8px] font-bold uppercase tracking-[0.1em] text-[#ececec] [text-shadow:1px_1px_0_#4a4a4a]">
+          {handlers.length} machines
+        </span>
+      )}
+      {handlers.slice(0, compact ? 4 : 8).map((handler) => {
         const icon = machineIcons.get(handler.id);
         return (
           <span

@@ -12,8 +12,8 @@
  * here from its own enter and leave handlers, and read imperatively by the one
  * keydown listener on the board.
  *
- * Touch has no hover and no right button, so it gets a menu on a long press. The
- * timing lives here so the two paths cannot drift apart.
+ * Touch has neither hover nor a right button, so it gets a menu on a long press —
+ * which is `browse-menu.tsx`, shared with the items column.
  */
 
 export type PortBrowseMode = "recipes" | "uses";
@@ -47,37 +47,5 @@ export function browseHoveredPort(mode: PortBrowseMode): boolean {
     return false;
   }
   hovered.open(mode);
-  return true;
-}
-
-/**
- * How long a finger has to rest on a port before the menu opens. Long enough not
- * to fire on the way into a wire drag, short enough not to feel broken.
- */
-export const PORT_LONG_PRESS_MS = 450;
-
-/** Past this much movement the finger is dragging a wire, not pressing. */
-export const PORT_LONG_PRESS_SLOP = 10;
-
-let lastPickAt = 0;
-
-/**
- * One gesture, one answer.
- *
- * A menu is dismissed by the same release that chooses from it, and both the
- * release and the synthesised click that follows can find a live menu to act on —
- * in development React's double-mounting can even leave two of them listening.
- * Two answers from one tap meant the second overwrote the first, so the wrong half
- * of the menu won. Only one pick lands per gesture, whoever gets there first.
- *
- * Module-level because only one of these menus can be open at a time anywhere on
- * the board.
- */
-export function claimPortPick(): boolean {
-  const now = performance.now();
-  if (now - lastPickAt < 400) {
-    return false;
-  }
-  lastPickAt = now;
   return true;
 }
