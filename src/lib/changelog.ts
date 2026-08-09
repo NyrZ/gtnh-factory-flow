@@ -16,6 +16,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.35.2",
+    date: "2026-08-08",
+    headline: "The wide resource row, actually on the row",
+    notes: [
+      "Pointing at a resource still drew the wide copy of it low, and stopped it dead at the edge of the column instead of letting it reach over the board. It is now drawn straight onto the page rather than from inside the column, so nothing above it can move it or cut it off.",
+    ],
+  },
+  {
     version: "1.35.1",
     date: "2026-08-08",
     headline: "The wide resource row lands on the row you point at",
