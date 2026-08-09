@@ -3,7 +3,11 @@
 import { Check, Compass, Download, Factory, Play, Plus, ScrollText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ChangelogDialog } from "@/components/ChangelogDialog";
-import { downloadCommunityPlan, listCommunityPlans, tagPlanWithCommunityId } from "@/lib/community/client";
+import {
+  downloadCommunityPlan,
+  listCommunityPlans,
+  tagPlanWithCommunityId,
+} from "@/lib/community/client";
 import type { CommunityPlanSummary } from "@/lib/community/types";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { applyPlanView } from "@/lib/plan-view";
@@ -15,6 +19,62 @@ import { leaveWelcomeTab, setWelcomeOnStartup, useWelcomeTab } from "@/lib/tour/
 import { APP_VERSION } from "@/lib/version";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import { useDesignStore } from "@/store/design-store";
+
+/**
+ * How many multiblocks currently run on figures checked against the game's
+ * code, out of the ones the planner knows about. Kept as plain numbers rather
+ * than computed at runtime: working it out means walking every recipe in the
+ * dataset, and this is a line of text on a page that has to open instantly.
+ * Update it when `machine-table.ts` grows.
+ */
+const VERIFIED_MACHINE_COUNT = 45;
+const TOTAL_MULTIBLOCK_COUNT = 81;
+
+/**
+ * Same form the header's report button uses, with the version prefilled. Spelt
+ * out here rather than imported so this page does not depend on the header's
+ * internals; if a third caller appears, lift both into one module.
+ */
+const BUG_REPORT_URL = `https://github.com/jackwrichards/gtnh-factory-flow/issues/new?template=bug_report.yml&version=${encodeURIComponent(
+  APP_VERSION,
+)}`;
+
+/**
+ * Says plainly that machine rates are still being worked through, and points
+ * at the one thing a player can do about a number that looks wrong.
+ *
+ * Worth saying out loud on the way in rather than leaving people to find out
+ * from a surprising number: the rates for a machine come from three places of
+ * decreasing confidence, and which one a given machine falls into is not
+ * something a player can see. Until every multiblock is on checked figures,
+ * the honest thing is to name the gap and make reporting easy.
+ */
+function MachineAccuracyNotice() {
+  return (
+    <section className="rounded border border-line-strong bg-surface p-3">
+      <p className="text-xs font-semibold text-fg">Machine rates are still being checked</p>
+      <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+        {VERIFIED_MACHINE_COUNT} of {TOTAL_MULTIBLOCK_COUNT} multiblocks now use speeds, parallels
+        and overclocks checked against the game&rsquo;s own code. The rest are close but not
+        confirmed, and a few read low at high voltage. Steam machines and the fusion reactors are
+        not converted yet.
+      </p>
+      <p className="mt-2 text-xs leading-relaxed text-fg-muted">
+        If a rate does not match your world, please{" "}
+        <a
+          href={BUG_REPORT_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="font-semibold text-cyan-400 underline-offset-2 hover:underline"
+        >
+          report it
+        </a>
+        . Say which machine and what you measured in game: that is exactly how the last few were
+        found and fixed.
+      </p>
+    </section>
+  );
+}
 
 /**
  * What the Welcome tab shows: a way in for someone who has never opened the
@@ -143,6 +203,8 @@ export function WelcomePage() {
 
           <RecentUploads onOpened={leaveWelcomeTab} />
         </div>
+
+        <MachineAccuracyNotice />
 
         <footer className="mt-auto border-t border-line pt-3">
           <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-fg-muted hover:text-fg">
