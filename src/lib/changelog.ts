@@ -21,6 +21,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "The wide resource row, actually on the row",
     notes: [
       "Pointing at a resource still drew the wide copy of it low, and stopped it dead at the edge of the column instead of letting it reach over the board. It is now drawn straight onto the page rather than from inside the column, so nothing above it can move it or cut it off.",
+      "The star and eye now fade in as the row widens, and the rate slides across to make room for them instead of jumping there before the row has finished growing.",
+      "Each row only widens as far as its own name needs. Every one used to slide the same distance whatever it was called, so short names swung out over the board for nothing; now a name that already fits does not move at all, and a long one gets exactly the room it needs to be read in full.",
     ],
   },
   {

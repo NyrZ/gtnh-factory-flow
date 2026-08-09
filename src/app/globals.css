@@ -138,8 +138,49 @@
   }
 }
 
+/* The star and eye that live at the right end of a row, and the gap they open in
+   front of themselves, arrive with the widening rather than in one jump.
+
+   The row underneath transitions both on hover, but the wide copy is a freshly
+   mounted element: its gap starts AT its final width and its buttons at full
+   opacity, so there is nothing for a transition to run from. The rate landed
+   44px to the left of where it had been, instantly, while the row around it was
+   still growing. An animation has a `from` and needs no previous value, so it is
+   what works on something that has only just appeared.
+
+   Same 130ms as the widening itself: one movement, not two. */
+.resource-row-expand .resource-row-marks-gap {
+  animation: resource-row-marks-gap 130ms ease-out;
+}
+
+@keyframes resource-row-marks-gap {
+  from {
+    width: 0;
+  }
+}
+
+.resource-row-expand .resource-row-marks {
+  animation: resource-row-marks 130ms ease-out;
+}
+
+@keyframes resource-row-marks {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Held still while the copy is measured for how wide it has to be. Every
+   animation on it starts from a smaller value than it ends at, so a measurement
+   taken while they are running comes back short. */
+.resource-row-measuring,
+.resource-row-measuring * {
+  animation: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .resource-row-expand {
+  .resource-row-expand,
+  .resource-row-expand .resource-row-marks-gap,
+  .resource-row-expand .resource-row-marks {
     animation: none;
   }
 }
