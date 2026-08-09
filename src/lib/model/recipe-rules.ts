@@ -5,7 +5,10 @@ import type {
   MachineHandler,
   Recipe,
 } from "./types";
-import { getMachineTableControls } from "@/lib/machines/machine-table";
+import {
+  getMachineHiddenControlIds,
+  getMachineTableControls,
+} from "@/lib/machines/machine-table";
 
 export interface MachineConfigTierControl {
   id: string;
@@ -144,9 +147,12 @@ export function getRecipeMachineConfigTierControls(
   recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls">,
   node: Pick<FactoryNode, "machineConfigTiers">,
 ): MachineConfigTierControl[] {
-  const controls = mergeMachineConfigControls(
-    recipe.machineConfigControls ?? [],
-    getMachineTableControls(recipe.machineType),
+  const controls = dropHiddenControls(
+    mergeMachineConfigControls(
+      recipe.machineConfigControls ?? [],
+      getMachineTableControls(recipe.machineType),
+    ),
+    recipe.machineType,
   );
 
   return controls
@@ -172,6 +178,16 @@ function mergeMachineConfigControls(
 
   const tableIds = new Set(fromTable.map((control) => control.id));
   return [...fromDataset.filter((control) => !tableIds.has(control.id)), ...fromTable];
+}
+
+function dropHiddenControls(
+  controls: MachineConfigControl[],
+  machineType: string | undefined,
+): MachineConfigControl[] {
+  const hidden = getMachineHiddenControlIds(machineType);
+  return hidden.length === 0
+    ? controls
+    : controls.filter((control) => !hidden.includes(control.id));
 }
 
 export function getAdjacentMachineConfigTier(
