@@ -107,6 +107,13 @@ import {
   type PocketConvergenceWarning,
 } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
+import { useDesignStore } from "@/store/design-store";
+import {
+  isDesignCameraSettled,
+  settleDesignCamera,
+  writeDesignCamera,
+  type BoardCamera,
+} from "@/lib/designs/design-camera";
 import { isEditableKeyboardTarget } from "./keyboard";
 import { BoardHelp } from "./BoardHelp";
 import {
@@ -1758,6 +1765,29 @@ export function FactoryFlow() {
   );
 
   /**
+   * Put the camera exactly where a design tab was left. Instant: that tab was
+   * already showing this, so there is nowhere to travel from.
+   *
+   * A camera that arrives before the board has initialised is parked for
+   * `handleInit`. That is the ordinary case on a page load, where the design
+   * store's read of IndexedDB races React Flow's first render.
+   */
+  const pendingCameraRef = useRef<BoardCamera>(undefined);
+  const restoreBoardCamera = useCallback((camera: BoardCamera) => {
+    const instance = flowInstanceRef.current;
+    if (!instance) {
+      pendingCameraRef.current = camera;
+      return;
+    }
+
+    pendingCameraRef.current = undefined;
+    void instance.setViewport(camera);
+    // The board is on the arriving design now, so the moves it reports count as
+    // that design's again. See design-camera.ts.
+    settleDesignCamera();
+  }, []);
+
+  /**
    * A panel asked the board to move: fly to one card and centre it (a
    * double-clicked resource row), or zoom out until a set of cards - or a
    * whole freshly opened plan - fits.
@@ -1774,8 +1804,20 @@ export function FactoryFlow() {
     }
     servedFocusTokenRef.current = boardFocusRequest.token;
 
+    if (boardFocusRequest.mode === "viewport") {
+      if (boardFocusRequest.camera) {
+        restoreBoardCamera(boardFocusRequest.camera);
+      } else {
+        settleDesignCamera();
+      }
+      return;
+    }
+
     if (boardFocusRequest.mode === "fit") {
       frameBoardCards(boardFocusRequest.nodeIds, boardFocusRequest.framing);
+      // A tab with no remembered camera is framed instead, and where framing
+      // puts it is what that tab remembers from here on.
+      settleDesignCamera();
       return;
     }
 
@@ -1792,7 +1834,7 @@ export function FactoryFlow() {
       zoom: 1,
       duration: BOARD_CAMERA_DURATION,
     });
-  }, [boardFocusRequest, cameraCards, frameBoardCards]);
+  }, [boardFocusRequest, cameraCards, frameBoardCards, restoreBoardCamera]);
 
   // Publish the obstacle set for route avoidance from state, not the DOM: with
   // `onlyRenderVisibleElements` the DOM only holds on-screen nodes, so a
@@ -2953,18 +2995,51 @@ export function FactoryFlow() {
     boardRef.current?.classList.add("factory-flow-board--moving");
   }, []);
 
-  const handleMoveEnd = useCallback(() => {
-    boardRef.current?.classList.remove("factory-flow-board--moving");
-    updateFlowViewportCenter();
-  }, [updateFlowViewportCenter]);
+  /**
+   * Every camera move ends here, the board's own included, which is where the
+   * active tab learns where it is being looked at.
+   *
+   * `event` is null for a move the board made itself. A hand on the mouse is
+   * therefore also proof that a design handover is over, however the ordering
+   * fell out - see design-camera.ts.
+   */
+  const handleMoveEnd = useCallback(
+    (event: MouseEvent | TouchEvent | null, viewport: BoardCamera) => {
+      boardRef.current?.classList.remove("factory-flow-board--moving");
+      updateFlowViewportCenter();
+
+      if (event) {
+        settleDesignCamera();
+      }
+      // Inside a pocket the coordinates belong to that dimension, and a plan
+      // always loads at the top level, so there is nothing here worth keeping.
+      if (!isDesignCameraSettled() || activePocketId) {
+        return;
+      }
+
+      const designId = useDesignStore.getState().activeDesignId;
+      if (designId) {
+        writeDesignCamera(designId, viewport);
+      }
+    },
+    [activePocketId, updateFlowViewportCenter],
+  );
 
   const handleInit = useCallback(
     (instance: ReactFlowInstance<BoardFlowNode, ResourceFlowEdge>) => {
       flowInstanceRef.current = instance;
+      // A remembered camera that arrived before the board existed. It waits
+      // rather than being dropped, because on a page load this is the usual
+      // order: the plan comes out of IndexedDB while React Flow is still
+      // mounting.
+      const pendingCamera = pendingCameraRef.current;
+      if (pendingCamera) {
+        restoreBoardCamera(pendingCamera);
+      }
       window.requestAnimationFrame(updateFlowViewportCenter);
       window.setTimeout(updateFlowViewportCenter, 120);
     },
-    [updateFlowViewportCenter],
+    [restoreBoardCamera, updateFlowViewportCenter],
   );
 
   const exportFlowImage = useCallback(
@@ -3740,8 +3815,6 @@ export function FactoryFlow() {
     [annotationTool, commitAnnotationDraft],
   );
 
-  const fitViewOptions = useMemo(() => ({ padding: 0.18 }), []);
-
   // The status smart view brings the heatmap with it: "show me usage" is one
   // mode at every zoom. Turning the heat on drops the brush — painting while
   // every node is showing heat would have you picking colours you cannot see
@@ -3865,8 +3938,12 @@ export function FactoryFlow() {
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
         onEdgesDelete={handleEdgesDelete}
-        fitView
-        fitViewOptions={fitViewOptions}
+        // No `fitView`. React Flow's fit-on-init WAITS for the cards to be
+        // measured, so on a page load it lands after the plan does - and after
+        // the board has been put back where the tab was left, which it then
+        // stamped over with a fit of the whole plan. The app frames for itself
+        // on every path that puts cards on the board (the design store, plan
+        // import, blueprint paste, the tours), so nothing was relying on it.
         onlyRenderVisibleElements
         // Double-click PINS AND UNPINS waypoint dots now, so the gesture can
         // no longer also mean "zoom in". d3's dblclick.zoom listener sits on

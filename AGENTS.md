@@ -194,6 +194,27 @@ gh run watch <run-id> --exit-status
 - When selected handler changes through the machine dropdown/multi-arrow UI, carry handler-specific tier/config behavior with it.
 - Images/icons in recipe nodes should use dataset resources/atlas paths. If they exist in prod but not dev, suspect deployment/static asset path/build mismatch before changing recipe logic.
 
+## Tabs, Cameras And Where A Plan Lands
+
+- The Welcome tab's `active` flag is per browser SESSION
+  (`sessionStorage`, `src/lib/tour/welcome-tab.ts`). A reload is not a fresh
+  visit: it must leave you on the tab you were on. `open` and `showOnStartup`
+  are permanent.
+- Each design tab remembers its own camera:
+  `src/lib/designs/design-camera.ts`, localStorage keyed by design id. It is
+  deliberately NOT part of the plan - a shared setup carries positions and view
+  settings and no viewport, so someone opening one gets it framed.
+  - Not recorded inside a pocket (those coordinates are their own space, and a
+    plan always loads at the top level) and not recorded during a design
+    handover, which is what the latch in that file is for.
+  - A tab with no camera stored yet is framed, which is what every tab used to
+    get.
+- The board has NO `fitView` prop, on purpose. React Flow's fit-on-init waits
+  for cards to be measured, so on a page load it fires after the plan arrives
+  and stamps over the restored camera. The app frames for itself on every path
+  that puts cards on the board (design store, plan import, blueprint paste,
+  tours); do not add the prop back.
+
 ## Compact Mode (Phones And Small Windows)
 
 - `src/lib/compact-view.ts` owns the switch: `useIsCompactViewport()` /

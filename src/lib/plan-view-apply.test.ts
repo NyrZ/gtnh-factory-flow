@@ -97,6 +97,22 @@ describe("applying a shared plan's view", () => {
     expect(workspace.hiddenResourceKeys).toEqual(["item:cobblestone"]);
   });
 
+  it("frames the plan when it is not told where the camera was", () => {
+    applyPlanView({ calmMode: true });
+
+    expect(useFactoryStore.getState().boardFocusRequest?.mode).toBe("fit");
+  });
+
+  it("lands on a remembered camera instead of framing", () => {
+    // How a design tab comes back up where you left it: the camera wins, and
+    // the plan is NOT reframed on top of it.
+    applyPlanView({ calmMode: true }, "board", { x: -400, y: 120, zoom: 0.5 });
+
+    const request = useFactoryStore.getState().boardFocusRequest;
+    expect(request?.mode).toBe("viewport");
+    expect(request?.camera).toEqual({ x: -400, y: 120, zoom: 0.5 });
+  });
+
   it("captures what it applies, so a re-share carries the same arrangement", () => {
     const view: PlanViewState = {
       canvasPattern: "none",

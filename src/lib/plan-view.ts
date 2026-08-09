@@ -8,6 +8,7 @@ import {
   type GlanceMode,
 } from "@/components/flow/board-view";
 import { isCompactViewport } from "./compact-view";
+import type { BoardCamera } from "./designs/design-camera";
 import type { PlanViewState } from "./model/types";
 import { readWorkspaceViewSnapshot, writeWorkspaceView } from "./workspace-view";
 import { getActiveRateUnit } from "./model/rate-unit";
@@ -65,12 +66,24 @@ export type PlanViewScope = "all" | "board";
 
 /**
  * Put a saved arrangement, and the plan itself, on screen.
+ *
+ * `camera` is where this tab was last left (see `design-camera.ts`), and it is
+ * only ever passed for one of YOUR OWN tabs coming back up. Without one, the
+ * plan is framed.
  */
-export function applyPlanView(view: PlanViewState | undefined, scope: PlanViewScope = "all"): void {
+export function applyPlanView(
+  view: PlanViewState | undefined,
+  scope: PlanViewScope = "all",
+  camera?: BoardCamera,
+): void {
   applyViewSettings(view, scope);
 
   // Last, so the panel toggles above have already given the board its width.
-  //
+  if (camera) {
+    useFactoryStore.getState().moveBoardCamera(camera);
+    return;
+  }
+
   // A shared plan carries its author's card positions and nothing at all about
   // where their camera was, and plenty of factories are built thousands of
   // cells from the origin. Opening one used to drop the viewer wherever they

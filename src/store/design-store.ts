@@ -22,6 +22,12 @@ import {
   writeDesign,
   writeDesignSummary,
 } from "@/lib/designs/design-storage";
+import {
+  beginDesignCameraHandover,
+  forgetDesignCameras,
+  keepDesignCameras,
+  readDesignCamera,
+} from "@/lib/designs/design-camera";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
 import type { FactoryProject } from "@/lib/model/types";
@@ -66,7 +72,7 @@ interface DesignStore {
 
 /**
  * Loads a plan onto the canvas without marking it edited, dressed the way that
- * plan was last left and framed so you can see it.
+ * plan was last left and pointed at whatever you were looking at on it.
  *
  * A tab is a whole factory, and how a factory is DRAWN is part of it: one build
  * wants rate labels and fat lines, the next wants a clean board. Sharing a
@@ -74,13 +80,34 @@ interface DesignStore {
  * them between switches was the odd one out. See PlanViewScope for the line
  * between the board's look (per plan) and the workspace around it (yours).
  *
- * The framing comes free with `applyPlanView` and is wanted on every switch:
- * plans are built wherever their author happened to be on the canvas, so
- * arriving at one with the last tab's camera means arriving at blank board.
+ * Where the CAMERA lands is `design-camera.ts`: a tab you have been on before
+ * comes back up exactly where you left it, and one you have not is framed, which
+ * is what every tab used to get. Framing a tab you know your way around means
+ * scrolling back to the corner you were working in every single time.
  */
-function showProject(project: FactoryProject) {
+function showProject(project: FactoryProject, designId?: string) {
   useFactoryStore.getState().markHydratedProject(project);
-  applyPlanView(project.view, "board");
+  applyPlanView(project.view, "board", designId ? readDesignCamera(designId) : undefined);
+}
+
+/**
+ * Hand the canvas to another design: the store points at it, and its plan goes
+ * up dressed and framed, or back where its camera was left.
+ *
+ * The handover is opened BEFORE the active id changes, because the board reports
+ * camera moves it makes itself and the outgoing tab's last one can land after
+ * the switch. See `design-camera.ts`.
+ */
+function landOnDesign(
+  set: (partial: Partial<DesignStore>) => void,
+  designId: string,
+  project: FactoryProject,
+  rest?: Partial<DesignStore>,
+) {
+  beginDesignCameraHandover();
+  writeActiveDesignId(designId);
+  set({ ...rest, activeDesignId: designId });
+  showProject(project, designId);
 }
 
 function currentProject(): FactoryProject {
@@ -131,16 +158,20 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       }
 
       const remembered = readActiveDesignId();
-      const activeId = summaries.some((design) => design.id === remembered)
-        ? remembered
-        : summaries[0].id;
+      const activeId =
+        summaries.find((design) => design.id === remembered)?.id ?? summaries[0].id;
 
-      const active = activeId ? await readDesign(activeId) : undefined;
+      const active = await readDesign(activeId);
 
-      writeActiveDesignId(activeId);
-      set({ designs: summaries, activeDesignId: activeId, isHydrated: true });
+      // Designs can also go away without this tab hearing about it, and a camera
+      // for a plan nothing can open is dead weight.
+      keepDesignCameras(summaries.map((design) => design.id));
+
       if (active) {
-        showProject(active.project);
+        landOnDesign(set, activeId, active.project, { designs: summaries, isHydrated: true });
+      } else {
+        writeActiveDesignId(activeId);
+        set({ designs: summaries, activeDesignId: activeId, isHydrated: true });
       }
     } catch (error) {
       // A browser with IndexedDB blocked still gets a working canvas — it just
@@ -168,9 +199,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     // Autosave keys off the two together, so a canvas holding the new plan while
     // the store still names the old design is exactly the pairing that would
     // save one design's work into another.
-    writeActiveDesignId(id);
-    set({ activeDesignId: id });
-    showProject(target.project);
+    landOnDesign(set, id, target.project);
     set({ designs: sortDesigns(await listDesignSummaries()) });
   },
 
@@ -180,9 +209,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
 
     const record = createDesignRecord(createEmptyProject(), UNTITLED_DESIGN_NAME);
     await writeDesign(record);
-    writeActiveDesignId(record.id);
-    set({ activeDesignId: record.id });
-    showProject(record.project);
+    landOnDesign(set, record.id, record.project);
     set({ designs: sortDesigns(await listDesignSummaries()) });
   },
 
@@ -192,9 +219,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
 
     const record = createDesignRecord(project, name || UNTITLED_DESIGN_NAME);
     await writeDesign(record);
-    writeActiveDesignId(record.id);
-    set({ activeDesignId: record.id });
-    showProject(record.project);
+    landOnDesign(set, record.id, record.project);
     set({ designs: sortDesigns(await listDesignSummaries()) });
   },
 
@@ -214,9 +239,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       designs.map((design) => design.name),
     );
     await writeDesign(copy);
-    writeActiveDesignId(copy.id);
-    set({ activeDesignId: copy.id });
-    showProject(copy.project);
+    landOnDesign(set, copy.id, copy.project);
     set({ designs: sortDesigns(await listDesignSummaries()) });
   },
 
@@ -250,6 +273,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     const nextActiveId = pickDesignAfterDelete(designs, id);
 
     await deleteDesign(id);
+    forgetDesignCameras([id]);
     let summaries = sortDesigns(await listDesignSummaries());
 
     if (summaries.length === 0) {
@@ -258,18 +282,17 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       const seeded = createDesignRecord(createEmptyProject(), UNTITLED_DESIGN_NAME);
       await writeDesign(seeded);
       summaries = [seeded];
-      writeActiveDesignId(seeded.id);
-      set({ designs: summaries, activeDesignId: seeded.id });
-      showProject(seeded.project);
+      landOnDesign(set, seeded.id, seeded.project, { designs: summaries });
       return;
     }
 
     if (id === activeDesignId && nextActiveId) {
       const next = await readDesign(nextActiveId);
-      writeActiveDesignId(nextActiveId);
-      set({ designs: summaries, activeDesignId: nextActiveId });
       if (next) {
-        showProject(next.project);
+        landOnDesign(set, nextActiveId, next.project, { designs: summaries });
+      } else {
+        writeActiveDesignId(nextActiveId);
+        set({ designs: summaries, activeDesignId: nextActiveId });
       }
       return;
     }
@@ -288,6 +311,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     for (const id of doomed) {
       await deleteDesign(id);
     }
+    forgetDesignCameras(doomed);
 
     let summaries = sortDesigns(await listDesignSummaries());
     if (summaries.length === 0) {
@@ -295,9 +319,7 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       const seeded = createDesignRecord(createEmptyProject(), UNTITLED_DESIGN_NAME);
       await writeDesign(seeded);
       summaries = [seeded];
-      writeActiveDesignId(seeded.id);
-      set({ designs: summaries, activeDesignId: seeded.id });
-      showProject(seeded.project);
+      landOnDesign(set, seeded.id, seeded.project, { designs: summaries });
       return;
     }
 
@@ -312,10 +334,11 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
       ? keepActiveId!
       : summaries[0].id;
     const next = await readDesign(nextId);
-    writeActiveDesignId(nextId);
-    set({ designs: summaries, activeDesignId: nextId });
     if (next) {
-      showProject(next.project);
+      landOnDesign(set, nextId, next.project, { designs: summaries });
+    } else {
+      writeActiveDesignId(nextId);
+      set({ designs: summaries, activeDesignId: nextId });
     }
   },
 

@@ -63,6 +63,7 @@ import {
   resolveMemberIdsForResource,
   resolvePocketMemberIds,
 } from "@/lib/model/pocket-connections";
+import type { BoardCamera } from "@/lib/designs/design-camera";
 
 export const LOCAL_STORAGE_KEY = "gtnh-factory-flow.project.v2";
 export const RESOURCE_HISTORY_STORAGE_KEY = "gtnh-factory-flow.resource-history.v1";
@@ -74,7 +75,8 @@ const PROJECT_HISTORY_LIMIT = 100;
  *
  * `centre` lands on a single card at 1:1 - reading one machine. `fit` zooms
  * out until every named card is on screen at once, and an empty `nodeIds`
- * under `fit` means the whole board.
+ * under `fit` means the whole board. `viewport` names the pan and zoom
+ * outright, which is how a tab comes back up where you left it.
  */
 /**
  * How hard a `fit` is allowed to push, when the default framing is wrong for
@@ -100,11 +102,13 @@ export interface BoardFraming {
 }
 
 export interface BoardCameraRequest {
-  mode: "centre" | "fit";
+  mode: "centre" | "fit" | "viewport";
   nodeIds: string[];
   token: number;
   /** `fit` only. */
   framing?: BoardFraming;
+  /** `viewport` only: the exact pan and zoom to land on. */
+  camera?: BoardCamera;
 }
 
 interface FactoryStore {
@@ -354,6 +358,12 @@ interface FactoryStore {
    * to leave the viewer looking at blank canvas.
    */
   frameBoardNodes: (nodeIds?: string[], framing?: BoardFraming) => void;
+  /**
+   * Put the camera exactly here, with no animation: switching to a design tab
+   * that remembers where it was left. Instant because you are not travelling
+   * anywhere - that tab was already showing this, the last time you saw it.
+   */
+  moveBoardCamera: (camera: BoardCamera) => void;
   connectNodes: (
     sourceNodeId: string,
     targetNodeId: string,
@@ -1935,6 +1945,16 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
         mode: "fit",
         nodeIds: nodeIds ?? [],
         framing,
+        token: (state.boardFocusRequest?.token ?? 0) + 1,
+      },
+    }));
+  },
+  moveBoardCamera: (camera) => {
+    set((state) => ({
+      boardFocusRequest: {
+        mode: "viewport",
+        nodeIds: [],
+        camera,
         token: (state.boardFocusRequest?.token ?? 0) + 1,
       },
     }));

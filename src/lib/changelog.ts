@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.41.0",
+    date: "2026-08-09",
+    headline: "Every tab keeps its place",
+    notes: [
+      "Each design now remembers where you were looking on it and how far in you were zoomed. Switch to another tab and back, or reload the page, and you carry on at the machine you were working on instead of at the whole factory zoomed out.",
+      "A tab you have not opened before still arrives with the plan framed, and so does a setup someone shared with you.",
+    ],
+  },
+  {
     version: "1.40.1",
     date: "2026-08-09",
     headline: "Reloading keeps you on the design you were on",
