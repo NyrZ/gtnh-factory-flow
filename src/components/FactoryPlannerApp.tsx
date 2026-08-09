@@ -228,6 +228,7 @@ export function FactoryPlannerApp() {
     // floors, which is where the guarantee belongs.
     <div className="flex h-dvh flex-col bg-canvas text-fg">
       <RecipeBookOpener />
+      <PlacementRevealer />
       <AppHeader onLoadDatasetVersion={loadDatasetVersion} />
       {isCompact ? (
         <CompactWorkspace workspace={workspace} onLoadDatasetVersion={loadDatasetVersion} />
@@ -272,6 +273,31 @@ function RecipeBookOpener() {
       isCompact ? { leftPanelOpen: true, rightPanelOpen: false } : { leftPanelOpen: true },
     );
   }, [browsedResource, isCompact]);
+
+  return null;
+}
+
+/**
+ * The other half of that bargain: once something has actually been placed, the
+ * drawer that placed it gets out of the way.
+ *
+ * Only on a phone, where a drawer covers the board it just added a card to — the
+ * card lands, and you are looking at the panel you added it from. On a desktop the
+ * columns sit beside the board and there is nothing to move out of.
+ *
+ * The board flashes the new card at the same moment (see FactoryFlow), which is
+ * what makes the two read as one event rather than the panel simply vanishing.
+ */
+function PlacementRevealer() {
+  const placedBoardToken = useFactoryStore((state) => state.placedBoardToken);
+  const isCompact = useIsCompactViewport();
+
+  useEffect(() => {
+    if (placedBoardToken === 0 || !isCompact) {
+      return;
+    }
+    writeWorkspaceView({ leftPanelOpen: false, rightPanelOpen: false });
+  }, [placedBoardToken, isCompact]);
 
   return null;
 }

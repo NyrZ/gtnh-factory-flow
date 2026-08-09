@@ -379,6 +379,39 @@ textarea {
   }
 }
 
+/*
+ * Just landed. A card added to a plan of two hundred is indistinguishable from
+ * the other hundred and ninety-nine, and on a phone it arrives behind whichever
+ * drawer you added it from — so it says where it is, twice, and then stops.
+ *
+ * An outline and a filter on the wrapper: no layout, no repaint of the card's
+ * contents, and nothing that could be confused with the board's own signals. The
+ * amber glow means "this carries the resource you are pointing at" and cyan means
+ * "this is selected" (which a new card also is); white belongs to neither.
+ */
+.board-card-placed {
+  animation: board-card-placed 460ms ease-out 2;
+}
+
+@keyframes board-card-placed {
+  0% {
+    outline: 4px solid rgba(255, 255, 255, 0.95);
+    outline-offset: 4px;
+    filter: brightness(1.35);
+  }
+  100% {
+    outline: 4px solid rgba(255, 255, 255, 0);
+    outline-offset: 10px;
+    filter: brightness(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-card-placed {
+    animation: none;
+  }
+}
+
 .react-flow__edge-textbg {
   fill: var(--canvas);
 }
@@ -1461,3 +1494,4 @@ img {
 .factory-flow-board--calm .board-edit-chrome {
   display: none;
 }
+

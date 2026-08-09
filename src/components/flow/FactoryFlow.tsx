@@ -306,6 +306,10 @@ const CANVAS_PATTERN_VARIANT: Record<
 /** Module-level so the board never re-renders on a fresh object identity. */
 const PRO_OPTIONS = { hideAttribution: true };
 
+/** Two pulses of the keyframes in globals.css, plus a little slack. */
+const PLACED_FLASH_CLASS = "board-card-placed";
+const PLACED_FLASH_MS = 1000;
+
 /**
  * On a touchscreen a card moves only once it is selected: tap it, then drag it.
  *
@@ -3427,6 +3431,46 @@ export function FactoryFlow() {
     [frameBoardCards],
   );
   const handleFitView = useCallback(() => frameBoardCards(), [frameBoardCards]);
+
+  // Whatever just landed says so, twice. Done to the DOM rather than through the
+  // node objects on purpose: a transient outline is not state the board should
+  // rebuild for, and threading it through would hand every card a new identity
+  // twice per placement — which is what the node memos exist to prevent.
+  const placedBoardToken = useFactoryStore((state) => state.placedBoardToken);
+  useEffect(() => {
+    if (placedBoardToken === 0) {
+      return undefined;
+    }
+
+    const ids = useFactoryStore.getState().placedBoardIds ?? [];
+    let cleanup: (() => void) | undefined;
+    // One frame: the cards are placed by the same commit that raised the token,
+    // so they are not in the DOM yet.
+    const frame = requestAnimationFrame(() => {
+      const flashed = ids
+        .map((id) => boardRef.current?.querySelector(`.react-flow__node[data-id="${id}"]`))
+        .filter((element): element is Element => element !== null && element !== undefined);
+      for (const element of flashed) {
+        element.classList.add(PLACED_FLASH_CLASS);
+      }
+      const timer = window.setTimeout(() => {
+        for (const element of flashed) {
+          element.classList.remove(PLACED_FLASH_CLASS);
+        }
+      }, PLACED_FLASH_MS);
+      cleanup = () => {
+        window.clearTimeout(timer);
+        for (const element of flashed) {
+          element.classList.remove(PLACED_FLASH_CLASS);
+        }
+      };
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      cleanup?.();
+    };
+  }, [placedBoardToken]);
 
   // Double tap to zoom, double tap and slide to keep zooming, and a swipe in from
   // either side to pull that drawer out. Off while a tool owns the pointer.

@@ -291,6 +291,17 @@ interface FactoryStore {
    */
   pendingBoardSelectionIds?: string[];
   setPendingBoardSelection: (ids?: string[]) => void;
+  /**
+   * What was just put on the board, and a token so the same card landing twice
+   * still counts twice.
+   *
+   * Two things read it: the board flashes those cards, because a card added to a
+   * plan of two hundred is otherwise indistinguishable from the rest of them, and
+   * on a phone the side drawers close, because whatever just landed is behind
+   * whichever one is open.
+   */
+  placedBoardIds?: string[];
+  placedBoardToken: number;
   /** The board's live selection, published for panels outside the canvas. */
   selectedBoardIds: string[];
   setSelectedBoardIds: (ids: string[]) => void;
@@ -478,6 +489,8 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   selectedRecipeId: undefined,
   activePocketId: undefined,
   pendingBoardSelectionIds: undefined,
+  placedBoardIds: undefined,
+  placedBoardToken: 0,
   selectedBoardIds: [],
   boardFocusRequest: undefined,
   lastResult: calculateThroughput(initialProject),
@@ -1222,10 +1235,16 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const finalProject = touchProject(
         wired > 0 || conflicted ? pruneOrphanStorages(project) : project,
       );
+      const placed = (finalProject.storages ?? []).some((entry) => entry.id === storage.id);
       return withProjectHistory(state, {
         project: finalProject,
         selectedNodeId: undefined,
         hoveredStorageResourceKey: getResourceKey(storageResource),
+        // Only if the sweep above kept it: a drawer nothing reached is gone, and
+        // flashing where it briefly was would point at empty canvas.
+        ...(placed
+          ? { placedBoardIds: [storage.id], placedBoardToken: state.placedBoardToken + 1 }
+          : undefined),
         lastResult: calculateThroughput(finalProject),
       });
     });
@@ -1834,7 +1853,19 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     });
   },
   setPendingBoardSelection: (ids) => {
-    set({ pendingBoardSelectionIds: ids });
+    // Every caller that hands the selection to a set of ids has just created
+    // them: a paste, a blueprint dropped in, a pocket packed or unpacked. So this
+    // is also where "just placed" gets marked. Clearing (the board consuming the
+    // handover) leaves the mark alone — the flash outlives the handover.
+    set((state) =>
+      ids && ids.length > 0
+        ? {
+            pendingBoardSelectionIds: ids,
+            placedBoardIds: ids,
+            placedBoardToken: state.placedBoardToken + 1,
+          }
+        : { pendingBoardSelectionIds: ids },
+    );
   },
   setSelectedBoardIds: (ids) => {
     set((state) => {
@@ -2295,6 +2326,8 @@ function addRecipeNodeToState(
     project,
     selectedNodeId: node.id,
     selectedRecipeId: recipe.id,
+    placedBoardIds: [node.id],
+    placedBoardToken: state.placedBoardToken + 1,
     lastResult: calculateThroughput(project),
   });
 }
@@ -2345,6 +2378,8 @@ function addConnectedRecipeNodeToState(
     project,
     selectedNodeId: nextNode.id,
     selectedRecipeId: recipe.id,
+    placedBoardIds: [nextNode.id],
+    placedBoardToken: state.placedBoardToken + 1,
     lastResult: calculateThroughput(project),
   });
 }
