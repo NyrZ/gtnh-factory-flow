@@ -36,7 +36,7 @@ import { useDesignStore } from "@/store/design-store";
  * dataset, and this is a line of text on a page that has to open instantly.
  * Update it when `machine-table.ts` grows.
  */
-const VERIFIED_MACHINE_COUNT = 45;
+const VERIFIED_MACHINE_COUNT = 49;
 const TOTAL_MULTIBLOCK_COUNT = 81;
 
 /**
