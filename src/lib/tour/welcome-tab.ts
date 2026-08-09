@@ -11,11 +11,18 @@ import { useSyncExternalStore } from "react";
  * rather than replacing it, so nothing about the plan is unmounted while it is
  * up.
  *
- * `open` and `showOnStartup` persist; `active` deliberately does not. Coming
- * back to a page that had opened over your factory a week ago and finding it
- * still there reads as the app losing your work. So every visit starts on the
- * Welcome tab if the checkbox says so, and clicking a design puts it away for
- * the rest of the session.
+ * `open` and `showOnStartup` are permanent (localStorage); `active` is not.
+ * Coming back to a page that had opened over your factory a week ago and
+ * finding it still there reads as the app losing your work. So a fresh visit
+ * starts on the Welcome tab if the checkbox says so, and stepping onto a design
+ * puts it away for the rest of the session.
+ *
+ * "The rest of the session" includes RELOADS, which is why stepping off is
+ * recorded in sessionStorage rather than only in memory: reloading while you
+ * work is not a new visit, and being thrown back onto Welcome every time is
+ * indistinguishable from the app forgetting where you were. sessionStorage is
+ * the exact scope wanted - it survives a reload and a navigation, and a new tab
+ * or a later visit starts clean.
  */
 export interface WelcomeTabState {
   /** The tab is in the strip. */
@@ -28,18 +35,44 @@ export interface WelcomeTabState {
 
 const WELCOME_TAB_STORAGE_KEY = "gtnh-factory-flow-welcome-tab";
 
+/** Set once the user has stepped off Welcome in this browser session. */
+const WELCOME_LEFT_SESSION_KEY = "gtnh-factory-flow-welcome-left";
+
 const CLOSED: WelcomeTabState = { open: false, active: false, showOnStartup: true };
 
 let state: WelcomeTabState = CLOSED;
 let loaded = false;
 const listeners = new Set<() => void>();
 
+function hasLeftThisSession(): boolean {
+  try {
+    return window.sessionStorage.getItem(WELCOME_LEFT_SESSION_KEY) === "1";
+  } catch {
+    // Blocked storage just means every reload looks like a fresh visit.
+    return false;
+  }
+}
+
+function rememberLeftThisSession(left: boolean) {
+  try {
+    if (left) {
+      window.sessionStorage.setItem(WELCOME_LEFT_SESSION_KEY, "1");
+    } else {
+      window.sessionStorage.removeItem(WELCOME_LEFT_SESSION_KEY);
+    }
+  } catch {
+    // Never let a storage failure break the tab strip.
+  }
+}
+
 function readStored(): WelcomeTabState {
+  const left = hasLeftThisSession();
+
   try {
     const raw = window.localStorage.getItem(WELCOME_TAB_STORAGE_KEY);
     if (!raw) {
       // Nobody has been here before: the tab is in the strip and open on it.
-      return { open: true, active: true, showOnStartup: true };
+      return { open: true, active: !left, showOnStartup: true };
     }
     const parsed = JSON.parse(raw) as Partial<Record<keyof WelcomeTabState, unknown>>;
     // An absent key takes the default, so a blob saved before a setting existed
@@ -48,9 +81,9 @@ function readStored(): WelcomeTabState {
       typeof value === "boolean" ? value : fallback;
     const open = flag(parsed.open, true);
     const showOnStartup = flag(parsed.showOnStartup, true);
-    return { open, showOnStartup, active: open && showOnStartup };
+    return { open, showOnStartup, active: open && showOnStartup && !left };
   } catch {
-    return { open: true, active: true, showOnStartup: true };
+    return { open: true, active: !left, showOnStartup: true };
   }
 }
 
@@ -75,6 +108,11 @@ function subscribe(listener: () => void) {
 
 function write(patch: Partial<WelcomeTabState>) {
   state = { ...getSnapshot(), ...patch };
+  // Whichever tab you moved to is the one a reload should land on, so the
+  // session flag tracks `active` rather than being set only when leaving.
+  if (patch.active !== undefined) {
+    rememberLeftThisSession(!state.active);
+  }
   try {
     window.localStorage.setItem(
       WELCOME_TAB_STORAGE_KEY,
@@ -90,6 +128,11 @@ function write(patch: Partial<WelcomeTabState>) {
 
 export function useWelcomeTab(): WelcomeTabState {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/** The current state without subscribing. For tests and one-shot reads. */
+export function readWelcomeTabState(): WelcomeTabState {
+  return getSnapshot();
 }
 
 /** Put the Welcome tab in the strip and show it. */

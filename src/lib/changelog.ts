@@ -16,6 +16,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.40.1",
+    date: "2026-08-09",
+    headline: "Reloading keeps you on the design you were on",
+    notes: [
+      "Refreshing the page used to drop you back on the Welcome tab. Now it leaves you where you were, and Welcome only greets you when you open the planner fresh.",
+    ],
+  },
+  {
     version: "1.40.0",
     date: "2026-08-08",
     headline: "Machine rates now match the game",
