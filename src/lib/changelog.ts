@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.42.0",
+    date: "2026-08-09",
+    headline: "Crop farms know who is picking the crop",
+    notes: [
+      "A crop farm now has a machine dropdown like every other card: by hand, a Crop Manager, or an Industrial Farm. Picking one changes the rates, because in game it does.",
+      "A Crop Manager tells you how far it reaches. An LV one works 11x11 crop sticks on each of the five layers it covers, an UV one 39x39, and every tier shakes the loot table 5% harder than the last.",
+      "An Industrial Farm brings its own water, fertilizer and sky, so those three settings disappear from the card: there is nothing left for you to set. In their place you get the seed bed tier and its upgrade units, and the card refuses to fit more units than the structure has room for.",
+      "Hover the card and it now says how many machines your crop count actually needs, and what they draw.",
+      "Cards you already have keep picking by hand, so nothing on your board moves until you choose otherwise.",
+    ],
+  },
+  {
     version: "1.41.1",
     date: "2026-08-09",
     headline: "A dry crop is worth nothing, and now says so",

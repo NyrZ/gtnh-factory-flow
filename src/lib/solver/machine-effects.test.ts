@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { FactoryNode, Recipe } from "@/lib/model/types";
 import { applyMachineHandlerToRecipe } from "@/lib/model/recipe-rules";
-import { enrichPassiveProductionRecipe } from "@/lib/model/passive-production";
+import {
+  cropsNhHarvesterFromTiers,
+  cropsNhSquarePerTier,
+  cropsNhUpgradeSlots,
+  enrichPassiveProductionRecipe,
+} from "@/lib/model/passive-production";
 import { getOverclockedRecipeStats } from "./overclock";
 import {
   getMachineDurationMultiplier,
@@ -343,3 +348,150 @@ function testBeeRecipe(): Recipe {
     source: { recipeMap: "Bee Produce" },
   };
 }
+
+describe("CropsNH harvesters", () => {
+  // Oil Berry in 2.9: tier 4, 1200 growth points, base drop chance 0.95^4,
+  // one drop of 2x at 100%. This is the crop the wiki's Crop Manager vs
+  // Industrial Farm comparison table is built on.
+  const OIL_BERRY_ID = "cropsnh:oilberry";
+  const oilBerry = (): Recipe =>
+    enrichPassiveProductionRecipe({
+      id: "cropsnh-crop-oilberry",
+      name: "Crop Farm: Oil Berry",
+      machineType: "Crop Farm",
+      minimumTier: "NONE",
+      // Baked at the reference environment: score 55 -> rate 123 -> 10 cycles.
+      durationTicks: 2560,
+      eut: 0,
+      inputs: [],
+      outputs: [
+        {
+          kind: "item",
+          id: OIL_BERRY_ID,
+          amount: 0.95 ** 4 * 1.03 ** 31 * (2 + 32 / 100),
+          displayName: "Oil Berry",
+        },
+      ],
+      metadata: {
+        cropsNh: {
+          tier: 4,
+          growthPoints: 1200,
+          dropChance: 0.95 ** 4,
+          growthCycleTicks: 256,
+          growthMultiplier: 1,
+          drops: [{ id: OIL_BERRY_ID, stackSize: 2, weight: 10000 }],
+        },
+      },
+      source: { recipeMap: "Crop Farm" },
+    });
+
+  /** Items per 5 seconds from ONE crop, the unit the wiki table uses. */
+  const per5Seconds = (node: Pick<FactoryNode, "machineConfigTiers"> & Partial<FactoryNode>) => {
+    const recipe = oilBerry();
+    const output = recipe.outputs[0]!;
+    const full = { machineConfigTiers: {}, ...node };
+    const seconds = (recipe.durationTicks * getMachineDurationMultiplier(recipe, full)) / 20;
+    const amount = output.amount * getMachineOutputMultiplier(recipe, full, output, "LV");
+    return (amount / seconds) * 5;
+  };
+
+  const WORLD_N27 = { cropWater: "100", cropFertilizer: "100", cropSky: "yes", cropBiome: "none" };
+  const WORLD_N41 = { ...WORLD_N27, cropBiome: "one-tag" };
+
+  it("offers by hand, Crop Manager and Industrial Farm, defaulting to by hand", () => {
+    const recipe = oilBerry();
+    expect(recipe.machineHandlers?.map((handler) => handler.id)).toEqual([
+      "crop-hand",
+      "crop-manager",
+      "crop-industrial-farm",
+    ]);
+  });
+
+  it("hides water, fertilizer and sky on an Industrial Farm and shows them elsewhere", () => {
+    const recipe = oilBerry();
+    const controlIds = (handlerId: string) =>
+      applyMachineHandlerToRecipe(recipe, { machineHandlerId: handlerId }).machineConfigControls?.map(
+        (control) => control.id,
+      ) ?? [];
+
+    // The farm simulates water 200, fertilizer 200 and sky access, so a player
+    // has nothing to set; a Crop Manager works real sticks and keeps all three.
+    for (const id of ["cropWater", "cropFertilizer", "cropSky"]) {
+      expect(controlIds("crop-industrial-farm")).not.toContain(id);
+      expect(controlIds("crop-manager")).toContain(id);
+      expect(controlIds("crop-hand")).toContain(id);
+    }
+    expect(controlIds("crop-industrial-farm")).toContain("cropSeedBedTier");
+    expect(controlIds("crop-manager")).toContain("cropManagerTier");
+    expect(controlIds("crop-hand")).not.toContain("cropManagerTier");
+  });
+
+  it("reproduces the wiki's Crop Manager output table at every tier", () => {
+    // Wiki: single same-tier Crop Manager, one planted layer, 31/31/31 seeds.
+    const WIKI: Array<[tierIndex: number, n27: number, n41: number]> = [
+      [2, 27, 35],
+      [3, 45, 59],
+      [4, 69, 90],
+      [5, 99, 129],
+      [6, 136, 177],
+      [7, 180, 235],
+      [8, 231, 302],
+    ];
+    for (const [tierIndex, n27, n41] of WIKI) {
+      const sticks = cropsNhSquarePerTier(tierIndex);
+      const node = (world: Record<string, string>) => ({
+        machineHandlerId: "crop-manager",
+        machineConfigTiers: { ...world, cropManagerTier: String(tierIndex), cropManagerLayers: "1" },
+      });
+      expect(Math.round(per5Seconds(node(WORLD_N27)) * sticks)).toBe(n27);
+      expect(Math.round(per5Seconds(node(WORLD_N41)) * sticks)).toBe(n41);
+    }
+  });
+
+  it("reproduces the wiki's Industrial Farm output at MV", () => {
+    // MV seed bed: 1 upgrade slot, best spent on an Advanced Harvesting Unit.
+    // Harvest rounds x(1 + 0.2*2) x(1 + 0.2) = 1.68, growth speed x1.
+    const node = {
+      machineHandlerId: "crop-industrial-farm",
+      machineConfigTiers: { cropSeedBedTier: "2", cropIfHarvestUnits: "1" },
+    };
+    expect(Math.round(per5Seconds(node) * cropsNhSquarePerTier(2))).toBe(70);
+  });
+
+  it("applies the farm's growth speed and harvest round multipliers separately", () => {
+    const recipe = oilBerry();
+    const output = recipe.outputs[0]!;
+    // IV seed bed: 4 slots -> 2 growth units, 1 fertilizer unit, 1 harvest unit.
+    const node = {
+      machineConfigTiers: {
+        cropSeedBedTier: "5",
+        cropIfGrowthUnits: "2",
+        cropIfFertilizerUnits: "1",
+        cropIfHarvestUnits: "1",
+      },
+      machineHandlerId: "crop-industrial-farm",
+    };
+    // speed = (1 + 2*1.0) * (1 + 0.5) = 4.5, so duration is 1/4.5 of a stick's.
+    expect(getMachineDurationMultiplier(recipe, node)).toBeCloseTo(1 / 4.5, 10);
+    // rounds = (1 + 0.2*5 + 0.5) * (1 + 0.2*1) = 2.5 * 1.2 = 3.0
+    expect(getMachineOutputMultiplier(recipe, node, output, "LV")).toBeCloseTo(3, 10);
+  });
+
+  it("never spends more upgrade slots than the seed bed has", () => {
+    // An MV farm has exactly one slot, so a card asking for four growth units
+    // plus a fertilizer unit must not stack all five.
+    const setup = cropsNhHarvesterFromTiers(
+      { cropSeedBedTier: "2", cropIfGrowthUnits: "4", cropIfFertilizerUnits: "1" },
+      "crop-industrial-farm",
+    );
+    expect(cropsNhUpgradeSlots(2)).toBe(1);
+    expect(setup.growthUnits + setup.fertilizerUnits).toBeLessThanOrEqual(1);
+  });
+
+  it("keeps by-hand cards exactly where they were before harvesters existed", () => {
+    const bare = { machineConfigTiers: {} } as FactoryNode;
+    const recipe = oilBerry();
+    expect(getMachineDurationMultiplier(recipe, bare)).toBe(1);
+    expect(getMachineOutputMultiplier(recipe, bare, recipe.outputs[0]!, "LV")).toBe(1);
+  });
+});

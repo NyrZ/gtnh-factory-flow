@@ -3,11 +3,21 @@
 import type { FactoryNode, MachineHandler, Recipe } from "@/lib/model/types";
 import { applyMachineHandlerToRecipe, getRecipeMachineHandlers } from "@/lib/model/recipe-rules";
 import {
+  cropsNhCropsPerMachine,
   cropsNhEnvironmentFromTiers,
+  cropsNhEutPerCrop,
   cropsNhExpectedDrop,
   cropsNhGrowthRate,
+  cropsNhGrowthSpeedMultiplier,
+  cropsNhHarvestRoundMultiplier,
   cropsNhHarvestTicks,
+  cropsNhHarvesterEnvironment,
+  cropsNhHarvesterFromTiers,
+  cropsNhHarvesterTierName,
+  cropsNhManagerEuPerHarvest,
+  cropsNhSquarePerTier,
   cropsNhNutrientScore,
+  cropsNhUpgradeSlots,
   getCropsNhStats,
 } from "@/lib/model/passive-production";
 
@@ -68,9 +78,11 @@ function formatNumber(value: number, digits = 2): string {
  */
 function CropSourceStatsContent({
   recipe,
+  handler,
   node,
 }: {
   recipe: Recipe;
+  handler?: Pick<MachineHandler, "id" | "label">;
   node?: Pick<FactoryNode, "machineConfigTiers" | "machineCount">;
 }) {
   const stats = getCropsNhStats(recipe);
@@ -89,8 +101,18 @@ function CropSourceStatsContent({
     recipe.outputs.map((output) => [output.id, output.displayName ?? output.id] as const),
   );
 
-  // Live math with the node's current knob settings (defaults when unset).
-  const env = cropsNhEnvironmentFromTiers(node?.machineConfigTiers);
+  // Live math with the node's current knob settings (defaults when unset),
+  // as reshaped by whichever harvester is picked: an Industrial Farm fixes
+  // water, fertilizer and sky itself and speeds the crop up with its upgrades.
+  const setup = cropsNhHarvesterFromTiers(node?.machineConfigTiers, handler?.id);
+  const speedMultiplier = cropsNhGrowthSpeedMultiplier(setup);
+  const roundMultiplier = cropsNhHarvestRoundMultiplier(setup);
+  const cropsPerMachine = cropsNhCropsPerMachine(setup);
+  const managerSide = Math.round(Math.sqrt(cropsNhSquarePerTier(setup.tierIndex)));
+  const env = cropsNhHarvesterEnvironment(
+    setup,
+    cropsNhEnvironmentFromTiers(node?.machineConfigTiers),
+  );
   const waterBonus = Math.floor((Math.min(100, Math.max(0, env.water)) + 9) / 10);
   const fertilizerBonus = Math.floor((Math.min(100, Math.max(0, env.fertilizer)) + 9) / 10);
   const skyBonus = env.sky ? 2 : 0;
@@ -102,14 +124,14 @@ function CropSourceStatsContent({
   const rate = cropsNhGrowthRate(stats, env);
   const growing = rate > 0;
   const cycles = growing ? Math.ceil(stats.growthPoints / rate) : Infinity;
-  const harvestTicks = cropsNhHarvestTicks(stats, env);
+  const harvestTicks = cropsNhHarvestTicks(stats, env) / speedMultiplier;
   const harvestSeconds = harvestTicks / 20;
-  const rounds = stats.dropChance * 1.03 ** Math.max(1, Math.min(31, env.gain));
+  const rounds = stats.dropChance * 1.03 ** Math.max(1, Math.min(31, env.gain)) * roundMultiplier;
   const dropLines = stats.drops.map((drop) => ({
     name: displayNamesById.get(drop.id) ?? drop.id,
     weightPercent: drop.weight / 100,
     stackSize: drop.stackSize,
-    expected: cropsNhExpectedDrop(stats, env.gain, drop),
+    expected: cropsNhExpectedDrop(stats, env.gain, drop) * roundMultiplier,
   }));
   const totalPerHarvest = dropLines.reduce((sum, drop) => sum + drop.expected, 0);
   const cropCount = Math.max(1, node?.machineCount ?? 1);
@@ -248,6 +270,58 @@ function CropSourceStatsContent({
         ) : null}
       </div>
 
+      {/* What the chosen machine adds, and how many of them that many crops needs. */}
+      {setup.id !== "crop-hand" ? (
+        <div className="mt-2 border-t border-white/10 pt-2">
+          <p className="text-[17px] font-semibold leading-snug text-amber-300">
+            What is picking it?
+          </p>
+          <p className="mt-1 text-[16px] leading-relaxed text-slate-100">
+            {setup.id === "crop-manager" ? (
+              <>
+                A <span className="text-white">{cropsNhHarvesterTierName(setup.tierIndex)} Crop
+                Manager</span> reaches {managerSide}x{managerSide} sticks on each of five layers,
+                and you have planted {setup.layers} of them:{" "}
+                <span style={{ color: BONUS_COLOR }}>
+                  {formatNumber(cropsPerMachine, 0)} crops per machine
+                </span>
+                . It shakes the loot table{" "}
+                <span style={{ color: BONUS_COLOR }}>
+                  {formatNumber((roundMultiplier - 1) * 100, 0)}% harder
+                </span>{" "}
+                than picking by hand, and spends{" "}
+                {formatNumber(cropsNhManagerEuPerHarvest(setup), 0)} EU on every crop it picks.
+              </>
+            ) : (
+              <>
+                A <span className="text-white">{cropsNhHarvesterTierName(setup.tierIndex)}
+                {" "}Industrial Farm</span> grows{" "}
+                <span style={{ color: BONUS_COLOR }}>
+                  {formatNumber(cropsPerMachine, 0)} seeds
+                </span>{" "}
+                in its beds and waters and feeds them for you, so it always runs at full water,
+                full fertilizer and open sky. Its {cropsNhUpgradeSlots(setup.tierIndex)} upgrade
+                slot{cropsNhUpgradeSlots(setup.tierIndex) === 1 ? "" : "s"} are set to{" "}
+                <span style={{ color: BONUS_COLOR }}>x{formatNumber(speedMultiplier, 2)} speed</span>{" "}
+                and{" "}
+                <span style={{ color: BONUS_COLOR }}>
+                  x{formatNumber(roundMultiplier, 2)} harvests
+                </span>
+                , drawing about {formatNumber(cropsNhEutPerCrop(setup) * cropsPerMachine, 0)} EU/t.
+              </>
+            )}
+          </p>
+          <p className="mt-1 text-[16px] leading-relaxed text-slate-100">
+            Your {cropCount === 1 ? "single crop" : `${formatNumber(cropCount, 0)} crops`} need{" "}
+            <span style={{ color: BONUS_COLOR }}>
+              {formatNumber(Math.ceil(cropCount / cropsPerMachine), 0)}x{" "}
+              {setup.id === "crop-manager" ? "Crop Manager" : "Industrial Farm"}
+            </span>
+            .
+          </p>
+        </div>
+      ) : null}
+
       <p className="mt-2 border-t border-white/10 pt-2 text-[13px] leading-relaxed text-slate-400">
         For the curious: food = (5 + water + fertilizer + sky + biome) × 5 vs Tier × 10 demand
         (+1% speed per spare point, −4% per missing); growth = (6 + Growth) points per 12.8 s;
@@ -284,7 +358,7 @@ export function MachineStatsContent({
 }) {
   const cropStats = getCropsNhStats(recipe);
   if (cropStats) {
-    return <CropSourceStatsContent recipe={recipe} node={node} />;
+    return <CropSourceStatsContent recipe={recipe} handler={handler} node={node} />;
   }
 
   const handlers = getRecipeMachineHandlers(recipe);

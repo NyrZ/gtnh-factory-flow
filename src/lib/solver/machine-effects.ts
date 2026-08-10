@@ -12,7 +12,11 @@ import {
   cropsNhEnvironmentFromTiers,
   cropsNhExpectedDrop,
   cropsNhGrowthRate,
+  cropsNhGrowthSpeedMultiplier,
+  cropsNhHarvestRoundMultiplier,
   cropsNhHarvestTicks,
+  cropsNhHarvesterEnvironment,
+  cropsNhHarvesterFromTiers,
   getBeeBaseProductionTerm,
   getBeeProductionTermModifier,
   getCropsNhStats,
@@ -40,7 +44,7 @@ type MachineEffectRecipe = Pick<
 
 /** What it needs off the node the user configured. */
 type MachineEffectNode = Pick<FactoryNode, "machineConfigTiers" | "coilTier"> &
-  Partial<Pick<FactoryNode, "overclockTier">>;
+  Partial<Pick<FactoryNode, "overclockTier" | "machineHandlerId">>;
 
 /**
  * Reads the machine config tiers a node has selected as the zero-based indices
@@ -95,25 +99,32 @@ export function buildMachineContext(
 
 export function getMachineOutputMultiplier(
   recipe: Pick<Recipe, "machineType" | "source" | "nei" | "machineConfigControls" | "metadata">,
-  node: Pick<FactoryNode, "machineConfigTiers">,
+  node: Pick<FactoryNode, "machineConfigTiers"> & Partial<Pick<FactoryNode, "machineHandlerId">>,
   output: RecipeOutput,
   tier: VoltageTier,
 ): number {
   const cropStats = getCropsNhStats(recipe);
   if (cropStats) {
-    const env = cropsNhEnvironmentFromTiers(node.machineConfigTiers);
+    const setup = cropsNhHarvesterFromTiers(node.machineConfigTiers, node.machineHandlerId);
+    const env = cropsNhHarvesterEnvironment(
+      setup,
+      cropsNhEnvironmentFromTiers(node.machineConfigTiers),
+    );
     if (cropsNhGrowthRate(cropStats, env) <= 0) {
       // Nutrient supply is 25+ under demand: the crop never grows (and risks
       // getting sick), so the farm produces nothing at all.
       return 0;
     }
+    // Both harvesters multiply the drop ROUNDS, exactly where the crop's own
+    // gain-driven rounds are computed, so this rides on the same ratio.
+    const rounds = cropsNhHarvestRoundMultiplier(setup);
     const drop = cropStats.drops.find((entry) => entry.id === output.id);
     if (!drop) {
-      return 1;
+      return rounds;
     }
     const reference = cropsNhExpectedDrop(cropStats, CROPSNH_REFERENCE_ENVIRONMENT.gain, drop);
     const current = cropsNhExpectedDrop(cropStats, env.gain, drop);
-    return reference > 0 ? current / reference : 1;
+    return (reference > 0 ? current / reference : 1) * rounds;
   }
 
   const configMultiplier = getRecipeMachineConfigTierControls(recipe, node)
@@ -331,7 +342,11 @@ export function getMachineDurationMultiplier(
 ): number {
   const cropStats = getCropsNhStats(recipe);
   if (cropStats) {
-    const env = cropsNhEnvironmentFromTiers(node.machineConfigTiers);
+    const setup = cropsNhHarvesterFromTiers(node.machineConfigTiers, node.machineHandlerId);
+    const env = cropsNhHarvesterEnvironment(
+      setup,
+      cropsNhEnvironmentFromTiers(node.machineConfigTiers),
+    );
     const ticks = cropsNhHarvestTicks(cropStats, env);
     const referenceTicks = cropsNhHarvestTicks(cropStats, CROPSNH_REFERENCE_ENVIRONMENT);
     if (!Number.isFinite(ticks) || referenceTicks <= 0) {
@@ -339,7 +354,10 @@ export function getMachineDurationMultiplier(
       // keep the duration finite so the solver stays stable.
       return 1;
     }
-    return ticks / referenceTicks;
+    // An Industrial Farm cycle banks `progressPerCycle` of a harvest, so its
+    // time per harvest is the crop stick's own divided by the growth speed
+    // multiplier. A Crop Manager grows at the world's pace and divides by 1.
+    return ticks / referenceTicks / cropsNhGrowthSpeedMultiplier(setup);
   }
 
   // The curated table states speed as a throughput multiplier, so a machine
