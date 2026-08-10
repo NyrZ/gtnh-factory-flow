@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useIsCompactViewport } from "@/lib/compact-view";
+import { unseenEntries } from "@/lib/whats-new";
 import { APP_VERSION } from "@/lib/version";
 import { AccountMenu } from "./community/AccountMenu";
 import { AppIdentity } from "./AppIdentity";
@@ -21,6 +22,9 @@ interface AppHeaderProps {
  */
 export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
   const [isChangelogOpen, setChangelogOpen] = useState(false);
+  // Captured at the moment of the click, because opening the notes marks them
+  // read: without this the divider would have nothing above it.
+  const [unseenVersions, setUnseenVersions] = useState<Set<string>>();
   // Narrow windows keep the name and the version chip and fold the rest into
   // one menu — see AppMenu for why a bar that overflows costs a phone more than
   // the buttons that fall off the end of it.
@@ -34,7 +38,10 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
         </span>
         <button
           type="button"
-          onClick={() => setChangelogOpen(true)}
+          onClick={() => {
+            setUnseenVersions(new Set(unseenEntries().map((entry) => entry.version)));
+            setChangelogOpen(true);
+          }}
           title="What's new in GTNH Planner"
           aria-label={`Version ${APP_VERSION} — see what's new`}
           className="shrink-0 rounded border border-line px-1 py-px text-[10px] font-semibold leading-none text-fg-muted tabular-nums hover:border-cyan-600 hover:text-cyan-500"
@@ -54,7 +61,12 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
           </>
         )}
       </h1>
-      {isChangelogOpen ? <ChangelogDialog onClose={() => setChangelogOpen(false)} /> : null}
+      {isChangelogOpen ? (
+        <ChangelogDialog
+          unseenVersions={unseenVersions}
+          onClose={() => setChangelogOpen(false)}
+        />
+      ) : null}
       {isCompact ? (
         <AppMenu onLoadDatasetVersion={onLoadDatasetVersion} />
       ) : (
@@ -63,7 +75,12 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
           <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
           <BoardActions />
           <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
-          <WhatsNewButton onClick={() => setChangelogOpen(true)} />
+          <WhatsNewButton
+            onClick={(unseen) => {
+              setUnseenVersions(unseen);
+              setChangelogOpen(true);
+            }}
+          />
           <ReportBugButton />
           <AccountMenu />
         </div>

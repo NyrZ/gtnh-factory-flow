@@ -53,17 +53,14 @@ export function WhatsNewGate() {
   };
 
   if (entries.length > 0) {
-    const since = entries[entries.length - 1]!.version;
     return (
       <ChangelogDialog
-        entries={entries}
+        // Which versions are new TO THIS READER. The dialog opens on those and
+        // keeps the rest of the history behind a button - handing it a
+        // pre-filtered list made the popup and the header button two different
+        // documents, and neither of them was "the changelog".
+        unseenVersions={new Set(entries.map((entry) => entry.version))}
         tone="interrupt"
-        title="The planner has been updated"
-        subtitle={
-          entries.length === 1
-            ? `Here is what changed in v${since}.`
-            : `Here is everything that changed since v${since}.`
-        }
         onClose={closeNotes}
       />
     );

@@ -1,226 +1,384 @@
 "use client";
 
-import { useEffect } from "react";
-import { AlertTriangle, Sparkles, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown, History, Sparkles, X } from "lucide-react";
 import { CHANGELOG, type ChangelogEntry } from "@/lib/changelog";
 import { startLesson } from "@/lib/tour/tour-state";
 import { APP_VERSION } from "@/lib/version";
 
 /**
- * What's new, opened by the version chip in the header and the button on the
- * Welcome tab. Newest release first, a headline and a couple of plain-English
- * lines each.
+ * What's new: what THIS reader missed, and the rest of the history behind a
+ * button.
  *
- * The VERSION leads. It is the thing a reader arrives holding - the chip in the
- * header told them theirs, a bug report asks for it - so each entry is anchored
- * on its number and date in a rail down the left, with the headline beside it
- * as a caption rather than as the entry's title. Wide enough for that rail and
- * a full line of notes beside it; the release notes are prose, and prose in a
- * narrow column is a lot of scrolling.
+ * The whole list used to render at once. That is fine at four entries and
+ * hostile at eighty: someone who last opened the planner in the spring came
+ * back to a wall and closed it, which loses exactly the person the popup
+ * exists for. So the sheet opens on the releases they have not seen - usually
+ * one to four - and the archive is one click below, for the reader who came
+ * looking for it rather than the one who was handed it.
+ *
+ * The VERSION leads each entry. It is the thing a reader arrives holding - the
+ * chip in the header told them theirs, a bug report asks for it - so entries
+ * are anchored on the number and date in a rail down the left.
  */
 export function ChangelogDialog({
   onClose,
   entries = CHANGELOG,
-  title = "What's new",
-  subtitle,
+  unseenVersions,
   tone = "normal",
 }: {
   onClose: () => void;
-  /** Defaults to the whole list; the update popup passes only what is new. */
   entries?: ChangelogEntry[];
-  title?: string;
-  subtitle?: string;
+  /** Which versions this reader has not seen; these are what opens on top. */
+  unseenVersions?: ReadonlySet<string>;
   /**
    * `interrupt` is for the copy that ARRIVED rather than the one that was
-   * asked for.
-   *
-   * A dialog you opened can sit politely over a board you can still read -
+   * asked for. A dialog you opened can sit over a board you can still read -
    * you know why it is there. One that appears by itself is competing with
-   * whatever you came to do, and a light scrim just makes it look like a thing
-   * to click past. So it takes the board away properly: much darker, and
-   * blurred enough that there is nothing legible behind it to keep half an eye
-   * on.
+   * whatever you came to do, so it takes the board away properly.
    */
   tone?: "normal" | "interrupt";
 }) {
   const isInterrupt = tone === "interrupt";
+  const unseen = unseenVersions ?? new Set<string>();
+
+  /**
+   * What the sheet opens on. Unseen releases if there are any; otherwise the
+   * newest few, because someone who pressed the button with nothing unread
+   * still wants to land on something rather than on a button that says the
+   * rest is elsewhere.
+   */
+  const headline = useMemo(() => {
+    const missed = entries.filter((entry) => unseen.has(entry.version));
+    return missed.length > 0 ? missed : entries.slice(0, 3);
+  }, [entries, unseen]);
+  const history = entries.slice(headline.length);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const historyRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The unread entries that ASKED to be acknowledged: ones carrying a warning,
+   * which is the flag for "a plan you already saved now behaves differently".
+   * Closing past one of those without a word is the failure this whole feature
+   * exists to prevent, so it costs one extra click.
+   */
+  const unreadWarnings = useMemo(
+    () => entries.filter((entry) => entry.warning && unseen.has(entry.version)),
+    [entries, unseen],
+  );
+  const [confirmingClose, setConfirmingClose] = useState(false);
+
+  const requestClose = () => {
+    if (unreadWarnings.length > 0 && !confirmingClose) {
+      setConfirmingClose(true);
+      return;
+    }
+    onClose();
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        requestClose();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  });
+
+  const missedCount = headline.filter((entry) => unseen.has(entry.version)).length;
+  const oldestMissed = missedCount > 0 ? headline[missedCount - 1]!.version : undefined;
 
   return (
     <div
       className={[
         "fixed inset-0 z-[120] grid place-items-center p-4",
-        // The blur is deliberately modest. It is composited once over a board
-        // that is not animating while a modal is up, so it costs nothing to
-        // hold - but a heavy radius over a full-screen canvas is a real bill
-        // on a weak machine, and 6px already removes every readable word.
-        isInterrupt
-          ? "bg-neutral-950/85 backdrop-blur-[6px]"
-          : "bg-neutral-950/50",
+        // Both tones blur; the interruption just does it harder. A blur is
+        // composited once over a board that is not animating while a modal is
+        // up, so it costs nothing to hold - but a heavy radius over a
+        // full-screen canvas is a real bill on a weak machine, and even a few
+        // pixels already removes every readable word.
+        isInterrupt ? "bg-neutral-950/88 backdrop-blur-lg" : "bg-neutral-950/75 backdrop-blur-sm",
       ].join(" ")}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label="What's new in GTNH Planner"
         className={[
-          "max-h-[80vh] w-full max-w-4xl overflow-y-auto rounded bg-surface p-5 compact:p-4",
+          "flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-surface compact:max-h-[92vh]",
           isInterrupt
-            ? "border-2 border-cyan-700/70 shadow-[0_0_0_1px_rgba(0,0,0,0.6),0_24px_70px_rgba(0,0,0,0.75)]"
-            : "border border-line-strong shadow-xl",
+            ? "border-2 border-cyan-600/70 shadow-[0_0_0_1px_rgba(0,0,0,0.6),0_24px_70px_rgba(0,0,0,0.75)]"
+            : "border border-line-strong shadow-2xl",
         ].join(" ")}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold">{title}</h2>
-            <p className="text-xs text-fg-muted">
-              {subtitle ?? `You're on v${APP_VERSION}`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded p-1 text-fg-subtle hover:bg-surface-raised"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <Masthead
+          isInterrupt={isInterrupt}
+          missedCount={missedCount}
+          oldestMissed={oldestMissed}
+          onClose={requestClose}
+        />
 
-        <ul>
-          {entries.map((entry) => (
-            <li
-              key={entry.version}
-              // A rule between releases, not a gap: at this width the eye needs
-              // telling where one entry stops. Stacked on a narrow window,
-              // where a rail plus a column of prose has no room to be two
-              // things.
-              //
-              // `last:pb-0` pairs with `first:pt-0`. Without it the last entry
-              // kept its own bottom padding on top of the dialog's, so the gap
-              // under the list was twice the one above it and the whole sheet
-              // looked bottom-heavy.
-              className="grid gap-x-6 border-t border-line py-4 first:border-t-0 first:pt-0 last:pb-0 sm:grid-cols-[7.5rem_minmax(0,1fr)]"
+        {/* Asked once, in the sheet rather than in a browser confirm box: a
+            native dialog over a blurred modal looks like the page broke. */}
+        {confirmingClose ? (
+          <div className="flex flex-wrap items-center gap-3 border-b border-amber-700 bg-amber-500/15 px-5 py-3 compact:px-4">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+            <p className="min-w-0 flex-1 text-sm text-amber-100">
+              {`Close without reading the heads up on v${unreadWarnings[0]!.version}? It changes how your saved setups behave.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => setConfirmingClose(false)}
+              className="rounded border border-amber-400 bg-amber-500/25 px-3 py-1.5 text-xs font-bold text-amber-100 hover:bg-amber-500/40"
             >
-              <div className="mb-1.5 sm:mb-0">
-                <p
-                  className={[
-                    "text-lg font-black leading-none tabular-nums",
-                    entry.version === APP_VERSION ? "text-cyan-300" : "text-fg",
-                  ].join(" ")}
+              Let me read it
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border border-line-strong px-3 py-1.5 text-xs font-bold text-fg-muted hover:bg-surface-raised"
+            >
+              Close anyway
+            </button>
+          </div>
+        ) : null}
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 compact:px-4">
+          <ul>
+            {headline.map((entry) => (
+              <EntryRow key={entry.version} entry={entry} onClose={onClose} />
+            ))}
+          </ul>
+
+          {history.length > 0 ? (
+            <div className="border-t border-line py-4">
+              {showHistory ? (
+                <div ref={historyRef}>
+                  <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-fg-muted">
+                    Earlier releases
+                  </p>
+                  <ul>
+                    {history.map((entry) => (
+                      <EntryRow key={entry.version} entry={entry} onClose={onClose} />
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                // Below the notes rather than beside them: the archive is the
+                // thing you go looking for after you have read what you came
+                // for, and a control up top would compete with it.
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowHistory(true);
+                    // Land ON the archive, not wherever the sheet happened to
+                    // be - the button is at the bottom, so expanding in place
+                    // would leave the reader staring at the last old entry.
+                    requestAnimationFrame(() =>
+                      historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                    );
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded border border-line-strong px-3 py-2.5 text-xs font-bold text-fg-subtle hover:border-cyan-700 hover:bg-surface-raised hover:text-cyan-300"
                 >
-                  v{entry.version}
-                </p>
-                <p className="mt-1 text-[11px] tabular-nums text-fg-muted">
-                  {formatEntryDate(entry.date)}
-                </p>
-                {entry.version === APP_VERSION ? (
-                  <span className="mt-1.5 inline-flex items-center gap-1 rounded border border-cyan-500/70 bg-cyan-500/20 px-1.5 py-px text-[10px] font-black uppercase tracking-wide text-cyan-200">
-                    <Sparkles className="h-3 w-3" aria-hidden />
-                    You are here
-                  </span>
-                ) : null}
-              </div>
-              <div className="min-w-0">
-                {/* The headline is the entry's title, so it reads like one. It
-                    used to be set smaller and dimmer than the notes under it,
-                    which made every release look like a list of bullets with a
-                    caption nobody's eye stopped on. */}
-                <h3 className="text-base font-bold leading-snug text-fg">{entry.headline}</h3>
-                <ul className="mt-2 space-y-2">
-                  {entry.notes.map((note) => (
-                    <li key={note} className="flex gap-2 text-sm leading-relaxed text-fg-muted">
-                      <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
-                      <span>{renderEmphasis(note)}</span>
-                    </li>
-                  ))}
-                </ul>
-                {/* Some things are only understood by doing them, so a release
-                    that adds a tour offers it right here rather than
-                    describing it and hoping. A release that also carries a
-                    WARNING puts the two in one block: a caution the reader
-                    believes and a button that answers it, side by side, rather
-                    than a worrying sentence and an unrelated-looking link. */}
-                {entry.warning || (entry.actions && entry.actions.length > 0) ? (
-                  <div
-                    className={[
-                      "mt-3 rounded border p-3",
-                      entry.warning
-                        ? "border-amber-600 bg-amber-500/15"
-                        : "border-transparent bg-transparent p-0",
-                    ].join(" ")}
-                  >
-                    {entry.warning ? (
-                      <div className="mb-2.5 flex items-start gap-2.5">
-                        <AlertTriangle
-                          className="mt-px h-4 w-4 shrink-0 text-amber-400"
-                          aria-hidden
-                        />
-                        <div className="min-w-0">
-                          <p className="text-xs font-black uppercase tracking-wide text-amber-300">
-                            Heads up
-                          </p>
-                          {/* Lit in the callout's OWN colour. The cyan the
-                              notes use is the app's "this is a link, this is
-                              fine" colour, and inside an amber warning it read
-                              as a different message sitting in the middle of
-                              this one. */}
-                          <p className="mt-1 text-sm leading-relaxed text-amber-100/90">
-                            {renderEmphasis(entry.warning, "text-amber-200")}
-                          </p>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="flex flex-wrap gap-2">
-                      {(entry.actions ?? []).map((action) =>
-                        action.lessonId ? (
-                          <button
-                            key={action.label}
-                            type="button"
-                            onClick={() => {
-                              onClose();
-                              startLesson(action.lessonId!);
-                            }}
-                            className={[
-                              "rounded border px-3 py-1.5 text-xs font-bold",
-                              entry.warning
-                                ? "border-amber-400 bg-amber-500/25 text-amber-100 hover:bg-amber-500/40"
-                                : "border-cyan-500/60 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25",
-                            ].join(" ")}
-                          >
-                            {action.label} ▸
-                          </button>
-                        ) : (
-                          <a
-                            key={action.label}
-                            href={action.href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded border border-line-strong px-3 py-1.5 text-xs font-bold text-fg-subtle hover:bg-surface-raised"
-                          >
-                            {action.label}
-                          </a>
-                        ),
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                  <History className="h-3.5 w-3.5" aria-hidden />
+                  {`Full history (${history.length} earlier release${history.length === 1 ? "" : "s"})`}
+                  <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The top of the sheet, branded.
+ *
+ * A modal that appears by itself has one second to say what it is before it
+ * gets closed on reflex, and a small grey "What's new" was not doing it. The
+ * app's own name and colour up front is the difference between "the planner is
+ * telling me something" and "a box appeared".
+ */
+function Masthead({
+  isInterrupt,
+  missedCount,
+  oldestMissed,
+  onClose,
+}: {
+  isInterrupt: boolean;
+  missedCount: number;
+  oldestMissed?: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className={[
+        "relative shrink-0 overflow-hidden border-b px-6 py-5 compact:px-4 compact:py-4",
+        isInterrupt
+          ? "border-cyan-800/60 bg-gradient-to-br from-cyan-900/60 via-cyan-950/30 to-surface"
+          : "border-line bg-gradient-to-br from-surface-raised to-surface",
+      ].join(" ")}
+    >
+      {/* A cyan wash behind the title rather than a flat panel. This banner is
+          the second and a half a reader gives the box before deciding whether
+          it is worth anything, and the app's own colour arriving with its own
+          name is most of what buys the rest of the sheet a look. */}
+      {isInterrupt ? (
+        <>
+          <span
+            aria-hidden
+            className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400 to-transparent"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-cyan-500/15 blur-3xl"
+          />
+        </>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        // Above the title block, which is `relative` to clear the glow behind
+        // it and would otherwise paint over this button and eat the click.
+        className="absolute right-3 top-3 z-10 rounded p-1.5 text-fg-subtle hover:bg-surface-raised hover:text-fg"
+      >
+        <X className="h-4 w-4" />
+      </button>
+
+      <p className="relative text-sm font-black tracking-tight">
+        GTNH <span className="text-cyan-400">Planner</span>
+      </p>
+
+      <h2 className="relative mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-black leading-none tracking-tight compact:text-xl">
+        {isInterrupt ? "The planner has been updated" : "What's new"}
+        <span className="inline-flex items-center gap-1 rounded border border-cyan-500/70 bg-cyan-500/20 px-2 py-0.5 text-xs font-black tabular-nums tracking-normal text-cyan-200">
+          <Sparkles className="h-3 w-3" aria-hidden />
+          v{APP_VERSION}
+        </span>
+      </h2>
+
+      <p className="relative mt-2 text-sm text-fg-muted">
+        {missedCount > 0
+          ? // Named, because "some updates" is not a reason to read anything.
+            `${missedCount} release${missedCount === 1 ? "" : "s"} since you were last here${
+              oldestMissed && missedCount > 1 ? ` (v${oldestMissed} onwards)` : ""
+            }. Here they are.`
+          : "You are up to date. Here are the latest changes."}
+      </p>
+    </div>
+  );
+}
+
+function EntryRow({ entry, onClose }: { entry: ChangelogEntry; onClose: () => void }) {
+  return (
+    <li
+      // A rule between releases, not a gap: at this width the eye needs telling
+      // where one entry stops. Stacked on a narrow window, where a rail plus a
+      // column of prose has no room to be two things.
+      className="grid gap-x-6 border-t border-line py-4 first:border-t-0 sm:grid-cols-[7rem_minmax(0,1fr)]"
+    >
+      <div className="mb-1.5 sm:mb-0">
+        <p
+          className={[
+            "text-lg font-black leading-none tabular-nums",
+            entry.version === APP_VERSION ? "text-cyan-300" : "text-fg",
+          ].join(" ")}
+        >
+          v{entry.version}
+        </p>
+        <p className="mt-1 text-[11px] tabular-nums text-fg-muted">{formatEntryDate(entry.date)}</p>
+        {/* Marks the entry as one to actually stop at, in the rail where the
+            eye is already scanning for a version. */}
+        {entry.warning ? (
+          <span className="mt-1.5 inline-flex items-center gap-1 rounded border border-amber-500/70 bg-amber-500/20 px-1.5 py-px text-[10px] font-black uppercase tracking-wide text-amber-200">
+            <AlertTriangle className="h-3 w-3" aria-hidden />
+            Read this
+          </span>
+        ) : null}
+      </div>
+      <div className="min-w-0">
+        <h3 className="text-base font-bold leading-snug text-fg">{entry.headline}</h3>
+        <ul className="mt-2 space-y-2">
+          {entry.notes.map((note) => (
+            <li key={note} className="flex gap-2 text-sm leading-relaxed text-fg-muted">
+              <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+              <span>{renderEmphasis(note)}</span>
             </li>
           ))}
         </ul>
+        {/* Some things are only understood by doing them, so a release that
+            adds a tour offers it right here. A release that also carries a
+            WARNING puts the two in one block: a caution the reader believes and
+            a button that answers it, rather than a worrying sentence and a
+            stray link. */}
+        {entry.warning || (entry.actions && entry.actions.length > 0) ? (
+          <div
+            className={[
+              "mt-3",
+              entry.warning ? "rounded border border-amber-600 bg-amber-500/15 p-3" : "",
+            ].join(" ")}
+          >
+            {entry.warning ? (
+              <div className="mb-2.5 flex items-start gap-2.5">
+                <AlertTriangle className="mt-px h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-wide text-amber-300">
+                    Heads up
+                  </p>
+                  {/* Lit in the callout's OWN colour: the cyan the notes use is
+                      this app's "all fine" colour, and inside an amber warning
+                      it read as a different message sitting in the middle of
+                      this one. */}
+                  <p className="mt-1 text-sm leading-relaxed text-amber-100/90">
+                    {renderEmphasis(entry.warning, "text-amber-200")}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {(entry.actions ?? []).map((action) =>
+                action.lessonId ? (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      startLesson(action.lessonId!);
+                    }}
+                    className={[
+                      "rounded border px-3 py-1.5 text-xs font-bold",
+                      entry.warning
+                        ? "border-amber-400 bg-amber-500/25 text-amber-100 hover:bg-amber-500/40"
+                        : "border-cyan-500/60 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25",
+                    ].join(" ")}
+                  >
+                    {action.label} ▸
+                  </button>
+                ) : (
+                  <a
+                    key={action.label}
+                    href={action.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded border border-line-strong px-3 py-1.5 text-xs font-bold text-fg-subtle hover:bg-surface-raised"
+                  >
+                    {action.label}
+                  </a>
+                ),
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -229,9 +387,8 @@ export function ChangelogDialog({
  *
  * Release notes are one paragraph after another of even grey, and a reader
  * skimming for the thing that affects them has nothing to catch on. Marking
- * the two or three words that carry each line - the state a card now shows,
- * the button that appeared - turns a wall into something scannable, without
- * pulling in a markdown renderer for one piece of syntax.
+ * the two or three words that carry each line turns a wall into something
+ * scannable, without pulling in a markdown renderer for one piece of syntax.
  */
 function renderEmphasis(text: string, litClass = "text-cyan-200"): React.ReactNode[] {
   return text.split(/\*([^*]+)\*/g).map((part, index) =>

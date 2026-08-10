@@ -69,7 +69,12 @@ export function HeaderLinks() {
  * changed under them. The two labelled buttons now read as a pair - here is
  * what we changed, here is where to complain about it.
  */
-export function WhatsNewButton({ onClick }: { onClick: () => void }) {
+export function WhatsNewButton({
+  onClick,
+}: {
+  /** Handed what was unread at the moment of the click, for the divider. */
+  onClick: (unseenVersions: Set<string>) => void;
+}) {
   const [unread, setUnread] = useState(false);
 
   // After mount: it reads localStorage, which a server render does not have.
@@ -82,11 +87,15 @@ export function WhatsNewButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={() => {
+        // Read what is unseen BEFORE stamping, or the dialog opens with
+        // nothing above its divider - the click would have erased the very
+        // thing the line is drawn around.
+        const unseenNow = new Set(unseenEntries().map((entry) => entry.version));
         // Opening it IS reading it, so the dot goes now rather than when the
         // dialog is closed - otherwise anyone who reads and then presses
         // Escape gets the dot back and learns to distrust it.
         markVersionSeenAndNotify();
-        onClick();
+        onClick(unseenNow);
       }}
       title="What's new in the planner"
       className="relative inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-cyan-700 bg-cyan-950 px-2 text-xs font-semibold text-cyan-300 hover:border-cyan-500 hover:bg-cyan-900 hover:text-cyan-200"
