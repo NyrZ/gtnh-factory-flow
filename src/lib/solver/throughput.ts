@@ -175,7 +175,7 @@ export function calculateThroughput(
   const equilibrium = solveEquilibrium(project, nodes, storagesById);
   const edgeResults: Record<string, EdgeThroughput> = {};
   writeEdgeResultsFromEquilibrium(project, nodes, edgeResults, equilibrium);
-  finalizeNodeReports(project, recipesById, nodes, edgeResults, storagesById);
+  finalizeNodeReports(project, recipesById, nodes, edgeResults, storagesById, equilibrium);
   refreshStorageResultsFromEdges(projectStorages, storages, project.edges, edgeResults);
 
   for (const node of project.nodes) {
@@ -471,6 +471,7 @@ function finalizeNodeReports(
   nodes: Record<string, NodeThroughputResult>,
   edgeResults: Record<string, EdgeThroughput>,
   storagesById: Map<string, FactoryStorage>,
+  equilibrium: EquilibriumSolution,
 ): void {
   const requiredByNodeAndResource = new Map<string, Map<ResourceKey, number>>();
   const inputSupplyByNodeAndResource = calculateConnectedInputSupply(
@@ -578,6 +579,21 @@ function finalizeNodeReports(
       utilizationReport.utilization = 1;
       utilizationReport.theoreticalMachinesRequired = node.machineCount;
     }
+    // CONSERVATION, before anything else looks at the number. The report picks
+    // the output that needs the machine FASTEST; disposal is the output that
+    // can shift the least, and a machine cannot outrun the slowest way it has
+    // of getting rid of what it makes. Applied here as well as in the engine
+    // because this pass re-derives utilization from scratch, and the two must
+    // never print different percentages for the same card.
+    const disposalLimit = equilibrium.disposalByNode.get(node.id);
+    if (disposalLimit !== undefined && disposalLimit < utilizationReport.utilization) {
+      utilizationReport.utilization = disposalLimit;
+      utilizationReport.requiredRatePerSecond = utilizationReport.maxRatePerSecond * disposalLimit;
+      utilizationReport.theoreticalMachinesRequired = node.machineCount * disposalLimit;
+    }
+    nodeResult.disposalUtilization = clampUtilization(disposalLimit ?? 1);
+    nodeResult.clogOutputKey = equilibrium.clogOutputByNode.get(node.id);
+
     const demandOnlyUtilization = utilizationReport.utilization;
     const inputSupply = selectConnectedInputSupplyLimit(
       nodeResult,

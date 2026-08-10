@@ -710,13 +710,28 @@ describe("calculateThroughput", () => {
 
     const result = calculateThroughput(project, { generatedAt: "fixed" });
 
-    expect(result.edges["small-to-tank"].demandPerSecond).toBeCloseTo(500);
-    expect(result.edges["large-to-tank"].demandPerSecond).toBeCloseTo(25_600);
+    // The tank is a BUFFER: fed by two sources and drawn from by the tower, so
+    // it is neither end of the plan and may not swallow the other 25,100 L/s.
+    // It relays the 1,000 L/s the tower actually pulls, split between its two
+    // feeders, and both sources clog on what they cannot pass through it.
     expect(result.edges["tank-to-consumer"].demandPerSecond).toBeCloseTo(1_000);
     expect(result.edges["tank-to-consumer"].transferredPerSecond).toBeCloseTo(1_000);
-    expect(result.storages["woodtar-tank"].producedPerSecond).toBeCloseTo(26_100);
+    expect(result.storages["woodtar-tank"].producedPerSecond).toBeCloseTo(1_000);
     expect(result.storages["woodtar-tank"].consumedPerSecond).toBeCloseTo(1_000);
+    expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(0);
+    // Paced, not clogged. Each source has ONE output and it is the one the
+    // tank relays, so nothing piles up anywhere: they simply idle at what the
+    // tower asks for, which is what "demand set the speed" has always meant.
+    // CLOGGED is for a machine held below what something else is still asking
+    // of it, and neither of these is.
+    expect(result.nodes["small-source"].clogOutputKey).toBeUndefined();
+    expect(result.nodes["large-source"].clogOutputKey).toBeUndefined();
+    // The 1,000 L/s the tank relays is split max-min between the two feeders,
+    // so the small one empties itself covering its 500 and the big one barely
+    // ticks over. The small asker is not crushed out by the 25,600 next to it.
     expect(result.nodes["small-source"].utilization).toBeCloseTo(1);
+    expect(result.nodes["large-source"].utilization).toBeLessThan(0.05);
+    // The tower is fed exactly what it asked for, so it is not short of anything.
     expect(result.nodes.consumer.utilization).toBeCloseTo(1);
   });
 
@@ -878,11 +893,16 @@ describe("calculateThroughput", () => {
 
     const result = calculateThroughput(project, { generatedAt: "fixed" });
 
-    expect(result.nodes.extractor.utilization).toBeCloseTo(1);
-    expect(result.edges["extractor-to-tank"].demandPerSecond).toBeCloseTo(4_000);
-    expect(result.edges["extractor-to-tank"].transferredPerSecond).toBeCloseTo(4_000);
-    expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(3_000);
-    expect(result.edges["extractor-to-tank"].isLimited).toBe(false);
+    // A BUFFER is not a dump. The tower pulls 1,000 L/s of the extractor's
+    // 4,000, so the extractor idles at a quarter speed instead of running flat
+    // out into a tank that fills forever. Its ONE output is the one being
+    // relayed, so nothing piles up and this is demand, not a clog: to be
+    // CLOGGED something else has to still be asking for more.
+    expect(result.nodes.extractor.utilization).toBeCloseTo(0.25);
+    expect(result.nodes.extractor.disposalUtilization).toBeCloseTo(0.25);
+    expect(result.nodes.extractor.clogOutputKey).toBeUndefined();
+    expect(result.edges["extractor-to-tank"].transferredPerSecond).toBeCloseTo(1_000);
+    expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(0);
   });
 
   it("limits parallel storage consumers to available incoming storage supply", () => {

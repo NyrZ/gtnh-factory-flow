@@ -1,5 +1,6 @@
 import { applyRecipeInputOverrides } from "../model/recipe-input-overrides";
 import { isRecipeInputConsumed, makeResourceKey, resourceMatchesInput } from "../model/resources";
+import { getStorageRoles } from "../model/storage-role";
 import { collectTrashNodeIds } from "../model/trash";
 import type {
   FactoryProject,
@@ -47,6 +48,20 @@ const EPSILON = 0.000001;
  * are capped at their ask, and the slack is re-offered to the still-hungry.
  * A 2000/s fleet next to a 400/s fleet on a 26/s tank therefore cannot
  * crush the small asker out of the trickle it needs.
+ *
+ * CONSERVATION. A wired output may not vanish. Only three things absorb a
+ * surplus nobody asked for: a trash can, a DRAIN drawer (one nothing draws
+ * from), and the outside world through a port with no wire on it at all. A
+ * buffer is not one of them - it passes on what its consumers pull and no
+ * more - so a machine whose leftovers have nowhere to go is capped by its
+ * ability to get rid of them, not by what its hungriest output asks for. That
+ * cap is `disposalByNode`, and a node standing on it is CLOGGED.
+ *
+ * The unwired port is the deliberate hole, and it is the exact mirror of the
+ * unwired INPUT that the planner has always assumed you keep stocked by hand.
+ * Modelling an unwired output as a clog would stall the last machine of every
+ * chain on every board ever built, for the crime of being the thing the plan
+ * makes.
  */
 
 export interface EdgeAllocationResult {
@@ -68,6 +83,14 @@ export interface EquilibriumSolution {
   capableByNode: Map<string, number>;
   /** Demand-side pressure, unclamped: >1 means "wants more than the fleet". */
   demandByNode: Map<string, number>;
+  /**
+   * How hard each node could run before a wired output it cannot get rid of
+   * backs up on it. 1 when nothing binds; absent when the node has no bounded
+   * output at all. See the conservation note at the top of this file.
+   */
+  disposalByNode: Map<string, number>;
+  /** The output resource whose surplus sets `disposalByNode`, when one does. */
+  clogOutputByNode: Map<string, ResourceKey>;
   edgeAllocations: Map<string, EdgeAllocationResult>;
   eatenByNeed: Map<string, number>;
   unmetDesireByNeed: Map<string, number>;
@@ -88,6 +111,12 @@ interface PreparedEdge {
   budgetKey: string;
   /** Storage pool (resource key of the tank) for storage roles, else "". */
   poolKey: string;
+  /**
+   * This line can swallow anything the producer sends: a trash can, or a
+   * drain drawer nothing draws from. A buffer sink is deliberately NOT free -
+   * it relays its consumers' pull and stops there.
+   */
+  freeDisposal: boolean;
   sourceCapacityPerSecond: number;
 }
 
@@ -96,6 +125,8 @@ interface Budget {
   outputKey: ResourceKey;
   makePerSecond: number;
   sinkEdges: PreparedEdge[];
+  /** The subset of `sinkEdges` that feed a DRAIN: those absorb without limit. */
+  drainEdges: PreparedEdge[];
   /** Every edge drawing on this budget (machine consumers and tank sinks). */
   edges: PreparedEdge[];
   /**
@@ -104,6 +135,11 @@ interface Budget {
    * budget fully demanded (a voided output can never pace its machine down).
    */
   trashEdges: PreparedEdge[];
+  /**
+   * Somewhere on this output there is a can or a drain, so the surplus always
+   * has a home and this output can never clog its machine.
+   */
+  freeDisposal: boolean;
 }
 
 interface Need {
@@ -117,10 +153,15 @@ interface Need {
 
 interface Pool {
   sinkEdges: PreparedEdge[];
+  /** Sinks into a BUFFER: bounded by what the pool's consumers pull. */
+  bufferSinkEdges: PreparedEdge[];
   sourceEdges: PreparedEdge[];
   /** Trash cans draining this tank: they take what real consumers leave. */
   trashEdges: PreparedEdge[];
 }
+
+/** Half a percent: below this, two utilizations are the same number. */
+const CLOG_EPSILON = 0.005;
 
 interface MachineNodeInfo {
   id: string;
@@ -149,6 +190,7 @@ export function solveEquilibrium(
   const needs = new Map<string, Need>();
   const pools = new Map<string, Pool>();
   const trashNodeIds = collectTrashNodeIds(project);
+  const storageRoles = getStorageRoles(project);
 
   for (const edge of project.edges) {
     const sourceStorage = storagesById.get(edge.source);
@@ -183,6 +225,11 @@ export function solveEquilibrium(
       needKey: targetStorage || role === "trash" ? "" : `${edge.target}|${targetDemandKey}`,
       budgetKey: sourceStorage ? "" : `${edge.source}|${sourceOutputFlow?.key ?? key}`,
       poolKey,
+      // A can always. A drawer only when nothing draws from it, which is what
+      // makes it the plan's declared export rather than an ordinary buffer.
+      freeDisposal:
+        role === "trash" ||
+        (role === "storage-sink" && storageRoles.get(edge.target) === "drain"),
       sourceCapacityPerSecond:
         sourceStorage || !sourceResult
           ? Number.POSITIVE_INFINITY
@@ -197,8 +244,10 @@ export function solveEquilibrium(
         outputKey: sourceOutputFlow?.key ?? key,
         makePerSecond: sourceOutputFlow?.amountPerSecond ?? 0,
         sinkEdges: [],
+        drainEdges: [],
         edges: [],
         trashEdges: [],
+        freeDisposal: false,
       };
       if (!existing) {
         budgets.set(prepared.budgetKey, budget);
@@ -209,8 +258,12 @@ export function solveEquilibrium(
         budget.edges.push(prepared);
         if (role === "storage-sink") {
           budget.sinkEdges.push(prepared);
+          if (prepared.freeDisposal) {
+            budget.drainEdges.push(prepared);
+          }
         }
       }
+      budget.freeDisposal = budget.freeDisposal || prepared.freeDisposal;
     }
 
     if (prepared.needKey) {
@@ -237,12 +290,20 @@ export function solveEquilibrium(
 
     if (poolKey) {
       const existing = pools.get(poolKey);
-      const pool = existing ?? { sinkEdges: [], sourceEdges: [], trashEdges: [] };
+      const pool = existing ?? {
+        sinkEdges: [],
+        bufferSinkEdges: [],
+        sourceEdges: [],
+        trashEdges: [],
+      };
       if (!existing) {
         pools.set(poolKey, pool);
       }
       if (role === "storage-sink") {
         pool.sinkEdges.push(prepared);
+        if (!prepared.freeDisposal) {
+          pool.bufferSinkEdges.push(prepared);
+        }
       } else if (role === "trash") {
         pool.trashEdges.push(prepared);
       } else {
@@ -303,9 +364,11 @@ export function solveEquilibrium(
   // ---- Iteration state: everything starts at full blast. -------------------
   const cap = new Map<string, number>();
   const dem = new Map<string, number>();
+  const disp = new Map<string, number>();
   for (const info of machineNodes) {
     cap.set(info.id, 1);
     dem.set(info.id, 1);
+    disp.set(info.id, 1);
   }
   // A tank's sustainable outflow is last round's inflow; before the first
   // round assume every feeder ships nameplate (full blast, like the rest).
@@ -321,6 +384,8 @@ export function solveEquilibrium(
   interface RoundOutput {
     capNext: Map<string, number>;
     demNext: Map<string, number>;
+    disposalNext: Map<string, number>;
+    clogOutputNext: Map<string, ResourceKey>;
     poolInflowNext: Map<string, number>;
     availableByEdge: Map<string, number>;
     eatenByEdge: Map<string, number>;
@@ -329,11 +394,28 @@ export function solveEquilibrium(
   }
 
   const runRound = (): RoundOutput => {
+    // TWO offers, because the two fills ask different questions.
+    //
+    // `budgetOffer` is capability: what this producer could ship if everything
+    // upstream ran flat out. A clog is deliberately absent from it. Capability
+    // answers "are my inputs short", the clog is the player's own wiring, and
+    // one wire clears it - so a consumer downstream of a clogged machine must
+    // not read as INPUT-starved, and a ring idling for want of a customer must
+    // keep the capability that proves it is not a dead loop.
+    //
+    // `budgetOfferActual` is what really moves this round. A machine sitting
+    // at 50% because its other output has nowhere to go cannot hand anybody
+    // its full-blast rate; without this the desire fill would mint the very
+    // resource conservation is here to protect.
     const budgetOffer = new Map<string, number>();
+    const budgetOfferActual = new Map<string, number>();
     for (const [budgetKey, budget] of budgets) {
-      budgetOffer.set(
+      const capable = clampUtilization(cap.get(budget.ownerId) ?? 1);
+      budgetOffer.set(budgetKey, budget.makePerSecond * capable);
+      budgetOfferActual.set(
         budgetKey,
-        budget.makePerSecond * clampUtilization(cap.get(budget.ownerId) ?? 1),
+        budget.makePerSecond *
+          clampUtilization(Math.min(capable, disp.get(budget.ownerId) ?? 1)),
       );
     }
     const poolOffer = new Map<string, number>();
@@ -392,7 +474,7 @@ export function solveEquilibrium(
     }
 
     const availabilityFill = runFill(needs, budgetOffer, poolOffer, askAvailability);
-    const desireFill = runFill(needs, budgetOffer, poolOffer, askDesire);
+    const desireFill = runFill(needs, budgetOfferActual, poolOffer, askDesire);
 
     // Sinks absorb whatever production the desire fill left unclaimed, so a
     // buffered producer keeps running at capability. A tank running dry on
@@ -411,16 +493,42 @@ export function solveEquilibrium(
       poolDeficit.set(poolKey, Math.max(0, requested - offered));
     }
 
+    // A BUFFER takes exactly what its own consumers pull, never the whole
+    // leftover: it is a pass-through, not a hole in the plan's books. What it
+    // declines stays on the producer's budget, where either a drain/can takes
+    // it or it clogs the machine. Buffers are served first because a drain is
+    // the last resort by definition.
+    const bufferAbsorbByEdge = new Map<string, number>();
+    const freeLeftoverByBudget = new Map<string, number>();
+    for (const [budgetKey, budget] of budgets) {
+      let leftover = Math.max(0, desireFill.remainingBudget.get(budgetKey) ?? 0);
+      const bufferSinks = budget.sinkEdges.filter((sink) => !sink.freeDisposal);
+      if (bufferSinks.length > 0) {
+        const evenShare = leftover / bufferSinks.length;
+        for (const sink of bufferSinks) {
+          const pool = pools.get(sink.poolKey);
+          const pull =
+            (desireFill.poolRequested.get(sink.poolKey) ?? 0) /
+            Math.max(1, pool?.bufferSinkEdges.length ?? 1);
+          const take = Math.max(0, Math.min(evenShare, pull));
+          bufferAbsorbByEdge.set(sink.id, take);
+          leftover -= take;
+        }
+      }
+      freeLeftoverByBudget.set(budgetKey, Math.max(0, leftover));
+    }
+
     for (const edge of edges) {
-      // Tank sinks and trash cans on a machine output both drink whatever the
-      // desire fill left over, splitting it evenly; the difference is that a
-      // sink relays the tank's unmet pull as demand while trash never begs -
-      // its demand IS what it carries, so nothing upstream reads hunger off it.
+      // Drains and trash cans on a machine output drink whatever is left after
+      // the buffers, splitting it evenly; the difference is that a drain
+      // relays its tank's unmet pull as demand while trash never begs - its
+      // demand IS what it carries, so nothing upstream reads hunger off it.
       if (edge.role === "storage-sink" || (edge.role === "trash" && edge.budgetKey)) {
         const budget = budgets.get(edge.budgetKey);
-        const leftover = Math.max(0, desireFill.remainingBudget.get(edge.budgetKey) ?? 0);
-        const eaterCount = (budget?.sinkEdges.length ?? 0) + (budget?.trashEdges.length ?? 0);
-        const absorbed = leftover / Math.max(1, eaterCount);
+        const absorbed = edge.freeDisposal
+          ? (freeLeftoverByBudget.get(edge.budgetKey) ?? 0) /
+            Math.max(1, (budget?.drainEdges.length ?? 0) + (budget?.trashEdges.length ?? 0))
+          : (bufferAbsorbByEdge.get(edge.id) ?? 0);
         availableByEdge.set(edge.id, absorbed);
         eatenByEdge.set(edge.id, absorbed);
         if (edge.role === "trash") {
@@ -465,6 +573,8 @@ export function solveEquilibrium(
     // (plus tank absorption), over its nameplate output.
     const capNext = new Map<string, number>();
     const demNext = new Map<string, number>();
+    const disposalNext = new Map<string, number>();
+    const clogOutputNext = new Map<string, ResourceKey>();
     for (const info of machineNodes) {
       let capability = 1;
       for (const input of info.wiredInputs) {
@@ -487,6 +597,9 @@ export function solveEquilibrium(
         continue;
       }
       if (!info.hasOutgoingWires && info.targetFloors.length === 0) {
+        // Nothing wired out at all: this is the end of a chain, and what it
+        // makes is what the plan is FOR. Conservation does not reach here -
+        // see the unwired-port note at the top of the file.
         demNext.set(info.id, 1);
         continue;
       }
@@ -496,6 +609,12 @@ export function solveEquilibrium(
         // A voided output is a fully demanded output: the can drinks whatever
         // arrives, so this budget can never pace the machine below full blast
         // (the in-game void-pipe semantic, the jump-start trick built in).
+        //
+        // A DRAIN deliberately does not do this. The two are different asks: a
+        // can says "run flat out and destroy the rest", a drain says only
+        // "a surplus here is allowed". Pinning drains too would drive every
+        // machine feeding a dead-end drawer to full blast for no reason but
+        // the drawer's existence.
         if (budget.trashEdges.length > 0) {
           pressure = Math.max(pressure, 1);
         }
@@ -524,12 +643,42 @@ export function solveEquilibrium(
           pressure = Math.max(pressure, floor.amountPerSecond / flow.amountPerSecond);
         }
       }
-      demNext.set(info.id, pressure);
+
+      // CONSERVATION. Demand says how fast this node is WANTED; disposal says
+      // how fast it CAN go before a wired output it cannot shift backs up on
+      // it. A budget with a drain or a can on it can always shift everything.
+      // Any other one moves only what its consumers pull, and the tightest of
+      // those is the ceiling. Target floors are asks, not outlets, so they are
+      // deliberately absent here: dialling a rate does not create somewhere to
+      // put the result.
+      let disposal = Number.POSITIVE_INFINITY;
+      let clogKey: ResourceKey | undefined;
+      for (const budget of info.budgets) {
+        if (budget.freeDisposal || budget.makePerSecond <= EPSILON) {
+          continue;
+        }
+        let taken = 0;
+        for (const edge of budget.edges) {
+          taken += demandByEdge.get(edge.id) ?? 0;
+        }
+        const ceiling = taken / budget.makePerSecond;
+        if (ceiling < disposal) {
+          disposal = ceiling;
+          clogKey = budget.outputKey;
+        }
+      }
+      disposalNext.set(info.id, disposal);
+      if (clogKey !== undefined && disposal < pressure - CLOG_EPSILON) {
+        clogOutputNext.set(info.id, clogKey);
+      }
+      demNext.set(info.id, Math.min(pressure, disposal));
     }
 
     return {
       capNext,
       demNext,
+      disposalNext,
+      clogOutputNext,
       poolInflowNext,
       availableByEdge,
       eatenByEdge,
@@ -558,12 +707,21 @@ export function solveEquilibrium(
         clampUtilization(output.demNext.get(info.id) ?? 1);
       currentDelta.set(`c|${info.id}`, capDelta);
       currentDelta.set(`d|${info.id}`, demDelta);
-      maxDelta = Math.max(maxDelta, Math.abs(capDelta), Math.abs(demDelta));
+      // Disposal counts toward CONVERGENCE but is deliberately kept out of
+      // `currentDelta`: the geometric jump below routes every entry into
+      // either `cap` or `dem` by key prefix, and it is re-derived from the
+      // edge demands each round anyway, so extrapolating it would only let it
+      // disagree with the numbers it came from.
+      const dispDelta =
+        clampUtilization(disp.get(info.id) ?? 1) -
+        clampUtilization(output.disposalNext.get(info.id) ?? 1);
+      maxDelta = Math.max(maxDelta, Math.abs(capDelta), Math.abs(demDelta), Math.abs(dispDelta));
     }
 
     for (const info of machineNodes) {
       cap.set(info.id, output.capNext.get(info.id) ?? 1);
       dem.set(info.id, output.demNext.get(info.id) ?? 1);
+      disp.set(info.id, output.disposalNext.get(info.id) ?? 1);
     }
     poolInflow = output.poolInflowNext;
     lastRound = output;
@@ -671,6 +829,8 @@ export function solveEquilibrium(
   return {
     capableByNode: cap,
     demandByNode: dem,
+    disposalByNode: lastRound.disposalNext,
+    clogOutputByNode: lastRound.clogOutputNext,
     edgeAllocations,
     eatenByNeed,
     unmetDesireByNeed: lastRound.unmetDesireByNeed,

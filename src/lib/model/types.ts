@@ -520,6 +520,16 @@ export interface NodeThroughputResult {
    * ratchet down through any transient but never climb back up.
    */
   demandUtilization?: number;
+  /**
+   * How hard this node could run before a wired output it cannot get rid of
+   * backs up on it (1 when nothing binds). Only a trash can, a DRAIN drawer
+   * or a port with no wire on it can absorb a surplus nobody asked for; a
+   * buffer passes on what its consumers pull and no more. A node whose speed
+   * is set by this rather than by supply or demand is CLOGGED.
+   */
+  disposalUtilization?: number;
+  /** The output whose surplus sets `disposalUtilization`, when one does. */
+  clogOutputKey?: ResourceKey;
   theoreticalMachinesRequired: number;
   limitingResource?: ResourceFlow;
   /**

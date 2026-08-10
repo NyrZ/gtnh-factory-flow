@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.43.0",
+    date: "2026-08-09",
+    headline: "What a machine makes has to go somewhere",
+    notes: [
+      "Spare output no longer disappears. If a machine makes 10 redstone and only 5 are wanted, the other 5 have to have somewhere to go, and until they do the machine holds at half speed. The card says CLOGGED and names the item that is backing up.",
+      "Three things can take a surplus: a drawer nothing draws from, a trash can, or another machine that wants it. Any of the three, one wire, and the card tells you how much speed it frees.",
+      "Drawers now say which of three jobs they are doing. SOURCE means nothing feeds it, so it never runs out and whatever leaves it is something you are importing. DRAIN means nothing draws from it, so machines can put spare output there. BUFFER means both, and a buffer passes on exactly what its takers pull: it is not a place to dump.",
+      "SOURCE and DRAIN carry an infinity mark, because those two are the edge of your plan and the only cards that make or swallow anything from nowhere.",
+      "This will slow some machines on boards you already have, in the places where spare output used to vanish into a buffer. Nothing is broken there: the board is telling you about a pile-up that was always going to happen in game.",
+    ],
+  },
+  {
     version: "1.42.1",
     date: "2026-08-09",
     headline: "A link to someone's setup opens the setup",

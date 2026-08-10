@@ -12,6 +12,7 @@ import {
 const PLUG_STATE_WORD = {
   hungry: "HUNGRY",
   blocked: "BLOCKED UPSTREAM",
+  clogged: "HELD BY A CLOG",
   fed: "FED",
   dump: "DUMP",
 } as const;
@@ -23,8 +24,8 @@ const PLUG_STATE_WORD = {
  */
 const PLUG_DUMP_WORD = {
   trash: "TRASH",
-  tank: "TANK",
-  store: "STORE",
+  tank: "DRAIN",
+  store: "DRAIN",
 } as const;
 
 /**
@@ -36,6 +37,9 @@ const PLUG_DUMP_WORD = {
 const PLUG_STATE_TONE = {
   hungry: "red",
   blocked: "amber",
+  // Steel, matching the card: a clog is a fact about the plan, not a fault,
+  // and it must not join the two states that really are on the to-do list.
+  clogged: "steel",
   fed: "green",
   dump: "dim",
 } as const;
@@ -337,6 +341,17 @@ export function explainPlug(
     case "blocked":
       lines = [`${coveredPct}% = asked ${fmt(plug.askPerSecond)}, this puts in ${fmt(plug.getPerSecond)}.`];
       action = { text: "→ This machine is short itself — fix its marked input first.", tone: "fix" };
+      break;
+    case "clogged":
+      lines = [
+        `${coveredPct}% = asked ${fmt(plug.askPerSecond)}, this puts in ${fmt(plug.getPerSecond)}.`,
+      ];
+      // Deliberately NOT "add machines": more machines make more of the stuck
+      // output too, so the ceiling rises with them and nothing moves.
+      action = {
+        text: "→ Give this machine's spare output somewhere to go — more machines here will not help.",
+        tone: "note",
+      };
       break;
     case "fed":
       lines = [`100% = every ask met (${fmt(plug.askPerSecond)}).`];

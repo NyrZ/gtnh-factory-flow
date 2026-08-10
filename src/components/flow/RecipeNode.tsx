@@ -1211,13 +1211,17 @@ function GlanceIoRow({ port }: { port: RailPort }) {
 interface VerdictWord {
   word: string;
   /** fine = nothing to do. Then: nobody waiting, waiting on upstream, ACT. */
-  tone: "fine" | "starved" | "blocked" | "bottleneck";
+  tone: "fine" | "starved" | "blocked" | "bottleneck" | "clogged";
 }
 
 function verdictWord(verdict: NodeVerdict, isCustomRate: boolean): VerdictWord {
   switch (verdict.kind) {
     case "starved":
       return { word: "starved", tone: "starved" };
+    // Its own colour, and deliberately not a red one: nothing here is broken.
+    // The machine is doing the only thing it can with a surplus nobody wants.
+    case "clogged":
+      return { word: "clogged", tone: "clogged" };
     case "blocked":
       return { word: "blocked", tone: "blocked" };
     case "bottleneck":
@@ -1246,6 +1250,7 @@ const VERDICT_WORD_CLASS: Record<VerdictWord["tone"], string> = {
   starved: "font-bold text-[var(--verdict-starved-ink)]",
   blocked: "font-bold text-[var(--verdict-blocked-ink)]",
   bottleneck: "font-bold text-[var(--verdict-bottleneck-ink)]",
+  clogged: "font-bold text-[var(--verdict-clogged-ink)]",
 };
 
 /**
@@ -1402,6 +1407,8 @@ function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string 
       return `Waiting on ${verdict.binding?.displayName ?? "an input"}`;
     case "bottleneck":
       return isCustomRate ? "Asked for more than the dialed rate" : "Asked for more than it makes";
+    case "clogged":
+      return `Nowhere to put the ${verdict.clog?.displayName ?? "spare output"}`;
     case "dead-loop":
       return verdict.spiral ? describeDeathSpiral(verdict.spiral).title : "Stuck in a loop";
     case "demand-set":
@@ -1453,6 +1460,15 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
         ? `${deficit.hungryOutputs} of ${deficit.pluggedOutputs} wired outputs go unfilled, ${missing} short on ${deficit.displayName}.`
         : `${missing} short on ${deficit.displayName}.`;
     }
+    case "clogged": {
+      const clog = verdict.clog;
+      if (!clog) {
+        return undefined;
+      }
+      const taken = formatSlotRate(clog.takenPerSecond, clog.kind);
+      const spare = formatSlotRate(clog.surplusPerSecond, clog.kind);
+      return `Only ${taken} of ${clog.displayName} is taken, so ${spare} would pile up with nowhere to go. That holds the whole machine at ${formatPct(verdict.pct)}%.`;
+    }
     case "dead-loop": {
       if (!verdict.spiral) {
         return undefined;
@@ -1482,6 +1498,15 @@ function verdictHoverFix(
 ): { heading: string; body: string } | undefined {
   if (verdict.kind === "dead-loop" && verdict.spiral) {
     return { heading: "How to start it", body: describeDeathSpiral(verdict.spiral).fix };
+  }
+  // Stated, never scolded: a clog is a plan making more of something than it
+  // wants, which is normal. Three ways out, all one wire, and the reader picks
+  // by what they would really do in game.
+  if (verdict.kind === "clogged" && verdict.clog) {
+    return {
+      heading: "Where it could go",
+      body: `Wire the spare ${verdict.clog.displayName} to a drawer nothing draws from, a trash can, or another machine that wants it. Any of the three frees ${formatPct(verdict.clog.heldBackPct)}% more speed here.`,
+    };
   }
   // Starved costs nobody anything, so it gets no fix note at all: a card with
   // nothing to answer for must not hand out homework.
@@ -1741,10 +1766,12 @@ function PlugDragHandle({ nodeId, port }: { nodeId: string; port: RailPort }) {
 }
 
 /** Where a dead-end output actually ends. Trash destroys; the rest keeps. */
+// A dead-end drawer is a DRAIN now — the same word its own card wears, so the
+// plug and the thing it points at cannot be read as two different ideas.
 const PLUG_DUMP_WORD: Record<"trash" | "tank" | "store", string> = {
   trash: "TRASH",
-  tank: "TANK",
-  store: "STORE",
+  tank: "DRAIN",
+  store: "DRAIN",
 };
 
 const PLUG_GLOW_STYLE: CSSProperties = {

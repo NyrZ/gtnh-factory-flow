@@ -5,6 +5,7 @@ import { memo, type CSSProperties, type ReactNode } from "react";
 import { Copy } from "lucide-react";
 import type { FactoryStorage, StorageThroughputResult } from "@/lib/model/types";
 import { makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
+import type { StorageRole } from "@/lib/model/storage-role";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { FLUID_ICON_SCALE, ResourceIcon, getFallbackFluidColor } from "@/components/nei/ResourceIcon";
 import { NodeGlanceIcon } from "./NodeGlance";
@@ -25,13 +26,38 @@ export interface StorageNodeData extends Record<string, unknown> {
 export type StorageFlowNode = Node<StorageNodeData, "storageNode">;
 
 /**
- * What the buffer is actually DOING, from its wiring alone:
- * supply    = outputs only — an infinite source, nothing refills it
- * blackhole = inputs only — flow ends here and nothing draws it out
- * buffer    = both — a real pass-through buffer
- * idle      = unwired
+ * The header word, the tone it wears, and the one line the hover leads with.
+ *
+ * A source and a drain are the plan's BOUNDARY: they break conservation on
+ * purpose, one inventing its resource and one swallowing whatever arrives, and
+ * they are the only cards on the board still allowed to. A buffer does no such
+ * thing, so it must never wear the same badge. See `storage-role.ts`.
  */
-type StorageMode = "supply" | "blackhole" | "buffer" | "idle";
+const ROLE_PRESENTATION: Record<
+  StorageRole,
+  { word: string; boundary: boolean; line: string }
+> = {
+  source: {
+    word: "SOURCE",
+    boundary: true,
+    line: "Nothing feeds this, so it never runs out. Whatever leaves it counts as something the plan imports.",
+  },
+  drain: {
+    word: "DRAIN",
+    boundary: true,
+    line: "Nothing draws from this, so it takes everything sent to it. Machines may put a surplus here and keep running.",
+  },
+  buffer: {
+    word: "BUFFER",
+    boundary: false,
+    line: "Fed and drawn from, so it passes on exactly what its takers pull. It is not a place to dump a surplus.",
+  },
+  idle: {
+    word: "STORAGE",
+    boundary: false,
+    line: "Unwired. Feed it to make a drain, draw from it to make a source, or both for a buffer.",
+  },
+};
 
 // Inline (not utility classes) so React Flow's own handle stylesheet can
 // never reposition or resize these: the well is the wire zone, exactly.
@@ -107,7 +133,10 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
   const setHoveredStorageResourceKey = useFactoryStore(
     (state) => state.setHoveredStorageResourceKey,
   );
-  const mode = useFactoryStore((state): StorageMode => {
+  // Read off this drawer's own wires rather than through getStorageRoles: the
+  // whole-board map would make every drawer re-render whenever any OTHER
+  // drawer's wiring changed, and cards are the hot path. Same rule, one card.
+  const role = useFactoryStore((state): StorageRole => {
     let hasIn = false;
     let hasOut = false;
     for (const edge of state.project.edges) {
@@ -120,7 +149,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         break;
       }
     }
-    return hasIn ? (hasOut ? "buffer" : "blackhole") : hasOut ? "supply" : "idle";
+    return hasIn ? (hasOut ? "buffer" : "drain") : hasOut ? "source" : "idle";
   });
   const resourceKey = makeResourceKey(storage.kind, storage.resourceId);
   // Lit when a hovered port/label pulls this buffer into its flow scope.
@@ -247,13 +276,13 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             </span>
           ) : null}
         </NodeGlanceIcon>
-        <StorageHeader storageId={storage.id} isTank={isTank} tint={tint} />
+        <StorageHeader storageId={storage.id} isTank={isTank} tint={tint} role={role} />
         {/* The name sits ABOVE the item, not in the header — the header
             carries the setting word; this line says what is inside. */}
         <div title={title} className="minecraft-title h-4 truncate px-1 text-center text-[11px] leading-4">
           {title}
         </div>
-        <MinecraftTooltip content={renderStorageHoverContent(storage, mode)}>
+        <MinecraftTooltip content={renderStorageHoverContent(storage, role)}>
           {/* The icon well is the wire zone: drag from its left/right half
               to pull a wire. Everything around it - header, frame, name,
               net line - is plain card, so grabbing the border moves the
@@ -337,14 +366,17 @@ function StorageHeader({
   storageId,
   isTank,
   tint,
+  role,
 }: {
   storageId: string;
   isTank: boolean;
   tint: string;
+  role: StorageRole;
 }) {
   const deleteStorage = useFactoryStore((state) => state.deleteStorage);
   const duplicateStorage = useFactoryStore((state) => state.duplicateStorage);
   const noun = isTank ? "tank" : "drawer";
+  const presentation = ROLE_PRESENTATION[role];
 
   return (
     <div
@@ -383,11 +415,20 @@ function StorageHeader({
       >
         <Copy aria-hidden className="h-2.5 w-2.5" />
       </button>
-      {/* One quiet word, always the same: this card is storage. What it is
-          DOING right now (supply / buffer / pile-up) lives in the hover.
+      {/* The role, not the noun. Which of the three a drawer is decides
+          whether machines may dump into it, so it has to be legible without a
+          hover: SOURCE and DRAIN are the plan's declared boundary and get the
+          infinity mark, BUFFER plays by the rules and gets none.
           storage-node-word: calm mode centres it once the buttons go. */}
-      <div className="storage-node-word min-w-0 flex-1 truncate text-right text-[8px] font-black tracking-[0.4px] text-[#9aa1ad] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]">
-        STORAGE
+      <div
+        title={presentation.line}
+        className={[
+          "storage-node-word flex min-w-0 flex-1 items-center justify-end gap-1 truncate text-[8px] font-black tracking-[0.4px] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]",
+          presentation.boundary ? "text-[#d9c58a]" : "text-[#9aa1ad]",
+        ].join(" ")}
+      >
+        {presentation.boundary ? <span aria-hidden>∞</span> : null}
+        {presentation.word}
       </div>
     </div>
   );
@@ -398,7 +439,7 @@ function StorageHeader({
  * one-line reading of what this buffer IS right now. Rates live here instead
  * of on the card — the card only carries the net.
  */
-function renderStorageHoverContent(storage: FactoryStorage, mode: StorageMode): ReactNode {
+function renderStorageHoverContent(storage: FactoryStorage, role: StorageRole): ReactNode {
   const { project, lastResult } = useFactoryStore.getState();
   const nodesById = new Map(project.nodes.map((entry) => [entry.id, entry]));
   const recipesById = new Map(project.recipes.map((entry) => [entry.id, entry]));
@@ -431,14 +472,7 @@ function renderStorageHoverContent(storage: FactoryStorage, mode: StorageMode): 
   drainers.sort((left, right) => right.rate - left.rate);
   const net = inTotal - outTotal;
 
-  const modeLine =
-    mode === "supply"
-      ? "Infinite supply: nothing refills this — it hands out whatever is asked."
-      : mode === "blackhole"
-        ? "Infinite storage: nothing draws from this — everything sent here piles up."
-        : mode === "buffer"
-          ? "Buffer: fills from the left list, drains to the right one."
-          : "Unwired — connect lines to use it.";
+  const presentation = ROLE_PRESENTATION[role];
 
   const section = (label: string, rows: Array<{ name: string; rate: number }>) =>
     rows.length > 0 ? (
@@ -483,9 +517,17 @@ function renderStorageHoverContent(storage: FactoryStorage, mode: StorageMode): 
       </div>
       {section("Fed by", feeders)}
       {section("Drains to", drainers)}
-      <p className="mt-1.5 border-t border-white/15 pt-1 text-[12px] leading-snug text-slate-300">
-        {modeLine}
-      </p>
+      <div className="mt-1.5 border-t border-white/15 pt-1">
+        <div
+          className={[
+            "text-[10px] font-black uppercase tracking-wide",
+            presentation.boundary ? "text-amber-200" : "text-slate-400",
+          ].join(" ")}
+        >
+          {presentation.boundary ? `∞ ${presentation.word}` : presentation.word}
+        </div>
+        <p className="text-[12px] leading-snug text-slate-300">{presentation.line}</p>
+      </div>
     </div>
   );
 }

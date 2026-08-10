@@ -32,6 +32,14 @@ type ProjectEdge = FactoryProject["edges"][number];
  *   inputs short  | STARVED        | BLOCKED
  *                 | (nothing to do)| (the fix is upstream)
  *
+ * CLOGGED is the third question, and it outranks both: never mind what the
+ * inputs allow or what anyone is asking for, can this machine get RID of what
+ * it makes? A wired output whose surplus has no drain, no trash can and no
+ * consumer hungry enough backs up, and the machine can only run as fast as
+ * that output empties. It is not a fault - a plan that makes 10 redstone and
+ * only wants 5 is a normal plan - so it is stated, not scolded: the card says
+ * where the surplus is and offers the three honest ways out.
+ *
  * The doctrine that follows: running below 100% is not a fault. A machine
  * that hands every asker what it asked for is FINE, whatever its percent
  * reads. Only an unmet ask is a problem, and only when the inputs are already
@@ -50,6 +58,7 @@ export type NodeVerdictKind =
   | "starved"
   | "blocked"
   | "bottleneck"
+  | "clogged"
   | "dead-loop"
   | "demand-set"
   | "balanced";
@@ -133,6 +142,20 @@ export interface NodeVerdict {
   };
   /** Demand-set: percentage points the node could climb if asked. */
   headroomPct?: number;
+  /** Clogged: the output that has nowhere to go, and how much piles up. */
+  clog?: {
+    resourceKey: string;
+    kind: ResourceKind;
+    displayName: string;
+    /** Rate this output would make at the speed the plan wants. */
+    madePerSecond: number;
+    /** Rate anything downstream actually takes. */
+    takenPerSecond: number;
+    /** The difference: what would pile up with nowhere to put it. */
+    surplusPerSecond: number;
+    /** Percentage points this card would climb if the surplus had a home. */
+    heldBackPct: number;
+  };
   /** Dead-loop: the ring this card is trapped in, and who else is in it. */
   spiral?: DeathSpiral;
 }
@@ -374,6 +397,7 @@ export function deriveNodeVerdict(
   const utilization = clamp01(nodeResult.utilization, 0);
   const capable = clamp01(nodeResult.capableUtilization, 1);
   const demand = clamp01(nodeResult.demandUtilization, utilization);
+  const disposal = clamp01(nodeResult.disposalUtilization, 1);
   const pct = Math.round(utilization * 1000) / 10;
 
   const incoming = project.edges.filter((edge) => edge.target === nodeId);
@@ -391,6 +415,22 @@ export function deriveNodeVerdict(
   }
 
   const deficit = findWorstOutputDeficit(project, result, nodeResult, nodeId, outgoing);
+
+  // Conservation outranks supply and demand both. A machine held below full
+  // speed because one of its outputs has nowhere to go is not starved (its
+  // inputs are fine) and not demand-set (something downstream may be begging
+  // for the OTHER output) - it is clogged, and neither of those two words
+  // would send you to the pipe that is actually full.
+  if (
+    nodeResult.clogOutputKey !== undefined &&
+    disposal < 1 - VERDICT_EPSILON &&
+    disposal <= capable + VERDICT_EPSILON
+  ) {
+    const clog = describeClog(nodeResult, utilization, disposal);
+    if (clog) {
+      return { kind: "clogged", pct, clog, deficit };
+    }
+  }
 
   if (utilization >= 1 - VERDICT_EPSILON) {
     return deficit ? { kind: "bottleneck", pct, deficit } : { kind: "balanced", pct };
@@ -420,6 +460,40 @@ export function deriveNodeVerdict(
     pct,
     binding: findBindingInput(project, result, nodeResult, nodeId, incoming),
     deficit,
+  };
+}
+
+/**
+ * The clog, in the reader's units: what the blocked output WOULD make if the
+ * plan had its way, what actually leaves, and the gap between them. Measured
+ * against demand rather than nameplate, because "you would be at 100% if this
+ * had somewhere to go" is only true when something wants the other 100%.
+ */
+function describeClog(
+  nodeResult: NodeThroughputResult,
+  utilization: number,
+  disposal: number,
+): NodeVerdict["clog"] {
+  const key = nodeResult.clogOutputKey;
+  if (key === undefined) {
+    return undefined;
+  }
+  const flow = nodeResult.outputs[key];
+  if (!flow || flow.amountPerSecond <= RATE_EPSILON) {
+    return undefined;
+  }
+
+  // What the rest of the card wants to run at: the speed it would reach if
+  // this one output stopped holding it down.
+  const wanted = Math.min(1, clamp01(nodeResult.capableUtilization, 1));
+  return {
+    resourceKey: key,
+    kind: flow.kind,
+    displayName: flow.displayName ?? flow.resourceId ?? key,
+    madePerSecond: flow.amountPerSecond * wanted,
+    takenPerSecond: flow.amountPerSecond * disposal,
+    surplusPerSecond: Math.max(0, flow.amountPerSecond * (wanted - disposal)),
+    heldBackPct: Math.max(0, Math.round((wanted - utilization) * 1000) / 10),
   };
 }
 
@@ -835,6 +909,10 @@ export interface PortPlug {
    * hungry  = askers want more and THIS machine is the one to grow
    * blocked = askers want more but this machine is short itself, so the fix
    *           is upstream of it
+   * clogged = askers want more and the machine has the inputs for it, but
+   *           another of its outputs has nowhere to go. Distinct from hungry
+   *           because adding machines here would NOT help: more machines make
+   *           more of the stuck output too, so the ceiling moves with them.
    * fed     = every asker gets what it asks for (green)
    * dump    = only dead ends attached — a trash can, or buffers nothing ever
    *           draws from — so there is no ask to satisfy, just a place flow
@@ -845,7 +923,7 @@ export interface PortPlug {
    * upstream ("a recipe that crafts itself — the input is the output"), so
    * it participates in hungry/fed like any machine asker.
    */
-  state: "hungry" | "blocked" | "fed" | "dump";
+  state: "hungry" | "blocked" | "clogged" | "fed" | "dump";
   /**
    * Where a `dump` actually ends: a trash can (destroyed), a tank (fluid
    * buffer), or a store (item buffer). Absent on every other state.
@@ -1112,7 +1190,9 @@ export function buildRailPorts(
               : hungry
                 ? isSupplyShort(verdict.kind)
                   ? "blocked"
-                  : "hungry"
+                  : verdict.kind === "clogged"
+                    ? "clogged"
+                    : "hungry"
                 : "fed",
           // A can beside a buffer is still a can: destruction is the louder
           // fact, so it names the coupling.

@@ -875,6 +875,7 @@ img {
 
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--clogged,
 .factory-flow-board--wiring .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
   outline: none;
   filter: none;
@@ -963,6 +964,10 @@ img {
   --verdict-starved-ink: #b3ae76;
   --verdict-blocked-ink: #e0a63a;
   --verdict-bottleneck-ink: #e05252;
+  /* Clogged sits in the blues, off the warm alert ramp entirely: a full pipe
+     is a FACT about the plan, not a fault in it, and any amber or red would
+     put it on the to-do list beside the two states that really are. */
+  --verdict-clogged-ink: #6fb2d6;
 }
 
 /* The card's alert channel: one colour set, chosen once by the reason, read
@@ -995,6 +1000,15 @@ img {
   --state-bar: var(--rail-bar-hot);
   --state-badge: #cf8e00;
   --state-accent: #ffd76a;
+}
+
+/* The one state whose wash is cool. See --verdict-clogged-ink. */
+.recipe-node-shell[data-verdict="clogged"] {
+  --state-wash: #1e3b4d;
+  --state-edge: #4b87a8;
+  --state-bar: #6fb2d6;
+  --state-badge: #2f6683;
+  --state-accent: #a8d8ef;
 }
 
 .recipe-node-shell[data-verdict="bottleneck"],
@@ -1162,6 +1176,7 @@ img {
    rebuild a node. */
 .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
 .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--clogged,
 .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
   outline: 3px solid var(--state-edge);
   outline-offset: 1px;
@@ -1413,13 +1428,15 @@ img {
    means it is short itself (so it wears the card's amber). Both read the one
    channel, which is why the plug and the REASON word can never disagree. */
 .flow-plug--hungry,
-.flow-plug--blocked {
+.flow-plug--blocked,
+.flow-plug--clogged {
   background: var(--state-wash);
   border-color: var(--state-edge);
 }
 
 .flow-plug--hungry .flow-plug-track > i,
-.flow-plug--blocked .flow-plug-track > i {
+.flow-plug--blocked .flow-plug-track > i,
+.flow-plug--clogged .flow-plug-track > i {
   background: var(--state-bar);
 }
 
@@ -1515,6 +1532,7 @@ img {
 .factory-flow-board--calm .recipe-node-shell,
 .factory-flow-board--calm .recipe-node-shell[data-verdict="starved"],
 .factory-flow-board--calm .recipe-node-shell[data-verdict="blocked"],
+.factory-flow-board--calm .recipe-node-shell[data-verdict="clogged"],
 .factory-flow-board--calm .recipe-node-shell[data-verdict="bottleneck"] {
   --state-wash: var(--mc-71);
   --state-edge: var(--mc-47);
@@ -1524,6 +1542,7 @@ img {
   --verdict-starved-ink: var(--mc-ink);
   --verdict-blocked-ink: var(--mc-ink);
   --verdict-bottleneck-ink: var(--mc-ink);
+  --verdict-clogged-ink: var(--mc-ink);
 }
 
 /* Calming a state drops it to the card's own neutral — which on a painted
@@ -1550,6 +1569,7 @@ img {
    to near-black the outline would all but vanish. */
 .factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-port--bind,
 .factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--hungry,
+.factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--clogged,
 .factory-flow-board--calm .recipe-node-shell:has(.flow-usage-stat:hover) .flow-plug--blocked {
   outline-color: #9db0c4;
 }

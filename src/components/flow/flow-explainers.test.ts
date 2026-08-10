@@ -415,8 +415,10 @@ describe("explainPlug — the asker's side", () => {
     expect(rails.outputs[0]!.plug?.state).toBe("dump");
     expect(rails.outputs[0]!.plug?.askerName).toBe("PE Drawer (buffer)");
     // An item buffer STORES what arrives — only the trash can destroys it.
+    // The word on the plug is the drawer's own role: nothing draws from this
+    // one, so it is a DRAIN, and the plug must not call it something else.
     expect(rails.outputs[0]!.plug?.dumpKind).toBe("store");
-    expect(story.stateWord).toBe("STORE");
+    expect(story.stateWord).toBe("DRAIN");
     expect(story.lines[0]).toContain("Dead end");
   });
 
@@ -442,8 +444,10 @@ describe("explainPlug — the asker's side", () => {
       verdict,
     );
 
+    // Still a tank internally (fluid, not item), but a dead-end drawer wears
+    // one word on the board whatever it holds: DRAIN.
     expect(rails.outputs[0]!.plug?.dumpKind).toBe("tank");
-    expect(explainPlug(proj, result, "N", rails.outputs[0]!)!.stateWord).toBe("TANK");
+    expect(explainPlug(proj, result, "N", rails.outputs[0]!)!.stateWord).toBe("DRAIN");
   });
 
   it("calls a trash can what it is, and never a fed asker", () => {
