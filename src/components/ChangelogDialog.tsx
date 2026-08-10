@@ -112,12 +112,19 @@ export function ChangelogDialog({
     <div
       className={[
         "fixed inset-0 z-[120] grid place-items-center p-4",
-        // Both tones blur; the interruption just does it harder. A blur is
-        // composited once over a board that is not animating while a modal is
-        // up, so it costs nothing to hold - but a heavy radius over a
-        // full-screen canvas is a real bill on a weak machine, and even a few
-        // pixels already removes every readable word.
-        isInterrupt ? "bg-neutral-950/88 backdrop-blur-lg" : "bg-neutral-950/75 backdrop-blur-sm",
+        // NO BACKDROP FILTER ON A PHONE. A full-viewport backdrop-filter forces
+        // everything under it into a composited layer and repaints that layer
+        // whenever anything beneath moves - and beneath this sits the board,
+        // plus the Welcome page over it, plus the pulsing that marks unwired
+        // slots. Desktop absorbs it. A phone does not: it is the heaviest first
+        // paint the app can produce, and the tab dying and being restored by
+        // the browser looks exactly like a reload loop.
+        //
+        // Compact gets opacity instead, turned up to compensate. The job here
+        // is taking the board away, and a darker sheet does that for free.
+        isInterrupt
+          ? "bg-neutral-950/88 backdrop-blur-lg compact:bg-neutral-950/96 compact:[backdrop-filter:none]"
+          : "bg-neutral-950/75 backdrop-blur-sm compact:bg-neutral-950/92 compact:[backdrop-filter:none]",
       ].join(" ")}
       onClick={requestClose}
     >
@@ -218,7 +225,8 @@ function CloseGuard({
 }) {
   return (
     <div
-      className="fixed inset-0 z-[122] grid place-items-center bg-neutral-950/88 p-4 backdrop-blur-lg"
+      // Same rule as the sheet it replaces: no backdrop filter on a phone.
+      className="fixed inset-0 z-[122] grid place-items-center bg-neutral-950/88 p-4 backdrop-blur-lg compact:bg-neutral-950/96 compact:[backdrop-filter:none]"
       // Clicking beside a modal means CLOSE. It briefly meant "back to the
       // notes" on the theory that a stray click should not answer a warning,
       // which got the gesture backwards: someone clicking the void is reaching

@@ -52,7 +52,7 @@ export function WhatsNewPreview({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[125] grid place-items-center bg-neutral-950/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[125] grid place-items-center bg-neutral-950/80 p-4 backdrop-blur-sm compact:bg-neutral-950/92 compact:[backdrop-filter:none]"
       onClick={onClose}
     >
       <div
