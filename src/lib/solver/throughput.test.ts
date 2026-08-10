@@ -1229,7 +1229,7 @@ describe("calculateThroughput", () => {
     expect(result.storages["dust-drawer"].status).toBe("draining");
   });
 
-  it("aggregates drawer and tank throughput by referenced resource", () => {
+  it("reports each drawer's own throughput, not every drawer of that resource", () => {
     const project: FactoryProject = {
       schemaVersion: PROJECT_SCHEMA_VERSION,
       id: "storage-reference-project",
@@ -1315,12 +1315,19 @@ describe("calculateThroughput", () => {
 
     const result = solveClosed(project);
 
-    for (const storageId of ["dust-drawer-a", "dust-drawer-b"]) {
-      expect(result.storages[storageId].producedPerSecond).toBeCloseTo(5);
-      expect(result.storages[storageId].consumedPerSecond).toBeCloseTo(2);
-      expect(result.storages[storageId].netPerSecond).toBeCloseTo(3);
-      expect(result.storages[storageId].status).toBe("filling");
-    }
+    // Two drawers of one item with NO wire between them are two containers.
+    // This used to sum them and stamp the total on both, so each reported the
+    // other's flow and material crossed a gap nobody had wired - the drawer
+    // network the conservation rework exists to remove. `a` is fed and exports;
+    // `b` feeds the consumer and imports; neither knows about the other.
+    expect(result.storages["dust-drawer-a"].producedPerSecond).toBeCloseTo(5);
+    expect(result.storages["dust-drawer-a"].consumedPerSecond).toBeCloseTo(0);
+    expect(result.storages["dust-drawer-a"].status).toBe("filling");
+
+    expect(result.storages["dust-drawer-b"].producedPerSecond).toBeCloseTo(0);
+    expect(result.storages["dust-drawer-b"].consumedPerSecond).toBeCloseTo(2);
+    expect(result.storages["dust-drawer-b"].status).toBe("draining");
+
     expect(result.nodes.consumer.utilization).toBeCloseTo(1);
   });
 

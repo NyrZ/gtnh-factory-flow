@@ -401,4 +401,68 @@ describe("conservation: drawers", () => {
     expect(result.nodes["taker"].utilization).toBeCloseTo(1);
     expect(result.externalInputs[0]?.resourceId).toBe("cobble");
   });
+
+  it("a drawer of the same item on an unwired chain changes nothing", () => {
+    // The bug this pins: pools were keyed by ITEM, so every drawer holding
+    // cobble was one tank. A second chain that merely PRODUCED cobble gave the
+    // first chain's source drawer a sink, dropped its offer from infinite to
+    // that chain's output, and starved a line it shares no wire with.
+    const chain = {
+      recipes: [
+        recipe("eat-cobble", [["cobble", 20]], [["gravel", 1]]),
+        recipe("make-cobble", [], [["cobble", 3]]),
+      ],
+      nodes: [node("taker", "eat-cobble"), node("faraway", "make-cobble")],
+      storages: [
+        drawer("src", "cobble"),
+        drawer("d-gravel", "gravel"),
+        // Same item, opposite role, no wire to any of the above.
+        drawer("other-cobble", "cobble"),
+      ],
+      edges: [
+        wire("e2", "src", "taker", "cobble"),
+        wire("e3", "taker", "d-gravel", "gravel"),
+        wire("e4", "faraway", "other-cobble", "cobble"),
+      ],
+    };
+
+    const result = calculateThroughput(project(chain), { generatedAt: "fixed" });
+
+    // The untouched chain runs exactly as it did without the neighbour.
+    expect(result.edges["e2"].transferredPerSecond).toBeCloseTo(20);
+    expect(result.nodes["taker"].utilization).toBeCloseTo(1);
+    // And the neighbour runs on its own merits, not on the source's imports.
+    expect(result.nodes["faraway"].utilization).toBeCloseTo(1);
+    expect(result.edges["e4"].transferredPerSecond).toBeCloseTo(3);
+  });
+
+  it("each drawer reports its own wires, not every drawer of that item", () => {
+    // Two source drawers of one item used to show the SUM: both read 30/s when
+    // one shipped 20 and the other 10.
+    const result = calculateThroughput(
+      project({
+        recipes: [
+          recipe("eat-a", [["cobble", 20]], [["gravel", 1]]),
+          recipe("eat-b", [["cobble", 10]], [["sand", 1]]),
+        ],
+        nodes: [node("a", "eat-a"), node("b", "eat-b")],
+        storages: [
+          drawer("src-a", "cobble"),
+          drawer("src-b", "cobble"),
+          drawer("d-gravel", "gravel"),
+          drawer("d-sand", "sand"),
+        ],
+        edges: [
+          wire("e1", "src-a", "a", "cobble"),
+          wire("e2", "src-b", "b", "cobble"),
+          wire("e3", "a", "d-gravel", "gravel"),
+          wire("e4", "b", "d-sand", "sand"),
+        ],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.storages["src-a"].consumedPerSecond).toBeCloseTo(20);
+    expect(result.storages["src-b"].consumedPerSecond).toBeCloseTo(10);
+  });
 });

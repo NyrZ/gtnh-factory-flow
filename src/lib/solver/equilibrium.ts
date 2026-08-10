@@ -117,7 +117,7 @@ interface PreparedEdge {
   needKey: string;
   /** `${source}|${outputKey}` for machine sources, "" for storage sources. */
   budgetKey: string;
-  /** Storage pool (resource key of the tank) for storage roles, else "". */
+  /** The drawer this line touches (its node id) for storage roles, else "". */
   poolKey: string;
   /**
    * This line can swallow anything the producer sends: a trash can, or a
@@ -229,11 +229,23 @@ export function solveEquilibrium(
         : sourceStorage
           ? "storage-source"
           : "machine";
-    const poolKey = targetStorage
-      ? makeResourceKey(targetStorage.kind, targetStorage.resourceId)
-      : sourceStorage
-        ? makeResourceKey(sourceStorage.kind, sourceStorage.resourceId)
-        : "";
+    // A pool is ONE DRAWER, not one item.
+    //
+    // This used to key on the resource, which quietly rebuilt the drawer
+    // network the conservation rework exists to remove: every drawer holding
+    // carbon dust anywhere on the board was one tank, so a product drawer
+    // parked beside an unrelated chain gave a source drawer on the titanium
+    // line `sinkEdges`, dropped its offer from infinite to that OTHER chain's
+    // output, and starved a line it shares no wire with. Material teleported
+    // between drawers nobody had connected.
+    //
+    // Keyed by node, every drawer is its own container and the roles fall out
+    // of its own wires: nothing feeds a SOURCE, so it has no sinks and offers
+    // without limit; a BUFFER's outflow is bounded by its own inflow, which is
+    // exactly "you can never take out more than you put in". Two drawers of
+    // the same item are two containers, whatever their roles - to move goods
+    // between them you wire them together, like everything else on the board.
+    const poolKey = targetStorage?.id ?? sourceStorage?.id ?? "";
     const prepared: PreparedEdge = {
       id: edge.id,
       sourceId: edge.source,

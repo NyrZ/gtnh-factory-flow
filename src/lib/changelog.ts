@@ -71,6 +71,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.0.2",
+    date: "2026-08-10",
+    headline: "Drawers stop talking to each other",
+    notes: [
+      "Two drawers holding the same item were treated as *one shared container*, even with no wire between them.",
+      "So a new line making an item could *starve an old line* that imported it.",
+      "Every drawer is now *its own container*, and shows *its own numbers*. To move things between two, wire them.",
+    ],
+  },
+  {
     version: "2.0.1",
     date: "2026-08-10",
     headline: "Rates per tick",
