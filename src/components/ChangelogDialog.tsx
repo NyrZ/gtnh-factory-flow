@@ -90,6 +90,20 @@ export function ChangelogDialog({
   const missedCount = headline.filter((entry) => unseen.has(entry.version)).length;
   const oldestMissed = missedCount > 0 ? headline[missedCount - 1]!.version : undefined;
 
+  // The notes GO, and one small window asks the question. Keeping the sheet up
+  // behind a bar meant the reader answered while looking at the wall of text
+  // they had already decided not to read; with everything else gone there is
+  // one sentence and two buttons, which is the whole point of asking.
+  if (confirmingClose) {
+    return (
+      <CloseGuard
+        entry={unreadWarnings[0]!}
+        onBack={() => setConfirmingClose(false)}
+        onClose={onClose}
+      />
+    );
+  }
+
   return (
     <div
       className={[
@@ -121,31 +135,6 @@ export function ChangelogDialog({
           oldestMissed={oldestMissed}
           onClose={requestClose}
         />
-
-        {/* Asked once, in the sheet rather than in a browser confirm box: a
-            native dialog over a blurred modal looks like the page broke. */}
-        {confirmingClose ? (
-          <div className="flex flex-wrap items-center gap-3 border-b border-amber-700 bg-amber-500/15 px-5 py-3 compact:px-4">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" aria-hidden />
-            <p className="min-w-0 flex-1 text-sm text-amber-100">
-              {`Close without reading the heads up on v${unreadWarnings[0]!.version}? It changes how your saved setups behave.`}
-            </p>
-            <button
-              type="button"
-              onClick={() => setConfirmingClose(false)}
-              className="rounded border border-amber-400 bg-amber-500/25 px-3 py-1.5 text-xs font-bold text-amber-100 hover:bg-amber-500/40"
-            >
-              Let me read it
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded border border-line-strong px-3 py-1.5 text-xs font-bold text-fg-muted hover:bg-surface-raised"
-            >
-              Close anyway
-            </button>
-          </div>
-        ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 compact:px-4">
           <ul>
@@ -191,6 +180,74 @@ export function ChangelogDialog({
               )}
             </div>
           ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One question, on its own, after the notes have gone.
+ *
+ * A release carrying a warning is one where a plan somebody saved months ago
+ * now behaves differently, and they have no reason to suspect it. Closing past
+ * that unread is the failure the whole feature exists to prevent, so it costs
+ * one click - and the warning itself is repeated here, because a reader who
+ * scrolled past it once is not going to be persuaded by a reference to it.
+ *
+ * Not `window.confirm`: a native box over a blurred modal reads as the page
+ * breaking, and it cannot show the sentence that matters.
+ */
+function CloseGuard({
+  entry,
+  onBack,
+  onClose,
+}: {
+  entry: ChangelogEntry;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[122] grid place-items-center bg-neutral-950/88 p-4 backdrop-blur-lg"
+      // Backdrop dismiss goes BACK to the notes, never out. A stray click
+      // outside a warning must not be able to answer it.
+      onClick={onBack}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label="You have not read the heads up"
+        className="w-full max-w-md rounded-lg border-2 border-amber-600 bg-surface p-5 shadow-[0_24px_70px_rgba(0,0,0,0.75)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" aria-hidden />
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-amber-200">
+              {`You have not read the heads up on v${entry.version}`}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-fg-muted">
+              {renderEmphasis(entry.warning ?? "", "text-amber-200")}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border border-line-strong px-3 py-1.5 text-xs font-bold text-fg-muted hover:bg-surface-raised"
+          >
+            Close anyway
+          </button>
+          <button
+            type="button"
+            autoFocus
+            onClick={onBack}
+            className="rounded border border-amber-400 bg-amber-500/25 px-3 py-1.5 text-xs font-bold text-amber-100 hover:bg-amber-500/40"
+          >
+            Let me read it
+          </button>
         </div>
       </div>
     </div>
