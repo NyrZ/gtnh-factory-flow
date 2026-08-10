@@ -31,9 +31,11 @@ export const CROP_IF_HARVEST_UNIT_CONTROL_ID = "cropIfHarvestUnits";
 export const CROP_IF_ENVIRONMENT_UNIT_CONTROL_ID = "cropIfEnvironmentUnits";
 export const CROP_IF_OVERCLOCK_CONTROL_ID = "cropIfOverclocks";
 
-export const CROP_HARVESTER_HAND_ID = "crop-hand";
 export const CROP_HARVESTER_MANAGER_ID = "crop-manager";
 export const CROP_HARVESTER_INDUSTRIAL_FARM_ID = "crop-industrial-farm";
+/** Manager tier key for sticks nobody automates: you walk over and pick them. */
+export const CROP_NO_MANAGER_KEY = "none";
+const NO_MANAGER_TIER_INDEX = -1;
 
 export const BEE_FRAME_SLOT_CONTROL_PREFIX = "beeFrameSlot";
 export const BEE_ENVIRONMENT_CONTROL_ID = "beeEnvironment";
@@ -301,13 +303,17 @@ const VOLTAGE_TIER_NAMES = [
 ];
 
 export type CropHarvesterId =
-  | typeof CROP_HARVESTER_HAND_ID
   | typeof CROP_HARVESTER_MANAGER_ID
   | typeof CROP_HARVESTER_INDUSTRIAL_FARM_ID;
 
 export interface CropHarvesterSetup {
   id: CropHarvesterId;
-  /** Voltage ordinal of the machine or seed bed (ULV 0, LV 1, MV 2, ...). */
+  /**
+   * Voltage ordinal of the machine or seed bed (ULV 0, LV 1, MV 2, ...), or
+   * -1 on the crop stick side to mean nobody is automating it. Picking by
+   * hand is a Crop Manager tier below LV, not a mode of its own: the crop
+   * grows in the world either way and answers the same six knobs.
+   */
   tierIndex: number;
   growthUnits: number;
   fertilizerUnits: number;
@@ -327,15 +333,20 @@ export function cropsNhSquarePerTier(tierIndex: number): number {
   return side * side;
 }
 
+/** True when the crop grows on sticks with nothing automating the harvest. */
+export function cropsNhIsHandPicked(setup: CropHarvesterSetup): boolean {
+  return setup.id === CROP_HARVESTER_MANAGER_ID && setup.tierIndex < 0;
+}
+
 /** How many crops one machine of this setup works at once. */
 export function cropsNhCropsPerMachine(setup: CropHarvesterSetup): number {
+  if (cropsNhIsHandPicked(setup)) {
+    return 1;
+  }
   if (setup.id === CROP_HARVESTER_MANAGER_ID) {
     return cropsNhSquarePerTier(setup.tierIndex) * CROP_MANAGER_LAYERS;
   }
-  if (setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
-    return cropsNhSquarePerTier(setup.tierIndex);
-  }
-  return 1;
+  return cropsNhSquarePerTier(setup.tierIndex);
 }
 
 /** `MTEIndustrialFarm`: upgrade slots = clamp(tier - MIN_CASING_TIER + 1, 1, 12). */
@@ -348,16 +359,22 @@ export function cropsNhHarvesterFromTiers(
   handlerId: string | undefined,
 ): CropHarvesterSetup {
   const id: CropHarvesterId =
-    handlerId === CROP_HARVESTER_MANAGER_ID || handlerId === CROP_HARVESTER_INDUSTRIAL_FARM_ID
-      ? handlerId
-      : CROP_HARVESTER_HAND_ID;
+    handlerId === CROP_HARVESTER_INDUSTRIAL_FARM_ID
+      ? CROP_HARVESTER_INDUSTRIAL_FARM_ID
+      : CROP_HARVESTER_MANAGER_ID;
   const read = (controlId: string, fallback: number) => {
     const parsed = Number.parseInt(tiers?.[controlId] ?? "", 10);
     return Number.isFinite(parsed) ? parsed : fallback;
   };
+  // An unset or "none" manager tier parses to nothing, which is exactly the
+  // hand-picked default every card starts on.
   const tierIndex =
     id === CROP_HARVESTER_MANAGER_ID
-      ? clampInt(read(CROP_MANAGER_TIER_CONTROL_ID, CROP_MANAGER_MIN_TIER_INDEX), CROP_MANAGER_MIN_TIER_INDEX, CROP_MANAGER_MAX_TIER_INDEX)
+      ? clampInt(
+          read(CROP_MANAGER_TIER_CONTROL_ID, NO_MANAGER_TIER_INDEX),
+          NO_MANAGER_TIER_INDEX,
+          CROP_MANAGER_MAX_TIER_INDEX,
+        )
       : clampInt(read(CROP_SEED_BED_TIER_CONTROL_ID, SEED_BED_MIN_TIER_INDEX), SEED_BED_MIN_TIER_INDEX, SEED_BED_MAX_TIER_INDEX);
   const slots = cropsNhUpgradeSlots(tierIndex);
   const fertilizerUnits = clampInt(read(CROP_IF_FERTILIZER_UNIT_CONTROL_ID, 0), 0, MAX_FERTILIZER_UNITS);
@@ -423,17 +440,17 @@ export function cropsNhGrowthSpeedMultiplier(setup: CropHarvesterSetup): number 
  * of its seed bed tier and units in `getHarvestRoundMultiplier`.
  */
 export function cropsNhHarvestRoundMultiplier(setup: CropHarvesterSetup): number {
+  if (cropsNhIsHandPicked(setup)) {
+    return 1;
+  }
   if (setup.id === CROP_HARVESTER_MANAGER_ID) {
     return 1 + CROP_MANAGER_HARVEST_BONUS_PER_TIER * setup.tierIndex;
   }
-  if (setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
-    const additive =
-      1 +
-      SEED_BED_HARVEST_ROUND_BONUS_PER_TIER * setup.tierIndex +
-      setup.fertilizerUnits * FERTILIZER_UNIT_HARVEST_ROUND_BONUS;
-    return additive * (1 + setup.harvestUnits * ADVANCED_HARVESTING_ROUND_MULTIPLIER);
-  }
-  return 1;
+  const additive =
+    1 +
+    SEED_BED_HARVEST_ROUND_BONUS_PER_TIER * setup.tierIndex +
+    setup.fertilizerUnits * FERTILIZER_UNIT_HARVEST_ROUND_BONUS;
+  return additive * (1 + setup.harvestUnits * ADVANCED_HARVESTING_ROUND_MULTIPLIER);
 }
 
 /**
@@ -452,7 +469,9 @@ export function cropsNhEutPerCrop(setup: CropHarvesterSetup): number {
 }
 
 export function cropsNhManagerEuPerHarvest(setup: CropHarvesterSetup): number {
-  return setup.id === CROP_HARVESTER_MANAGER_ID ? gtVoltage(setup.tierIndex) / 8 : 0;
+  return setup.id === CROP_HARVESTER_MANAGER_ID && setup.tierIndex >= 0
+    ? gtVoltage(setup.tierIndex) / 8
+    : 0;
 }
 
 export function cropsNhHarvesterTierName(tierIndex: number): string {
@@ -776,20 +795,33 @@ function voltageTierControl({
   label,
   minTierIndex,
   maxTierIndex,
-  defaultTierIndex,
+  defaultKey,
+  noneLabel,
 }: {
   id: string;
   label: string;
   minTierIndex: number;
   maxTierIndex: number;
-  defaultTierIndex: number;
+  defaultKey: string;
+  /** When given, the tier list opens with a "no machine at all" option. */
+  noneLabel?: string;
 }): MachineConfigControl {
-  const tiers = Array.from({ length: maxTierIndex - minTierIndex + 1 }, (_unused, offset) => {
-    const tierIndex = minTierIndex + offset;
-    const name = cropsNhHarvesterTierName(tierIndex);
-    return option(String(tierIndex), name, `crop_voltage_${name.toLowerCase()}`, `${label}: ${name}`);
-  });
-  return { id, label, minimumKey: String(minTierIndex), defaultKey: String(defaultTierIndex), tiers };
+  const tiers = [
+    ...(noneLabel
+      ? [option(CROP_NO_MANAGER_KEY, noneLabel, "crop_voltage_none", `${label}: ${noneLabel}`)]
+      : []),
+    ...Array.from({ length: maxTierIndex - minTierIndex + 1 }, (_unused, offset) => {
+      const tierIndex = minTierIndex + offset;
+      const name = cropsNhHarvesterTierName(tierIndex);
+      return option(
+        String(tierIndex),
+        name,
+        `crop_voltage_${name.toLowerCase()}`,
+        `${label}: ${name}`,
+      );
+    }),
+  ];
+  return { id, label, minimumKey: tiers[0]!.key, defaultKey, tiers };
 }
 
 /** A plain 0..max counter, keyed by the number so `ctx.value` reads it back. */
@@ -818,35 +850,30 @@ function countControl({
 }
 
 /**
- * The three ways a CropsNH crop gets picked. By hand is first, so it stays the
- * default and every board built before harvesters existed keeps its numbers.
+ * The two places a CropsNH crop can live: on crop sticks in the world, or
+ * inside an Industrial Farm. Picking by hand is not a third place, it is the
+ * stick side with no manager on it, so it is the first Manager Tier option
+ * rather than a tab of its own. Sticks come first, so a card with nothing
+ * chosen behaves exactly as it did before harvesters existed.
  */
 function cropHarvesterHandlers(): MachineHandler[] {
   return [
     {
-      id: CROP_HARVESTER_HAND_ID,
-      label: "By Hand",
-      machineType: CROP_FARM_RECIPE_MAP,
-      minimumTier: "NONE",
-      eut: 0,
-      kind: "single",
-      machineConfigControls: cropsNhAnalyticControls("world"),
-    },
-    {
       id: CROP_HARVESTER_MANAGER_ID,
       label: "Crop Manager",
       machineType: "Crop Manager",
-      minimumTier: "LV",
+      minimumTier: "NONE",
       eut: 0,
       kind: "single",
       machineConfigControls: [
         ...cropsNhAnalyticControls("world"),
         voltageTierControl({
           id: CROP_MANAGER_TIER_CONTROL_ID,
-          label: "Manager Tier",
+          label: "Manager",
           minTierIndex: CROP_MANAGER_MIN_TIER_INDEX,
           maxTierIndex: CROP_MANAGER_MAX_TIER_INDEX,
-          defaultTierIndex: CROP_MANAGER_MIN_TIER_INDEX,
+          defaultKey: CROP_NO_MANAGER_KEY,
+          noneLabel: "By Hand",
         }),
       ],
     },
@@ -864,7 +891,7 @@ function cropHarvesterHandlers(): MachineHandler[] {
           label: "Seed Bed",
           minTierIndex: SEED_BED_MIN_TIER_INDEX,
           maxTierIndex: SEED_BED_MAX_TIER_INDEX,
-          defaultTierIndex: SEED_BED_MIN_TIER_INDEX,
+          defaultKey: String(SEED_BED_MIN_TIER_INDEX),
         }),
         countControl({
           id: CROP_IF_GROWTH_UNIT_CONTROL_ID,

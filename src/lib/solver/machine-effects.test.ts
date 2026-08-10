@@ -399,13 +399,31 @@ describe("CropsNH harvesters", () => {
   const WORLD_N27 = { cropWater: "100", cropFertilizer: "100", cropSky: "yes", cropBiome: "none" };
   const WORLD_N41 = { ...WORLD_N27, cropBiome: "one-tag" };
 
-  it("offers by hand, Crop Manager and Industrial Farm, defaulting to by hand", () => {
+  it("puts by hand at the bottom of the manager tiers, not in a tab of its own", () => {
     const recipe = oilBerry();
+    // Crop sticks and an Industrial Farm are the two places a crop can live.
+    // Picking by hand is the stick side with no manager on it.
     expect(recipe.machineHandlers?.map((handler) => handler.id)).toEqual([
-      "crop-hand",
       "crop-manager",
       "crop-industrial-farm",
     ]);
+    const manager = recipe.machineHandlers![0]!.machineConfigControls!.find(
+      (control) => control.id === "cropManagerTier",
+    )!;
+    expect(manager.defaultKey).toBe("none");
+    expect(manager.tiers[0]).toMatchObject({ key: "none", label: "By Hand" });
+    expect(manager.tiers[1]).toMatchObject({ key: "1", label: "LV" });
+  });
+
+  it("treats no manager as picking by hand, and LV as the first real machine", () => {
+    const recipe = oilBerry();
+    const output = recipe.outputs[0]!;
+    const at = (key: string) => ({ machineConfigTiers: { cropManagerTier: key } });
+    expect(getMachineOutputMultiplier(recipe, at("none"), output, "LV")).toBe(1);
+    expect(cropsNhCropsPerMachine(cropsNhHarvesterFromTiers({ cropManagerTier: "none" }, "crop-manager"))).toBe(1);
+    // LV: 1 + 0.05 * 1 harvest rounds, and its full five-layer reach.
+    expect(getMachineOutputMultiplier(recipe, at("1"), output, "LV")).toBeCloseTo(1.05, 10);
+    expect(cropsNhCropsPerMachine(cropsNhHarvesterFromTiers({ cropManagerTier: "1" }, "crop-manager"))).toBe(605);
   });
 
   it("hides water, fertilizer and sky on an Industrial Farm and shows them elsewhere", () => {
@@ -420,11 +438,14 @@ describe("CropsNH harvesters", () => {
     for (const id of ["cropWater", "cropFertilizer", "cropSky"]) {
       expect(controlIds("crop-industrial-farm")).not.toContain(id);
       expect(controlIds("crop-manager")).toContain(id);
-      expect(controlIds("crop-hand")).toContain(id);
     }
     expect(controlIds("crop-industrial-farm")).toContain("cropSeedBedTier");
     expect(controlIds("crop-manager")).toContain("cropManagerTier");
-    expect(controlIds("crop-hand")).not.toContain("cropManagerTier");
+    // A seed bed always exists, so it never offers a "none" rung.
+    const seedBed = applyMachineHandlerToRecipe(recipe, {
+      machineHandlerId: "crop-industrial-farm",
+    }).machineConfigControls!.find((control) => control.id === "cropSeedBedTier")!;
+    expect(seedBed.tiers.map((tier) => tier.key)).not.toContain("none");
     // A card says how many sticks it has and who picks them. How the field is
     // stacked is the machine's business, never a question put to the player.
     expect(controlIds("crop-manager")).not.toContain("cropManagerLayers");

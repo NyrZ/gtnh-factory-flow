@@ -283,6 +283,7 @@ export const factoryNodeSchema = z.object({
   machineHandlerId: z.string().min(1).optional(),
   coilTier: z.string().min(1).optional(),
   machineConfigTiers: z.record(z.string().min(1), z.string().min(1)).optional(),
+  settingsCollapsed: z.boolean().optional(),
   recipeInputOverrides: z.record(z.string().min(1), recipeInputSchema).optional(),
   targetOutput: targetRateSchema.optional(),
   enabled: z.boolean(),

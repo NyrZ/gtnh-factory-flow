@@ -120,6 +120,15 @@ import { GT_TIER_COLORS } from "./tier-colors";
 // canvas edge instead of forcing their own wider box.
 const CROP_CONFIG_PANEL_WIDTH_CLASS = "w-full";
 
+/**
+ * Floor for one row of two passive-production knobs, in grid cells. A label
+ * and its select measure a shade over two cells, and GridBlock rounds the
+ * REAL content up past this, so two is a floor rather than a promise. The
+ * shared CONFIG_PANEL_ROW_HEIGHT is three, which on these panels reserved an
+ * empty cell per row and left the box padded top and bottom.
+ */
+const PASSIVE_PANEL_ROW_CELLS = 2;
+
 // Module constants, not fresh arrays per render: these feed the handle-set
 // key, and a new array every render would be extra work on the hottest card.
 const EMPTY_HANDLE_IDS: readonly string[] = [];
@@ -443,11 +452,25 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         controls={cropProductionControls}
         onSelect={updateMachineConfigTier}
         getControlHelp={(controlId) => cropControlHelp(effectiveRecipe, controlId)}
+        title={selectedMachineHandler.label}
+        collapsed={projectNode.settingsCollapsed === true}
+        onToggleCollapsed={() =>
+          updateNode(projectNode.id, {
+            settingsCollapsed: !(projectNode.settingsCollapsed === true),
+          })
+        }
       />
     ) : beePanelControls.length > 0 ? (
       <PassiveProductionConfigPanel
         controls={beePanelControls}
         onSelect={updateMachineConfigTier}
+        title={selectedMachineHandler.label}
+        collapsed={projectNode.settingsCollapsed === true}
+        onToggleCollapsed={() =>
+          updateNode(projectNode.id, {
+            settingsCollapsed: !(projectNode.settingsCollapsed === true),
+          })
+        }
       />
     ) : undefined;
   const updateMachineHandler = (machineHandlerId: string) => {
@@ -2975,46 +2998,91 @@ function PassiveProductionConfigPanel({
   controls,
   onSelect,
   getControlHelp,
+  title,
+  collapsed = false,
+  onToggleCollapsed,
 }: {
   className?: string;
   controls: MachineConfigTierControl[];
   onSelect: (controlId: string, nextTier: string) => void;
   /** Hover explanation per control (what the knob does and why it matters). */
   getControlHelp?: (controlId: string) => ReactNode;
+  /**
+   * What is being configured, written across the panel's head. The tab strip
+   * can only afford one letter per machine, so on a card whose name bar is
+   * spoken for - a crop farm names its CROP there - this is the only place
+   * the machine's own name appears.
+   */
+  title?: string;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }) {
   if (controls.length === 0) {
     return null;
   }
 
-  // Same deal as MachineConfigControlPanel: two per row, three cells a row.
-  const rows = Math.ceil(controls.length / 2);
+  const foldable = Boolean(title && onToggleCollapsed);
+  const isFolded = foldable && collapsed;
+  // A head is one cell; each row of two controls is two. The floor only has
+  // to be a floor - GridBlock measures the real content and rounds UP past
+  // this - so it is deliberately tight. At three cells a row it reserved a
+  // whole empty cell per row and the panel wore the slack top and bottom.
+  const rows = isFolded ? 0 : Math.ceil(controls.length / 2);
+  const headCells = foldable ? 1 : 0;
   return (
     <GridBlock
       className={[
         "nodrag border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]",
         className,
       ].join(" ")}
-      minCells={(rows * CONFIG_PANEL_ROW_HEIGHT) / BOARD_GRID}
+      minCells={Math.max(isFolded ? 1 : 2, headCells + rows * PASSIVE_PANEL_ROW_CELLS)}
+      // The 2px frame top and bottom, which scrollHeight cannot see.
+      clearancePx={4}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1 gap-y-1">
-        {controls.map((control) => (
-          <MinecraftTooltip key={control.id} content={getControlHelp?.(control.id)}>
-          <label className="min-w-0">
-            <span className="mb-0.5 block truncate text-[10px] font-bold uppercase leading-4 text-[var(--mc-ink-muted)]">
-              {control.label}
-            </span>
-            <MinecraftSelect
-              value={control.current.key}
-              options={control.tiers}
-              onSelect={(key) => onSelect(control.id, key)}
-              disabled={control.tiers.length <= 1}
-              title={`${control.label}: ${control.current.label}`}
-              ariaLabel={control.label}
-            />
-          </label>
-          </MinecraftTooltip>
-        ))}
-      </div>
+      {foldable ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleCollapsed?.();
+          }}
+          className={[
+            "flex h-4 w-full min-w-0 items-center gap-1 text-left text-[10px] font-bold uppercase leading-4 text-[var(--mc-ink-muted)] hover:text-[var(--mc-ink)]",
+            // Open, the head is a caption over the knobs and needs air under
+            // it. Folded, it is the whole panel and centres on its own.
+            isFolded ? "" : "mb-1",
+          ].join(" ")}
+          title={isFolded ? `Show ${title} settings` : `Hide ${title} settings`}
+          aria-expanded={!isFolded}
+        >
+          <ChevronDown
+            aria-hidden
+            className={["h-3 w-3 shrink-0", isFolded ? "-rotate-90" : ""].join(" ")}
+          />
+          <span className="min-w-0 truncate">{title} Settings</span>
+        </button>
+      ) : null}
+      {isFolded ? null : (
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1 gap-y-1">
+          {controls.map((control) => (
+            <MinecraftTooltip key={control.id} content={getControlHelp?.(control.id)}>
+            <label className="min-w-0">
+              <span className="mb-0.5 block truncate text-[10px] font-bold uppercase leading-4 text-[var(--mc-ink-muted)]">
+                {control.label}
+              </span>
+              <MinecraftSelect
+                value={control.current.key}
+                options={control.tiers}
+                onSelect={(key) => onSelect(control.id, key)}
+                disabled={control.tiers.length <= 1}
+                title={`${control.label}: ${control.current.label}`}
+                ariaLabel={control.label}
+              />
+            </label>
+            </MinecraftTooltip>
+          ))}
+        </div>
+      )}
     </GridBlock>
   );
 }

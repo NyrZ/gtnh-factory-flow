@@ -276,6 +276,8 @@ export interface FactoryNode {
   machineHandlerId?: string;
   coilTier?: string;
   machineConfigTiers?: Record<string, string>;
+  /** Settings panel folded shut. A view choice, kept so it survives a reload. */
+  settingsCollapsed?: boolean;
   recipeInputOverrides?: Record<string, RecipeInput>;
   targetOutput?: TargetRate;
   enabled: boolean;

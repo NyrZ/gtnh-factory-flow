@@ -20,11 +20,12 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-09",
     headline: "Crop farms know who is picking the crop",
     notes: [
-      "A crop farm now has a machine dropdown like every other card: by hand, a Crop Manager, or an Industrial Farm. Picking one changes the rates, because in game it does.",
-      "A Crop Manager tells you how far it reaches. An LV one works 11x11 crop sticks on each of the five layers it covers, an UV one 39x39, and every tier shakes the loot table 5% harder than the last.",
-      "An Industrial Farm brings its own water, fertilizer and sky, so those three settings disappear from the card: there is nothing left for you to set. In their place you get the seed bed tier and its upgrade units, and the card refuses to fit more units than the structure has room for.",
-      "Hover the card and it now says how many machines your crop count actually needs, and what they draw.",
-      "Cards you already have keep picking by hand, so nothing on your board moves until you choose otherwise.",
+      "A crop farm now says who is picking the crop. The Manager dropdown starts at By Hand and runs up through every Crop Manager tier, and each tier shakes the loot table 5% harder than the last.",
+      "A Crop Manager also tells you how far it reaches. An LV one works 11x11 crop sticks on each of the five layers it covers, an UV one 39x39, so the card can say how many machines your seeds actually need.",
+      "An Industrial Farm is the other place a crop can live, so it gets its own tab. It brings its own water, fertilizer and sky, so those three settings disappear: there is nothing left for you to set. In their place you get the seed bed tier and its upgrade units, and the card will not fit more units than the structure has room for.",
+      "The settings on a crop or bee card now sit under a heading that names the machine, and you can fold them away by clicking it. A folded card keeps the setting, so a board full of crops you have already tuned can be as short as you like.",
+      "Hover the card and it now says how many machines your seed count actually needs, and what they draw.",
+      "Cards you already have start on By Hand, so nothing on your board moves until you choose otherwise.",
     ],
   },
   {

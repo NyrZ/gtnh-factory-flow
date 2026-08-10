@@ -14,6 +14,7 @@ import {
   cropsNhHarvesterEnvironment,
   cropsNhHarvesterFromTiers,
   cropsNhHarvesterTierName,
+  cropsNhIsHandPicked,
   cropsNhManagerEuPerHarvest,
   cropsNhSquarePerTier,
   cropsNhNutrientScore,
@@ -271,7 +272,7 @@ function CropSourceStatsContent({
       </div>
 
       {/* What the chosen machine adds, and how many of them that many crops needs. */}
-      {setup.id !== "crop-hand" ? (
+      {!cropsNhIsHandPicked(setup) ? (
         <div className="mt-2 border-t border-white/10 pt-2">
           <p className="text-[17px] font-semibold leading-snug text-amber-300">
             What is picking it?
