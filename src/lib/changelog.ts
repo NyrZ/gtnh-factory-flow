@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.42.1",
+    date: "2026-08-09",
+    headline: "A link to someone's setup opens the setup",
+    notes: [
+      "Following a link someone sent you now lands you straight on their factory. The welcome page used to come up over it, so the setup was sitting there in a tab behind and the link looked like it had failed.",
+      "The tab it arrives in is named after the setup, so you can tell it from your own work at a glance. It used to say Untitled design.",
+      "Opening a setup from the Setups shelf while the welcome page is up now does the same thing: the page steps aside and shows you what you opened.",
+    ],
+  },
+  {
     version: "1.42.0",
     date: "2026-08-09",
     headline: "Crop farms know who is picking the crop",

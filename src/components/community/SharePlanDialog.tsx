@@ -9,6 +9,7 @@ import {
   uploadCommunityPlan,
 } from "@/lib/community/client";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
+import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { serializeFactoryProject } from "@/lib/import-export";
 import { capturePlanView } from "@/lib/plan-view";
@@ -143,7 +144,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
       return;
     }
 
-    const url = `${window.location.origin}/?plan=${shared.planId}`;
+    const url = sharedPlanLink(shared.planId);
     try {
       await navigator.clipboard.writeText(url);
     } catch {

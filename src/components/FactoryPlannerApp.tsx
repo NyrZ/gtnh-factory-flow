@@ -16,6 +16,7 @@ import { recordResourceTrend, resetResourceTrends } from "@/lib/resource-trends"
 import { applyPlanView } from "@/lib/plan-view";
 import { useWorkspaceView, writeWorkspaceView } from "@/lib/workspace-view";
 import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
+import { forgetSharedPlanId, readSharedPlanId } from "@/lib/community/shared-link";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { useIsCompactViewport } from "@/lib/compact-view";
 import { useWelcomeTab } from "@/lib/tour/welcome-tab";
@@ -94,11 +95,16 @@ export function FactoryPlannerApp() {
         .then(async () => {
           // A setup opened from a shared link becomes its own design tab, so
           // it never overwrites whatever the user was working on.
-          const importAsDesign = async (raw: unknown) => {
+          const importAsDesign = async (raw: unknown, postName: string) => {
             const project = parseFactoryProjectJson(JSON.stringify(raw));
+            // Named after the POST, which is the only name the person who
+            // followed the link has ever seen. A plan carries whatever its
+            // author happened to have that tab called, and "Untitled design"
+            // is common enough that a setup sent to you would land looking
+            // like a blank one.
             await useDesignStore
               .getState()
-              .importProjectAsDesign(project, project.name || "Shared setup");
+              .importProjectAsDesign(project, postName || project.name || "Shared setup");
             // A shared link opens the setup the way its author arranged it,
             // same as opening one from the shelf.
             applyPlanView(project.view);
@@ -106,20 +112,13 @@ export function FactoryPlannerApp() {
 
           try {
             // Shared "open to edit" links: /?plan=<community id>.
-            const params = new URLSearchParams(window.location.search);
-            const sharedPlanId = params.get("plan");
+            const sharedPlanId = readSharedPlanId();
             if (sharedPlanId) {
               try {
-                const { plan } = await downloadCommunityPlan(sharedPlanId);
-                await importAsDesign(tagPlanWithCommunityId(plan, sharedPlanId));
+                const { plan, name } = await downloadCommunityPlan(sharedPlanId);
+                await importAsDesign(tagPlanWithCommunityId(plan, sharedPlanId), name);
               } finally {
-                params.delete("plan");
-                const query = params.toString();
-                window.history.replaceState(
-                  null,
-                  "",
-                  `${window.location.pathname}${query ? `?${query}` : ""}`,
-                );
+                forgetSharedPlanId();
               }
             }
           } catch (error) {

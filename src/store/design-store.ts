@@ -30,6 +30,7 @@ import {
 } from "@/lib/designs/design-camera";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
+import { leaveWelcomeTab } from "@/lib/tour/welcome-tab";
 import type { FactoryProject } from "@/lib/model/types";
 import { LOCAL_STORAGE_KEY, useFactoryStore } from "./factory-store";
 
@@ -220,6 +221,11 @@ export const useDesignStore = create<DesignStore>((set, get) => ({
     const record = createDesignRecord(project, name || UNTITLED_DESIGN_NAME);
     await writeDesign(record);
     landOnDesign(set, record.id, record.project);
+    // A plan that arrives is a plan meant to be LOOKED at, whichever door it
+    // came through: a shared link, the setup shelf beside the board, a lesson.
+    // Leaving the greeting up would put it over the board it just landed on,
+    // with the strip still naming Welcome as the tab you are on.
+    leaveWelcomeTab();
     set({ designs: sortDesigns(await listDesignSummaries()) });
   },
 

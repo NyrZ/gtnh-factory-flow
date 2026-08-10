@@ -24,8 +24,12 @@ type Storage = ReturnType<typeof makeStorage>;
 let local: Storage;
 let session: Storage;
 
-function visit(localStorage: Storage, sessionStorage: Storage) {
-  (globalThis as { window?: unknown }).window = { localStorage, sessionStorage };
+function visit(localStorage: Storage, sessionStorage: Storage, search = "") {
+  (globalThis as { window?: unknown }).window = {
+    localStorage,
+    sessionStorage,
+    location: { search },
+  };
   vi.resetModules();
   // Fresh module registry each time, so the module-level cache is a page load.
   return import("./welcome-tab");
@@ -76,6 +80,25 @@ describe("welcome tab", () => {
 
     const reloaded = await visit(local, session);
     expect(reloaded.readWelcomeTabState().active).toBe(true);
+  });
+
+  it("does not greet a visitor who followed a link to a setup", async () => {
+    const module = await visit(local, session, "?plan=abc123");
+    const state = module.readWelcomeTabState();
+    // Straight onto the setup the link was for, with the tab still in the strip.
+    expect(state.active).toBe(false);
+    expect(state.open).toBe(true);
+  });
+
+  it("stays on a linked setup when the page is reloaded", async () => {
+    // The import takes ?plan= back out of the address bar, so the reload that
+    // follows looks like an ordinary visit and would land back on Welcome. The
+    // setup landing on the board is what tells the session otherwise.
+    const linked = await visit(local, session, "?plan=abc123");
+    linked.leaveWelcomeTab();
+
+    const reloaded = await visit(local, session);
+    expect(reloaded.readWelcomeTabState().active).toBe(false);
   });
 
   it("keeps the tab out of the strip once it is closed", async () => {

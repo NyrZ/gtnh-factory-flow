@@ -28,6 +28,7 @@ import {
   tagPlanWithCommunityId,
   voteCommunityPlan,
 } from "@/lib/community/client";
+import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
@@ -208,7 +209,9 @@ export function SetupsPanel() {
       const project = parseFactoryProjectJson(
         JSON.stringify(tagPlanWithCommunityId(planJson, plan.id)),
       );
-      await useDesignStore.getState().importProjectAsDesign(project, project.name || plan.name);
+      // The post's name first: that is the one on the card just clicked. The
+      // plan carries its author's own tab name, often still "Untitled design".
+      await useDesignStore.getState().importProjectAsDesign(project, plan.name || project.name);
       // Opening a setup means seeing it the way its author set it up. Only
       // here, not in the pocket drop below: that one merges into the board you
       // are already working on, and rearranging your workspace around an
@@ -260,7 +263,7 @@ export function SetupsPanel() {
   };
 
   const copyLink = async (plan: CommunityPlanSummary) => {
-    const url = `${window.location.origin}/?plan=${plan.id}`;
+    const url = sharedPlanLink(plan.id);
     try {
       await navigator.clipboard.writeText(url);
     } catch {

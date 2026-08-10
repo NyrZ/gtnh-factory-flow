@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { readSharedPlanId } from "@/lib/community/shared-link";
 
 /**
  * The Welcome tab: whether it sits in the tab strip, and whether it is the one
@@ -66,7 +67,13 @@ function rememberLeftThisSession(left: boolean) {
 }
 
 function readStored(): WelcomeTabState {
-  const left = hasLeftThisSession();
+  // A link to someone's setup is a visit that already has somewhere to be, and
+  // the greeting would land on top of the very thing the link was for. It
+  // counts as stepped off before anything renders, so there is no flash of
+  // Welcome while the setup downloads. What makes it stick across the reload
+  // after the import is `leaveWelcomeTab`, called once the plan is on the
+  // board: by then `?plan=` has been taken back out of the address bar.
+  const left = hasLeftThisSession() || readSharedPlanId() !== undefined;
 
   try {
     const raw = window.localStorage.getItem(WELCOME_TAB_STORAGE_KEY);
@@ -143,6 +150,10 @@ export function openWelcomeTab() {
 /** Step off it onto a design. The tab stays in the strip. */
 export function leaveWelcomeTab() {
   if (!getSnapshot().active) {
+    // Nothing to step off, but the session still has to hear about it: a visit
+    // that came in on a shared link never activated Welcome in the first place,
+    // and the reload after that import must not put it back over the setup.
+    rememberLeftThisSession(true);
     return;
   }
   write({ active: false });

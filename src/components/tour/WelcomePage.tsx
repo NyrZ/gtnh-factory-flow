@@ -370,7 +370,8 @@ function RecentUploads({ onOpened }: { onOpened: () => void }) {
       const project = parseFactoryProjectJson(
         JSON.stringify(tagPlanWithCommunityId(planJson, plan.id)),
       );
-      await useDesignStore.getState().importProjectAsDesign(project, project.name || plan.name);
+      // Named after the post, same as opening one from the shelf.
+      await useDesignStore.getState().importProjectAsDesign(project, plan.name || project.name);
       // Opened the way its author arranged it, same as from the shelf.
       applyPlanView(project.view);
       onOpened();
