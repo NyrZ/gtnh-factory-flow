@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, History, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, History, X } from "lucide-react";
 import { CHANGELOG, type ChangelogEntry } from "@/lib/changelog";
 import { startLesson } from "@/lib/tour/tour-state";
 import { APP_VERSION } from "@/lib/version";
@@ -257,21 +257,25 @@ function Masthead({
         GTNH <span className="text-cyan-400">Planner</span>
       </p>
 
-      <h2 className="relative mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-black leading-none tracking-tight compact:text-xl">
+      {/* No version number up here. The entry below leads with its own, the
+          header chip carries the one you are running, and a third copy in the
+          title just made the reader check whether the three agreed. */}
+      <h2 className="relative mt-1.5 text-2xl font-black leading-none tracking-tight compact:text-xl">
         {isInterrupt ? "The planner has been updated" : "What's new"}
-        <span className="inline-flex items-center gap-1 rounded border border-cyan-500/70 bg-cyan-500/20 px-2 py-0.5 text-xs font-black tabular-nums tracking-normal text-cyan-200">
-          <Sparkles className="h-3 w-3" aria-hidden />
-          v{APP_VERSION}
-        </span>
       </h2>
 
       <p className="relative mt-2 text-sm text-fg-muted">
-        {missedCount > 0
-          ? // Named, because "some updates" is not a reason to read anything.
-            `${missedCount} release${missedCount === 1 ? "" : "s"} since you were last here${
-              oldestMissed && missedCount > 1 ? ` (v${oldestMissed} onwards)` : ""
-            }. Here they are.`
-          : "You are up to date. Here are the latest changes."}
+        {missedCount === 1
+          ? "One release since you were last here. Here it is."
+          : missedCount > 1
+            ? // Counted and dated, because "some updates" is not a reason to
+              // read anything.
+              `${missedCount} releases since you were last here${
+                oldestMissed ? ` (v${oldestMissed} onwards)` : ""
+              }. Here they are.`
+            : // Not "you are up to date": nobody opened this to be told nothing
+              // happened, and it reads as a dead end rather than a document.
+              "Everything that has changed, newest first."}
       </p>
     </div>
   );

@@ -52,64 +52,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "1.47.0",
+    version: "1.48.0",
     date: "2026-08-10",
-    headline: "The planner says when it has changed",
-    notes: [
-      "Come back after an update and it tells you what moved. *A first visit stays quiet.*",
-      "A *What's new* button in the top bar, with a dot when there is something unread.",
-      "It opens on what you missed, with the *full history* one click below.",
-      "Undo and redo have left the top bar. They are on the *board's own toolbar*, next to what you are undoing.",
-    ],
-  },
-  {
-    version: "1.46.0",
-    date: "2026-08-10",
-    headline: "Shorter hovers, and a rebuilt tour",
-    notes: [
-      "Hovers give you *the state and one line why*, not a table.",
-      "Output tells *products from byproducts*, products first.",
-      "The tour walks a real factory, then *breaks it* to show why.",
-    ],
-  },
-  {
-    version: "1.45.0",
-    date: "2026-08-10",
-    headline: "Drawers do four different jobs",
-    notes: [
-      "Round is a *SOURCE*, square a *BUFFER*, stop sign a *PRODUCT*, funnel a *BYPRODUCT*.",
-      "A product *pulls its machine flat out*. A byproduct *asks for nothing*.",
-      "Swap between them with the button in the drawer's top right.",
-    ],
-  },
-  {
-    version: "1.44.0",
-    date: "2026-08-09",
     headline: "Every slot has to be wired now",
     notes: [
       "A slot with no wire *stops the machine*. It reads *NO WIRES*.",
-      "Spare output needs somewhere to go, or the machine reads *CLOGGED*.",
+      "Spare output needs somewhere to go, or the machine holds back and reads *CLOGGED*.",
+      "Drawers do four jobs, each its own shape: *SOURCE*, *BUFFER*, *PRODUCT*, *BYPRODUCT*.",
+      "A product *pulls its machine flat out*. A byproduct *takes what is spare*.",
+      "Hovers give you *the state and one line why*, not a table. Output tells products from byproducts.",
       "*Old boards will light up with slots to connect.* Nothing is broken.",
     ],
-    // On THIS release, not the newest one. This is the one that changed what a
-    // saved plan means, so this is the entry a reader has to stop at - and the
-    // warning belongs beside the change that caused it, not floating at the
-    // top of the list attached to whatever shipped most recently.
     warning:
       "*Your saved setups will act different.* Some machines will have stopped until you say where things go.",
     actions: [{ label: "Take the tour", lessonId: "read-the-board" }],
-  },
-  {
-    version: "1.43.0",
-    date: "2026-08-09",
-    headline: "What a machine makes has to go somewhere",
-    notes: [
-      "Spare output no longer disappears. If a machine makes 10 redstone and only 5 are wanted, the other 5 have to have somewhere to go, and until they do the machine holds at half speed. The card says CLOGGED and names the item that is backing up.",
-      "Three things can take a surplus: a drawer nothing draws from, a trash can, or another machine that wants it. Any of the three, one wire, and the card tells you how much speed it frees.",
-      "Drawers now say which of three jobs they are doing. SOURCE means nothing feeds it, so it never runs out and whatever leaves it is something you are importing. DRAIN means nothing draws from it, so machines can put spare output there. BUFFER means both, and a buffer passes on exactly what its takers pull: it is not a place to dump.",
-      "SOURCE and DRAIN carry an infinity mark, because those two are the edge of your plan and the only cards that make or swallow anything from nowhere.",
-      "This will slow some machines on boards you already have, in the places where spare output used to vanish into a buffer. Nothing is broken there: the board is telling you about a pile-up that was always going to happen in game.",
-    ],
   },
   {
     version: "1.42.1",
