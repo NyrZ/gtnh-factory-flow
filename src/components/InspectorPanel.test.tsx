@@ -116,7 +116,7 @@ describe("InspectorPanel", () => {
   // otherwise pile up in the same document.
   afterEach(cleanup);
 
-  it("shows all three groups at once, without tab switching", () => {
+  it("shows all four groups at once, without tab switching", () => {
     seedResult({
       externalInputs: [makeBalance(1, { deficitPerSecond: 240 })],
       unconsumedOutputs: [makeBalance(2, { producedPerSecond: 64, surplusPerSecond: 64 })],
@@ -126,11 +126,28 @@ describe("InspectorPanel", () => {
     render(<InspectorPanel />);
 
     expect(screen.getByText("Need")).toBeDefined();
-    expect(screen.getByText("Output")).toBeDefined();
+    expect(screen.getByText("Products")).toBeDefined();
+    expect(screen.getByText("Byproducts")).toBeDefined();
     expect(screen.getByText("Internal")).toBeDefined();
     expect(screen.getByText("Resource 1")).toBeDefined();
     expect(screen.getByText("Resource 2")).toBeDefined();
     expect(screen.getByText("Internal 3")).toBeDefined();
+  });
+
+  // Nothing left over is a byproduct: it is coming out and no product drawer
+  // claimed it. Calling it a product because a drawer has not been placed yet
+  // would decide what the factory is for on the reader's behalf.
+  it("files unclaimed spare output under byproducts", () => {
+    seedResult({
+      unconsumedOutputs: [makeBalance(2, { producedPerSecond: 64, surplusPerSecond: 64 })],
+    });
+
+    render(<InspectorPanel />);
+
+    const headers = screen.getAllByText(/^(Products|Byproducts)$/).map((el) => el.textContent);
+    expect(headers).toEqual(["Products", "Byproducts"]);
+    expect(screen.getByText("Nothing asked for yet.")).toBeDefined();
+    expect(screen.getByText("Resource 2")).toBeDefined();
   });
 
   it("signs needs negative and outputs positive", () => {

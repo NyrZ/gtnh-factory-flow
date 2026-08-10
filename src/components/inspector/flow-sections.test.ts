@@ -35,13 +35,13 @@ function makeSection(id: FlowSectionId, items: ResourceBalance[]): FlowSection {
     label: id,
     empty: `no ${id}`,
     tone: id,
-    sign: id === "need" ? -1 : id === "output" ? 1 : 0,
+    sign: id === "need" ? -1 : id === "internal" ? 0 : 1,
     items,
     totalCount: items.length,
   };
 }
 
-const NONE_COLLAPSED = { need: false, output: false, internal: false };
+const NONE_COLLAPSED = { need: false, product: false, byproduct: false, internal: false };
 
 describe("buildFlowRows", () => {
   it("emits a header followed by each item", () => {
@@ -69,7 +69,7 @@ describe("buildFlowRows", () => {
   });
 
   it("emits a placeholder row for an expanded but empty section", () => {
-    const rows = buildFlowRows([makeSection("output", [])], NONE_COLLAPSED);
+    const rows = buildFlowRows([makeSection("product", [])], NONE_COLLAPSED);
     expect(rows.map((row) => row.type)).toEqual(["header", "empty"]);
   });
 
@@ -97,7 +97,7 @@ describe("measureFlowRows", () => {
   });
 
   it("ends with a sentinel offset equal to the total", () => {
-    const rows = buildFlowRows([makeSection("output", [])], NONE_COLLAPSED);
+    const rows = buildFlowRows([makeSection("product", [])], NONE_COLLAPSED);
     const { offsets, totalHeight } = measureFlowRows(rows, HEIGHTS);
 
     expect(offsets).toHaveLength(rows.length + 1);
@@ -148,8 +148,15 @@ describe("getFlowRowValue", () => {
     expect(getFlowRowValue("need", balance)).toBe(240);
   });
 
-  it("reports the surplus for an output", () => {
-    expect(getFlowRowValue("output", balance)).toBe(64);
+  // Both halves of the split ask the same question of a balance. They are two
+  // sections because they mean different things to the reader, not because the
+  // number is derived differently.
+  it("reports the surplus for a product", () => {
+    expect(getFlowRowValue("product", balance)).toBe(64);
+  });
+
+  it("reports the surplus for a byproduct", () => {
+    expect(getFlowRowValue("byproduct", balance)).toBe(64);
   });
 
   it("reports throughput for an internal resource", () => {

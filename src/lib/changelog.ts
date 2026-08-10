@@ -60,7 +60,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       "Spare output needs somewhere to go, or the machine holds back and reads *CLOGGED*.",
       "Drawers do four jobs, each its own shape: *SOURCE*, *BUFFER*, *PRODUCT*, *BYPRODUCT*.",
       "A product *pulls its machine flat out*. A byproduct *takes what is spare*.",
-      "Hovers give you *the state and one line why*, not a table. Output tells products from byproducts.",
+      "Hovers give you *the state and one line why*, not a table.",
+      "The side panel splits *Products from Byproducts*, each with its own colour.",
       "*Old boards will light up with slots to connect.* Nothing is broken.",
     ],
     warning:

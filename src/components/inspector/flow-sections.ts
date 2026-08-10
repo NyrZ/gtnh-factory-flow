@@ -9,9 +9,18 @@ import type { FactoryProject, ResourceBalance } from "@/lib/model/types";
  */
 export type OutputKind = "product" | "byproduct";
 
-export type FlowSectionId = "need" | "output" | "internal";
+/**
+ * Products and byproducts are two SECTIONS, not one section with a glyph.
+ *
+ * They were one list ordered products-first with a small mark beside each
+ * name, which asked the reader to learn two 10px silhouettes and then check
+ * every row against them. The distinction is the whole question the panel
+ * answers - is this what the factory is for, or what it also happens to make -
+ * so it gets a heading and a colour, and the marks are gone.
+ */
+export type FlowSectionId = "need" | "product" | "byproduct" | "internal";
 
-export type FlowSectionTone = "need" | "output" | "internal";
+export type FlowSectionTone = FlowSectionId;
 
 export interface FlowSection {
   id: FlowSectionId;
@@ -27,14 +36,7 @@ export interface FlowSection {
 
 export type FlowRow =
   | { type: "header"; key: string; section: FlowSection; collapsed: boolean }
-  | {
-      type: "item";
-      key: string;
-      section: FlowSection;
-      balance: ResourceBalance;
-      /** Output rows only: what the drawer catching this calls it. */
-      outputKind?: OutputKind;
-    }
+  | { type: "item"; key: string; section: FlowSection; balance: ResourceBalance }
   // A starred resource carries its chart in the row directly beneath it, so a
   // watched figure and its history read as one block while the list scrolls.
   | { type: "chart"; key: string; section: FlowSection; balance: ResourceBalance }
@@ -50,7 +52,8 @@ export function getFlowRowValue(section: FlowSectionId, balance: ResourceBalance
   switch (section) {
     case "need":
       return balance.deficitPerSecond;
-    case "output":
+    case "product":
+    case "byproduct":
       return balance.surplusPerSecond;
     case "internal":
     default:
@@ -84,26 +87,26 @@ export function classifyPlanOutputs(project: FactoryProject): Map<string, Output
 }
 
 /**
- * Products first, then byproducts, then whatever no drawer claims.
+ * Splits what is left over into the two lists the panel shows.
+ *
+ * Anything NO drawer claims goes with the byproducts. It is coming out and
+ * nobody asked for it, which is what a byproduct is in plain English, and the
+ * alternative - calling it a product because a product drawer has not been
+ * placed yet - would put "what this factory is for" on the reader's behalf.
  *
  * A stable partition rather than a sort, so the solver's own size ordering
- * survives inside each group and equal rows can never swap between renders.
+ * survives inside each list and equal rows can never swap between renders.
  */
-export function sortByOutputKind(
+export function partitionOutputsByKind(
   items: ResourceBalance[],
   kinds: Map<string, OutputKind>,
-): ResourceBalance[] {
-  if (kinds.size === 0) {
-    return items;
-  }
+): { products: ResourceBalance[]; byproducts: ResourceBalance[] } {
   const products: ResourceBalance[] = [];
   const byproducts: ResourceBalance[] = [];
-  const unclaimed: ResourceBalance[] = [];
   for (const balance of items) {
-    const kind = kinds.get(balance.key);
-    (kind === "product" ? products : kind === "byproduct" ? byproducts : unclaimed).push(balance);
+    (kinds.get(balance.key) === "product" ? products : byproducts).push(balance);
   }
-  return [...products, ...byproducts, ...unclaimed];
+  return { products, byproducts };
 }
 
 export function filterFlowBalances(items: ResourceBalance[], filter: string) {
@@ -176,7 +179,6 @@ export function buildFlowRows(
   sections: FlowSection[],
   collapsed: Record<FlowSectionId, boolean>,
   favourites: ReadonlySet<string> = new Set(),
-  outputKinds: Map<string, OutputKind> = new Map(),
 ): FlowRow[] {
   const rows: FlowRow[] = [];
   for (const section of sections) {
@@ -198,13 +200,7 @@ export function buildFlowRows(
     }
 
     for (const balance of section.items) {
-      rows.push({
-        type: "item",
-        key: `${section.id}:${balance.key}`,
-        section,
-        balance,
-        outputKind: section.id === "output" ? outputKinds.get(balance.key) : undefined,
-      });
+      rows.push({ type: "item", key: `${section.id}:${balance.key}`, section, balance });
       if (favourites.has(balance.key)) {
         rows.push({
           type: "chart",
