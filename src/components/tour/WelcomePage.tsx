@@ -9,6 +9,7 @@ import {
   Play,
   Plus,
   ScrollText,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ChangelogDialog } from "@/components/ChangelogDialog";
@@ -245,14 +246,32 @@ export function WelcomePage() {
               return (
                 <div
                   key={lesson.id}
-                  className="flex items-center gap-3 rounded border border-line-strong bg-surface p-3"
+                  className={[
+                    "flex items-center gap-3 rounded border p-3",
+                    // A recommended lesson does not sit quietly in a row of
+                    // equals: it takes the accent border and a lit face, so the
+                    // eye lands on it before it lands on the ones beside it.
+                    lesson.recommended
+                      ? "border-cyan-600/70 bg-cyan-500/[0.07]"
+                      : "border-line-strong bg-surface",
+                  ].join(" ")}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-cyan-800 bg-cyan-950 text-cyan-400">
                     <Compass className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-1.5 text-sm font-semibold text-fg">
+                    <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm font-semibold text-fg">
                       {lesson.title}
+                      {/* Stays up after it has been done: see `recommended`. */}
+                      {lesson.recommended ? (
+                        <span
+                          title="The rules this one covers are the ones that keep changing."
+                          className="inline-flex items-center gap-1 rounded border border-cyan-500/70 bg-cyan-500/20 px-1.5 py-px text-[10px] font-black uppercase tracking-wide text-cyan-200"
+                        >
+                          <Sparkles className="h-3 w-3" aria-hidden />
+                          Start here
+                        </span>
+                      ) : null}
                       {isDone ? (
                         <span
                           title="You have been through this one"
@@ -266,11 +285,21 @@ export function WelcomePage() {
                     <p className="mt-0.5 text-xs leading-snug text-fg-muted">
                       {lesson.blurb} {lesson.steps.length} stops.
                     </p>
+                    {lesson.recommended ? (
+                      <p className="mt-1 text-xs font-semibold leading-snug text-cyan-300">
+                        {isDone ? "This one has changed. Worth another look." : "Do this one first."}
+                      </p>
+                    ) : null}
                   </div>
                   <button
                     type="button"
                     onClick={() => beginLesson(lesson.id)}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded border border-cyan-600 bg-cyan-500/15 px-3 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-500/25"
+                    className={[
+                      "inline-flex shrink-0 items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-bold",
+                      lesson.recommended
+                        ? "border-cyan-400 bg-cyan-500/30 text-cyan-100 hover:bg-cyan-500/45"
+                        : "border-cyan-600 bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25",
+                    ].join(" ")}
                   >
                     <Play className="h-3.5 w-3.5" />
                     {isDone ? "Again" : "Start"}

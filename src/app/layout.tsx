@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Analytics } from "./Analytics";
 import { AnalyticsHeartbeat } from "./AnalyticsHeartbeat";
+import { WhatsNewGate } from "@/components/WhatsNewGate";
 import "./globals.css";
 
 const monocraft = localFont({
@@ -85,6 +86,9 @@ export default function RootLayout({
     <html lang="en" className={`${monocraft.variable} h-full`}>
       <body className="min-h-full">
         {children}
+        {/* Above the app rather than inside it: what changed is a fact about
+            the whole planner, not about whichever tab happens to be open. */}
+        <WhatsNewGate />
         <Analytics />
         <AnalyticsHeartbeat />
       </body>

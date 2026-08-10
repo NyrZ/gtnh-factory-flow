@@ -1,7 +1,13 @@
 "use client";
 
-import { Bug, Compass } from "lucide-react";
+import { Bug, Compass, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { openWelcomeTab } from "@/lib/tour/welcome-tab";
+import {
+  markVersionSeenAndNotify,
+  subscribeToVersionSeen,
+  unseenEntries,
+} from "@/lib/whats-new";
 import { APP_VERSION } from "@/lib/version";
 
 const GITHUB_URL = "https://github.com/jackwrichards/gtnh-factory-flow";
@@ -50,6 +56,52 @@ export function HeaderLinks() {
         <DiscordMark />
       </HeaderLink>
     </div>
+  );
+}
+
+/**
+ * What's new, as a WORD rather than an icon, sitting immediately left of the
+ * bug report.
+ *
+ * It was a glyph beside the compass for about an hour and that was the wrong
+ * call: an unlabelled star in a row of unlabelled squares is one more thing to
+ * ignore, and this is the control that tells somebody the rules of the board
+ * changed under them. The two labelled buttons now read as a pair - here is
+ * what we changed, here is where to complain about it.
+ */
+export function WhatsNewButton({ onClick }: { onClick: () => void }) {
+  const [unread, setUnread] = useState(false);
+
+  // After mount: it reads localStorage, which a server render does not have.
+  useEffect(() => {
+    setUnread(unseenEntries().length > 0);
+    return subscribeToVersionSeen(() => setUnread(false));
+  }, []);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        // Opening it IS reading it, so the dot goes now rather than when the
+        // dialog is closed - otherwise anyone who reads and then presses
+        // Escape gets the dot back and learns to distrust it.
+        markVersionSeenAndNotify();
+        onClick();
+      }}
+      title="What's new in the planner"
+      className="relative inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-cyan-700 bg-cyan-950 px-2 text-xs font-semibold text-cyan-300 hover:border-cyan-500 hover:bg-cyan-900 hover:text-cyan-200"
+    >
+      <Sparkles className="h-3.5 w-3.5" aria-hidden />
+      What&apos;s new
+      {/* The quiet half of the system: a release that does not warrant a
+          dialog still gets noticed, without anything being put in the way. */}
+      {unread ? (
+        <span
+          aria-label="Unread release notes"
+          className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-surface bg-cyan-400"
+        />
+      ) : null}
+    </button>
   );
 }
 

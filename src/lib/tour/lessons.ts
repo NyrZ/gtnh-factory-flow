@@ -111,6 +111,17 @@ export interface TourLesson {
   /** Shown on the Welcome tab's card. */
   title: string;
   blurb: string;
+  /**
+   * Worth pressing even if you think you know the app.
+   *
+   * Stays on after the lesson has been completed, deliberately. The rules this
+   * one teaches - what the words on a card mean, what each drawer shape asks
+   * for - are the ones that CHANGE, and somebody who walked it three releases
+   * ago is exactly the person who now believes something that is no longer
+   * true. A badge that disappears the moment you have seen it once only ever
+   * reaches people on their first day.
+   */
+  recommended?: boolean;
   /** Put something on the board worth pointing at, before step one. */
   setup?: () => void | Promise<void>;
   /** Undo whatever `setup` did to the layout, however the lesson ends. */
@@ -291,6 +302,7 @@ const LOOK_AROUND: TourLesson = {
 const READ_THE_BOARD: TourLesson = {
   id: "read-the-board",
   title: "Read the board",
+  recommended: true,
   blurb:
     "Opens a real titanium line, flies in on one machine and reads it out, then shows what the drawers around it are for.",
   // Both columns out of the way for the duration: this lesson is about the

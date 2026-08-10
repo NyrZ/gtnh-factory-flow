@@ -310,9 +310,11 @@ export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = 
   return (
     <div data-help-anchor="plan-actions" className="flex shrink-0 items-center gap-1">
       <div className="flex items-center gap-1">
-        <ToolbarButton icon={Undo2} label="Undo" disabled={!canUndo} onClick={undo} />
-        <ToolbarButton icon={Redo2} label="Redo" disabled={!canRedo} onClick={redo} />
-        <ToolbarButton icon={Trash2} label="Clean board" onClick={requestCleanBoard} />
+        {/* No undo, redo or clean-board up here. Undo and redo already sit on
+            the board's own build toolbar, an inch from the thing being undone,
+            and having them in two places at once only made the header look
+            like the authoritative pair. Clean board is a whole-plan action that
+            was one slip away from the import button; it lives in the menu. */}
         <ToolbarButton
           icon={Upload}
           label="Import plan"
