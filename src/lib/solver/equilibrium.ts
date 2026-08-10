@@ -1,6 +1,6 @@
 import { applyRecipeInputOverrides } from "../model/recipe-input-overrides";
 import { isRecipeInputConsumed, makeResourceKey, resourceMatchesInput } from "../model/resources";
-import { getStorageRoles } from "../model/storage-role";
+import { getStorageRoles, isDrainRole } from "../model/storage-role";
 import { collectTrashNodeIds } from "../model/trash";
 import type {
   FactoryProject,
@@ -125,6 +125,11 @@ interface PreparedEdge {
    * it relays its consumers' pull and stops there.
    */
   freeDisposal: boolean;
+  /**
+   * Absorbs but never asks: a BYPRODUCT drawer. Its demand is reported as
+   * zero, so the pace comes from whoever genuinely wants the output.
+   */
+  silent: boolean;
   sourceCapacityPerSecond: number;
 }
 
@@ -241,9 +246,16 @@ export function solveEquilibrium(
       poolKey,
       // A can always. A drawer only when nothing draws from it, which is what
       // makes it the plan's declared export rather than an ordinary buffer.
+      // BOTH kinds of drain accept without limit; they differ only in whether
+      // they ask (see `silent` below).
       freeDisposal:
         role === "trash" ||
-        (role === "storage-sink" && storageRoles.get(edge.target) === "drain"),
+        (role === "storage-sink" && isDrainRole(storageRoles.get(edge.target) ?? "idle")),
+      // A BYPRODUCT drawer takes what is left and asks for nothing, so it must
+      // not report what it absorbed as demand: doing so would pace its feeder
+      // to full blast purely by existing, which is what a PRODUCT drawer is
+      // for. This is the one flag that separates the two.
+      silent: role === "storage-sink" && storageRoles.get(edge.target) === "byproduct",
       sourceCapacityPerSecond:
         sourceStorage || !sourceResult
           ? Number.POSITIVE_INFINITY
@@ -396,6 +408,13 @@ export function solveEquilibrium(
     infoById.set(node.id, info);
   }
 
+  // Structural and fixed for the whole solve: these machines have a slot with
+  // no wire on it, so they ship nothing no matter what anybody downstream
+  // wants. See the offer split in runRound.
+  const stoppedByBareSlot = new Set(
+    machineNodes.filter((info) => info.bareOutputKeys.length > 0).map((info) => info.id),
+  );
+
   // ---- Iteration state: everything starts at full blast. -------------------
   const cap = new Map<string, number>();
   const dem = new Map<string, number>();
@@ -446,11 +465,28 @@ export function solveEquilibrium(
     const budgetOfferActual = new Map<string, number>();
     for (const [budgetKey, budget] of budgets) {
       const capable = clampUtilization(cap.get(budget.ownerId) ?? 1);
-      budgetOffer.set(budgetKey, budget.makePerSecond * capable);
+      const disposal = disp.get(budget.ownerId) ?? 1;
+      // STOPPED is not THROTTLED, and the difference is STRUCTURAL, not a
+      // matter of the number reaching zero.
+      //
+      // A machine with a slot nobody has wired can never ship anything, so it
+      // advertises nothing. Without this a consumer downstream computed a
+      // utilization out of material that never arrives - a card reading 12.5%
+      // on a line carrying 0/s, fed by a machine sitting at 0% because one of
+      // its OWN slots is bare.
+      //
+      // A machine whose disposal merely converged to zero is a different
+      // animal and keeps advertising its capability: that is a ring idling for
+      // want of a customer, and collapsing its capability would resurrect the
+      // gridlock lie this solver exists to kill (it would read as a dead loop).
+      // Hence the test is `bareOutputKeys`, never `disposal <= 0`.
+      budgetOffer.set(
+        budgetKey,
+        stoppedByBareSlot.has(budget.ownerId) ? 0 : budget.makePerSecond * capable,
+      );
       budgetOfferActual.set(
         budgetKey,
-        budget.makePerSecond *
-          clampUtilization(Math.min(capable, disp.get(budget.ownerId) ?? 1)),
+        budget.makePerSecond * clampUtilization(Math.min(capable, disposal)),
       );
     }
     const poolOffer = new Map<string, number>();
@@ -536,7 +572,24 @@ export function solveEquilibrium(
     const bufferAbsorbByEdge = new Map<string, number>();
     const freeLeftoverByBudget = new Map<string, number>();
     for (const [budgetKey, budget] of budgets) {
-      let leftover = Math.max(0, desireFill.remainingBudget.get(budgetKey) ?? 0);
+      // What the owner actually RUNS at, not what it could offer. A sink can
+      // never absorb more than the machine makes, and the offer above is
+      // deliberately demand-blind - so without this a BYPRODUCT drawer would
+      // bank the full nameplate off a machine idling at a fifth of it, which
+      // is exactly the conservation break the drawer exists to prevent.
+      const runs = clampUtilization(
+        Math.min(
+          cap.get(budget.ownerId) ?? 1,
+          disp.get(budget.ownerId) ?? 1,
+          clampUtilization(dem.get(budget.ownerId) ?? 1),
+        ),
+      );
+      const offered = budgetOfferActual.get(budgetKey) ?? 0;
+      const takenByMachines = Math.max(
+        0,
+        offered - (desireFill.remainingBudget.get(budgetKey) ?? 0),
+      );
+      let leftover = Math.max(0, budget.makePerSecond * runs - takenByMachines);
       const bufferSinks = budget.sinkEdges.filter((sink) => !sink.freeDisposal);
       if (bufferSinks.length > 0) {
         const evenShare = leftover / bufferSinks.length;
@@ -573,16 +626,16 @@ export function solveEquilibrium(
         const pool = pools.get(edge.poolKey);
         const deficitShare =
           (poolDeficit.get(edge.poolKey) ?? 0) / Math.max(1, pool?.sinkEdges.length ?? 1);
-        // NOTE: a drain's absorption is reported as DEMAND, which quietly
-        // paces its producer to full blast just by existing. That is wrong for
-        // a plan TARGET dialled below full rate on a terminal machine (see the
-        // two skipped cases in throughput.test.ts), but it cannot simply be
-        // zeroed: the reporting pass in throughput.ts derives each node's
-        // required rate from these same edge demands, so a drained output at
-        // zero demand reads as a node at 0%. Splitting "what the edge carries"
-        // from "what the edge asks for" is the fix, and it is a bigger change
-        // than the one this note sits in.
-        demandByEdge.set(edge.id, absorbed + deficitShare);
+        // A PRODUCT drawer's absorption IS its demand: it asks its feeder for
+        // everything the machine can make, which is what pins a terminal
+        // machine at full blast and is exactly what you want from the thing
+        // the factory is for.
+        //
+        // A BYPRODUCT drawer asks for nothing. It still eats the surplus
+        // (`eatenByEdge` above, so conservation holds and nothing clogs), it
+        // simply never begs, which leaves the pace to real consumers and to
+        // the plan's target rate.
+        demandByEdge.set(edge.id, edge.silent ? 0 : absorbed + deficitShare);
         poolInflowNext.set(edge.poolKey, (poolInflowNext.get(edge.poolKey) ?? 0) + absorbed);
         continue;
       }
@@ -1093,7 +1146,7 @@ export function selectProjectTargetNodes(
           edge.source === node.id &&
           makeResourceKey(edge.resourceKind, edge.resourceId) === targetKey &&
           !trashIds.has(edge.target) &&
-          roles.get(edge.target) !== "drain",
+          !isDrainRole(roles.get(edge.target) ?? "idle"),
       ),
   );
 }

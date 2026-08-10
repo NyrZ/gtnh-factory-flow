@@ -77,9 +77,13 @@ export const FOOTER_HEIGHT = cells(2); // 40
 /** One row of a machine-config panel (label over a dropdown). */
 export const CONFIG_PANEL_ROW_HEIGHT = cells(3); // 60
 
-/** Drawers and tanks. */
-export const STORAGE_NODE_WIDTH = cells(7); // 140
-export const STORAGE_NODE_HEIGHT = cells(8); // 160
+/**
+ * Drawers and tanks. One cell narrower and one shorter than they used to be:
+ * a drawer holds one thing and says one word about it, so it never needed the
+ * footprint of a machine card.
+ */
+export const STORAGE_NODE_WIDTH = cells(6); // 120
+export const STORAGE_NODE_HEIGHT = cells(7); // 140
 
 /** Trash cans. */
 export const TRASH_NODE_WIDTH = cells(6); // 120

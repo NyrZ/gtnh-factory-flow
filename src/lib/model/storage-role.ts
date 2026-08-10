@@ -1,34 +1,42 @@
 import type { FactoryProject } from "./types";
 
 /**
- * What a drawer IS, read from its wiring alone.
+ * What a drawer IS. Four jobs that happen to share one card, and they mean
+ * such different things that the board draws each as a different shape.
  *
- * This is the plan's boundary declaration. A closed board only exchanges with
- * the outside world through the two ends of this list, and everything between
- * them has to balance:
+ * Three are read off the WIRING and cannot be chosen:
  *
- * - `source`  nothing feeds it, so it invents its resource. The RESERVOIR:
- *             the declared import, and the one card on the board still
- *             allowed to break conservation.
- * - `drain`   nothing draws from it, so it swallows whatever arrives. The
- *             declared export, and the only place a machine may put a surplus
- *             nobody wants.
- * - `buffer`  fed and drawn from, so it is neither end of anything. It plays
- *             by the full rule book: it passes on what its consumers pull and
- *             not one item more, which means a producer cannot use it as a
- *             quiet dump the way it can use a drain.
- * - `idle`    unwired, so it does nothing at all.
+ * - `source`  nothing feeds it, so it invents its resource. The plan's
+ *             declared import, and one of the two cards still allowed to
+ *             break conservation.
+ * - `buffer`  fed and drawn from, so it is neither end of anything. The only
+ *             one of the four that lives INSIDE the system: it passes on what
+ *             its takers pull and not one item more, so a producer cannot use
+ *             it as a quiet dump.
+ * - `idle`    unwired. Barely exists in practice - `pruneOrphanStorages`
+ *             sweeps a drawer the moment its last wire goes - but a drawer
+ *             mid-drag has to be called something.
  *
- * The distinction is load-bearing in the solver (`equilibrium.ts` lets only
- * drains and trash cans absorb a leftover) and it is what the drawer card
- * puts in its header, so a reader can see where a plan is leaning on the
- * outside world without tracing a single wire.
+ * The fourth is a CHOICE, and it only exists once nothing draws from the
+ * drawer (see StorageDrainMode):
+ *
+ * - `product`    pulls its feeder flat out. The thing the factory is for.
+ * - `byproduct`  asks for nothing and catches what is left over.
+ *
+ * That last pair is the difference between "make as much of this as you can"
+ * and "the extra has to go somewhere", which is the difference between a
+ * product and a byproduct in every real base.
  */
-export type StorageRole = "source" | "drain" | "buffer" | "idle";
+export type StorageRole = "source" | "buffer" | "product" | "byproduct" | "idle";
 
-/** The two roles that sit ON the system boundary rather than inside it. */
+/** The three that sit ON the boundary rather than inside it. */
 export function isBoundaryRole(role: StorageRole): boolean {
-  return role === "source" || role === "drain";
+  return role === "source" || role === "product" || role === "byproduct";
+}
+
+/** The two ends of a drain: both accept freely, only one of them asks. */
+export function isDrainRole(role: StorageRole): boolean {
+  return role === "product" || role === "byproduct";
 }
 
 /**
@@ -62,7 +70,15 @@ export function getStorageRoles(project: FactoryProject): Map<string, StorageRol
     const drawn = hasOut.has(storage.id);
     roles.set(
       storage.id,
-      fed ? (drawn ? "buffer" : "drain") : drawn ? "source" : "idle",
+      fed
+        ? drawn
+          ? "buffer"
+          : storage.drainMode === "byproduct"
+            ? "byproduct"
+            : "product"
+        : drawn
+          ? "source"
+          : "idle",
     );
   }
   return roles;

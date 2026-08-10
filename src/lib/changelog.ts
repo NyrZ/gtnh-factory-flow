@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.45.0",
+    date: "2026-08-10",
+    headline: "A drawer tells you what job it is doing",
+    notes: [
+      "Drawers now do four different jobs, and you can tell which from across the board because each one is a different shape. A SOURCE has soft round corners. A BUFFER is the plain square one. A PRODUCT is an eight sided stop sign. A BYPRODUCT has its bottom corners opened out like a funnel.",
+      "PRODUCT and BYPRODUCT are the new part, and the difference is what they ask for. A product asks the machine feeding it for everything that machine can make, so the machine runs flat out. That is the thing your factory is for.",
+      "A byproduct asks for nothing at all. It just catches what is left over, so the speed is set by whatever actually wants the output. Use it for the second thing a machine spits out that you only need somewhere to put.",
+      "Flip between the two with the swap button in the top right of the drawer. Every drawer starts as a product, including on plans you already have, so nothing changes speed until you say so.",
+      "Drawers are a little smaller now, and the clone button is gone. The word across the top says which of the four jobs it is doing.",
+    ],
+  },
+  {
     version: "1.44.0",
     date: "2026-08-09",
     headline: "Every slot has to be wired now",

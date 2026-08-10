@@ -304,6 +304,9 @@ export const factoryStorageSchema = z.object({
   iconAtlas: resourceIconAtlasRefSchema.optional(),
   dominantColor: dominantColorSchema,
   capacity: z.number().positive().optional(),
+  // Absent on every plan written before drains had a mode, and absent is
+  // `product` - the pulling one - so nothing anybody has saved changes pace.
+  drainMode: z.enum(["product", "byproduct"]).optional(),
   pocketId: z.string().min(1).optional(),
   position: z.object({
     x: z.number(),

@@ -289,10 +289,25 @@ export interface FactoryNode {
   };
 }
 
+/**
+ * What a drawer at the END of the plan does about the machine feeding it.
+ *
+ * `product` pulls: it asks its feeder for everything the machine can make, so
+ * the machine runs flat out. This is the thing your factory is FOR, and it is
+ * the default for every drain, old plans included.
+ *
+ * `byproduct` only catches what is left: it asks for nothing at all, so the
+ * pace is set by whoever really wants the output (or by the plan's target
+ * rate), and the leftover lands here instead of clogging the machine.
+ */
+export type StorageDrainMode = "product" | "byproduct";
+
 export interface FactoryStorage {
   id: string;
   kind: ResourceKind;
   resourceId: ResourceId;
+  /** Drains only; absent means `product`. See StorageDrainMode. */
+  drainMode?: StorageDrainMode;
   colorTag?: FactoryNodeColorTag;
   displayName?: string;
   iconPath?: string;

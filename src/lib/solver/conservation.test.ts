@@ -64,7 +64,7 @@ function project(over: Partial<FactoryProject>): FactoryProject {
     edges: [],
     fuelProfiles: [],
     ...over,
-  };
+  } as FactoryProject;
 }
 
 const DUAL = [
@@ -218,6 +218,35 @@ describe("conservation: both ends, or the machine does not run", () => {
     expect(result.unconsumedOutputs.find((b) => b.resourceId === "redstone")).toBeUndefined();
   });
 
+  it("a machine stopped by a bare slot advertises nothing downstream", () => {
+    // Reported from a real board: a Blast Furnace sat at 0% with one output
+    // unwired, and the Chemical Reactor it fed still read 12.5% - computed
+    // from material that never arrived. Capability is deliberately blind to a
+    // CLOG (one wire away, and blinding it is what stops an idle ring reading
+    // as a dead loop), but a machine with a bare slot is not throttled, it is
+    // stopped, and it must not advertise a rate nobody can collect.
+    const result = calculateThroughput(
+      project({
+        recipes: [
+          // wired output "gold", plus a "redstone" nobody takes
+          recipe("dual", [], [["redstone", 10], ["gold", 5]]),
+          recipe("eat-gold", [["gold", 5]], [["goldblock", 1]]),
+        ],
+        nodes: [node("dual", "dual"), node("au", "eat-gold")],
+        storages: [drawer("d-au", "goldblock")],
+        edges: [wire("g1", "dual", "au", "gold"), wire("d2", "au", "d-au", "goldblock")],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.nodes["dual"].utilization).toBeCloseTo(0);
+    // The consumer must agree with the wire, not with a phantom.
+    expect(result.edges["g1"].transferredPerSecond).toBeCloseTo(0);
+    expect(result.edges["g1"].availablePerSecond).toBeCloseTo(0);
+    expect(result.nodes["au"].utilization).toBeCloseTo(0);
+    expect(result.nodes["au"].capableUtilization).toBeCloseTo(0);
+  });
+
   it("stops a machine whose input has no wire at all", () => {
     // The mirror. `eat-gold` has a drain on its product but nothing feeding
     // it, and an empty input bus is as final as a full output one.
@@ -253,6 +282,77 @@ describe("conservation: both ends, or the machine does not run", () => {
     // Declared, and still honestly booked as something you have to bring in:
     // drawers add nothing to the resource books.
     expect(result.externalInputs[0]?.resourceId).toBe("gold");
+  });
+});
+
+describe("conservation: a product pulls, a byproduct catches", () => {
+  const TARGETED = {
+    recipes: [recipe("make", [], [["plate", 10]])],
+    nodes: [node("m", "make")],
+    targetRate: { kind: "item" as const, resourceId: "plate", amountPerSecond: 2 },
+  };
+
+  it("a PRODUCT drawer asks its feeder for everything the machine can make", () => {
+    const result = calculateThroughput(
+      project({
+        ...TARGETED,
+        storages: [drawer("d", "plate")],
+        edges: [wire("o", "m", "d", "plate")],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    // Nobody dialled it down as far as the drawer is concerned: it wants the
+    // lot, so the machine runs flat out and banks 10/s against a 2/s target.
+    expect(result.nodes["m"].utilization).toBeCloseTo(1);
+    expect(result.edges["o"].demandPerSecond).toBeCloseTo(10);
+    expect(result.edges["o"].transferredPerSecond).toBeCloseTo(10);
+  });
+
+  it("a BYPRODUCT drawer asks for nothing, so the target sets the pace", () => {
+    const result = calculateThroughput(
+      project({
+        ...TARGETED,
+        storages: [{ ...drawer("d", "plate"), drainMode: "byproduct" as const }],
+        edges: [wire("o", "m", "d", "plate")],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    // The same board, one pill flipped: the only thing still asking is the
+    // 2/s target, so the machine runs at a fifth and the drawer just catches
+    // what that produces.
+    expect(result.nodes["m"].utilization).toBeCloseTo(0.2);
+    expect(result.edges["o"].demandPerSecond).toBeCloseTo(0);
+    expect(result.edges["o"].transferredPerSecond).toBeCloseTo(2);
+  });
+
+  it("a byproduct drawer still counts as somewhere to go, so nothing clogs", () => {
+    // The redstone/gold case with the spare redstone caught rather than
+    // pulled: the gold taker still gets its full 5/s, which is the whole
+    // point of giving the leftover a home.
+    const result = calculateThroughput(
+      project({
+        recipes: DUAL,
+        nodes: [node("dual", "dual"), node("rs", "eat-redstone"), node("au", "eat-gold")],
+        storages: [
+          ...TAKER_DRAINS.storages,
+          { ...drawer("spare", "redstone"), drainMode: "byproduct" as const },
+        ],
+        edges: [
+          wire("r1", "dual", "rs", "redstone"),
+          wire("g1", "dual", "au", "gold"),
+          wire("r2", "dual", "spare", "redstone"),
+          ...TAKER_DRAINS.edges,
+        ],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.nodes["dual"].utilization).toBeCloseTo(1);
+    expect(result.nodes["dual"].clogOutputKey).toBeUndefined();
+    expect(result.edges["g1"].transferredPerSecond).toBeCloseTo(5);
+    expect(result.storages["spare"].producedPerSecond).toBeCloseTo(5);
   });
 });
 

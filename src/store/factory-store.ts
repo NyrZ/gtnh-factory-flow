@@ -50,6 +50,7 @@ import type {
   FactoryPocket,
   FactoryProject,
   FactoryStorage,
+  StorageDrainMode,
   MachineTier,
   Recipe,
   ResourceAmount,
@@ -270,6 +271,8 @@ interface FactoryStore {
     position: FactoryStorage["position"],
     handleId: string,
   ) => void;
+  /** Drains only: flip between pulling the feeder flat out and catching the extra. */
+  setStorageDrainMode: (storageId: string, drainMode: StorageDrainMode) => void;
   deleteStorage: (storageId: string) => void;
   /** Clone a node (same recipe/config, no wires) beside the original. */
   duplicateNode: (nodeId: string) => void;
@@ -1298,6 +1301,21 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
           ? { placedBoardIds: [storage.id], placedBoardToken: state.placedBoardToken + 1 }
           : undefined),
         lastResult: calculateThroughput(finalProject),
+      });
+    });
+  },
+  setStorageDrainMode: (storageId, drainMode) => {
+    set((state) => {
+      const project = touchProject({
+        ...state.project,
+        storages: (state.project.storages ?? []).map((storage) =>
+          storage.id === storageId ? { ...storage, drainMode } : storage,
+        ),
+      });
+
+      return withProjectHistory(state, {
+        project,
+        lastResult: calculateThroughput(project),
       });
     });
   },

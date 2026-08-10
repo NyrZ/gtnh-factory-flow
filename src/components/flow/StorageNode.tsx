@@ -2,10 +2,14 @@
 
 import { Handle, Position, useStoreApi, type Node, type NodeProps } from "@xyflow/react";
 import { memo, type CSSProperties, type ReactNode } from "react";
-import { Copy } from "lucide-react";
-import type { FactoryStorage, StorageThroughputResult } from "@/lib/model/types";
+import { ArrowLeftRight } from "lucide-react";
+import type {
+  FactoryStorage,
+  StorageDrainMode,
+  StorageThroughputResult,
+} from "@/lib/model/types";
 import { makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
-import type { StorageRole } from "@/lib/model/storage-role";
+import { isDrainRole, type StorageRole } from "@/lib/model/storage-role";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { FLUID_ICON_SCALE, ResourceIcon, getFallbackFluidColor } from "@/components/nei/ResourceIcon";
 import { NodeGlanceIcon } from "./NodeGlance";
@@ -42,10 +46,15 @@ const ROLE_PRESENTATION: Record<
     boundary: true,
     line: "Nothing feeds this, so it never runs out. Whatever leaves it counts as something the plan imports.",
   },
-  drain: {
-    word: "DRAIN",
+  product: {
+    word: "PRODUCT",
     boundary: true,
-    line: "Nothing draws from this, so it takes everything sent to it. Machines may put a surplus here and keep running.",
+    line: "The thing this factory is for. It asks the machine feeding it for everything that machine can make.",
+  },
+  byproduct: {
+    word: "BYPRODUCT",
+    boundary: true,
+    line: "Catches what is left over. It asks for nothing, so the pace is set by whatever really wants the output.",
   },
   buffer: {
     word: "BUFFER",
@@ -55,7 +64,7 @@ const ROLE_PRESENTATION: Record<
   idle: {
     word: "STORAGE",
     boundary: false,
-    line: "Unwired. Feed it to make a drain, draw from it to make a source, or both for a buffer.",
+    line: "Unwired. Feed it to make a product, draw from it to make a source, or both for a buffer.",
   },
 };
 
@@ -80,8 +89,13 @@ const WELL_HANDLE_BASE: CSSProperties = {
 const WELL_HANDLE_LEFT: CSSProperties = { ...WELL_HANDLE_BASE, left: 0, right: "auto" };
 const WELL_HANDLE_RIGHT: CSSProperties = { ...WELL_HANDLE_BASE, left: "auto", right: 0 };
 
-/** Item icon box on the card face; fluids invert FLUID_ICON_SCALE to match. */
-const CARD_ICON_PX = 94;
+/**
+ * Item icon box on the card face; fluids invert FLUID_ICON_SCALE to match.
+ * Square and fixed, NOT the well's full box: the well is flexible (a drain
+ * spends a row on its mode) and stretching a sprite to a non-square hole
+ * distorts it.
+ */
+const CARD_ICON_PX = 60;
 /**
  * Plain-fluid swatches draw edge to edge — no baked-in margin like item
  * sprites — so undiluted they brush right up against the name above and the
@@ -149,7 +163,15 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         break;
       }
     }
-    return hasIn ? (hasOut ? "buffer" : "drain") : hasOut ? "source" : "idle";
+    return hasIn
+      ? hasOut
+        ? "buffer"
+        : storage.drainMode === "byproduct"
+          ? "byproduct"
+          : "product"
+      : hasOut
+        ? "source"
+        : "idle";
   });
   const resourceKey = makeResourceKey(storage.kind, storage.resourceId);
   // Lit when a hovered port/label pulls this buffer into its flow scope.
@@ -223,18 +245,35 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         // still reads as a copper-coloured card.
         data-node-glance-root=""
         className={[
-          // Seven cells by eight, fixed. The card used to be 132×(whatever its
-          // rows added up to); wires dock on its perimeter, so an off-grid
-          // edge meant off-grid endpoints.
-          "storage-node-card relative h-[160px] w-[140px] border-2 p-1",
-          "shadow-[inset_2px_2px_0_rgba(255,255,255,0.08),inset_-2px_-2px_0_rgba(0,0,0,0.45)]",
+          // Six cells by seven, fixed. Wires dock on the card's perimeter, so
+          // an off-grid edge would mean off-grid endpoints.
+          "storage-node-card relative flex h-[140px] w-[120px] flex-col p-1",
           isHighlighted || isSearchHighlighted ? "brightness-125 saturate-150" : "",
         ].join(" ")}
-        style={{
-          borderColor,
-          background: `color-mix(in srgb, ${tint} 24%, #101318)`,
-        }}
       >
+        {/* The SHAPE, on its own layer rather than on the card.
+            Two reasons it cannot live on the card div. The glance icon is
+            deliberately bigger than the card and spills past the frame, and a
+            clip-path on the card would cut it off. And an octagon needs its
+            outline drawn on the diagonals, which a clipped `border` cannot do:
+            the border paints first and the clip then removes it. So the outer
+            span is the border colour, the inner one is the fill inset by 2px,
+            and both carry the same clip - which leaves a real 2px edge all the
+            way round whatever the silhouette is. */}
+        <span
+          aria-hidden
+          data-storage-shape={role}
+          className="storage-shape pointer-events-none absolute inset-0"
+          style={{ background: borderColor }}
+        >
+          <span
+            className="storage-shape-fill absolute inset-[2px]"
+            style={{
+              background: `color-mix(in srgb, ${tint} 24%, #101318)`,
+              boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.45)",
+            }}
+          />
+        </span>
         <NodeGlanceIcon tileTint={tint}>
           {/* Deliberately bigger than the card it sits on (w-[140px]).
               Zoomed out, WHAT is in the drawer is the only thing worth
@@ -276,10 +315,23 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             </span>
           ) : null}
         </NodeGlanceIcon>
-        <StorageHeader storageId={storage.id} isTank={isTank} tint={tint} role={role} />
+        {/* The content carries the SAME silhouette as the frame. Without it
+            the header and the mode button paint their own square backgrounds
+            straight through the cut corners, and the card reads as a rectangle
+            wearing an octagon. The glance icon stays outside this wrapper on
+            purpose: it is deliberately bigger than the card and spills past
+            the frame, which a clip would eat. */}
+        <div
+          data-storage-shape={role}
+          className="storage-shape-content relative z-10 flex min-h-0 flex-1 flex-col"
+        >
+          <StorageHeader storageId={storage.id} isTank={isTank} tint={tint} role={role} />
         {/* The name sits ABOVE the item, not in the header — the header
             carries the setting word; this line says what is inside. */}
-        <div title={title} className="minecraft-title h-4 truncate px-1 text-center text-[11px] leading-4">
+        <div
+          title={title}
+          className="minecraft-title relative z-10 h-4 truncate px-1 text-center text-[10px] leading-4"
+        >
           {title}
         </div>
         <MinecraftTooltip content={renderStorageHoverContent(storage, role)}>
@@ -293,7 +345,9 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               the flow, not the card around it. Wiring is a mode; a held
               wire must not also be lighting up cards. */}
           <div
-            className="relative mx-auto h-[94px] w-[120px]"
+            // Flexible, not fixed: the mode pill only exists on a drain, and
+            // the well simply takes whatever height is left over either way.
+            className="relative mx-auto min-h-0 w-full flex-1"
             onMouseEnter={() =>
               isWiringConnection() ? undefined : setHoveredStorageResourceKey(resourceKey)
             }
@@ -332,22 +386,22 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
                   isPlainFluid ? CARD_ICON_PX - FLUID_BREATHE_PX : CARD_ICON_PX,
                   storage,
                 )}
-                className="!h-[94px] !w-[94px]"
+                className="!h-[60px] !w-[60px]"
               />
             </div>
           </div>
         </MinecraftTooltip>
         <div
           className={[
-            // header 20 + name 16 + well 94 + this 18 fills the card's 148px
-            // interior exactly. No "Net" word: the sign and the colour already
-            // say it, and the number is the thing worth reading.
-            "storage-net-line h-[18px] text-center text-[14px] font-bold leading-[18px] tabular-nums",
+            // No "Net" word: the sign and the colour already say it, and the
+            // number is the thing worth reading.
+            "storage-net-line relative z-10 h-4 text-center text-[13px] font-bold leading-4 tabular-nums",
             net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
           ].join(" ")}
         >
           {net >= 0 ? "+" : ""}
           {formatCompactRate(net, storage.kind)}
+        </div>
         </div>
       </div>
     </div>
@@ -374,7 +428,6 @@ function StorageHeader({
   role: StorageRole;
 }) {
   const deleteStorage = useFactoryStore((state) => state.deleteStorage);
-  const duplicateStorage = useFactoryStore((state) => state.duplicateStorage);
   const noun = isTank ? "tank" : "drawer";
   const presentation = ROLE_PRESENTATION[role];
 
@@ -403,34 +456,52 @@ function StorageHeader({
             baseline-align the hyphen low instead of centring it. */}
         <span aria-hidden className="block h-[2px] w-[8px] bg-white" />
       </button>
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          duplicateStorage(storageId);
-        }}
-        className="board-edit-chrome nodrag flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
-        title={`Clone ${noun}`}
-        aria-label={`Clone ${noun}`}
-      >
-        <Copy aria-hidden className="h-2.5 w-2.5" />
-      </button>
-      {/* The role, not the noun. Which of the three a drawer is decides
-          whether machines may dump into it, so it has to be legible without a
-          hover: SOURCE and DRAIN are the plan's declared boundary and get the
-          infinity mark, BUFFER plays by the rules and gets none.
-          storage-node-word: calm mode centres it once the buttons go. */}
+      {/* The role, centred, and the only word on the card that is not the
+          item's name. One colour for all four: the SILHOUETTE is what tells
+          them apart now, so tinting the word too would be saying the same
+          thing twice in a channel the item's own colour already owns.
+          storage-node-word: calm mode leans on this hook too. */}
       <div
         title={presentation.line}
-        className={[
-          "storage-node-word flex min-w-0 flex-1 items-center justify-end gap-1 truncate text-[8px] font-black tracking-[0.4px] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]",
-          presentation.boundary ? "text-[#d9c58a]" : "text-[#9aa1ad]",
-        ].join(" ")}
+        className="storage-node-word pointer-events-none absolute inset-x-0 truncate text-center text-[8px] font-black tracking-[0.4px] text-[#e8e9ee] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]"
       >
-        {presentation.boundary ? <span aria-hidden>∞</span> : null}
         {presentation.word}
       </div>
+      {isDrainRole(role) ? <DrainModeSwap storageId={storageId} role={role} /> : null}
     </div>
+  );
+}
+
+/**
+ * The one thing about a drawer you CHOOSE. Source and buffer are read off the
+ * wiring and cannot be picked; which kind of end-of-the-line this is cannot be
+ * read off anything, so it gets a control.
+ *
+ * Both halves are always shown rather than one label that toggles: the whole
+ * point is that a reader who has never met the distinction can see there IS
+ * one, and read both answers, without clicking anything.
+ */
+function DrainModeSwap({ storageId, role }: { storageId: string; role: StorageRole }) {
+  const setStorageDrainMode = useFactoryStore((state) => state.setStorageDrainMode);
+  const next: StorageDrainMode = role === "byproduct" ? "product" : "byproduct";
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        setStorageDrainMode(storageId, next);
+      }}
+      title={
+        role === "byproduct"
+          ? "Byproduct: this asks for nothing and catches what is left over. Switch it to a product to pull the machine feeding it flat out."
+          : "Product: this asks the machine feeding it for everything it can make. Switch it to a byproduct to only catch the extra."
+      }
+      aria-label={`Switch to ${next}`}
+      className="board-edit-chrome nodrag relative z-40 ml-auto flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+    >
+      <ArrowLeftRight aria-hidden className="h-2.5 w-2.5" />
+    </button>
   );
 }
 
