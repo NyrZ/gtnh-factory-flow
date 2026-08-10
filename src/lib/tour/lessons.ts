@@ -32,6 +32,7 @@ import {
   clearTheDecks,
   cutTourProduct,
   restoreTourProduct,
+  frameTourWholeBoard,
   frameTourBlocked,
   frameTourBottleneck,
   frameTourBufferDrawer,
@@ -501,19 +502,36 @@ const READ_THE_BOARD: TourLesson = {
     {
       anchor: "board",
       side: "inside",
-      before: cutTourProduct,
+      // Frames the whole line and puts the drawer back if we have arrived here
+      // by stepping BACK out of the cut. The camera settles HERE, and the next
+      // step deliberately does not touch it: the before and the after have to
+      // be the same picture or there is nothing to compare.
+      before: () => {
+        restoreTourProduct();
+        frameTourWholeBoard();
+      },
       title: "So let us break it on purpose",
       rows: [
+        { text: "The whole line, running. Every machine on it is doing something." },
         {
-          text: "We just deleted the *titanium ingot drawer*. That was the only thing taking the finished titanium.",
+          text: "That *titanium ingot drawer* is the only thing taking the finished titanium off the end of it.",
         },
+        { text: "Press next and we delete it. *Nothing else will move.* Watch the board." },
+      ],
+    },
+    {
+      anchor: "board",
+      side: "inside",
+      before: cutTourProduct,
+      title: "And there it goes",
+      rows: [
         {
           chip: "NO WIRES",
           tone: "starved",
-          text: "The freezer that made it now has an output with *nothing on it*, so it stops dead.",
+          text: "The freezer that made the titanium now has an output with *nothing on it*, so it stops dead.",
         },
         {
-          text: "And look at the rest. *Every machine on the board is at 0%.* Nobody is asking for anything any more, so the whole line behind it has nothing to do.",
+          text: "And look at the rest. *Every machine on the board is at 0%.* Nobody is asking for anything any more, so the whole line behind it has nothing left to do.",
         },
         {
           text: "One drawer. Six machines. *Everything a machine makes has to be going somewhere*, or it does not run at all, exactly as in game.",

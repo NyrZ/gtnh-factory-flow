@@ -446,6 +446,30 @@ export const frameTourBufferDrawer = frameDrawers("bufferDrawerIds");
  */
 let planBeforeCut: FactoryProject | undefined;
 
+/** The whole line at once, for the two steps that talk about all of it. */
+export function frameTourWholeBoard(): void {
+  moveCamera(() => {
+    if (useFactoryStore.getState().project.nodes.length === 0) {
+      return false;
+    }
+    useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
+    return true;
+  });
+}
+
+/**
+ * Pull the drawer, and DO NOT touch the camera.
+ *
+ * The step before this one framed the whole line and said "watch the board".
+ * If this moved the camera as well, the reader would be comparing two
+ * different pictures and the only thing they could be sure had changed is the
+ * view. The before and the after have to be the same shot with one thing
+ * different in it.
+ *
+ * Still routed through `moveCamera` for its retry-and-supersede behaviour
+ * rather than for any camera work: it keeps trying until the picks resolve,
+ * and a newer intention (stepping back) cancels a cut that has not landed yet.
+ */
 export function cutTourProduct(): void {
   moveCamera(() => {
     const ids = ensurePicks()?.productDrawerIds ?? [];
@@ -457,9 +481,6 @@ export function cutTourProduct(): void {
     for (const id of ids) {
       store.deleteStorage(id);
     }
-    // Wide, because the point is what happens to EVERYTHING, not to the gap
-    // where the drawer was.
-    useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
     return true;
   });
 }
