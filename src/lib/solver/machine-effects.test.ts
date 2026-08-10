@@ -137,7 +137,8 @@ describe("CropsNH analytic crop math", () => {
         cropBiome: "none",
       },
     };
-    // score 7 -> supply 35 vs demand 70: penalty 140% kills growth entirely.
+    // score 5 -> supply 25 vs demand 70: penalty 180% kills growth entirely.
+    // (Empty water and fertilizer are worth +0, not +1: floor((0 + 9) / 10) = 0.)
     expect(
       getMachineOutputMultiplier(recipe, node, recipe.outputs[0]!, "LV"),
     ).toBe(0);

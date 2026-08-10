@@ -16,6 +16,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.41.1",
+    date: "2026-08-09",
+    headline: "A dry crop is worth nothing, and now says so",
+    notes: [
+      "On a crop farm, the Water and Fertilizer menus claimed an empty crop still fed it one point. It feeds it none. The rates were always worked out correctly, so nothing on your board changes: only the two labels were wrong.",
+    ],
+  },
+  {
     version: "1.41.0",
     date: "2026-08-09",
     headline: "Every tab keeps its place",

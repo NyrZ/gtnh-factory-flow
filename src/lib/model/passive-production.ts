@@ -473,7 +473,7 @@ function cropsNhAnalyticControls(): MachineConfigControl[] {
       label: "Water",
       defaultKey: "100",
       tiers: [
-        option("0", "Dry", "crop_water_0", "No Water (+1)"),
+        option("0", "Dry", "crop_water_0", "No Water (+0)"),
         option("50", "Partial", "crop_water_50", "Water 50 (+5)"),
         option("100", "Full", "crop_water_100", "Water 100 (+10)"),
       ],
@@ -483,7 +483,7 @@ function cropsNhAnalyticControls(): MachineConfigControl[] {
       label: "Fertilizer",
       defaultKey: "100",
       tiers: [
-        option("0", "None", "crop_fertilizer_0", "No Fertilizer (+1)"),
+        option("0", "None", "crop_fertilizer_0", "No Fertilizer (+0)"),
         option("50", "Partial", "crop_fertilizer_50", "Fertilizer 50 (+5)"),
         option("100", "Full", "crop_fertilizer_100", "Fertilizer 100 (+10)"),
       ],
