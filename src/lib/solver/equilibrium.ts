@@ -618,6 +618,33 @@ export function solveEquilibrium(
       freeLeftoverByBudget.set(budgetKey, Math.max(0, leftover));
     }
 
+    /**
+     * How much of the surplus a drain that ASKS is asking on behalf of.
+     *
+     * The leftover splits evenly across every drain on an output, which is
+     * what each one physically catches. Demand cannot be read off that share
+     * directly once some of the drains are silent: a product drawer beside a
+     * byproduct drawer would ask for half the output, the machine would drop
+     * to half, that halves the leftover, and the whole thing spirals to zero -
+     * a machine wired to a drawer that wants everything it makes sitting at 0%.
+     *
+     * So the askers claim the silent ones' shares as well. One product drawer
+     * next to one byproduct drawer asks for the lot, the machine runs flat out,
+     * and the two still catch half each. With no silent drains this is 1 and
+     * nothing changes.
+     */
+    const drainClaimByBudget = new Map<string, number>();
+    for (const [budgetKey, budget] of budgets) {
+      const drains = budget.drainEdges.length + budget.trashEdges.length;
+      let asking = budget.trashEdges.length;
+      for (const drain of budget.drainEdges) {
+        if (!drain.silent) {
+          asking += 1;
+        }
+      }
+      drainClaimByBudget.set(budgetKey, asking > 0 ? drains / asking : 1);
+    }
+
     for (const edge of edges) {
       // Drains and trash cans on a machine output drink whatever is left after
       // the buffers, splitting it evenly; the difference is that a drain
@@ -647,7 +674,13 @@ export function solveEquilibrium(
         // (`eatenByEdge` above, so conservation holds and nothing clogs), it
         // simply never begs, which leaves the pace to real consumers and to
         // the plan's target rate.
-        demandByEdge.set(edge.id, edge.silent ? 0 : absorbed + deficitShare);
+        demandByEdge.set(
+          edge.id,
+          edge.silent
+            ? 0
+            : absorbed * (edge.freeDisposal ? (drainClaimByBudget.get(edge.budgetKey) ?? 1) : 1) +
+              deficitShare,
+        );
         poolInflowNext.set(edge.poolKey, (poolInflowNext.get(edge.poolKey) ?? 0) + absorbed);
         continue;
       }

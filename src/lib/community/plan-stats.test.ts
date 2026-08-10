@@ -79,6 +79,9 @@ describe("computeCommunityPlanStats", () => {
       netPerSecond: 0,
       surplusPerSecond: 0,
       deficitPerSecond: 0,
+      importedPerSecond: 0,
+      productPerSecond: 0,
+      byproductPerSecond: 0,
     };
     const result = makeResult({
       externalInputs: [

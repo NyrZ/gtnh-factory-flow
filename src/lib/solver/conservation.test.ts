@@ -436,6 +436,96 @@ describe("conservation: drawers", () => {
     expect(result.edges["e4"].transferredPerSecond).toBeCloseTo(3);
   });
 
+  it("one resource can be a need and a byproduct at the same time", () => {
+    // Carbon is imported at a source drawer for the main line, and a second
+    // line makes spare carbon that lands in a byproduct drawer. Netting used
+    // to report a single figure - "you need 7" - which quietly claimed the
+    // spare 3 feeds the need across a gap with no wire in it. Both are true
+    // and both are listed: bring 10 in over here, haul 3 away over there.
+    const result = calculateThroughput(
+      project({
+        recipes: [
+          recipe("eat-carbon", [["carbon", 10]], [["steel", 1]]),
+          // The side line is here for its ash; the carbon is what it cannot
+          // help making. A byproduct drawer asks for nothing, so something
+          // else has to be the reason this machine runs.
+          recipe("make-ash", [], [["ash", 1], ["carbon", 3]]),
+        ],
+        nodes: [node("main", "eat-carbon"), node("side", "make-ash")],
+        storages: [
+          drawer("src-carbon", "carbon"),
+          drawer("d-steel", "steel"),
+          drawer("d-ash", "ash"),
+          { ...drawer("spare-carbon", "carbon"), drainMode: "byproduct" },
+        ],
+        edges: [
+          wire("e1", "src-carbon", "main", "carbon"),
+          wire("e2", "main", "d-steel", "steel"),
+          wire("e3", "side", "d-ash", "ash"),
+          wire("e4", "side", "spare-carbon", "carbon"),
+        ],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    const need = result.externalInputs.find((b) => b.resourceId === "carbon");
+    const spare = result.unconsumedOutputs.find((b) => b.resourceId === "carbon");
+    expect(need?.deficitPerSecond).toBeCloseTo(10);
+    expect(spare?.byproductPerSecond).toBeCloseTo(3);
+    // Same record, both lists: it is one resource doing two jobs.
+    expect(spare?.productPerSecond).toBeCloseTo(0);
+  });
+
+  it("splits a resource caught by both a product and a byproduct drawer", () => {
+    const result = calculateThroughput(
+      project({
+        recipes: [recipe("split", [], [["carbon", 10]])],
+        nodes: [node("maker", "split")],
+        storages: [
+          drawer("want", "carbon"),
+          { ...drawer("spare", "carbon"), drainMode: "byproduct" },
+        ],
+        edges: [wire("e1", "maker", "want", "carbon"), wire("e2", "maker", "spare", "carbon")],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    const carbon = result.unconsumedOutputs.find((b) => b.resourceId === "carbon");
+    // The product drawer asks for everything the machine can make - including
+    // the share the silent byproduct drawer would otherwise have left
+    // unclaimed - so the maker runs flat out and all 10 land somewhere.
+    expect(result.nodes["maker"].utilization).toBeCloseTo(1);
+    expect(carbon?.productPerSecond).toBeGreaterThan(0);
+    expect((carbon?.productPerSecond ?? 0) + (carbon?.byproductPerSecond ?? 0)).toBeCloseTo(10);
+    expect(carbon?.surplusPerSecond).toBeCloseTo(10);
+  });
+
+  it("a product drawer beside a byproduct drawer still runs its machine", () => {
+    // The death spiral this pins: the leftover splits evenly across both
+    // drains, but a byproduct asks for nothing, so the product drawer used to
+    // ask for only half the output. The machine dropped to half, which halved
+    // the leftover, which halved the ask, round after round, until a machine
+    // wired to a drawer that wants everything it makes sat at 0%.
+    const result = calculateThroughput(
+      project({
+        recipes: [recipe("split", [], [["carbon", 10]])],
+        nodes: [node("maker", "split")],
+        storages: [
+          drawer("want", "carbon"),
+          { ...drawer("spare", "carbon"), drainMode: "byproduct" as const },
+        ],
+        edges: [wire("e1", "maker", "want", "carbon"), wire("e2", "maker", "spare", "carbon")],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.nodes["maker"].utilization).toBeCloseTo(1);
+    // Conservation still holds: what the machine made is what the two caught.
+    expect(
+      result.edges["e1"].transferredPerSecond + result.edges["e2"].transferredPerSecond,
+    ).toBeCloseTo(10);
+  });
+
   it("each drawer reports its own wires, not every drawer of that item", () => {
     // Two source drawers of one item used to show the SUM: both read 30/s when
     // one shipped 20 and the other 10.

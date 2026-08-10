@@ -25,6 +25,9 @@ function makeBalance(overrides: Partial<ResourceBalance> = {}): ResourceBalance 
     netPerSecond: 0,
     surplusPerSecond: 0,
     deficitPerSecond: 0,
+    importedPerSecond: 0,
+    productPerSecond: 0,
+    byproductPerSecond: 0,
     ...overrides,
   };
 }
@@ -137,26 +140,31 @@ describe("findRowIndexAtOffset", () => {
 });
 
 describe("getFlowRowValue", () => {
+  // One resource wearing all three hats at once, which is legal: it is
+  // imported at a source drawer, some is caught by a product drawer, and the
+  // rest lands in a byproduct drawer.
   const balance = makeBalance({
     producedPerSecond: 120,
     consumedPerSecond: 360,
     deficitPerSecond: 240,
+    importedPerSecond: 240,
     surplusPerSecond: 64,
+    productPerSecond: 40,
+    byproductPerSecond: 24,
   });
 
   it("reports the shortfall for a need", () => {
     expect(getFlowRowValue("need", balance)).toBe(240);
   });
 
-  // Both halves of the split ask the same question of a balance. They are two
-  // sections because they mean different things to the reader, not because the
-  // number is derived differently.
-  it("reports the surplus for a product", () => {
-    expect(getFlowRowValue("product", balance)).toBe(64);
+  // Each section reports its OWN drawers. They used to share one surplus, so
+  // a resource sitting in both printed the combined figure under each.
+  it("reports what the product drawers caught", () => {
+    expect(getFlowRowValue("product", balance)).toBe(40);
   });
 
-  it("reports the surplus for a byproduct", () => {
-    expect(getFlowRowValue("byproduct", balance)).toBe(64);
+  it("reports what the byproduct drawers caught", () => {
+    expect(getFlowRowValue("byproduct", balance)).toBe(24);
   });
 
   it("reports throughput for an internal resource", () => {

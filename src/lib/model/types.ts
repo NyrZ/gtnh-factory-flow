@@ -587,6 +587,18 @@ export interface ResourceBalance {
   netPerSecond: number;
   surplusPerSecond: number;
   deficitPerSecond: number;
+  /**
+   * The three BOUNDARY figures, read off the drawers rather than off the books.
+   *
+   * A resource can carry all three at once, and that is not a contradiction:
+   * importing carbon at one drawer and catching spare carbon at another says
+   * the plan brings some in over here and has some to haul away over there.
+   * Netting the two would claim the spare feeds the need, which is a wire
+   * nobody drew - and if the player wants it, they can draw it.
+   */
+  importedPerSecond: number;
+  productPerSecond: number;
+  byproductPerSecond: number;
 }
 
 export interface BottleneckReport {

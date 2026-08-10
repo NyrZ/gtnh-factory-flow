@@ -52,9 +52,21 @@ export function getFlowRowValue(section: FlowSectionId, balance: ResourceBalance
   switch (section) {
     case "need":
       return balance.deficitPerSecond;
+    // Each section reports ITS OWN drawers, because one resource can sit in
+    // both: some of the carbon is what the line is for, the rest is what it
+    // could not help making. A shared `surplusPerSecond` printed the combined
+    // figure twice.
+    //
+    // With NO drawer either way there is nothing to split, and the row is in
+    // whichever list `partitionOutputsByKind` filed it under - so it falls
+    // back to the whole surplus rather than rendering a confident zero.
     case "product":
     case "byproduct":
-      return balance.surplusPerSecond;
+      return balance.productPerSecond === 0 && balance.byproductPerSecond === 0
+        ? balance.surplusPerSecond
+        : section === "product"
+          ? balance.productPerSecond
+          : balance.byproductPerSecond;
     case "internal":
     default:
       return balance.consumedPerSecond;
@@ -89,6 +101,12 @@ export function classifyPlanOutputs(project: FactoryProject): Map<string, Output
 /**
  * Splits what is left over into the two lists the panel shows.
  *
+ * A resource can land in BOTH, carrying a different number in each. One item
+ * with a product drawer and a byproduct drawer is making that claim honestly:
+ * this much is what the factory is for, this much it also happens to make.
+ * The old winner-takes-all rule picked "product" and printed the combined
+ * total under it, hiding the second drawer entirely.
+ *
  * Anything NO drawer claims goes with the byproducts. It is coming out and
  * nobody asked for it, which is what a byproduct is in plain English, and the
  * alternative - calling it a product because a product drawer has not been
@@ -104,7 +122,19 @@ export function partitionOutputsByKind(
   const products: ResourceBalance[] = [];
   const byproducts: ResourceBalance[] = [];
   for (const balance of items) {
-    (kinds.get(balance.key) === "product" ? products : byproducts).push(balance);
+    const asProduct = balance.productPerSecond > 0;
+    const asByproduct = balance.byproductPerSecond > 0;
+    if (asProduct) {
+      products.push(balance);
+    }
+    if (asByproduct) {
+      byproducts.push(balance);
+    }
+    // Spare with no drawer at all: no boundary figure to split, so the
+    // resource-level label decides, and absent that it reads as a byproduct.
+    if (!asProduct && !asByproduct) {
+      (kinds.get(balance.key) === "product" ? products : byproducts).push(balance);
+    }
   }
   return { products, byproducts };
 }

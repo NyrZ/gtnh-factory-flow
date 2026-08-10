@@ -9,6 +9,7 @@ import type {
   ResourceKey,
 } from "../model/types";
 import { collectTrashNodeIds } from "../model/trash";
+import { getStorageRoles } from "../model/storage-role";
 import { clampUtilization } from "./equilibrium";
 
 const EPSILON = 0.000001;
@@ -45,6 +46,9 @@ function ensureBalance(
     netPerSecond: 0,
     surplusPerSecond: 0,
     deficitPerSecond: 0,
+    importedPerSecond: 0,
+    productPerSecond: 0,
+    byproductPerSecond: 0,
   };
   balances.set(key, balance);
   return balance;
@@ -124,10 +128,27 @@ function settleTolerance(balance: ResourceBalance): number {
  */
 function settleBalances(balances: Map<ResourceKey, ResourceBalance>): void {
   for (const balance of balances.values()) {
-    if (balance.netPerSecond !== 0 && Math.abs(balance.netPerSecond) <= settleTolerance(balance)) {
+    // The boundary figures are sums of real transfers rather than a difference
+    // of two large numbers, so they carry far less residue - but they are
+    // still rates, and a drawer moving a millionth of an item per second is
+    // dust. Snapped on the same scaled tolerance, each on its own, because
+    // they no longer derive from `net` and one being dust says nothing about
+    // the others.
+    const tolerance = settleTolerance(balance);
+    if (balance.importedPerSecond !== 0 && balance.importedPerSecond <= tolerance) {
+      balance.importedPerSecond = 0;
+    }
+    if (balance.productPerSecond !== 0 && balance.productPerSecond <= tolerance) {
+      balance.productPerSecond = 0;
+    }
+    if (balance.byproductPerSecond !== 0 && balance.byproductPerSecond <= tolerance) {
+      balance.byproductPerSecond = 0;
+    }
+    balance.deficitPerSecond = balance.importedPerSecond;
+    balance.surplusPerSecond = balance.productPerSecond + balance.byproductPerSecond;
+
+    if (balance.netPerSecond !== 0 && Math.abs(balance.netPerSecond) <= tolerance) {
       balance.netPerSecond = 0;
-      balance.surplusPerSecond = 0;
-      balance.deficitPerSecond = 0;
     }
   }
 }
@@ -173,10 +194,88 @@ export function calculateEffectiveBalances(
   }
 
   applyTrashedOutputBalances(project, edgeResults, balances);
-  // Last, so it also settles whatever the two passes above left behind.
+  applyBoundaryDrawerBalances(project, edgeResults, balances);
+  // Last, so it also settles whatever the passes above left behind.
   settleBalances(balances);
 
   return balances;
+}
+
+/**
+ * What the plan IMPORTS and what it SHIPS OUT, read off the boundary drawers.
+ *
+ * These used to be inferred by netting the machine books: produced minus
+ * consumed, positive is spare, negative is short. That was right when a
+ * drawer was magic and unwired surplus quietly evaporated - two machines
+ * making and eating the same item did balance out whether or not a line ran
+ * between them. In a closed plan it is no longer true. An unwired output
+ * stops its machine and an unwired input starves one, so material only moves
+ * where a wire says it does, and the boundary is a set of drawers a player
+ * placed on purpose.
+ *
+ * The difference shows the moment one resource sits on both ends. Import 10
+ * carbon at a source drawer, catch 4 spare carbon at a byproduct drawer, and
+ * netting reported a single need for 6 - quietly asserting that the spare
+ * feeds the need, across a gap with no wire in it. Now it reports both: bring
+ * 10 in, take 4 away. Wiring them together is a thing the player can do, and
+ * then the books say so because the flows actually changed.
+ *
+ * Products and byproducts are counted apart for the same reason. One resource
+ * can have a product drawer AND a byproduct drawer - some of it is what the
+ * factory is for and the rest is what it could not help making - so each gets
+ * its own figure instead of a winner-takes-all label.
+ */
+function applyBoundaryDrawerBalances(
+  project: FactoryProject,
+  edgeResults: Record<string, EdgeThroughput>,
+  balances: Map<ResourceKey, ResourceBalance>,
+): void {
+  const storages = project.storages ?? [];
+  const roles = getStorageRoles(project);
+  const storagesById = new Map(storages.map((storage) => [storage.id, storage]));
+
+  const boundaryResource = (storage: FactoryStorage, label?: string): ResourceAmount => ({
+    kind: storage.kind,
+    id: storage.resourceId,
+    displayName: storage.displayName ?? label,
+    amount: 0,
+  });
+
+  for (const edge of project.edges) {
+    const transferredPerSecond = edgeResults[edge.id]?.transferredPerSecond ?? 0;
+    if (transferredPerSecond <= EPSILON) {
+      continue;
+    }
+
+    // Leaving a SOURCE drawer: the plan declared this an import.
+    const from = storagesById.get(edge.source);
+    if (from && roles.get(from.id) === "source") {
+      ensureBalance(balances, boundaryResource(from, edge.label)).importedPerSecond +=
+        transferredPerSecond;
+    }
+
+    // Landing in a DRAIN drawer: the plan declared this an export, and which
+    // of the two kinds is the player's own answer on the drawer's pill.
+    const into = storagesById.get(edge.target);
+    const intoRole = into ? roles.get(into.id) : undefined;
+    if (into && (intoRole === "product" || intoRole === "byproduct")) {
+      const balance = ensureBalance(balances, boundaryResource(into, edge.label));
+      if (intoRole === "product") {
+        balance.productPerSecond += transferredPerSecond;
+      } else {
+        balance.byproductPerSecond += transferredPerSecond;
+      }
+    }
+  }
+
+  // The boundary figures REPLACE the netted ones, so a resource can be short
+  // and spare at once. `netPerSecond` is left alone: the trend charts plot it
+  // and it still answers the different question of whether the machines
+  // themselves are in balance.
+  for (const balance of balances.values()) {
+    balance.deficitPerSecond = balance.importedPerSecond;
+    balance.surplusPerSecond = balance.productPerSecond + balance.byproductPerSecond;
+  }
 }
 
 /**

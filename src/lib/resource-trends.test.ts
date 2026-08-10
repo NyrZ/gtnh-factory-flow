@@ -18,6 +18,9 @@ function balance(key: ResourceKey, netPerSecond: number): ResourceBalance {
     netPerSecond,
     surplusPerSecond: Math.max(0, netPerSecond),
     deficitPerSecond: Math.max(0, -netPerSecond),
+    importedPerSecond: Math.max(0, -netPerSecond),
+    productPerSecond: Math.max(0, netPerSecond),
+    byproductPerSecond: 0,
   };
 }
 

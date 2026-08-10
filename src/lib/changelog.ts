@@ -71,6 +71,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.1.0",
+    date: "2026-08-10",
+    headline: "A thing can be a need and a byproduct at once",
+    notes: [
+      "Bringing carbon in at one drawer while spare carbon lands in another now lists *both*, instead of subtracting one from the other.",
+      "Products and byproducts each show *what their own drawers caught*.",
+      "Fixed: a machine wired to *a product drawer and a byproduct drawer* on one output sat at 0%.",
+    ],
+  },
+  {
     version: "2.0.2",
     date: "2026-08-10",
     headline: "Drawers stop talking to each other",
