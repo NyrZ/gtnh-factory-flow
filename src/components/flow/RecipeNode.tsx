@@ -465,7 +465,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     setPreviewHandlerId(undefined);
   };
 
-  const hasMachinePicker = machineHandlers.length > 1 && !isCropFarmNode;
+  // A crop card's NAME BAR is its crop picker, so the harvester picker takes
+  // the tab strip above the card like every other machine choice. The old
+  // `!isCropFarmNode` guard was redundant when crops had a single handler;
+  // now that they offer by hand, Crop Manager and Industrial Farm it is the
+  // only thing standing between the card and its machines.
+  const hasMachinePicker = machineHandlers.length > 1;
   const machineIcons = useMachineHandlerIcons();
   // The machine's own art, when the dataset ships it. Crop farms and custom
   // rate nodes have no machine to show.
