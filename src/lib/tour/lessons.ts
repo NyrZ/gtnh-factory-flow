@@ -30,16 +30,26 @@ import { openSidebarTab } from "@/lib/sidebar-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import {
   clearTheDecks,
-  focusTourCard,
-  frameTourSuppliers,
-  frameTourSupplement,
+  frameTourBlocked,
+  frameTourBottleneck,
+  frameTourBufferDrawer,
+  frameTourByproductDrawer,
+  frameTourProductDrawer,
+  frameTourSourceDrawer,
   openTourPlan,
   restoreTheDecks,
-  tourCardPartSelector,
-  tourCardSelector,
-  tourCardUsageSelector,
-  tourSupplementPairSelector,
-  tourSupplierSelector,
+  tourBlockedInputsSelector,
+  tourBlockedOutputsSelector,
+  tourBlockedSelector,
+  tourBlockedUsageSelector,
+  tourBottleneckInputsSelector,
+  tourBottleneckOutputsSelector,
+  tourBottleneckSelector,
+  tourBottleneckUsageSelector,
+  tourBufferDrawerSelector,
+  tourByproductDrawerSelector,
+  tourProductDrawerSelector,
+  tourSourceDrawerSelector,
 } from "./tour-boards";
 
 /**
@@ -130,10 +140,9 @@ const LOOK_AROUND: TourLesson = {
       side: "inside",
       title: "This is the board",
       rows: [
-        { text: "Your factory gets built here, one machine card at a time." },
+        { text: "Your factory gets built here." },
         { mouse: "left", text: "Drag the background to *move around*." },
         { mouse: "scroll", text: "Scroll to *zoom*." },
-        { text: "Everything that puts something on it lives around the edges. That is this tour." },
       ],
     },
     {
@@ -141,11 +150,11 @@ const LOOK_AROUND: TourLesson = {
       side: "bottom",
       title: "Build tools",
       rows: [
-        { icon: Undo2, text: "Undo and redo, out on their own. *Ctrl+Z*." },
-        { icon: Sprout, text: "*Crop farm*: pick a crop, it grows at the right rate." },
-        { icon: Trash, text: "*Trash can*: wire spare output in, it stops counting." },
+        { icon: Undo2, text: "Undo and redo. *Ctrl+Z*." },
+        { icon: Sprout, text: "*Crop farm*: CropsNH (2.9)." },
+        { icon: Trash, text: "*Trash can*: things wired in 100% go away." },
         { icon: Gauge, text: "*Custom rate*: dial any number in or out by hand." },
-        { chip: "/s", text: "Per second, minute or hour. *Everywhere at once*." },
+        { chip: "/s", text: "Per second, minute or hour." },
       ],
     },
     {
@@ -153,7 +162,7 @@ const LOOK_AROUND: TourLesson = {
       side: "left",
       title: "Dressing it up",
       rows: [
-        { icon: Paintbrush, text: "Pick a shade, then click cards to *tag them*." },
+        { icon: Paintbrush, text: "Pick a shade, then click cards to *paint them*." },
         { icon: Square, text: "Draw a *box* round a section." },
         { icon: MoveUpRight, text: "Draw an *arrow*." },
         { icon: Type, text: "Drop a *note*." },
@@ -297,15 +306,14 @@ const READ_THE_BOARD: TourLesson = {
       rows: [
         { text: "Every box is *one machine doing one recipe*." },
         { text: "Every line is *one thing moving*, from whoever makes it to whoever wants it." },
-        { text: "Thicker lines carry more. The dashes run the way the stuff runs." },
         { text: "That is the whole board. Everything else is detail on a box." },
       ],
     },
     {
-      anchorSelector: tourCardSelector,
+      anchorSelector: tourBottleneckSelector,
       side: "right",
-      before: focusTourCard,
-      title: "So here is one box",
+      before: frameTourBottleneck,
+      title: "Here is one recipe",
       rows: [
         { text: "Three parts, always in the same places." },
         { text: "*Left*: what it wants. *Right*: what it makes." },
@@ -313,75 +321,165 @@ const READ_THE_BOARD: TourLesson = {
       ],
     },
     {
-      anchorSelector: tourCardPartSelector("inputs"),
+      anchorSelector: tourBottleneckInputsSelector,
       side: "right",
-      title: "The left side is what it wants",
+      title: "This one is being fed just fine",
       rows: [
         { text: "One row per ingredient. The bar is how much of it is actually turning up." },
-        {
-          text: "A machine can only ever have *one bottlenecked input*. Here it is the highlighted one.",
-        },
-        {
-          text: "The other rows are just being slowed down by it. Feed the bottleneck and they all speed up.",
-        },
+        { text: "Nothing this machine wants is running short." },
+        { text: "So whatever is wrong, it's not these inputs." },
       ],
     },
     {
-      anchorSelector: tourCardPartSelector("outputs"),
+      anchorSelector: tourBottleneckOutputsSelector,
       side: "right",
-      title: "The right side is what it makes",
+      title: "But look what is being asked of it",
       rows: [
         { text: "One row per product, at the rate it is managing right now." },
         {
-          text: "The *percentage* is not about this machine. It is the machine downstream saying how much of what it wanted arrived.",
+          text: "The machine downstream wants *far more* of one of these than this machine can make.",
         },
-        { text: "So a low one means somebody further along is going hungry." },
         {
-          text: "Every output needs *somewhere to go*, even the ones you do not want. A full output bus stops a machine dead.",
+          text: "The *percentage* on a row is that machine saying how much of what it asked for actually arrived.",
         },
       ],
     },
     {
-      anchorSelector: tourCardUsageSelector,
+      anchorSelector: tourBottleneckUsageSelector,
       side: "right",
-      title: "The bottom is how it is doing",
+      title: "Which makes this a bottleneck",
       rows: [
-        { text: "*Usage* is how hard it is running. 100% is flat out." },
-        { text: "*Reason* is one word for why." },
-        { text: "A low number is not automatically a problem. The word is what tells you." },
-      ],
-    },
-    {
-      anchorSelector: tourCardUsageSelector,
-      side: "right",
-      title: "The words it uses",
-      rows: [
-        {
-          chip: "FULL",
-          tone: "fine",
-          text: "“Everyone who asked me got it. Nothing to do here.”",
-        },
-        {
-          chip: "STARVED",
-          tone: "starved",
-          text: "“I am short, but nobody is waiting on me anyway. Leave me be.”",
-        },
         {
           chip: "BOTTLENECK",
           tone: "bottleneck",
-          text: "“I am fed fine and somebody is still going without. *I am the problem: build more of me.*”",
+          text: "“I am fed fine, and somebody is *still* not getting what they asked of me.”",
         },
+        {
+          text: "This is the one word that means *build more of this machine*. Nothing upstream will help: it already has everything it wants.",
+        },
+        { text: "Usage 100% and a problem anyway. A high number is not automatically good." },
+      ],
+    },
+    {
+      anchorSelector: tourBlockedSelector,
+      side: "right",
+      before: frameTourBlocked,
+      title: "Now a different machine",
+      rows: [
+        { text: "Further down the chain." },
+        { text: "Same three parts." },
+      ],
+    },
+    {
+      anchorSelector: tourBlockedInputsSelector,
+      side: "right",
+      title: "Only one of these is the problem",
+      rows: [
+        { text: "*Two* of these inputs arent getting what they wants." },
+        {
+          text: "But only the slowest of them is marked, and that is the one actually setting the speed.",
+        },
+        {
+          text: "The other one low because the machine is already crawling, so it is not drawing its full share of them either. Fix the marked one and the rest come up on their own.",
+        },
+        { text: "A machine only ever has *one* thing holding it back. The color tells you which." },
+      ],
+    },
+    {
+      anchorSelector: tourBlockedUsageSelector,
+      side: "right",
+      title: "And why it does not say bottleneck",
+      rows: [
         {
           chip: "BLOCKED",
           tone: "blocked",
-          text: "“Somebody downstream is going without, but only because *I* am not being fed. Go fix whoever feeds me.”",
+          text: "“It is technically bottlenecked! but but only because this machine is not being fed.”",
+        },
+        {
+          text: "Building more of *this* machine would achieve nothing. It cannot use what it has already got.",
+        },
+        {
+          text: "Follow a blocked card upstream and you always arrive at a bottleneck, a source you dialled down, or a dead loop. *The red cards are the whole to-do list.*",
         },
       ],
     },
     {
-      anchorSelector: tourCardUsageSelector,
+      anchorSelector: tourBlockedOutputsSelector,
       side: "right",
-      title: "And two about where stuff goes",
+      title: "And it drags the next one down too",
+      rows: [
+        { text: "What it makes is nowhere near enough." },
+        { text: "The machine waiting on it gets *a fraction* of what it asked for." },
+        { text: "That is how one shortage near the top becomes a whole chain of slow cards." },
+      ],
+    },
+    {
+      anchorSelector: tourSourceDrawerSelector,
+      side: "right",
+      before: frameTourSourceDrawer,
+      title: "Drawers: where the plan meets the world",
+      rows: [
+        { text: "Not a machine. A drawer is where your plan *touches the outside world*." },
+        {
+          text: "There are four jobs a drawer can do, and *the shape tells you which*. This one has round corners: a *SOURCE*.",
+        },
+        {
+          text: "Nothing feeds it, so it never runs out. It asks for nothing and just *provides*, forever.",
+        },
+        {
+          chip: "NEED",
+          tone: "need",
+          text: "What comes out of it is listed under NEED. It is *stuff you have to bring in yourself*.",
+        },
+      ],
+    },
+    {
+      anchorSelector: tourProductDrawerSelector,
+      side: "right",
+      before: frameTourProductDrawer,
+      title: "A product asks for everything",
+      rows: [
+        { text: "Eight sides, like a stop sign. This is the thing your factory is *for*." },
+        {
+          text: "A product drawer asks the machine feeding it for *100% of what that machine can make*. It pulls as hard as it possibly can.",
+        },
+        { text: "Which is why a machine with one of these on it runs flat out." },
+      ],
+    },
+    {
+      anchorSelector: tourByproductDrawerSelector,
+      side: "right",
+      before: frameTourByproductDrawer,
+      title: "A byproduct asks for nothing",
+      rows: [
+        { text: "The same shape with *the bottom corners opened out*, like a funnel." },
+        { text: "A byproduct drawer asks for *nothing at all*. It just takes whatever it is given." },
+        {
+          text: "So it never speeds a machine up. Use it for the second thing a machine spits out that you only need *somewhere to put*.",
+        },
+        { text: "Swap a drawer between the two with the button in its *top right*." },
+      ],
+    },
+    {
+      anchorSelector: tourBufferDrawerSelector,
+      side: "right",
+      before: frameTourBufferDrawer,
+      title: "And a buffer does no magic at all",
+      rows: [
+        { text: "A plain *square*: fed on one side, drawn from on the other." },
+        {
+          text: "That is the whole of it. An input and an output. *It can never put out more than it takes in.*",
+        },
+        {
+          text: "So it is no place to dump a surplus, and it cannot rescue a machine that is not being fed enough. It passes along what its takers pull, and no more.",
+        },
+      ],
+    },
+    {
+      anchorSelector: tourBottleneckUsageSelector,
+      side: "right",
+      before: frameTourBottleneck,
+      title: "Two more words you will meet",
       rows: [
         {
           chip: "NO WIRES",
@@ -394,47 +492,7 @@ const READ_THE_BOARD: TourLesson = {
           text: "“I am wired up, but I make more of something than anyone takes, and *the extra has nowhere to go*.”",
         },
         {
-          text: "A machine stops when its output backs up, exactly as it would in game. Give the spare somewhere to go and it speeds up.",
-        },
-      ],
-    },
-    {
-      anchorSelector: tourSupplierSelector,
-      side: "right",
-      before: frameTourSuppliers,
-      title: "This one is a drawer",
-      rows: [
-        { text: "Not a machine. A drawer is where your plan *touches the outside world*." },
-        {
-          text: "A plan has to say where everything comes from and where it goes. Drawers are how it says it, and *the shape tells you which*.",
-        },
-        {
-          text: "Round corners: a *SOURCE*. Nothing feeds it, so it never runs out, and what leaves it is something you bring in yourself.",
-        },
-        {
-          chip: "NEED",
-          tone: "need",
-          text: "Whatever comes out of a source is listed under NEED. Same as it always was: *stuff you have to supply*.",
-        },
-      ],
-    },
-    {
-      anchorSelector: tourSupplementPairSelector,
-      side: "right",
-      before: frameTourSupplement,
-      title: "The other three shapes",
-      rows: [
-        {
-          text: "An *eight-sided stop sign* is a PRODUCT. It asks the machine feeding it for everything that machine can make. This is the thing your factory is *for*.",
-        },
-        {
-          text: "*Corners cut off the bottom* is a BYPRODUCT. It asks for nothing and just catches the extra, so it never speeds a machine up. Use it for the stuff you only need somewhere to put.",
-        },
-        {
-          text: "Swap between those two with the button in the drawer's *top right*.",
-        },
-        {
-          text: "A plain *square* is a BUFFER: fed and drawn from, sitting in the middle of your chain. It passes on exactly what its takers pull, so it is *not* a place to dump a surplus.",
+          text: "A machine stops when an output backs up, exactly as it would in game. Give the spare a byproduct drawer and it runs again.",
         },
       ],
     },

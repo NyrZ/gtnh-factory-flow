@@ -5,6 +5,8 @@ import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/c
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import type { FactoryProject } from "@/lib/model/types";
 import { closeBoundaries } from "@/lib/solver/close-boundaries";
+import { getStorageRoles, type StorageRole } from "@/lib/model/storage-role";
+import { deriveNodeVerdict } from "@/components/flow/node-verdict";
 import { readWorkspaceViewSnapshot, writeWorkspaceView } from "@/lib/workspace-view";
 import { useDesignStore } from "@/store/design-store";
 import { useFactoryStore, type BoardFraming } from "@/store/factory-store";
@@ -46,6 +48,19 @@ interface TourPicks {
   cardId: string;
   /** Who feeds it. A storage drawer first, if one does. */
   supplierIds: string[];
+  /** Fed fine and still short: the one card where "build more" is the answer. */
+  bottleneckId?: string;
+  /** Short itself, several inputs low, one of them actually setting the pace. */
+  blockedId?: string;
+  /**
+   * EVERY drawer of each job, not one specimen. A step that says "these are
+   * your byproducts" and rings one of the two on the board has told a small
+   * lie, and the reader is left wondering what is different about the other.
+   */
+  sourceDrawerIds: string[];
+  productDrawerIds: string[];
+  byproductDrawerIds: string[];
+  bufferDrawerIds: string[];
 }
 
 let picks: TourPicks | undefined;
@@ -195,26 +210,37 @@ function pickCards(): TourPicks | undefined {
 
   const machineIds = new Set(project.nodes.map((node) => node.id));
 
-  const wires = new Map<string, number>();
-  for (const edge of project.edges) {
-    wires.set(edge.source, (wires.get(edge.source) ?? 0) + 1);
-    wires.set(edge.target, (wires.get(edge.target) ?? 0) + 1);
-  }
+  // Picked by the STATE each step exists to teach, not by a general "most
+  // interesting card" score. A BOTTLENECK is the one place where "build more
+  // of this" is the answer; a BLOCKED card is the opposite lesson, and needs
+  // several inputs for the point to be visible - that only one of the low ones
+  // is actually setting the speed.
+  const verdicts = new Map(
+    project.nodes.map((node) => [node.id, deriveNodeVerdict(project, result, node.id)]),
+  );
+  const inputCount = (id: string) => Object.keys(result.nodes[id]?.inputs ?? {}).length;
 
-  const ranked = [...machineIds]
-    .map((id) => ({
-      id,
-      wires: wires.get(id) ?? 0,
-      strained: (result?.nodes[id]?.utilization ?? 1) < 0.9,
-    }))
-    .sort(
-      (a, b) => Number(b.strained) - Number(a.strained) || b.wires - a.wires,
-    );
+  const bottleneckId = project.nodes.find(
+    (node) => verdicts.get(node.id)?.kind === "bottleneck",
+  )?.id;
 
-  const cardId = ranked[0]?.id;
+  const blockedId = project.nodes
+    .filter((node) => {
+      const kind = verdicts.get(node.id)?.kind;
+      return kind === "blocked" || kind === "starved";
+    })
+    .sort((a, b) => inputCount(b.id) - inputCount(a.id))[0]?.id;
+
+  const cardId = bottleneckId ?? blockedId ?? project.nodes[0]?.id;
   if (!cardId) {
     return undefined;
   }
+
+  const roles = getStorageRoles(project);
+  const drawersOf = (role: StorageRole) =>
+    (project.storages ?? [])
+      .filter((storage) => roles.get(storage.id) === role)
+      .map((storage) => storage.id);
 
   // A drawer first among the suppliers: "this comes out of a pile you say you
   // have" is the one supply story the board cannot tell by itself.
@@ -223,7 +249,16 @@ function pickCards(): TourPicks | undefined {
     .map((edge) => edge.source)
     .sort((a, b) => Number(machineIds.has(a)) - Number(machineIds.has(b)));
 
-  return { cardId, supplierIds };
+  return {
+    cardId,
+    supplierIds,
+    bottleneckId,
+    blockedId,
+    sourceDrawerIds: drawersOf("source"),
+    productDrawerIds: drawersOf("product"),
+    byproductDrawerIds: drawersOf("byproduct"),
+    bufferDrawerIds: drawersOf("buffer"),
+  };
 }
 
 function ensurePicks(): TourPicks | undefined {
@@ -303,6 +338,100 @@ export function tourCardUsageSelector(): string | undefined {
 export function tourSupplierSelector(): string | undefined {
   return cardSelector(ensurePicks()?.supplierIds[0]);
 }
+
+/**
+ * The two machines the walk reads, and one drawer of each job.
+ *
+ * Each gets a selector AND a camera move, because a step that rings a card the
+ * camera never flew to is pointing at nothing. A pick the board cannot supply
+ * (no byproduct drawer on it, say) resolves to undefined, and the step's card
+ * then sits in the middle of a dimmed screen with its words intact rather than
+ * ringing the wrong thing.
+ */
+type MachineKey = "bottleneckId" | "blockedId";
+type DrawerKey = "sourceDrawerIds" | "productDrawerIds" | "byproductDrawerIds" | "bufferDrawerIds";
+
+function pickSelector(key: MachineKey): () => string | undefined {
+  return () => cardSelector(ensurePicks()?.[key]);
+}
+
+function pickPartSelector(key: MachineKey, part: "inputs" | "outputs"): () => string | undefined {
+  return () => {
+    const card = cardSelector(ensurePicks()?.[key]);
+    return card ? `${card} [data-tour-part="${part}"]` : undefined;
+  };
+}
+
+function pickUsageSelector(key: MachineKey): () => string | undefined {
+  return () => {
+    const card = cardSelector(ensurePicks()?.[key]);
+    return card ? `${card} .flow-usage-stat` : undefined;
+  };
+}
+
+function framePick(key: MachineKey): () => void {
+  return () => {
+    moveCamera(() => {
+      const id = ensurePicks()?.[key];
+      if (!id) {
+        return false;
+      }
+      useFactoryStore.getState().frameBoardNodes([id], CLOSE_UP);
+      return true;
+    });
+  };
+}
+
+/**
+ * Every drawer of one job at once, comma-joined: the overlay unions the
+ * rectangles into a single hole (see `measureSelector`), so a board with two
+ * byproducts rings both rather than picking a favourite.
+ */
+function drawerSelector(key: DrawerKey): () => string | undefined {
+  return () => {
+    const ids = ensurePicks()?.[key] ?? [];
+    const selectors = ids.map((id) => cardSelector(id)).filter(Boolean);
+    return selectors.length > 0 ? selectors.join(", ") : undefined;
+  };
+}
+
+function frameDrawers(key: DrawerKey): () => void {
+  return () => {
+    moveCamera(() => {
+      const ids = ensurePicks()?.[key] ?? [];
+      if (ids.length === 0) {
+        return false;
+      }
+      // One drawer can be flown right up to; two sitting apart on the board
+      // need the wider shot or the pair does not fit the hole.
+      useFactoryStore
+        .getState()
+        .frameBoardNodes(ids, ids.length === 1 ? CLOSE_UP : GROUP_SHOT);
+      return true;
+    });
+  };
+}
+
+export const tourBottleneckSelector = pickSelector("bottleneckId");
+export const tourBottleneckInputsSelector = pickPartSelector("bottleneckId", "inputs");
+export const tourBottleneckOutputsSelector = pickPartSelector("bottleneckId", "outputs");
+export const tourBottleneckUsageSelector = pickUsageSelector("bottleneckId");
+export const frameTourBottleneck = framePick("bottleneckId");
+
+export const tourBlockedSelector = pickSelector("blockedId");
+export const tourBlockedInputsSelector = pickPartSelector("blockedId", "inputs");
+export const tourBlockedOutputsSelector = pickPartSelector("blockedId", "outputs");
+export const tourBlockedUsageSelector = pickUsageSelector("blockedId");
+export const frameTourBlocked = framePick("blockedId");
+
+export const tourSourceDrawerSelector = drawerSelector("sourceDrawerIds");
+export const frameTourSourceDrawer = frameDrawers("sourceDrawerIds");
+export const tourProductDrawerSelector = drawerSelector("productDrawerIds");
+export const frameTourProductDrawer = frameDrawers("productDrawerIds");
+export const tourByproductDrawerSelector = drawerSelector("byproductDrawerIds");
+export const frameTourByproductDrawer = frameDrawers("byproductDrawerIds");
+export const tourBufferDrawerSelector = drawerSelector("bufferDrawerIds");
+export const frameTourBufferDrawer = frameDrawers("bufferDrawerIds");
 
 /**
  * A drawer that is TOPPING UP an input, rather than being its only source.
