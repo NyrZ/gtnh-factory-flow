@@ -280,10 +280,10 @@ function CropSourceStatsContent({
             {setup.id === "crop-manager" ? (
               <>
                 A <span className="text-white">{cropsNhHarvesterTierName(setup.tierIndex)} Crop
-                Manager</span> reaches {managerSide}x{managerSide} sticks on each of five layers,
-                and you have planted {setup.layers} of them:{" "}
+                Manager</span> reaches {managerSide}x{managerSide} sticks on each of the five
+                layers it covers:{" "}
                 <span style={{ color: BONUS_COLOR }}>
-                  {formatNumber(cropsPerMachine, 0)} crops per machine
+                  {formatNumber(cropsPerMachine, 0)} crop sticks per machine
                 </span>
                 . It shakes the loot table{" "}
                 <span style={{ color: BONUS_COLOR }}>

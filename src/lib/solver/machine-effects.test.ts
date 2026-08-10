@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FactoryNode, Recipe } from "@/lib/model/types";
 import { applyMachineHandlerToRecipe } from "@/lib/model/recipe-rules";
 import {
+  cropsNhCropsPerMachine,
   cropsNhHarvesterFromTiers,
   cropsNhSquarePerTier,
   cropsNhUpgradeSlots,
@@ -424,6 +425,26 @@ describe("CropsNH harvesters", () => {
     expect(controlIds("crop-industrial-farm")).toContain("cropSeedBedTier");
     expect(controlIds("crop-manager")).toContain("cropManagerTier");
     expect(controlIds("crop-hand")).not.toContain("cropManagerTier");
+    // A card says how many sticks it has and who picks them. How the field is
+    // stacked is the machine's business, never a question put to the player.
+    expect(controlIds("crop-manager")).not.toContain("cropManagerLayers");
+  });
+
+  it("gives a Crop Manager its whole five-layer reach", () => {
+    const capacity = (tierIndex: number) =>
+      cropsNhCropsPerMachine(
+        cropsNhHarvesterFromTiers({ cropManagerTier: String(tierIndex) }, "crop-manager"),
+      );
+    // getHorizontalRadius = 3 + 2*tier, getVerticalRadius = 2 -> (4t+7)^2 * 5.
+    expect(capacity(1)).toBe(11 * 11 * 5);
+    expect(capacity(2)).toBe(15 * 15 * 5);
+    expect(capacity(8)).toBe(39 * 39 * 5);
+    // A seed bed is a stack of seeds, not a field, so it gets no layer factor.
+    expect(
+      cropsNhCropsPerMachine(
+        cropsNhHarvesterFromTiers({ cropSeedBedTier: "2" }, "crop-industrial-farm"),
+      ),
+    ).toBe(15 * 15);
   });
 
   it("reproduces the wiki's Crop Manager output table at every tier", () => {
@@ -441,7 +462,7 @@ describe("CropsNH harvesters", () => {
       const sticks = cropsNhSquarePerTier(tierIndex);
       const node = (world: Record<string, string>) => ({
         machineHandlerId: "crop-manager",
-        machineConfigTiers: { ...world, cropManagerTier: String(tierIndex), cropManagerLayers: "1" },
+        machineConfigTiers: { ...world, cropManagerTier: String(tierIndex) },
       });
       expect(Math.round(per5Seconds(node(WORLD_N27)) * sticks)).toBe(n27);
       expect(Math.round(per5Seconds(node(WORLD_N41)) * sticks)).toBe(n41);

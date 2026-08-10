@@ -24,7 +24,6 @@ export const CROP_BIOME_CONTROL_ID = "cropBiome";
 // handler: an Industrial Farm simulates its own water, fertilizer and sky, so
 // those three knobs are absent from it entirely.
 export const CROP_MANAGER_TIER_CONTROL_ID = "cropManagerTier";
-export const CROP_MANAGER_LAYERS_CONTROL_ID = "cropManagerLayers";
 export const CROP_SEED_BED_TIER_CONTROL_ID = "cropSeedBedTier";
 export const CROP_IF_GROWTH_UNIT_CONTROL_ID = "cropIfGrowthUnits";
 export const CROP_IF_FERTILIZER_UNIT_CONTROL_ID = "cropIfFertilizerUnits";
@@ -69,7 +68,6 @@ const CROP_CONTROL_IDS = new Set([
   CROP_SKY_CONTROL_ID,
   CROP_BIOME_CONTROL_ID,
   CROP_MANAGER_TIER_CONTROL_ID,
-  CROP_MANAGER_LAYERS_CONTROL_ID,
   CROP_SEED_BED_TIER_CONTROL_ID,
   CROP_IF_GROWTH_UNIT_CONTROL_ID,
   CROP_IF_FERTILIZER_UNIT_CONTROL_ID,
@@ -263,8 +261,13 @@ export function cropsNhEnvironmentFromTiers(
 
 /** `MTECropManager.getHarvestBonusChance` = 0.05 * mTier, fed to `crop.harvest`. */
 const CROP_MANAGER_HARVEST_BONUS_PER_TIER = 0.05;
-/** `MTECropManager.getVerticalRadius` = 2, so it reaches five layers of sticks. */
-export const CROP_MANAGER_MAX_LAYERS = 5;
+/**
+ * `MTECropManager.getVerticalRadius` = 2, so it reaches five layers of sticks
+ * at every tier. This is the machine's capacity, not a question for the
+ * player: a card says how many crop sticks it has and who picks them, and how
+ * many machines that takes falls out of the two.
+ */
+export const CROP_MANAGER_LAYERS = 5;
 /** `BlockSeedBed.HARVEST_ROUND_BONUS` = 0.2, applied as tier * bonus. */
 const SEED_BED_HARVEST_ROUND_BONUS_PER_TIER = 0.2;
 /** `BlockGrowthAccelerationUnit.GROWTH_SPEED_BONUS` = 1.0, additive per unit. */
@@ -306,7 +309,6 @@ export interface CropHarvesterSetup {
   id: CropHarvesterId;
   /** Voltage ordinal of the machine or seed bed (ULV 0, LV 1, MV 2, ...). */
   tierIndex: number;
-  layers: number;
   growthUnits: number;
   fertilizerUnits: number;
   harvestUnits: number;
@@ -328,7 +330,7 @@ export function cropsNhSquarePerTier(tierIndex: number): number {
 /** How many crops one machine of this setup works at once. */
 export function cropsNhCropsPerMachine(setup: CropHarvesterSetup): number {
   if (setup.id === CROP_HARVESTER_MANAGER_ID) {
-    return cropsNhSquarePerTier(setup.tierIndex) * clampInt(setup.layers, 1, CROP_MANAGER_MAX_LAYERS);
+    return cropsNhSquarePerTier(setup.tierIndex) * CROP_MANAGER_LAYERS;
   }
   if (setup.id === CROP_HARVESTER_INDUSTRIAL_FARM_ID) {
     return cropsNhSquarePerTier(setup.tierIndex);
@@ -373,7 +375,6 @@ export function cropsNhHarvesterFromTiers(
   return {
     id,
     tierIndex,
-    layers: clampInt(read(CROP_MANAGER_LAYERS_CONTROL_ID, 1), 1, CROP_MANAGER_MAX_LAYERS),
     growthUnits: Math.max(0, Math.min(requestedGrowth, slots - usedByOthers)),
     fertilizerUnits,
     harvestUnits,
@@ -847,21 +848,6 @@ function cropHarvesterHandlers(): MachineHandler[] {
           maxTierIndex: CROP_MANAGER_MAX_TIER_INDEX,
           defaultTierIndex: CROP_MANAGER_MIN_TIER_INDEX,
         }),
-        {
-          id: CROP_MANAGER_LAYERS_CONTROL_ID,
-          label: "Layers",
-          minimumKey: "1",
-          defaultKey: "1",
-          tiers: Array.from({ length: CROP_MANAGER_MAX_LAYERS }, (_unused, index) => {
-            const layers = index + 1;
-            return option(
-              String(layers),
-              String(layers),
-              `crop_manager_layers_${layers}`,
-              `${layers} planted layer${layers > 1 ? "s" : ""} of the five it reaches`,
-            );
-          }),
-        },
       ],
     },
     {
