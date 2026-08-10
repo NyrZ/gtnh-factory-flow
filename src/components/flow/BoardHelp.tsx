@@ -144,7 +144,7 @@ const CALLOUTS: Array<{
       { icon: Undo2, text: "Undo and redo" },
       { icon: Trash, text: "*Crop farm* and *trash can*" },
       { icon: Gauge, text: "*Custom rate*: dial by hand" },
-      { chip: "/s", text: "Per second, minute or hour" },
+      { chip: "/s", text: "Per tick, second, minute or hour" },
     ],
   },
   {

@@ -432,7 +432,7 @@ export interface PlanViewState {
   linePulseMode?: boolean;
   calmMode?: boolean;
   glanceMode?: string;
-  rateUnit?: "second" | "minute" | "hour";
+  rateUnit?: "tick" | "second" | "minute" | "hour";
   leftPanelOpen?: boolean;
   rightPanelOpen?: boolean;
   showHiddenResources?: boolean;

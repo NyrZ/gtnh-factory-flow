@@ -8,9 +8,9 @@ import type {
   StorageDrainMode,
   StorageThroughputResult,
 } from "@/lib/model/types";
-import { makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
+import { formatCompact, makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
 import { isDrainRole, type StorageRole } from "@/lib/model/storage-role";
-import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
+import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { FLUID_ICON_SCALE, ResourceIcon, getFallbackFluidColor } from "@/components/nei/ResourceIcon";
 import { NodeGlanceIcon } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
@@ -571,7 +571,9 @@ function formatCompactRate(value: number, kind: string): string {
   const unit = rateUnitSuffix(kind === "fluid").trimStart();
   const abs = Math.abs(scaled);
 
-  if (!Number.isFinite(scaled) || abs < 0.005) {
+  // The floor is written per second and scaled with the unit, so "balanced"
+  // still reads as a flat 0 while a real trickle keeps its digits per tick.
+  if (!Number.isFinite(scaled) || abs < 0.005 * rateUnitPrecisionScale()) {
     return `0${unit.startsWith("L") ? ` ${unit}` : unit}`;
   }
   const body =
@@ -579,7 +581,12 @@ function formatCompactRate(value: number, kind: string): string {
       ? `${trimFlow(scaled / 1_000_000)}M`
       : abs >= 1_000
         ? `${trimFlow(scaled / 1_000)}k`
-        : trimFlow(scaled);
+        : // Under 1 the two fixed decimals stop saying anything (every tick
+          // reading would be 0.01 or 0.02), so fall back to the significant
+          // digits the ports use.
+          abs >= 1
+          ? trimFlow(scaled)
+          : formatCompact(scaled);
   return unit.startsWith("L") ? `${body} ${unit}` : `${body}${unit}`;
 }
 

@@ -168,7 +168,7 @@ const LOOK_AROUND: TourLesson = {
         { icon: Sprout, text: "*Crop farm*: CropsNH (2.9)." },
         { icon: Trash, text: "*Trash can*: things wired in 100% go away." },
         { icon: Gauge, text: "*Custom rate*: dial any number in or out by hand." },
-        { chip: "/s", text: "Per second, minute or hour." },
+        { chip: "/s", text: "Per tick, second, minute or hour." },
       ],
     },
     {

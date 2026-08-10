@@ -5,7 +5,16 @@
  * that flips it also recomputes the throughput result, which rebuilds every
  * surface, so nothing renders a stale unit.
  */
-export type RateUnit = "second" | "minute" | "hour";
+export type RateUnit = "tick" | "second" | "minute" | "hour";
+
+const UNITS: Record<RateUnit, { multiplier: number; per: string }> = {
+  // A Minecraft tick is a twentieth of a second, and it is the unit the game
+  // itself quotes machines in (EU/t, and every recipe duration).
+  tick: { multiplier: 1 / 20, per: "t" },
+  second: { multiplier: 1, per: "s" },
+  minute: { multiplier: 60, per: "min" },
+  hour: { multiplier: 3600, per: "hr" },
+};
 
 const state: { unit: RateUnit } = { unit: "second" };
 
@@ -19,10 +28,23 @@ export function getActiveRateUnit(): RateUnit {
 
 /** Multiply a per-second figure by this before display. */
 export function rateUnitMultiplier(): number {
-  return state.unit === "second" ? 1 : state.unit === "minute" ? 60 : 3600;
+  return UNITS[state.unit].multiplier;
 }
 
 export function rateUnitSuffix(fluid: boolean): string {
-  const per = state.unit === "second" ? "s" : state.unit === "minute" ? "min" : "hr";
+  const { per } = UNITS[state.unit];
   return fluid ? ` L/${per}` : `/${per}`;
+}
+
+/**
+ * Scale a noise floor or a rounding step that was written in per-second terms.
+ *
+ * A formatter that rounds the DISPLAYED number keeps less of the truth the
+ * smaller the unit is: per tick every figure is twenty times smaller, so a
+ * real 0.004/s output lands under a floor meant to hide nothing but zero, and
+ * a port that was reading a rate goes blank. Never above 1 — units bigger than
+ * a second already carry their own, more generous, precision.
+ */
+export function rateUnitPrecisionScale(): number {
+  return Math.min(rateUnitMultiplier(), 1);
 }

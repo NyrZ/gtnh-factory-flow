@@ -60,7 +60,7 @@ import {
   isCustomRateRecipe,
   type CustomRateMode,
 } from "@/lib/model/custom-rate";
-import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
+import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { BOARD_GRID, CONFIG_PANEL_ROW_HEIGHT, RECIPE_NODE_WIDTH } from "@/lib/board-grid";
 import { CropPickerMenu } from "./CropPickerMenu";
 import {
@@ -2252,7 +2252,10 @@ function CustomRatePanel({
   // Subscribe so the shown value re-derives when the board unit flips.
   useFactoryStore((state) => state.rateUnit);
   const multiplier = rateUnitMultiplier();
-  const shownRate = String(Math.round(perSecond * multiplier * 1000) / 1000);
+  // Three decimals of the RATE, not of the printed number: rounding what is
+  // shown would quantise a per-tick dial to steps of 0.02/s.
+  const step = 1000 / rateUnitPrecisionScale();
+  const shownRate = String(Math.round(perSecond * multiplier * step) / step);
   const [draftState, setDraftState] = useState({ shownRate, draft: shownRate });
   const draft = draftState.shownRate === shownRate ? draftState.draft : shownRate;
 

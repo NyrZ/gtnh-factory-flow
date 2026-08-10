@@ -4553,6 +4553,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
  * crafting, like crop farms). Lives top-left, mirroring the paint toolbar.
  */
 const RATE_UNIT_CHOICES: Array<{ unit: RateUnit; label: string; title: string }> = [
+  { unit: "tick", label: "/t", title: "Show all rates per tick, the game's own unit: 20 ticks a second" },
   { unit: "second", label: "/s", title: "Show all rates per second" },
   { unit: "minute", label: "/m", title: "Show all rates per minute" },
   { unit: "hour", label: "/h", title: "Show all rates per hour" },

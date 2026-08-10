@@ -165,7 +165,7 @@ interface FactoryStore {
   selectedNodeId?: string;
   selectedRecipeId?: string;
   lastResult: ThroughputResult;
-  /** Board-wide display unit for rates: per second / minute / hour. */
+  /** Board-wide display unit for rates: per tick / second / minute / hour. */
   rateUnit: RateUnit;
   setRateUnit: (unit: RateUnit) => void;
   setProject: (project: FactoryProject) => void;

@@ -1,6 +1,6 @@
 import type { EdgeThroughput, FactoryProject, ThroughputResult } from "@/lib/model/types";
 import { formatCompact, formatNumberWithThousands, formatRate, makeResourceKey } from "@/lib/model";
-import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
+import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
 import { describeStorage, getStorageRoles } from "@/lib/model/storage-role";
 import { parseResourceHandleId } from "./resource-handles";
 import {
@@ -79,7 +79,7 @@ export function formatSlotRateBare(value: number): string {
  * all. This is what kills "−0.000 kL/s" badges forever.
  */
 export function formatSlotRateOrNull(value: number, kind: string): string | null {
-  if (!Number.isFinite(value) || value * rateUnitMultiplier() < 0.0005) {
+  if (!Number.isFinite(value) || value * rateUnitMultiplier() < 0.0005 * rateUnitPrecisionScale()) {
     return null;
   }
   return formatSlotRate(value, kind);
