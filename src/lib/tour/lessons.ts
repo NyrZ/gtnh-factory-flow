@@ -279,7 +279,8 @@ const LOOK_AROUND: TourLesson = {
 const READ_THE_BOARD: TourLesson = {
   id: "read-the-board",
   title: "Read the board",
-  blurb: "Opens a real titanium line, then flies in on one machine and reads it out.",
+  blurb:
+    "Opens a real titanium line, flies in on one machine and reads it out, then shows what the drawers around it are for.",
   // Both columns out of the way for the duration: this lesson is about the
   // canvas and nothing else, and with them open there is not enough board left
   // to magnify a card into. They come back exactly as they were.
@@ -335,6 +336,9 @@ const READ_THE_BOARD: TourLesson = {
           text: "The *percentage* is not about this machine. It is the machine downstream saying how much of what it wanted arrived.",
         },
         { text: "So a low one means somebody further along is going hungry." },
+        {
+          text: "Every output needs *somewhere to go*, even the ones you do not want. A full output bus stops a machine dead.",
+        },
       ],
     },
     {
@@ -350,7 +354,7 @@ const READ_THE_BOARD: TourLesson = {
     {
       anchorSelector: tourCardUsageSelector,
       side: "right",
-      title: "Four words worth knowing",
+      title: "The words it uses",
       rows: [
         {
           chip: "FULL",
@@ -370,7 +374,27 @@ const READ_THE_BOARD: TourLesson = {
         {
           chip: "BLOCKED",
           tone: "blocked",
-          text: "“I am letting the next machine down, but only because I am not being fed. *Not my fault: go fix whoever feeds me.*”",
+          text: "“Somebody downstream is going without, but only because *I* am not being fed. Go fix whoever feeds me.”",
+        },
+      ],
+    },
+    {
+      anchorSelector: tourCardUsageSelector,
+      side: "right",
+      title: "And two about where stuff goes",
+      rows: [
+        {
+          chip: "NO WIRES",
+          tone: "starved",
+          text: "“A slot on me has nothing on it, so I cannot run at all.” The bare slots *flash white*. Wire them and the word goes.",
+        },
+        {
+          chip: "CLOGGED",
+          tone: "blocked",
+          text: "“I am wired up, but I make more of something than anyone takes, and *the extra has nowhere to go*.”",
+        },
+        {
+          text: "A machine stops when its output backs up, exactly as it would in game. Give the spare somewhere to go and it speeds up.",
         },
       ],
     },
@@ -380,14 +404,17 @@ const READ_THE_BOARD: TourLesson = {
       before: frameTourSuppliers,
       title: "This one is a drawer",
       rows: [
-        { text: "Not a machine. A drawer is a pile of something, sitting on the board." },
+        { text: "Not a machine. A drawer is where your plan *touches the outside world*." },
+        {
+          text: "A plan has to say where everything comes from and where it goes. Drawers are how it says it, and *the shape tells you which*.",
+        },
+        {
+          text: "Round corners: a *SOURCE*. Nothing feeds it, so it never runs out, and what leaves it is something you bring in yourself.",
+        },
         {
           chip: "NEED",
           tone: "need",
-          text: "Leave an input wired to nothing and the plan already lists it under NEED: *bring this in yourself*.",
-        },
-        {
-          text: "A drawer says the same thing out loud. It has an empty input of its own, so it asks for the stuff too. Same need, just *drawn on the board*.",
+          text: "Whatever comes out of a source is listed under NEED. Same as it always was: *stuff you have to supply*.",
         },
       ],
     },
@@ -395,21 +422,19 @@ const READ_THE_BOARD: TourLesson = {
       anchorSelector: tourSupplementPairSelector,
       side: "right",
       before: frameTourSupplement,
-      title: "And this is what they are for",
+      title: "The other three shapes",
       rows: [
         {
-          text: "*Two* things feed the one input on this machine: a furnace up the line, and the drawer beside it.",
+          text: "An *eight-sided stop sign* is a PRODUCT. It asks the machine feeding it for everything that machine can make. This is the thing your factory is *for*.",
         },
         {
-          text: "It takes everything the furnace can give it *first*. The drawer only covers what is still missing.",
+          text: "*Corners cut off the bottom* is a BYPRODUCT. It asks for nothing and just catches the extra, so it never speeds a machine up. Use it for the stuff you only need somewhere to put.",
         },
         {
-          chip: "NEED",
-          tone: "need",
-          text: "And what it takes out of the drawer is listed under NEED just the same. It is stuff you still have to bring in.",
+          text: "Swap between those two with the button in the drawer's *top right*.",
         },
         {
-          text: "So the machine runs at *100%* instead of crawling along behind the furnace. That is what a drawer is for.",
+          text: "A plain *square* is a BUFFER: fed and drawn from, sitting in the middle of your chain. It passes on exactly what its takers pull, so it is *not* a place to dump a surplus.",
         },
       ],
     },

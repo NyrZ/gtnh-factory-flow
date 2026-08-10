@@ -11,6 +11,7 @@ import { isRecipeInputConsumed, makeResourceKey } from "@/lib/model";
 import { findDeathSpirals, type DeathSpiral } from "./death-spiral";
 import { isCustomRateRecipe } from "@/lib/model/custom-rate";
 import { collectTrashNodeIds } from "@/lib/model/trash";
+import { describeStorage, getStorageRole, getStorageRoles } from "@/lib/model/storage-role";
 import { makeResourceHandleId } from "./resource-handles";
 
 type ProjectEdge = FactoryProject["edges"][number];
@@ -970,7 +971,7 @@ function findUpstreamCulprit(
   const storage = (project.storages ?? []).find((entry) => entry.id === pick.source);
   if (storage) {
     return {
-      name: `${storage.displayName ?? storage.resourceId} (buffer)`,
+      name: describeStorage(storage, getStorageRole(project, storage.id)),
       kind: "buffer",
       pct: 100,
       atFullSpeed: false,
@@ -1174,11 +1175,11 @@ export function buildRailPorts(
     const recipe = node ? recipesById.get(node.recipeId) : undefined;
     return recipe?.machineType ?? recipe?.name ?? "Machine";
   };
+  const storageRoles = getStorageRoles(project);
   const storageNameOf = (id: string): string => {
     const storage = storagesById.get(id);
-    return storage ? `${storage.displayName ?? storage.resourceId} (buffer)` : "Buffer";
+    return storage ? describeStorage(storage, storageRoles.get(id)) : "Drawer";
   };
-
   const buildSide = (side: "input" | "output"): RailPort[] => {
     const isInput = side === "input";
     const flows = isInput ? nodeResult?.inputs : nodeResult?.outputs;

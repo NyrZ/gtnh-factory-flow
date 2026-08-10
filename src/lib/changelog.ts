@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.46.0",
+    date: "2026-08-10",
+    headline: "Shorter hovers, and the Output list knows what it is looking at",
+    notes: [
+      "Hovers are much shorter. Pointing at a machine, a port or a drawer now gets you the state and one line saying why, instead of a table of rates, a list of every line plugged in and an instruction. The numbers were already on the card and the wires were already on the board.",
+      "Your Output list now tells products and byproducts apart, marks each one with the shape of the drawer catching it, and puts the products first.",
+      "A drawer is called by its job everywhere now. A source used to be described as a buffer in tooltips, which is the opposite of what it does.",
+      "The Read the board tour has been brought up to date: it covers the two new words a machine can say, and what each of the four drawer shapes means.",
+      "The tour also opens a factory that actually runs. The plan it used was drawn before plans had to say where their raw materials come from, so it would have opened as a board of stopped machines.",
+    ],
+  },
+  {
     version: "1.45.0",
     date: "2026-08-10",
     headline: "A drawer tells you what job it is doing",

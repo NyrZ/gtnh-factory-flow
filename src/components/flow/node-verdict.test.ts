@@ -149,7 +149,7 @@ describe("deriveNodeVerdict", () => {
       edges: [edge("eT", "T", "N")],
     });
     expect(deriveNodeVerdict(viaBuffer, starvedResult("eT"), "N").binding?.upstreamName).toBe(
-      "Res Drawer (buffer)",
+      "Res Drawer (source)",
     );
 
     const viaSelf = project({

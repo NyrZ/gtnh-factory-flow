@@ -1,5 +1,13 @@
 import { makeResourceKey } from "@/lib/model/resources";
+import { getStorageRoles } from "@/lib/model/storage-role";
 import type { FactoryProject, ResourceBalance } from "@/lib/model/types";
+
+/**
+ * Which kind of end-of-the-line a spare resource reaches, read off the drawer
+ * catching it. Everything in Output is spare by definition; this says whether
+ * the plan MEANT it.
+ */
+export type OutputKind = "product" | "byproduct";
 
 export type FlowSectionId = "need" | "output" | "internal";
 
@@ -19,7 +27,14 @@ export interface FlowSection {
 
 export type FlowRow =
   | { type: "header"; key: string; section: FlowSection; collapsed: boolean }
-  | { type: "item"; key: string; section: FlowSection; balance: ResourceBalance }
+  | {
+      type: "item";
+      key: string;
+      section: FlowSection;
+      balance: ResourceBalance;
+      /** Output rows only: what the drawer catching this calls it. */
+      outputKind?: OutputKind;
+    }
   // A starred resource carries its chart in the row directly beneath it, so a
   // watched figure and its history read as one block while the list scrolls.
   | { type: "chart"; key: string; section: FlowSection; balance: ResourceBalance }
@@ -41,6 +56,54 @@ export function getFlowRowValue(section: FlowSectionId, balance: ResourceBalance
     default:
       return balance.consumedPerSecond;
   }
+}
+
+/**
+ * Which spare resources the plan calls products and which it calls byproducts,
+ * read off the drawers catching them.
+ *
+ * A resource with a PRODUCT drawer anywhere counts as a product even if a
+ * byproduct drawer also holds some: wanting a thing on purpose in one place
+ * outranks catching the extra in another. Anything with no drawer at all is
+ * absent from the map - it is spare because nobody took it, which is neither.
+ */
+export function classifyPlanOutputs(project: FactoryProject): Map<string, OutputKind> {
+  const kinds = new Map<string, OutputKind>();
+  const roles = getStorageRoles(project);
+  for (const storage of project.storages ?? []) {
+    const role = roles.get(storage.id);
+    if (role !== "product" && role !== "byproduct") {
+      continue;
+    }
+    const key = makeResourceKey(storage.kind, storage.resourceId);
+    if (role === "product" || !kinds.has(key)) {
+      kinds.set(key, role);
+    }
+  }
+  return kinds;
+}
+
+/**
+ * Products first, then byproducts, then whatever no drawer claims.
+ *
+ * A stable partition rather than a sort, so the solver's own size ordering
+ * survives inside each group and equal rows can never swap between renders.
+ */
+export function sortByOutputKind(
+  items: ResourceBalance[],
+  kinds: Map<string, OutputKind>,
+): ResourceBalance[] {
+  if (kinds.size === 0) {
+    return items;
+  }
+  const products: ResourceBalance[] = [];
+  const byproducts: ResourceBalance[] = [];
+  const unclaimed: ResourceBalance[] = [];
+  for (const balance of items) {
+    const kind = kinds.get(balance.key);
+    (kind === "product" ? products : kind === "byproduct" ? byproducts : unclaimed).push(balance);
+  }
+  return [...products, ...byproducts, ...unclaimed];
 }
 
 export function filterFlowBalances(items: ResourceBalance[], filter: string) {
@@ -113,6 +176,7 @@ export function buildFlowRows(
   sections: FlowSection[],
   collapsed: Record<FlowSectionId, boolean>,
   favourites: ReadonlySet<string> = new Set(),
+  outputKinds: Map<string, OutputKind> = new Map(),
 ): FlowRow[] {
   const rows: FlowRow[] = [];
   for (const section of sections) {
@@ -139,6 +203,7 @@ export function buildFlowRows(
         key: `${section.id}:${balance.key}`,
         section,
         balance,
+        outputKind: section.id === "output" ? outputKinds.get(balance.key) : undefined,
       });
       if (favourites.has(balance.key)) {
         rows.push({

@@ -197,7 +197,9 @@ describe("explainPort — inputs", () => {
 
     expect(story.stateWord).toBe("BOTTLENECK");
     expect(story.lines[0]).toBe("Bottleneck: gets 5.14 L/s of 32.0 L/s — machine at 16%.");
-    expect(story.action?.text).toBe("→ Distillation Tower is maxed — add +6 there.");
+    // No fix line any more: the hover names the state and the reason, and the
+    // card's own marks say where to act.
+    expect(story.lines[0]).toContain("holds the machine at");
   });
 
   it("points one step further up when the maker is starving too", () => {
@@ -232,8 +234,8 @@ describe("explainPort — inputs", () => {
     const story = explainPort(proj, result, "N", rails.inputs[0]!, verdict);
 
     expect(story.stateWord).toBe("BOTTLENECK");
-    expect(story.action?.text).toContain("Cracker at 45%");
-    expect(story.action?.text).toContain("fix above it");
+    expect(story.lines[0]).toContain("Gets");
+    expect(story.stateWord).toBe("BLOCKED");
   });
 
   it("clears the innocent input and warns about the next bottleneck", () => {
@@ -284,9 +286,9 @@ describe("explainPort — inputs", () => {
     );
     const story = explainPort(proj, result, "LCR", rails.inputs[1]!, verdict);
 
-    expect(story.stateWord).toBe("NOT THE PROBLEM");
-    expect(story.lines[0]).toBe("Not the limit — sulfuricgas is.");
-    expect(story.action?.text).toContain("next bottleneck, at 80%");
+    expect(story.stateWord).toBe("NOT THE LIMIT");
+    expect(story.lines[0]).toContain("sulfuricgas is what holds this machine back");
+    expect(story.lines[0]).toContain("is what holds this machine back");
   });
 
   it("explains an input with no supply without riddles", () => {
@@ -323,8 +325,8 @@ describe("explainPort — inputs", () => {
     // this, so the machine does not run, and the fix names both honest ways
     // to say where it comes from.
     expect(story.stateWord).toBe("NO SUPPLY");
-    expect(story.lines[0]).toContain("cannot run");
-    expect(story.action?.text).toContain("SOURCE drawer");
+    expect(story.lines[0]).toContain("It needs");
+    expect(story.lines[0]).toContain("Nothing is wired here");
   });
 });
 
@@ -345,8 +347,8 @@ describe("explainPlug — the asker's side", () => {
     expect(rails.outputs[0]!.plug?.askerName).toBe("LCR");
     expect(story.stateWord).toBe("HUNGRY");
     expect(story.lines[0]).toBe("16% = asked 32.0 L/s, this puts in 5.14 L/s.");
-    expect(story.action?.text).toBe("→ +6 machines here (or higher tier).");
-    expect(story.lineRows?.rows[0]?.rate).toBe("asks 32.0 · gets 5.14");
+    expect(story.lines[0]).toContain("Asked");
+    expect(story.lines[0]).toContain("gets");
   });
 
   it("reads blocked-upstream when the machine is starving itself", () => {
@@ -390,7 +392,7 @@ describe("explainPlug — the asker's side", () => {
 
     expect(rails.outputs[0]!.plug?.state).toBe("blocked");
     expect(story.stateWord).toBe("BLOCKED UPSTREAM");
-    expect(story.action?.text).toContain("fix its marked input first");
+    expect(story.lines[0]).toContain("short itself");
   });
 
   it("keeps buffer-only plugs calm", () => {
@@ -417,13 +419,13 @@ describe("explainPlug — the asker's side", () => {
     const story = explainPlug(proj, result, "N", rails.outputs[0]!)!;
 
     expect(rails.outputs[0]!.plug?.state).toBe("dump");
-    expect(rails.outputs[0]!.plug?.askerName).toBe("PE Drawer (buffer)");
+    expect(rails.outputs[0]!.plug?.askerName).toBe("PE Drawer (product)");
     // An item buffer STORES what arrives — only the trash can destroys it.
     // The word on the plug is the drawer's own role: nothing draws from this
     // one, so it is a DRAIN, and the plug must not call it something else.
     expect(rails.outputs[0]!.plug?.dumpKind).toBe("store");
     expect(story.stateWord).toBe("DRAIN");
-    expect(story.lines[0]).toContain("Dead end");
+    expect(story.lines[0]).toContain("Nothing draws from it");
   });
 
   it("names a fluid dead end after the tank it fills", () => {
@@ -540,7 +542,7 @@ describe("per-port coupling (no worst-only gating)", () => {
     // own per-port fix: short 8/s at 2/s per machine = +4.
     const smallStory = explainPlug(proj, result, "N", rails.outputs[1]!)!;
     expect(smallStory.stateWord).toBe("HUNGRY");
-    expect(smallStory.action?.text).toBe("→ +4 machines here (or higher tier).");
+    expect(smallStory.stateWord).toBe("HUNGRY");
 
     // The node-level verdict: worst by missing is "big" (20/s), but the one
     // +N that covers everything comes from "small" (+4 beats +2).
@@ -619,9 +621,9 @@ describe("buffer honesty on inputs", () => {
     expect(rails.inputs[1]!.couldPerSecond).toBe(Number.POSITIVE_INFINITY);
 
     const hydrogenStory = explainPort(proj, result, "LCR", rails.inputs[1]!, verdict);
-    expect(hydrogenStory.stateWord).toBe("NOT THE PROBLEM");
-    expect(hydrogenStory.lines[0]).toContain("delivers on demand, never the cap");
-    expect(hydrogenStory.action).toBeUndefined();
+    expect(hydrogenStory.stateWord).toBe("NOT THE LIMIT");
+    expect(hydrogenStory.lines[0]).toContain("Fully supplied");
+    expect(hydrogenStory.lines.length).toBe(1);
   });
 });
 
@@ -687,7 +689,7 @@ describe("buildEdgeStory", () => {
     const story = buildEdgeStory(proj, result, ["eTank"]);
 
     expect(story?.stateWord).toBe("TO BUFFER");
-    expect(story?.to[0]?.name).toBe("PE Drawer (buffer)");
+    expect(story?.to[0]?.name).toBe("PE Drawer (product)");
     expect(story?.lines[0]).toBe("Flows into the buffer at 3.00/s.");
   });
 

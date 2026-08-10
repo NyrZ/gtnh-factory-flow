@@ -505,77 +505,42 @@ function DrainModeSwap({ storageId, role }: { storageId: string; role: StorageRo
   );
 }
 
+
 /**
- * The hover: in/out totals, every feeder and drainer by name and rate, and a
- * one-line reading of what this buffer IS right now. Rates live here instead
- * of on the card — the card only carries the net.
+ * The drawer hover: which of the four jobs this card is doing, why it is that
+ * one, and the three rates.
+ *
+ * It used to list every feeder and every drainer by name with its own rate,
+ * which on a busy tank was a dozen lines of table hanging off a card whose own
+ * face already carries the net. Those wires are on the board; the thing only
+ * the hover can tell you is which job the drawer has and what decided it.
  */
 function renderStorageHoverContent(storage: FactoryStorage, role: StorageRole): ReactNode {
   const { project, lastResult } = useFactoryStore.getState();
-  const nodesById = new Map(project.nodes.map((entry) => [entry.id, entry]));
-  const recipesById = new Map(project.recipes.map((entry) => [entry.id, entry]));
-  const storagesById = new Map((project.storages ?? []).map((entry) => [entry.id, entry]));
-  const nameOf = (id: string): string => {
-    const other = storagesById.get(id);
-    if (other) {
-      return `${other.displayName ?? other.resourceId} (buffer)`;
-    }
-    const node = nodesById.get(id);
-    const recipe = node ? recipesById.get(node.recipeId) : undefined;
-    return recipe?.machineType ?? recipe?.name ?? "Machine";
-  };
-
-  const feeders: Array<{ name: string; rate: number }> = [];
-  const drainers: Array<{ name: string; rate: number }> = [];
   let inTotal = 0;
   let outTotal = 0;
   for (const edge of project.edges) {
     const rate = lastResult?.edges[edge.id]?.transferredPerSecond ?? 0;
     if (edge.target === storage.id) {
       inTotal += rate;
-      feeders.push({ name: nameOf(edge.source), rate });
     } else if (edge.source === storage.id) {
       outTotal += rate;
-      drainers.push({ name: nameOf(edge.target), rate });
     }
   }
-  feeders.sort((left, right) => right.rate - left.rate);
-  drainers.sort((left, right) => right.rate - left.rate);
   const net = inTotal - outTotal;
-
   const presentation = ROLE_PRESENTATION[role];
-
-  const section = (label: string, rows: Array<{ name: string; rate: number }>) =>
-    rows.length > 0 ? (
-      <div className="mt-1.5 border-t border-white/15 pt-1">
-        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
-        {rows.map((row, index) => (
-          <div key={index} className="flex items-baseline justify-between gap-2 text-[12px]">
-            <span className="min-w-0 flex-1 truncate text-slate-300">{row.name}</span>
-            <span className="shrink-0 tabular-nums text-slate-200">
-              {formatSlotRate(row.rate, storage.kind)}
-            </span>
-          </div>
-        ))}
-      </div>
-    ) : null;
+  const rate = (value: number) => formatSlotRate(value, storage.kind);
 
   return (
-    <div className="w-60">
-      <div className="flex items-baseline justify-between gap-3 text-[12px]">
-        <span className="text-slate-400">In</span>
-        <span className="font-semibold tabular-nums text-slate-200">
-          {formatSlotRate(inTotal, storage.kind)}
-        </span>
+    <div className="w-56">
+      <div className="text-[13px] font-semibold text-white">
+        {storage.displayName ?? storage.resourceId}
+        <span className="ml-1.5 text-[11px] font-bold text-slate-400">{presentation.word}</span>
       </div>
-      <div className="flex items-baseline justify-between gap-3 text-[12px]">
-        <span className="text-slate-400">Out</span>
-        <span className="font-semibold tabular-nums text-slate-200">
-          {formatSlotRate(outTotal, storage.kind)}
-        </span>
-      </div>
-      <div className="flex items-baseline justify-between gap-3 text-[12px]">
-        <span className="text-slate-400">Net</span>
+      <p className="mt-0.5 text-[11px] leading-4 text-slate-300">{presentation.line}</p>
+      <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-white/15 pt-1 text-[12px] text-slate-300">
+        <span>In {rate(inTotal)}</span>
+        <span>Out {rate(outTotal)}</span>
         <span
           className={[
             "font-semibold tabular-nums",
@@ -583,21 +548,8 @@ function renderStorageHoverContent(storage: FactoryStorage, role: StorageRole): 
           ].join(" ")}
         >
           {net >= 0 ? "+" : ""}
-          {formatSlotRate(net, storage.kind)}
+          {rate(net)}
         </span>
-      </div>
-      {section("Fed by", feeders)}
-      {section("Drains to", drainers)}
-      <div className="mt-1.5 border-t border-white/15 pt-1">
-        <div
-          className={[
-            "text-[10px] font-black uppercase tracking-wide",
-            presentation.boundary ? "text-amber-200" : "text-slate-400",
-          ].join(" ")}
-        >
-          {presentation.boundary ? `∞ ${presentation.word}` : presentation.word}
-        </div>
-        <p className="text-[12px] leading-snug text-slate-300">{presentation.line}</p>
       </div>
     </div>
   );

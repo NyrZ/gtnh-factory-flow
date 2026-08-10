@@ -1,3 +1,4 @@
+import { describeStorage, getStorageRole } from "@/lib/model/storage-role";
 import { calculateThroughput } from "@/lib/solver";
 import type {
   FactoryEdge,
@@ -290,7 +291,7 @@ export function buildPocketRailPorts(
       return recipe?.machineType ?? recipe?.name ?? "Machine";
     }
     const storage = storagesById.get(id);
-    return storage ? `${storage.displayName ?? storage.resourceId} (buffer)` : "Card";
+    return storage ? describeStorage(storage, getStorageRole(project, storage.id)) : "Card";
   };
 
   const buildSide = (side: "input" | "output"): RailPort[] => {

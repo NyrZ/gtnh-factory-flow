@@ -84,6 +84,23 @@ export function getStorageRoles(project: FactoryProject): Map<string, StorageRol
   return roles;
 }
 
+/**
+ * A drawer's name as the rest of the UI should say it: the item, then which
+ * of the four jobs it is doing.
+ *
+ * Everything used to append a flat "(buffer)", which is now wrong three times
+ * out of four - a SOURCE is the opposite of a buffer, and calling it one in a
+ * tooltip teaches the reader the wrong word for the thing they are about to
+ * go and look at.
+ */
+export function describeStorage(
+  storage: { displayName?: string; resourceId: string },
+  role: StorageRole | undefined,
+): string {
+  const name = storage.displayName ?? storage.resourceId;
+  return role && role !== "idle" ? `${name} (${role})` : name;
+}
+
 /** One drawer's role. Prefer `getStorageRoles` when asking about several. */
 export function getStorageRole(project: FactoryProject, storageId: string): StorageRole {
   return getStorageRoles(project).get(storageId) ?? "idle";

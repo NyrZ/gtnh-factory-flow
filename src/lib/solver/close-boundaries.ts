@@ -40,6 +40,22 @@ export function closeBoundaries(project: FactoryProject): FactoryProject {
     );
 
   const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
+  const nodesById = new Map(project.nodes.map((node) => [node.id, node]));
+  // Stacked beside the machine they serve rather than piled on the origin:
+  // sources off to its left, drains off to its right, which is the direction
+  // the board already reads in. On grid, so the router keeps its endpoints.
+  const placed = new Map<string, number>();
+  const positionFor = (nodeId: string, side: "in" | "out") => {
+    const anchor = nodesById.get(nodeId)?.position ?? { x: 0, y: 0 };
+    const lane = `${nodeId}|${side}`;
+    const index = placed.get(lane) ?? 0;
+    placed.set(lane, index + 1);
+    return {
+      x: anchor.x + (side === "in" ? -260 : 460),
+      y: anchor.y + index * 160,
+    };
+  };
+
   let seq = 0;
   const attach = (
     nodeId: string,
@@ -54,7 +70,7 @@ export function closeBoundaries(project: FactoryProject): FactoryProject {
       id = `boundary-${side}-${seq}`;
     }
     storageIds.add(id);
-    storages.push({ id, kind, resourceId, position: { x: 0, y: 0 } });
+    storages.push({ id, kind, resourceId, position: positionFor(nodeId, side) });
     edges.push({
       id: `boundary-edge-${side}-${seq}`,
       source: side === "in" ? id : nodeId,

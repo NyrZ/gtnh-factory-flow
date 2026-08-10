@@ -4,6 +4,7 @@ import { loadBiodieselDemoProject } from "@/examples";
 import { downloadCommunityPlan, tagPlanWithCommunityId } from "@/lib/community/client";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import type { FactoryProject } from "@/lib/model/types";
+import { closeBoundaries } from "@/lib/solver/close-boundaries";
 import { readWorkspaceViewSnapshot, writeWorkspaceView } from "@/lib/workspace-view";
 import { useDesignStore } from "@/store/design-store";
 import { useFactoryStore, type BoardFraming } from "@/store/factory-store";
@@ -154,15 +155,22 @@ function moveCamera(run: () => boolean) {
  * back rather than leaving the tour pointing at nothing.
  */
 async function fetchTourProject(): Promise<FactoryProject> {
+  // Both routes go through closeBoundaries. Every plan worth teaching from was
+  // authored before a plan had to declare its own edges, so its raw ingredients
+  // arrive from nowhere and its product goes nowhere - and under the closed
+  // rules that is a board of machines all reading NO WIRES at 0%. Nobody
+  // learns to read a factory from a dead one. Closing it puts a SOURCE on
+  // every raw input and a PRODUCT drawer on every finished output, which is
+  // exactly what the lesson goes on to teach.
   try {
     const { plan } = await downloadCommunityPlan(TOUR_PLAN_COMMUNITY_ID);
     const project = parseFactoryProjectJson(
       JSON.stringify(tagPlanWithCommunityId(plan, TOUR_PLAN_COMMUNITY_ID)),
     );
-    return { ...project, name: TOUR_PLAN_DESIGN_NAME };
+    return closeBoundaries({ ...project, name: TOUR_PLAN_DESIGN_NAME });
   } catch {
     const project = loadBiodieselDemoProject();
-    return { ...project, name: TOUR_PLAN_DESIGN_NAME };
+    return closeBoundaries({ ...project, name: TOUR_PLAN_DESIGN_NAME });
   }
 }
 

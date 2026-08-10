@@ -90,7 +90,6 @@ import {
   makeResourceHandleId,
 } from "./resource-handles";
 import {
-  buildLimitLadder,
   buildRailPorts,
   deriveNodeVerdict,
   isSupplyShort,
@@ -1295,7 +1294,7 @@ function UsageStat({
 
   return (
     <MinecraftTooltip
-      content={<VerdictHoverContent nodeId={nodeId} verdict={verdict} isCustomRate={isCustomRate} />}
+      content={<VerdictHoverContent verdict={verdict} isCustomRate={isCustomRate} />}
     >
       {/* One card, one divider: the number and the word are the same
           sentence — how hard it runs, and why. Two boxes read as two facts. */}
@@ -1350,69 +1349,24 @@ function UsageStat({
  * where it lands once today's wall is gone.
  */
 function VerdictHoverContent({
-  nodeId,
   verdict,
   isCustomRate,
 }: {
-  nodeId: string;
   verdict: NodeVerdict;
   isCustomRate: boolean;
 }) {
-  const project = useFactoryStore((state) => state.project);
-  const lastResult = useFactoryStore((state) => state.lastResult);
-  const machineCount = Math.max(
-    1,
-    project.nodes.find((entry) => entry.id === nodeId)?.machineCount ?? 1,
-  );
-  const ladder = useMemo(
-    () => buildLimitLadder(project, lastResult, nodeId),
-    [lastResult, nodeId, project],
-  );
-
   const title = verdictHoverTitle(verdict, isCustomRate);
   const detail = verdictHoverDetail(verdict, isCustomRate);
-  const fix = verdictHoverFix(verdict, machineCount, isCustomRate);
-  const next = ladder.length > 1 ? ladder[1] : undefined;
 
+  // Two lines: what this card is doing, and why it reads that way. Nothing
+  // else. This used to carry a fix note and a four-rung ladder of what caps
+  // the card next, which is a briefing rather than a hover - by the time you
+  // have read it you have forgotten what you pointed at. The marks on the card
+  // already say where to act; the hover only has to name the state.
   return (
-    <div className="w-64">
+    <div className="w-60">
       <div className="text-[13px] font-semibold text-white">{title}</div>
-      {detail ? <div className="mt-0.5 text-[11px] text-slate-300">{detail}</div> : null}
-      {fix ? (
-        <div className="mt-2 border-t border-white/15 pt-1.5">
-          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-            {fix.heading}
-          </div>
-          <div className="text-[11px] leading-4 text-slate-200">{fix.body}</div>
-        </div>
-      ) : null}
-      {ladder.length > 1 ? (
-        <div className="mt-2 border-t border-white/15 pt-1.5">
-          <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-            What caps it next
-          </div>
-          {ladder.map((rung) => (
-            <div
-              key={`${rung.label}|${rung.pct}`}
-              className={[
-                "flex items-baseline gap-2 text-[11px] leading-4",
-                rung.now ? "font-semibold text-white" : "text-slate-300",
-              ].join(" ")}
-            >
-              <span className="w-10 shrink-0 text-right tabular-nums">{formatPct(rung.pct)}%</span>
-              <span className="min-w-0 flex-1">{rung.label}</span>
-            </div>
-          ))}
-          {/* Only a supply wall can be "cleared" — on a bottleneck the wall it
-              stands on is its own machine count, and "clear that" would be
-              advice to delete the machines. */}
-          {next && ladder[0]?.now && isSupplyShort(verdict.kind) ? (
-            <div className="mt-0.5 text-[10px] leading-[14px] text-slate-400">
-              Clear that and this lands at {formatPct(next.pct)}%, held by {next.label}.
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {detail ? <div className="mt-0.5 text-[11px] leading-4 text-slate-300">{detail}</div> : null}
     </div>
   );
 }
@@ -1553,80 +1507,6 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
   }
 }
 
-function verdictHoverFix(
-  verdict: NodeVerdict,
-  machineCount: number,
-  isCustomRate: boolean,
-): { heading: string; body: string } | undefined {
-  if (verdict.kind === "dead-loop" && verdict.spiral) {
-    return { heading: "How to start it", body: describeDeathSpiral(verdict.spiral).fix };
-  }
-  // Stated, never scolded: a clog is a plan making more of something than it
-  // wants, which is normal. Three ways out, all one wire, and the reader picks
-  // by what they would really do in game.
-  if (verdict.kind === "clogged" && verdict.clog) {
-    return {
-      heading: "Where it could go",
-      body: `Wire the spare ${verdict.clog.displayName} to a drawer nothing draws from, a trash can, or another machine that wants it. Any of the three frees ${formatPct(verdict.clog.heldBackPct)}% more speed here.`,
-    };
-  }
-  // Starved costs nobody anything, so it gets no fix note at all: a card with
-  // nothing to answer for must not hand out homework.
-  if (verdict.kind === "blocked") {
-    const upstream = verdict.binding?.upstream;
-    if (!upstream) {
-      return { heading: "Where to act", body: "Upstream, on the short line." };
-    }
-    if (upstream.kind === "loop") {
-      return { heading: "Where to act", body: "Fed by its own loop. Prime it from a buffer." };
-    }
-    if (upstream.kind === "buffer") {
-      return { heading: "Where to act", body: `${upstream.name} is running dry. Feed it faster.` };
-    }
-    const state = upstream.atFullSpeed
-      ? `${upstream.name} is already flat out.`
-      : upstream.hasHeadroom
-        ? `${upstream.name} runs at ${formatPct(upstream.pct)}% and could make more.`
-        : `${upstream.name} runs at ${formatPct(upstream.pct)}% and is held back itself.`;
-    const count = upstream.machinesToAdd
-      ? ` Add +${upstream.machinesToAdd} machine${upstream.machinesToAdd > 1 ? "s" : ""} there${
-          upstream.machineCount ? ` (${upstream.machineCount} today)` : ""
-        }.`
-      : upstream.hasHeadroom || upstream.atFullSpeed
-        ? " Add machines there, or a higher tier."
-        : " Follow the chain up.";
-    // A blocked card can ALSO be under-built: the shortfall measured from its
-    // own full blast is what upstream can never fix for it. Saying so stops
-    // the second surprise after the first fix lands.
-    const alsoHere = verdict.deficit?.machinesToAdd
-      ? ` Even fed, this still needs +${verdict.deficit.machinesToAdd} of its own.`
-      : "";
-    return { heading: "Where to act", body: `${state}${count}${alsoHere}` };
-  }
-  if (verdict.kind === "bottleneck") {
-    const deficit = verdict.deficit;
-    if (isCustomRate) {
-      return {
-        heading: "Fix here",
-        body: deficit
-          ? `Raise the rate by ${formatSlotRate(deficit.missingPerSecond, deficit.kind)}.`
-          : "Raise the rate.",
-      };
-    }
-    if (!deficit?.machinesToAdd) {
-      return { heading: "Fix here", body: "Add machines, or a higher tier." };
-    }
-    const covers =
-      deficit.hungryOutputs > 1 ? ` covers all ${deficit.hungryOutputs}` : " covers it";
-    return {
-      heading: "Fix here",
-      body: `+${deficit.machinesToAdd} machine${
-        deficit.machinesToAdd > 1 ? "s" : ""
-      }${covers} (${machineCount} today), or a higher tier.`,
-    };
-  }
-  return undefined;
-}
 
 /**
  * A block that is always a whole number of grid cells tall, and always tall
@@ -2586,56 +2466,23 @@ function renderPortHoverContent(port: RailPort, nodeId: string) {
   );
 }
 
-/** The shared teaching body: honest rows, per-line list, plain answer, fix. */
+/**
+ * The whole body of a port or plug hover: one sentence.
+ *
+ * It used to be a table of rates, then a list of every line plugged in with
+ * the far machine's own speed beside it, then an arrowed instruction. The
+ * numbers are already on the port, the lines are already on the board, and the
+ * marks already say where to act.
+ */
 function StoryBody({ story }: { story: PortStory }) {
   return (
-    <>
-      {story.rows.length > 0 ? (
-        <div className="mt-1">
-          {story.rows.map((row) => (
-            <div key={row.k} className="flex items-baseline justify-between gap-3 text-[12px]">
-              <span className="text-slate-400">{row.k}</span>
-              <span className="font-semibold tabular-nums text-slate-200">{row.v}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {story.lineRows ? (
-        <div className="mt-2 border-t border-white/15 pt-1.5">
-          <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-            {story.lineRows.title}
-          </div>
-          {story.lineRows.rows.map((row, index) => (
-            <div
-              key={index}
-              className="mt-0.5 flex items-baseline justify-between gap-2 text-[12px]"
-            >
-              {/* Name and note truncate separately so "runs at 45%" never
-                  disappears behind a long machine name. */}
-              <span className="min-w-0 flex-1 truncate text-slate-300">{row.name}</span>
-              {row.note ? (
-                <span className="shrink-0 text-[11px] text-slate-500">{row.note}</span>
-              ) : null}
-              <span className="shrink-0 tabular-nums text-slate-200">{row.rate}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mt-2 border-t border-white/15 pt-1.5 text-[12px] leading-snug text-slate-200">
-        {story.lines.map((line, index) => (
-          <p key={index} className="mb-1 last:mb-0">
-            {line}
-          </p>
-        ))}
-        {story.action ? (
-          <p className={["mt-1 font-semibold", STORY_ACTION_TEXT[story.action.tone]].join(" ")}>
-            {story.action.text}
-          </p>
-        ) : null}
-      </div>
-    </>
+    <div className="mt-1.5 border-t border-white/15 pt-1.5 text-[12px] leading-snug text-slate-200">
+      {story.lines.map((line, index) => (
+        <p key={index} className="mb-1 last:mb-0">
+          {line}
+        </p>
+      ))}
+    </div>
   );
 }
 
