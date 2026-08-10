@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, X } from "lucide-react";
 import { ChangelogDialog } from "@/components/ChangelogDialog";
-import type { ChangelogEntry } from "@/lib/changelog";
+import { CHANGELOG, type ChangelogEntry } from "@/lib/changelog";
 import { useDeployedVersion } from "@/lib/use-deployed-version";
 import {
   markVersionSeenAndNotify,
   needsInterrupting,
+  pendingForcedEntries,
   subscribeToVersionSeen,
   unseenEntries,
 } from "@/lib/whats-new";
@@ -38,11 +39,20 @@ export function WhatsNewGate() {
   // After mount, never during render: it reads localStorage, and a server
   // render has none, so deciding this any earlier is a hydration mismatch.
   useEffect(() => {
+    // Two questions, and the second one exists because the first cannot always
+    // be answered. `unseenEntries` needs a stamp to compare against and treats
+    // a browser without one as a first visit; `pendingForcedEntries` is for the
+    // releases that must not be missed on that account.
     const unseen = unseenEntries();
+    const forced = pendingForcedEntries();
+    const shown = new Set([...unseen, ...forced].map((entry) => entry.version));
+    // Rebuilt from CHANGELOG rather than concatenated, so the two sources
+    // cannot double up an entry or land it out of order.
+    const combined = CHANGELOG.filter((entry) => shown.has(entry.version));
     // Only the releases that change what a saved plan MEANS get a dialog. The
     // rest are announced by the dot on the header button, which is there to be
     // noticed rather than answered.
-    setEntries(needsInterrupting(unseen) ? unseen : []);
+    setEntries(needsInterrupting(combined) ? combined : []);
   }, []);
 
   useEffect(() => subscribeToVersionSeen(() => setEntries([])), []);

@@ -46,6 +46,25 @@ export interface ChangelogEntry {
    * are one block instead of a sentence and a button that got separated.
    */
   warning?: string;
+  /**
+   * Show this release to EVERY browser once, whatever it has seen before.
+   *
+   * The ordinary rule needs a version stamp to compare against, and a browser
+   * with no stamp is treated as a first visit and told nothing. That is right
+   * for somebody genuinely new, and it was wrong for the release that
+   * introduced the stamp: nobody had one yet, so a player who had used the
+   * planner for months looked exactly like a stranger and the one release the
+   * whole feature exists for was the one release nobody was shown.
+   *
+   * So this flag is not "important" - `warning` already says that. It is
+   * specifically "do not trust the stamp for this one". Spend it on a release
+   * that changes what the board MEANS, and expect to spend it roughly never;
+   * once a browser holds a stamp the ordinary path is enough.
+   *
+   * Tracked separately from the stamp, so it fires exactly once per browser
+   * and cannot repeat.
+   */
+  showToEveryone?: boolean;
   /** Offered as buttons under the notes. */
   actions?: ChangelogAction[];
 }
@@ -66,6 +85,9 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
     warning:
       "*Your saved setups will act different.* Some machines will have stopped until you say where things go.",
+    // The release that introduced the version stamp, so no browser alive has
+    // one to compare against. Without this, nobody sees these notes at all.
+    showToEveryone: true,
     actions: [{ label: "Take the tour", lessonId: "read-the-board" }],
   },
   {

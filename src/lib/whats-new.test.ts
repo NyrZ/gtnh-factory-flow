@@ -6,16 +6,31 @@ vi.mock("@/lib/changelog", () => ({
   CHANGELOG: [
     { version: "1.46.0", date: "2026-08-10", headline: "c", notes: [] },
     { version: "1.45.0", date: "2026-08-10", headline: "b", notes: [] },
-    // The one that changed what a saved plan means.
-    { version: "1.44.0", date: "2026-08-09", headline: "a", notes: [], warning: "setups differ" },
+    // The one that changed what a saved plan means, and the one that has to
+    // reach every browser whatever its stamp says.
+    {
+      version: "1.44.0",
+      date: "2026-08-09",
+      headline: "a",
+      notes: [],
+      warning: "setups differ",
+      showToEveryone: true,
+    },
   ],
 }));
 
-const { compareVersions, markVersionSeen, needsInterrupting, unseenEntries } = await import(
-  "@/lib/whats-new"
-);
+const {
+  compareVersions,
+  markForcedShown,
+  markVersionSeen,
+  markVersionSeenAndNotify,
+  needsInterrupting,
+  pendingForcedEntries,
+  unseenEntries,
+} = await import("@/lib/whats-new");
 
 const KEY = "gtnh-factory-flow.last-seen-version.v1";
+const FORCED_KEY = "gtnh-factory-flow.forced-notes.v1";
 
 describe("compareVersions", () => {
   it("orders by number, not by string", () => {
@@ -76,5 +91,50 @@ describe("unseenEntries", () => {
     expect(window.localStorage.getItem(KEY)).toBe("1.44.0");
     markVersionSeen();
     expect(unseenEntries()).toEqual([]);
+  });
+});
+
+describe("pendingForcedEntries", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  /*
+   * The hole this closes: the release that INTRODUCED the version stamp is one
+   * no browser has a stamp for. Every reader alive looks like a first visit, so
+   * the ordinary path shows nobody anything, and the one release worth
+   * interrupting for is the one release that never interrupts.
+   */
+  it("reaches a first-time browser, which the stamp cannot", () => {
+    expect(unseenEntries()).toEqual([]);
+    expect(pendingForcedEntries().map((entry) => entry.version)).toEqual(["1.44.0"]);
+  });
+
+  it("still reaches a browser whose arrival silently stamped it current", () => {
+    // What actually happens in the wild: `unseenEntries` writes the stamp on
+    // the way past, so by the time anything asks again it says "current".
+    unseenEntries();
+    expect(window.localStorage.getItem(KEY)).toBe("1.46.0");
+    expect(pendingForcedEntries()).toHaveLength(1);
+  });
+
+  it("fires once per browser and never again", () => {
+    markForcedShown(["1.44.0"]);
+    expect(pendingForcedEntries()).toEqual([]);
+  });
+
+  it("is spent by reading the notes through any route", () => {
+    // Including the header button, which calls this. Somebody who went looking
+    // and read it does not want it thrown at them on the next load.
+    markVersionSeenAndNotify();
+    expect(JSON.parse(window.localStorage.getItem(FORCED_KEY)!)).toEqual(["1.44.0"]);
+    expect(pendingForcedEntries()).toEqual([]);
+  });
+
+  it("survives a corrupt record by offering the notes again", () => {
+    window.localStorage.setItem(FORCED_KEY, "{not json");
+    expect(pendingForcedEntries()).toHaveLength(1);
+  });
+
+  it("carries the warning, so the combined list still earns a dialog", () => {
+    expect(needsInterrupting(pendingForcedEntries())).toBe(true);
   });
 });
