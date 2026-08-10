@@ -161,14 +161,27 @@ function placeCard(
     arrow: 0,
   });
 
-  // Dead centre when the card is adrift, but LOW when a step deliberately sits
-  // over its target: `inside` is asked for by the steps that spotlight the
-  // whole board, and a card in the middle of it covers the very thing the step
-  // is telling you to look at.
+  // Dead centre when the card is adrift and there is nowhere better.
   const centred = () => over(hole.top + (hole.height - card.height) / 2);
 
+  // `inside` is asked for by the steps that spotlight the WHOLE BOARD, where
+  // there is no "beside" to sit in. It parks against the right edge rather
+  // than over the middle, because the board's own framing for those steps
+  // keeps a strip clear on the right for exactly this (`insetRight`, see
+  // tour-boards) - so the card lands on empty canvas instead of on top of the
+  // machines the step is telling you to look at. Centred, low or otherwise, it
+  // covered its own subject.
   if (preferred === "inside") {
-    return over(hole.top + hole.height - card.height - 28);
+    return {
+      left: Math.max(EDGE_MARGIN, vw - card.width - EDGE_MARGIN),
+      top: clamp(
+        hole.top + (hole.height - card.height) / 2,
+        EDGE_MARGIN,
+        Math.max(EDGE_MARGIN, vh - card.height - EDGE_MARGIN),
+      ),
+      side: "inside",
+      arrow: 0,
+    };
   }
 
   const room: Record<Exclude<TourSide, "inside">, number> = {

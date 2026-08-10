@@ -434,6 +434,50 @@ export const tourBufferDrawerSelector = drawerSelector("bufferDrawerIds");
 export const frameTourBufferDrawer = frameDrawers("bufferDrawerIds");
 
 /**
+ * The last step performs its point rather than describing it: it pulls the
+ * plan's product drawer off the board and lets the reader watch the whole line
+ * go dark.
+ *
+ * Nothing else in the lesson touches the plan, so this is the one thing here
+ * that has to be undoable. The whole project is snapshotted rather than the
+ * drawer and its wires, because putting a card back is not the same operation
+ * as deleting one - `deleteStorage` also drops every edge that touched it, and
+ * rebuilding those by hand is a second chance to get it wrong.
+ */
+let planBeforeCut: FactoryProject | undefined;
+
+export function cutTourProduct(): void {
+  moveCamera(() => {
+    const ids = ensurePicks()?.productDrawerIds ?? [];
+    if (ids.length === 0) {
+      return false;
+    }
+    const store = useFactoryStore.getState();
+    planBeforeCut ??= store.project;
+    for (const id of ids) {
+      store.deleteStorage(id);
+    }
+    // Wide, because the point is what happens to EVERYTHING, not to the gap
+    // where the drawer was.
+    useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
+    return true;
+  });
+}
+
+/**
+ * Put it back. Runs on the way out of the lesson however it ends, and on the
+ * way BACK into the step before it, so stepping backwards undoes the cut the
+ * same way stepping forwards made it.
+ */
+export function restoreTourProduct(): void {
+  if (!planBeforeCut) {
+    return;
+  }
+  useFactoryStore.getState().markHydratedProject(planBeforeCut);
+  planBeforeCut = undefined;
+}
+
+/**
  * A drawer that is TOPPING UP an input, rather than being its only source.
  *
  * The two drawers teach different halves of the same thing. A drawer that is

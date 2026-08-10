@@ -30,6 +30,8 @@ import { openSidebarTab } from "@/lib/sidebar-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import {
   clearTheDecks,
+  cutTourProduct,
+  restoreTourProduct,
   frameTourBlocked,
   frameTourBottleneck,
   frameTourBufferDrawer,
@@ -297,7 +299,12 @@ const READ_THE_BOARD: TourLesson = {
     clearTheDecks();
     return openTourPlan();
   },
-  teardown: restoreTheDecks,
+  // The last step cuts a drawer off the board to make its point. However the
+  // lesson ends - finished, skipped, closed - the plan goes back as it was.
+  teardown: () => {
+    restoreTourProduct();
+    restoreTheDecks();
+  },
   steps: [
     {
       anchor: "board",
@@ -327,7 +334,6 @@ const READ_THE_BOARD: TourLesson = {
       rows: [
         { text: "One row per ingredient. The bar is how much of it is actually turning up." },
         { text: "Nothing this machine wants is running short." },
-        { text: "So whatever is wrong, it's not these inputs." },
       ],
     },
     {
@@ -357,7 +363,6 @@ const READ_THE_BOARD: TourLesson = {
         {
           text: "This is the one word that means *build more of this machine*. Nothing upstream will help: it already has everything it wants.",
         },
-        { text: "Usage 100% and a problem anyway. A high number is not automatically good." },
       ],
     },
     {
@@ -375,14 +380,11 @@ const READ_THE_BOARD: TourLesson = {
       side: "right",
       title: "Only one of these is the problem",
       rows: [
-        { text: "*Two* of these inputs arent getting what they wants." },
+        { text: "*Teo* of these inputs arent getting what they want." },
         {
           text: "But only the slowest of them is marked, and that is the one actually setting the speed.",
         },
-        {
-          text: "The other one low because the machine is already crawling, so it is not drawing its full share of them either. Fix the marked one and the rest come up on their own.",
-        },
-        { text: "A machine only ever has *one* thing holding it back. The color tells you which." },
+        { text: "A machine only ever has *one* thing holding it back." },
       ],
     },
     {
@@ -393,13 +395,10 @@ const READ_THE_BOARD: TourLesson = {
         {
           chip: "BLOCKED",
           tone: "blocked",
-          text: "“It is technically bottlenecked! but but only because this machine is not being fed.”",
+          text: "“I am technically bottlenecked, but but only because I am not being fed enough.”",
         },
         {
-          text: "Building more of *this* machine would achieve nothing. It cannot use what it has already got.",
-        },
-        {
-          text: "Follow a blocked card upstream and you always arrive at a bottleneck, a source you dialled down, or a dead loop. *The red cards are the whole to-do list.*",
+          text: "Building more of *this* machine would achieve nothing. It cannot use all of what it has already.",
         },
       ],
     },
@@ -419,17 +418,14 @@ const READ_THE_BOARD: TourLesson = {
       before: frameTourSourceDrawer,
       title: "Drawers: where the plan meets the world",
       rows: [
-        { text: "Not a machine. A drawer is where your plan *touches the outside world*." },
+        { text: "Not a machine. A *Source* is where a plan actually gets resources." },
         {
-          text: "There are four jobs a drawer can do, and *the shape tells you which*. This one has round corners: a *SOURCE*.",
-        },
-        {
-          text: "Nothing feeds it, so it never runs out. It asks for nothing and just *provides*, forever.",
+          text: "Sources are denoted with rounded corners.",
         },
         {
           chip: "NEED",
           tone: "need",
-          text: "What comes out of it is listed under NEED. It is *stuff you have to bring in yourself*.",
+          text: "What comes out of it is listed under NEED. It is considered a input of the plan itself.",
         },
       ],
     },
@@ -439,11 +435,14 @@ const READ_THE_BOARD: TourLesson = {
       before: frameTourProductDrawer,
       title: "A product asks for everything",
       rows: [
-        { text: "Eight sides, like a stop sign. This is the thing your factory is *for*." },
+        { text: "This is the thing your factory is *for*." },
         {
-          text: "A product drawer asks the machine feeding it for *100% of what that machine can make*. It pulls as hard as it possibly can.",
+          text: "A product drawer asks the machine feeding it for *100% of what that machine can make*.",
         },
         { text: "Which is why a machine with one of these on it runs flat out." },
+        {
+          text: "Products are consited primary outputs of a plan."
+        }
       ],
     },
     {
@@ -452,12 +451,11 @@ const READ_THE_BOARD: TourLesson = {
       before: frameTourByproductDrawer,
       title: "A byproduct asks for nothing",
       rows: [
-        { text: "The same shape with *the bottom corners opened out*, like a funnel." },
         { text: "A byproduct drawer asks for *nothing at all*. It just takes whatever it is given." },
         {
           text: "So it never speeds a machine up. Use it for the second thing a machine spits out that you only need *somewhere to put*.",
         },
-        { text: "Swap a drawer between the two with the button in its *top right*." },
+        { text: "Swap a drawer between the two with the button in its *top right button*." },
       ],
     },
     {
@@ -466,9 +464,8 @@ const READ_THE_BOARD: TourLesson = {
       before: frameTourBufferDrawer,
       title: "And a buffer does no magic at all",
       rows: [
-        { text: "A plain *square*: fed on one side, drawn from on the other." },
         {
-          text: "That is the whole of it. An input and an output. *It can never put out more than it takes in.*",
+          text: "An input and an output. *It can never put out more than it takes in.*",
         },
         {
           text: "So it is no place to dump a surplus, and it cannot rescue a machine that is not being fed enough. It passes along what its takers pull, and no more.",
@@ -478,7 +475,12 @@ const READ_THE_BOARD: TourLesson = {
     {
       anchorSelector: tourBottleneckUsageSelector,
       side: "right",
-      before: frameTourBottleneck,
+      // Also puts the product drawer back, so stepping BACK out of the last
+      // step undoes the cut the same way stepping forward made it.
+      before: () => {
+        restoreTourProduct();
+        frameTourBottleneck();
+      },
       title: "Two more words you will meet",
       rows: [
         {
@@ -494,6 +496,29 @@ const READ_THE_BOARD: TourLesson = {
         {
           text: "A machine stops when an output backs up, exactly as it would in game. Give the spare a byproduct drawer and it runs again.",
         },
+      ],
+    },
+    {
+      anchor: "board",
+      side: "inside",
+      before: cutTourProduct,
+      title: "So let us break it on purpose",
+      rows: [
+        {
+          text: "We just deleted the *titanium ingot drawer*. That was the only thing taking the finished titanium.",
+        },
+        {
+          chip: "NO WIRES",
+          tone: "starved",
+          text: "The freezer that made it now has an output with *nothing on it*, so it stops dead.",
+        },
+        {
+          text: "And look at the rest. *Every machine on the board is at 0%.* Nobody is asking for anything any more, so the whole line behind it has nothing to do.",
+        },
+        {
+          text: "One drawer. Six machines. *Everything a machine makes has to be going somewhere*, or it does not run at all, exactly as in game.",
+        },
+        { text: "Leave the tour and the drawer comes back." },
       ],
     },
   ],
