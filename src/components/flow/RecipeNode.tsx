@@ -547,6 +547,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     verdict.kind === "dead-loop",
     "dead-loop-breathe",
   );
+  // Shared clock, same as the ring above: a board full of half-wired cards
+  // has to breathe as one thing, or it reads as unrelated flickering.
+  const unwiredPhaseRef = useSharedAnimationPhase<HTMLDivElement>(
+    verdict.kind === "unwired",
+    "unwired-ring-breathe",
+  );
   // The outlines the card is wearing, innermost first. They STACK rather than
   // override: each ring starts where the one inside it stopped. Selection is
   // innermost, which is also the ring painted on top — clicking a card has to
@@ -670,6 +676,12 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           everything except the eye. */}
       {verdict.kind === "dead-loop" ? (
         <div ref={deadLoopPhaseRef} aria-hidden className="dead-loop-ring" />
+      ) : null}
+      {/* The same trick for an unfinished card, and quiet on purpose: the
+          slots are what you have to go and fix, so THEY carry the loud pulse
+          and the card only breathes enough to be findable on a busy board. */}
+      {verdict.kind === "unwired" ? (
+        <div ref={unwiredPhaseRef} aria-hidden className="unwired-ring" />
       ) : null}
       {/* Selection, the over-tier warning and a search hit, on the card's own
           box for the same reason the ring above is. One element and one
@@ -1309,7 +1321,9 @@ function UsageStat({
           </div>
         </div>
         <div className="my-0.5 w-px shrink-0 bg-[var(--mc-47)]" />
-        <div className="min-w-0 px-1.5">
+        {/* verdict-reason-cell: on an unwired card the WHOLE cell breathes,
+            label and all, not just the word inside it. */}
+        <div className="verdict-reason-cell min-w-0 px-1.5">
           <div className="text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
             Reason
           </div>

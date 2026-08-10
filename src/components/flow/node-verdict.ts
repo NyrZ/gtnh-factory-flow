@@ -497,6 +497,57 @@ export function deriveNodeVerdict(
 }
 
 /**
+ * Every card with a slot still to connect, in one pass over the board.
+ *
+ * Deliberately not `deriveNodeVerdict` per node: that runs the death-spiral
+ * search, and doing it once per card would be O(nodes x board) on something
+ * the board-level notice recomputes whenever the plan or the solve changes.
+ * The bare-slot test needs neither the spiral nor the solver's numbers, so
+ * this walks the edges once and answers in O(nodes + edges).
+ */
+export function findUnwiredNodeIds(
+  project: FactoryProject,
+  result: ThroughputResult | undefined,
+): string[] {
+  const incomingBy = new Map<string, ProjectEdge[]>();
+  const outgoingBy = new Map<string, ProjectEdge[]>();
+  for (const edge of project.edges) {
+    const into = incomingBy.get(edge.target);
+    if (into) {
+      into.push(edge);
+    } else {
+      incomingBy.set(edge.target, [edge]);
+    }
+    const from = outgoingBy.get(edge.source);
+    if (from) {
+      from.push(edge);
+    } else {
+      outgoingBy.set(edge.source, [edge]);
+    }
+  }
+
+  const ids: string[] = [];
+  for (const node of project.nodes) {
+    if (node.enabled === false) {
+      continue;
+    }
+    const nodeResult = result?.nodes[node.id];
+    if (!nodeResult || nodeResult.status === "missing-recipe") {
+      continue;
+    }
+    const incoming = incomingBy.get(node.id) ?? [];
+    const outgoing = outgoingBy.get(node.id) ?? [];
+    if (
+      findBareSlots(project, nodeResult, incoming, outgoing) ||
+      (incoming.length === 0 && outgoing.length === 0)
+    ) {
+      ids.push(node.id);
+    }
+  }
+  return ids;
+}
+
+/**
  * Every slot with no wire on it, or undefined when the card is fully wired.
  *
  * Consumed inputs and real outputs only: a non-consumed input is not an

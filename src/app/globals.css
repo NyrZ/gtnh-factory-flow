@@ -1024,29 +1024,55 @@ img {
   --state-accent: #ffffff;
 }
 
-/* A slot with no wire is drawn like an unfinished line on a plan: dashed, and
-   breathing so the eye is pulled to it across a busy board. The two marks
-   share one animation NAME and period, so the word and the ports it refers to
-   blink as one thing on any card they mount with. */
+/* Three marks, one clock (1.9s), graded by how much each one is the ANSWER.
+   The slots are what you go and fix, so they swing hardest; the reason cell
+   names them; the card only breathes enough to be findable across a board.
+   All three share the period so a card reads as one object pulsing, not as
+   three things flickering near each other. */
+
+/* The loud one. A slot with no wire is drawn like an unfinished line on a
+   plan - dashed - and swings the full width of the chalk range, picking up a
+   halo at the top of the breath so it carries at a distance. */
 @keyframes unwired-port-breathe {
   0%,
   100% {
-    border-color: var(--state-edge);
-    background: var(--state-wash);
+    border-color: #8f9bad;
+    background: #2f3640;
+    box-shadow: none;
   }
   50% {
     border-color: #ffffff;
-    background: #4b5666;
+    background: #5b6879;
+    box-shadow: 0 0 0 2px rgba(238, 242, 248, 0.5);
   }
 }
 
-@keyframes unwired-word-breathe {
+/* The middle one: the whole REASON cell, label included. */
+@keyframes unwired-reason-breathe {
   0%,
   100% {
-    opacity: 0.5;
+    background: transparent;
+    opacity: 0.62;
   }
   50% {
+    background: rgba(238, 242, 248, 0.16);
     opacity: 1;
+  }
+}
+
+/* The quiet one: the card itself, a ring only. Width is constant and only
+   colour and halo move, for the reason the dead-loop ring documents at
+   length - a ring that thins below a device pixel at glance zoom does not
+   dim, it vanishes and comes back. */
+@keyframes unwired-ring-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 var(--unwired-ring) rgba(200, 210, 224, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 0 var(--unwired-ring) rgba(238, 242, 248, 0.85),
+      0 0 var(--unwired-halo) 2px rgba(220, 230, 244, 0.28);
   }
 }
 
@@ -1055,24 +1081,62 @@ img {
   animation: unwired-port-breathe 1.9s ease-in-out infinite;
 }
 
-.recipe-node-shell[data-verdict="unwired"] .verdict-word {
-  animation: unwired-word-breathe 1.9s ease-in-out infinite;
+.recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell {
+  animation: unwired-reason-breathe 1.9s ease-in-out infinite;
+}
+
+.unwired-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  --unwired-ring: 2px;
+  --unwired-halo: 12px;
+  animation: unwired-ring-breathe 1.9s ease-in-out infinite;
+}
+
+/* Zoomed out the card says nothing else, so the ring is allowed to be the
+   loud thing on it. Custom properties rather than a second @keyframes, so
+   crossing the threshold does not restart the animation and re-scatter every
+   card's phase. */
+.factory-flow-board[data-detail-level="glance"] .unwired-ring {
+  --unwired-ring: 6px;
+  --unwired-halo: 30px;
+}
+
+.factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .unwired-ring {
+  visibility: visible;
+}
+
+/* The board-level tally breathes on the same clock as the cards it counts. */
+.unwired-notice {
+  animation: unwired-reason-breathe 1.9s ease-in-out infinite;
 }
 
 /* Same bargain the dead-loop ring strikes: keep the mark, drop the movement. */
 @media (prefers-reduced-motion: reduce) {
   .recipe-node-shell[data-verdict="unwired"] .flow-port--bind,
-  .recipe-node-shell[data-verdict="unwired"] .verdict-word {
+  .recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell,
+  .unwired-notice,
+  .unwired-ring {
     animation: none;
   }
   .recipe-node-shell[data-verdict="unwired"] .flow-port--bind {
     border-color: #ffffff;
   }
+  .unwired-ring {
+    box-shadow: 0 0 0 var(--unwired-ring) rgba(238, 242, 248, 0.85);
+  }
 }
 
 .factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .flow-port--bind,
-.factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .verdict-word {
+.factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell,
+.factory-flow-board--calm .unwired-ring {
   animation: none;
+}
+
+.factory-flow-board--calm .unwired-ring {
+  box-shadow: 0 0 0 var(--unwired-ring) #7b8b9c;
 }
 
 /* The one state whose wash is cool. See --verdict-clogged-ink. */

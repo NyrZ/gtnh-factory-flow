@@ -189,6 +189,7 @@ import {
 } from "./edge-detail";
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
 import { describeDeathSpiral, findDeathSpirals } from "./death-spiral";
+import { findUnwiredNodeIds } from "./node-verdict";
 import { useSharedAnimationPhase } from "./animation-phase";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
 import {
@@ -4092,7 +4093,13 @@ export function FactoryFlow() {
         onFitView={handleFitView}
       />
       <HopMapLegend />
-      <DeathSpiralNotice onShow={handleShowNodes} />
+      {/* Two notices, one column, so neither ever sits on top of the other.
+          Unwired goes UNDER the dead loop: a ring is a thing that has gone
+          wrong, unfinished wiring is just work still to do. */}
+      <div className="nodrag pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 flex-col-reverse items-center gap-2">
+        <UnwiredNotice onShow={handleShowNodes} />
+        <DeathSpiralNotice onShow={handleShowNodes} />
+      </div>
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
     </div>
   );
@@ -4112,6 +4119,57 @@ export function FactoryFlow() {
  * Dismissal is keyed to the ring's identity, so waving this one away does not
  * silence the NEXT spiral you build.
  */
+/**
+ * The board's to-do list, in one line: how many cards still have a slot with
+ * no wire on it.
+ *
+ * A closed plan has to say where every ingredient comes from and where every
+ * product goes, so an unwired slot is not a fault to scold - it is work not
+ * done yet, and the honest thing is to say how much of it is left and offer to
+ * take you there. Chalk-white to match the mark on the cards themselves (see
+ * --verdict-unwired-ink), never the alert reds and ambers: this is a checklist,
+ * not an alarm.
+ *
+ * Not dismissible, deliberately, and it disappears by itself the moment the
+ * last slot is connected - which is the only ending it has.
+ */
+const UnwiredNotice = memo(function UnwiredNotice({
+  onShow,
+}: {
+  onShow: (nodeIds: string[]) => void;
+}) {
+  const project = useFactoryStore((state) => state.project);
+  const lastResult = useFactoryStore((state) => state.lastResult);
+  const unwired = useMemo(
+    () => findUnwiredNodeIds(project, lastResult),
+    [project, lastResult],
+  );
+
+  if (unwired.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="unwired-notice nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#c8d2e0] bg-[#2b3038]/95 px-2 py-1.5 font-mono text-[12px] text-[#e8ecf2] shadow-[inset_2px_2px_0_#5d6877,inset_-2px_-2px_0_#171a1f,4px_4px_0_rgba(0,0,0,0.35)]">
+      <span className="shrink-0 font-bold tracking-[0.5px] text-[#eef2f8]">NOT WIRED UP</span>
+      {/* One line, always. The card already explains itself; this only says
+          how many are left and offers to take you to them. */}
+      <span className="whitespace-nowrap text-[#c2cad6]">
+        {unwired.length === 1
+          ? "1 machine has a slot with nothing on it"
+          : `${unwired.length} machines have slots with nothing on them`}
+      </span>
+      <button
+        type="button"
+        onClick={() => onShow(unwired)}
+        className="shrink-0 border border-[#c8d2e0] bg-[#454f5e] px-2 py-0.5 font-bold text-[#ffffff] hover:bg-[#566275]"
+      >
+        Show me
+      </button>
+    </div>
+  );
+});
+
 const DeathSpiralNotice = memo(function DeathSpiralNotice({
   onShow,
 }: {
@@ -4132,7 +4190,7 @@ const DeathSpiralNotice = memo(function DeathSpiralNotice({
   const story = describeDeathSpiral(spiral);
 
   return (
-    <div className="nodrag pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 border-2 border-[#c34c4c] bg-[#2b1c1c]/95 px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
+    <div className="nodrag pointer-events-auto flex items-center gap-2 border-2 border-[#c34c4c] bg-[#2b1c1c]/95 px-2 py-1.5 font-mono text-[12px] text-[#f2e4e4] shadow-[inset_2px_2px_0_#7a3636,inset_-2px_-2px_0_#1a1010,4px_4px_0_rgba(0,0,0,0.35)]">
       <span className="shrink-0 font-bold tracking-[0.5px] text-[#ff9c9c]">DEAD LOOP</span>
       <span className="text-[#e6d2d2]">{story.short}</span>
       {spirals.length > 1 ? (
