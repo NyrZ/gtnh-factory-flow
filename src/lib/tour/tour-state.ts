@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { findLesson } from "./lessons";
+import { leaveWelcomeTab } from "./welcome-tab";
 
 /**
  * Which lesson is being walked, and which lessons have been finished.
@@ -85,6 +86,19 @@ export function startLesson(lessonId: string) {
   if (!findLesson(lessonId)) {
     return;
   }
+  /*
+   * Onto the board first. EVERY lesson anchors to cards, ports and toolbars,
+   * so a tour started while the Welcome page is up spotlights things that are
+   * underneath it: the reader gets a card telling them to look at a blast
+   * furnace, over a page with no board on it.
+   *
+   * Here rather than at the call sites. The Welcome page's own buttons did
+   * this themselves and the What's new popup did not, which is precisely the
+   * kind of thing every new entry point gets wrong once. A tour is a thing
+   * that happens ON the board; making that true of the verb costs one line and
+   * cannot be forgotten.
+   */
+  leaveWelcomeTab();
   publish({ ...getSnapshot(), lessonId, stepIndex: 0 });
 }
 

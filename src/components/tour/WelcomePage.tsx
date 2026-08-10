@@ -205,11 +205,9 @@ export function WelcomePage() {
   const addDesign = useDesignStore((state) => state.addDesign);
   const [isChangelogOpen, setChangelogOpen] = useState(false);
 
-  const beginLesson = (lessonId: string) => {
-    // Off this tab first: the whole lesson points at things it is covering.
-    leaveWelcomeTab();
-    startLesson(lessonId);
-  };
+  // `startLesson` steps off this tab itself now, so every entry point to a
+  // tour behaves the same way rather than each one remembering to.
+  const beginLesson = startLesson;
 
   const openBoardWith = (action: () => void) => {
     leaveWelcomeTab();
