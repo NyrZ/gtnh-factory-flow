@@ -10,6 +10,7 @@ import { AppMenu } from "./AppMenu";
 import { BoardActions } from "./BoardActions";
 import { ChangelogDialog } from "./ChangelogDialog";
 import { HeaderLinks, ReportBugButton, WhatsNewButton } from "./HeaderLinks";
+import { WhatsNewPreview } from "./WhatsNewPreview";
 
 interface AppHeaderProps {
   onLoadDatasetVersion: (versionId: string) => void;
@@ -25,6 +26,8 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
   // Captured at the moment of the click, because opening the notes marks them
   // read: without this the divider would have nothing above it.
   const [unseenVersions, setUnseenVersions] = useState<Set<string>>();
+  // Shift-click either what's-new control. See WhatsNewPreview.
+  const [isPreviewOpen, setPreviewOpen] = useState(false);
   // Narrow windows keep the name and the version chip and fold the rest into
   // one menu — see AppMenu for why a bar that overflows costs a phone more than
   // the buttons that fall off the end of it.
@@ -38,7 +41,13 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
         </span>
         <button
           type="button"
-          onClick={() => {
+          onClick={(event) => {
+            // Shift-click is the way in to the update-popup preview. Undiscovered
+            // by accident, and the ordinary click is unchanged.
+            if (event.shiftKey) {
+              setPreviewOpen(true);
+              return;
+            }
             setUnseenVersions(new Set(unseenEntries().map((entry) => entry.version)));
             setChangelogOpen(true);
           }}
@@ -67,6 +76,7 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
           onClose={() => setChangelogOpen(false)}
         />
       ) : null}
+      {isPreviewOpen ? <WhatsNewPreview onClose={() => setPreviewOpen(false)} /> : null}
       {isCompact ? (
         <AppMenu onLoadDatasetVersion={onLoadDatasetVersion} />
       ) : (
@@ -80,6 +90,7 @@ export function AppHeader({ onLoadDatasetVersion }: AppHeaderProps) {
               setUnseenVersions(unseen);
               setChangelogOpen(true);
             }}
+            onDevPreview={() => setPreviewOpen(true)}
           />
           <ReportBugButton />
           <AccountMenu />

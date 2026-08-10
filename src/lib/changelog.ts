@@ -52,7 +52,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: "1.48.0",
+    version: "2.0.0",
     date: "2026-08-10",
     headline: "Every slot has to be wired now",
     notes: [

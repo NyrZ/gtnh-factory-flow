@@ -71,9 +71,12 @@ export function HeaderLinks() {
  */
 export function WhatsNewButton({
   onClick,
+  onDevPreview,
 }: {
   /** Handed what was unread at the moment of the click, for the divider. */
   onClick: (unseenVersions: Set<string>) => void;
+  /** Shift-click: the hidden update-popup preview. See WhatsNewPreview. */
+  onDevPreview: () => void;
 }) {
   const [unread, setUnread] = useState(false);
 
@@ -86,7 +89,11 @@ export function WhatsNewButton({
   return (
     <button
       type="button"
-      onClick={() => {
+      onClick={(event) => {
+        if (event.shiftKey) {
+          onDevPreview();
+          return;
+        }
         // Read what is unseen BEFORE stamping, or the dialog opens with
         // nothing above its divider - the click would have erased the very
         // thing the line is drawn around.

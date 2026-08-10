@@ -65,6 +65,17 @@ export function unseenEntries(): ChangelogEntry[] {
     markVersionSeen();
     return [];
   }
+  return entriesSince(lastSeen);
+}
+
+/**
+ * Everything between a given stamp and the running version.
+ *
+ * Split out of `unseenEntries` so the dev preview can ask the same question
+ * about a version this browser never had. If the two ever answered
+ * differently, the preview would be showing a popup nobody gets.
+ */
+export function entriesSince(lastSeen: string): ChangelogEntry[] {
   if (compareVersions(lastSeen, APP_VERSION) >= 0) {
     return [];
   }
