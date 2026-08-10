@@ -968,6 +968,18 @@ img {
      is a FACT about the plan, not a fault in it, and any amber or red would
      put it on the to-do list beside the two states that really are. */
   --verdict-clogged-ink: #6fb2d6;
+  /* UNWIRED is deliberately NOT a hue.
+     Every hue on this board is spoken for and every one of them grades how
+     WRONG something is: yellow starved, amber blocked, red bottleneck, blue
+     clogged, purple selected, sky a search hit. Unwired is not a degree of
+     wrong at all, it is "this card is not finished yet", so putting it
+     anywhere on that ramp would answer the wrong question — and the two
+     nearest free hues are one step from selection and from search.
+     So it goes achromatic and bright, the drafting-chalk convention: white
+     marks on a dark board are the unbuilt part of a drawing. It carries by
+     MOVEMENT instead of hue (see unwired-breathe), which nothing else on a
+     card does except the dead-loop ring. */
+  --verdict-unwired-ink: #eef2f8;
 }
 
 /* The card's alert channel: one colour set, chosen once by the reason, read
@@ -1000,6 +1012,67 @@ img {
   --state-bar: var(--rail-bar-hot);
   --state-badge: #cf8e00;
   --state-accent: #ffd76a;
+}
+
+/* Chalk. The state channel feeds the port marks, so every bare slot picks
+   these up for free through .flow-port--bind. */
+.recipe-node-shell[data-verdict="unwired"] {
+  --state-wash: #39414d;
+  --state-edge: #c8d2e0;
+  --state-bar: #eef2f8;
+  --state-badge: #5d6877;
+  --state-accent: #ffffff;
+}
+
+/* A slot with no wire is drawn like an unfinished line on a plan: dashed, and
+   breathing so the eye is pulled to it across a busy board. The two marks
+   share one animation NAME and period, so the word and the ports it refers to
+   blink as one thing on any card they mount with. */
+@keyframes unwired-port-breathe {
+  0%,
+  100% {
+    border-color: var(--state-edge);
+    background: var(--state-wash);
+  }
+  50% {
+    border-color: #ffffff;
+    background: #4b5666;
+  }
+}
+
+@keyframes unwired-word-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.recipe-node-shell[data-verdict="unwired"] .flow-port--bind {
+  border-style: dashed;
+  animation: unwired-port-breathe 1.9s ease-in-out infinite;
+}
+
+.recipe-node-shell[data-verdict="unwired"] .verdict-word {
+  animation: unwired-word-breathe 1.9s ease-in-out infinite;
+}
+
+/* Same bargain the dead-loop ring strikes: keep the mark, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .recipe-node-shell[data-verdict="unwired"] .flow-port--bind,
+  .recipe-node-shell[data-verdict="unwired"] .verdict-word {
+    animation: none;
+  }
+  .recipe-node-shell[data-verdict="unwired"] .flow-port--bind {
+    border-color: #ffffff;
+  }
+}
+
+.factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .flow-port--bind,
+.factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"] .verdict-word {
+  animation: none;
 }
 
 /* The one state whose wash is cool. See --verdict-clogged-ink. */
@@ -1533,6 +1606,7 @@ img {
 .factory-flow-board--calm .recipe-node-shell[data-verdict="starved"],
 .factory-flow-board--calm .recipe-node-shell[data-verdict="blocked"],
 .factory-flow-board--calm .recipe-node-shell[data-verdict="clogged"],
+.factory-flow-board--calm .recipe-node-shell[data-verdict="unwired"],
 .factory-flow-board--calm .recipe-node-shell[data-verdict="bottleneck"] {
   --state-wash: var(--mc-71);
   --state-edge: var(--mc-47);
@@ -1543,6 +1617,7 @@ img {
   --verdict-blocked-ink: var(--mc-ink);
   --verdict-bottleneck-ink: var(--mc-ink);
   --verdict-clogged-ink: var(--mc-ink);
+  --verdict-unwired-ink: var(--mc-ink);
 }
 
 /* Calming a state drops it to the card's own neutral — which on a painted

@@ -176,10 +176,16 @@ describe("deriveNodeVerdict", () => {
       ] as unknown as FactoryProject["recipes"],
       storages: [
         { id: "B", kind: "item", resourceId: "res", displayName: "Res Buffer" },
+        // The second ingredient's declared import. It used to be left bare and
+        // called "hand-fed"; a bare slot is now UNWIRED and would outrank the
+        // very thing this case is about, so the plan says where it comes from.
+        // A SOURCE drawer never runs dry, so it still cannot be blamed - which
+        // is exactly the role the bare port used to play here.
+        { id: "H", kind: "item", resourceId: "hand", displayName: "Hand Source" },
       ] as unknown as FactoryProject["storages"],
       nodes: [machineNode("N"), machineNode("P", "src")],
-      // P --800--> B --(asked 16000)--> N
-      edges: [edge("eIn", "P", "B"), edge("eOut", "B", "N")],
+      // P --800--> B --(asked 16000)--> N, and H --> N for the other input.
+      edges: [edge("eIn", "P", "B"), edge("eOut", "B", "N"), edge("eHand", "H", "N", "hand")],
     });
     const result = throughput(
       {
@@ -189,7 +195,8 @@ describe("deriveNodeVerdict", () => {
           demandUtilization: 1,
           inputs: {
             "item:res": flow("item", "res", 16000),
-            // Hand-fed: no line, so it can never bind and must not be blamed.
+            // Fed by a source drawer that never runs dry, so it must not be
+            // blamed: the dry buffer on the OTHER input is the real ceiling.
             "item:hand": flow("item", "hand", 5),
           },
         }),
@@ -544,11 +551,17 @@ describe("deriveNodeVerdict", () => {
   });
 
   it("counts a missed target output as somebody going without", () => {
-    // Nothing is wired to take the output, so the edge scan finds no hunger —
-    // but the player dialled a target and is not getting it. Reading this as
-    // "starved, nothing waiting" would go quiet on the one card being watched.
+    // No MACHINE is waiting on the output - it goes to a drain, which accepts
+    // without asking - so the edge scan finds no hunger. But the player
+    // dialled a target and is not getting it. Reading this as "starved,
+    // nothing waiting" would go quiet on the one card being watched.
+    // (The output is drained rather than left bare because a bare slot is
+    // UNWIRED now, and that would answer a different question entirely.)
     const proj = shortMachine();
-    proj.edges = [edge("eIn", "S", "N", "res")];
+    proj.storages = [
+      { id: "D", kind: "item", resourceId: "pe", displayName: "PE Drain" },
+    ] as unknown as FactoryProject["storages"];
+    proj.edges = [edge("eIn", "S", "N", "res"), edge("eDrain", "N", "D", "pe")];
     proj.nodes = [
       machineNode("N", "r", {
         targetOutput: { kind: "item", resourceId: "pe", amountPerSecond: 100 },
@@ -712,7 +725,7 @@ describe("buildRailPorts", () => {
     outputs: [{ kind: "item", id: "pe", amount: 1 }],
   } as unknown as Pick<import("@/lib/model/types").Recipe, "inputs" | "outputs">;
 
-  it("skips non-consumed inputs, pools flows, and flags hand-fed ports", () => {
+  it("skips non-consumed inputs, pools flows, and flags unsupplied ports", () => {
     const proj = project({
       nodes: [machineNode("N"), machineNode("C")],
       edges: [edge("eOut", "N", "C", "pe")],
@@ -733,10 +746,13 @@ describe("buildRailPorts", () => {
     const rails = buildRailPorts(proj, result, "N", recipeResources, verdict);
 
     expect(rails.inputs.map((port) => port.resourceId)).toEqual(["eth"]);
-    expect(rails.inputs[0]!.handFed).toBe(true);
+    expect(rails.inputs[0]!.unsupplied).toBe(true);
     expect(rails.inputs[0]!.handleId).toBe("input:item:eth");
     expect(rails.outputs[0]!.currentPerSecond).toBeCloseTo(108, 6);
-    expect(rails.outputs[0]!.tone).toBe("calm");
+    // The card reads UNWIRED (the eth input has no line), not demand-set, so
+    // its connected output carries no verdict tone of its own. `calm` belongs
+    // to a card that is deliberately throttled, which this one is not.
+    expect(rails.outputs[0]!.tone).toBe("ok");
   });
 
   it("marks the binding input and the hungry output", () => {

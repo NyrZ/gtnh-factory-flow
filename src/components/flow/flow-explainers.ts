@@ -512,13 +512,16 @@ function explainInputPort(
         }
       : undefined;
 
-  if (port.handFed) {
+  if (port.unsupplied) {
     return {
-      stateWord: "HAND-FED",
-      tone: "dim",
+      stateWord: "NO SUPPLY",
+      tone: "amber",
       rows: [],
-      lines: [`Nothing wired — the planner assumes hand-feeding (${fmt(need)} at max).`],
-      action: { text: "→ Wire a source to check it.", tone: "note" },
+      lines: [`Nothing is wired here, so the machine cannot run (${fmt(need)} needed at full speed).`],
+      action: {
+        text: "→ Wire something that makes it, or a SOURCE drawer to say you bring it in yourself.",
+        tone: "fix",
+      },
     };
   }
 

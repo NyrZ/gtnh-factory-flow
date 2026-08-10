@@ -1,6 +1,7 @@
 import { expandPocketSelection } from "../model/pocket-connections";
 import type { FactoryProject, ResourceBalance, ResourceKey } from "../model/types";
 import { selectInternalBalances } from "./balances";
+import { closeBoundaries } from "./close-boundaries";
 import { calculateThroughput } from "./throughput";
 
 /**
@@ -72,9 +73,20 @@ export function calculateSelectionFlow(
     ),
   };
 
+  // Heal the cut before solving. Severing the wires is the whole mechanism
+  // here, but a plan is a closed system, so every wire cut leaves a bare slot
+  // and a bare slot stops its machine dead. Left alone, scoping ANY selection
+  // would answer zero - the exact opposite of "as if it were the whole
+  // board". Closing the boundary puts a source on what now arrives from
+  // outside and a drain on what now leaves, which is what being outside the
+  // box means. The books are untouched: those two still read as this scope's
+  // needs and outputs (see close-boundaries.ts).
+  //
   // Not cloned: the solver only reads the project, and a selection re-solves
   // often enough that a deep copy of every selected card would show.
-  const result = calculateThroughput(scoped, { generatedAt: "selection" });
+  const result = calculateThroughput(closeBoundaries(scoped), {
+    generatedAt: "selection",
+  });
 
   return {
     resources: result.resources,

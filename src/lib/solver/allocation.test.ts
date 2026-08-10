@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FactoryProject, Recipe } from "@/lib/model/types";
 import { calculateThroughput } from "./throughput";
+import { closeBoundaries } from "./close-boundaries";
 
 // Acceptance suite for the allocation rework (community report 2026-08-02):
 // starvation with idle supply, conservation breaks on split outputs, and
@@ -20,14 +21,17 @@ function recipe(id: string, inputs: Recipe["inputs"], outputs: Recipe["outputs"]
 }
 
 function project(partial: Pick<FactoryProject, "recipes" | "nodes" | "edges">): FactoryProject {
-  return {
+  // These cases are about how supply is SPLIT between wired consumers, so the
+  // boundary is closed for them: raw materials arrive, products leave. See
+  // close-boundaries.ts.
+  return closeBoundaries({
     schemaVersion: 1,
     id: "allocation-test",
     name: "allocation-test",
     fuelProfiles: [],
     storages: [],
     ...partial,
-  } as FactoryProject;
+  } as FactoryProject);
 }
 
 const node = (id: string, recipeId: string) => ({

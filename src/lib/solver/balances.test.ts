@@ -3,6 +3,9 @@ import { gtnhFuelProfiles } from "@/lib/model/fuels";
 import { PROJECT_SCHEMA_VERSION, type FactoryProject, type Recipe } from "@/lib/model/types";
 import { calculateThroughput } from "./throughput";
 import { selectInternalBalances } from "./balances";
+// These cases are about float dust in the resource books, not about the
+// boundary, so the boundary is stated for them. See close-boundaries.ts.
+import { closeBoundaries } from "./close-boundaries";
 
 /**
  * A resource that one machine makes and another eats in equal measure has to
@@ -84,7 +87,7 @@ function chainProject(outputAmount: number, inputAmount: number): FactoryProject
 
 describe("balance books settle float dust", () => {
   it("reports a fully consumed resource as exactly balanced", () => {
-    const result = calculateThroughput(chainProject(144000, 37000), { generatedAt: "fixed" });
+    const result = calculateThroughput(closeBoundaries(chainProject(144000, 37000)), { generatedAt: "fixed" });
     const gas = result.resources["fluid:gas"];
 
     expect(gas.producedPerSecond).toBeGreaterThan(0);
@@ -94,14 +97,14 @@ describe("balance books settle float dust", () => {
   });
 
   it("keeps that resource out of Need and Output", () => {
-    const result = calculateThroughput(chainProject(144000, 37000), { generatedAt: "fixed" });
+    const result = calculateThroughput(closeBoundaries(chainProject(144000, 37000)), { generatedAt: "fixed" });
 
     expect(result.externalInputs.map((entry) => entry.key)).not.toContain("fluid:gas");
     expect(result.unconsumedOutputs.map((entry) => entry.key)).not.toContain("fluid:gas");
   });
 
   it("counts it as internal, which is where a balanced resource belongs", () => {
-    const result = calculateThroughput(chainProject(144000, 37000), { generatedAt: "fixed" });
+    const result = calculateThroughput(closeBoundaries(chainProject(144000, 37000)), { generatedAt: "fixed" });
     const internal = selectInternalBalances(Object.values(result.resources));
 
     expect(internal.map((entry) => entry.key)).toContain("fluid:gas");
@@ -111,9 +114,10 @@ describe("balance books settle float dust", () => {
     // The point of a relative tolerance: the same rounding at a thousand times
     // the throughput is still rounding.
     for (const scale of [1, 1_000, 1_000_000]) {
-      const result = calculateThroughput(chainProject(144000 * scale, 37000 * scale), {
-        generatedAt: "fixed",
-      });
+      const result = calculateThroughput(
+        closeBoundaries(chainProject(144000 * scale, 37000 * scale)),
+        { generatedAt: "fixed" },
+      );
       expect(result.resources["fluid:gas"].netPerSecond).toBe(0);
     }
   });
@@ -122,9 +126,13 @@ describe("balance books settle float dust", () => {
     // A genuine gap has to survive: the eater wants far more than one part in
     // a billion beyond what the maker makes.
     const project = chainProject(144000, 37000);
-    // Cut the supply line so the eater's demand becomes a real external need.
+    // Keep the eater and delete its maker, so the gas it eats has to come from
+    // outside the plan. (Cutting the wire and leaving both is no longer the
+    // way to write this: a machine with a bare input does not run at all, so
+    // it would eat nothing and need nothing.)
+    project.nodes = [project.nodes[1]];
     project.edges = [];
-    const result = calculateThroughput(project, { generatedAt: "fixed" });
+    const result = calculateThroughput(closeBoundaries(project), { generatedAt: "fixed" });
 
     const need = result.externalInputs.find((entry) => entry.key === "fluid:gas");
     expect(need).toBeDefined();
@@ -139,7 +147,7 @@ describe("balance books settle float dust", () => {
     const project = chainProject(144000, 37000);
     project.nodes = [project.nodes[0]];
     project.edges = [];
-    const result = calculateThroughput(project, { generatedAt: "fixed" });
+    const result = calculateThroughput(closeBoundaries(project), { generatedAt: "fixed" });
 
     const spare = result.unconsumedOutputs.find((entry) => entry.key === "fluid:gas");
     expect(spare).toBeDefined();

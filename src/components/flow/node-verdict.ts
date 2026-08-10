@@ -32,13 +32,24 @@ type ProjectEdge = FactoryProject["edges"][number];
  *   inputs short  | STARVED        | BLOCKED
  *                 | (nothing to do)| (the fix is upstream)
  *
- * CLOGGED is the third question, and it outranks both: never mind what the
- * inputs allow or what anyone is asking for, can this machine get RID of what
- * it makes? A wired output whose surplus has no drain, no trash can and no
- * consumer hungry enough backs up, and the machine can only run as fast as
- * that output empties. It is not a fault - a plan that makes 10 redstone and
- * only wants 5 is a normal plan - so it is stated, not scolded: the card says
- * where the surplus is and offers the three honest ways out.
+ * Two more states sit ABOVE that table, because in a closed plan a machine is
+ * bounded at both ends and neither of the two words above should ever be made
+ * to mean "you have not finished wiring it".
+ *
+ * UNWIRED is first and beats everything: some slot, input or output, has no
+ * wire on it. Nothing declares where that ingredient comes from or where that
+ * product goes, so the machine is at zero, and there is no arithmetic to
+ * explain - the card just marks every bare slot and you go and connect them.
+ * A SOURCE or DRAIN drawer counts as connecting one, which is how a plan says
+ * "this part I bring in myself" out loud.
+ *
+ * CLOGGED is next, and only ever applies to a FULLY WIRED card: everything is
+ * connected, and a wired output still cannot shift what it makes, because its
+ * takers want less than the machine produces and no drain or can is there to
+ * take the rest. The machine runs only as fast as that output empties. It is
+ * not a fault - a plan that makes 10 redstone and only wants 5 is a normal
+ * plan - so it is stated, not scolded: the card says where the surplus is and
+ * offers the honest ways out.
  *
  * The doctrine that follows: running below 100% is not a fault. A machine
  * that hands every asker what it asked for is FINE, whatever its percent
@@ -142,6 +153,14 @@ export interface NodeVerdict {
   };
   /** Demand-set: percentage points the node could climb if asked. */
   headroomPct?: number;
+  /**
+   * Unwired: every slot with no wire on it, both ends, so the card can mark
+   * them all rather than crowning one. These are the things to go and connect.
+   */
+  bare?: {
+    inputs: Array<{ resourceKey: string; kind: ResourceKind; displayName: string }>;
+    outputs: Array<{ resourceKey: string; kind: ResourceKind; displayName: string }>;
+  };
   /** Clogged: the output that has nowhere to go, and how much piles up. */
   clog?: {
     resourceKey: string;
@@ -402,8 +421,19 @@ export function deriveNodeVerdict(
 
   const incoming = project.edges.filter((edge) => edge.target === nodeId);
   const outgoing = project.edges.filter((edge) => edge.source === nodeId);
-  if (incoming.length === 0 && outgoing.length === 0) {
-    return { kind: "unwired", pct };
+
+  // UNWIRED outranks everything below it. In a closed plan every slot has to
+  // say where its stuff comes from or goes, so a slot with no wire is a hard
+  // zero at whichever end it sits - and it is the one state that needs no
+  // arithmetic to explain. Naming it here keeps the two subtler words honest:
+  // STARVED means a feeder cannot keep up, CLOGGED means a wired output cannot
+  // shift its surplus. Neither should ever mean "you have not wired it yet".
+  const bare = findBareSlots(project, nodeResult, incoming, outgoing);
+  if (bare || (incoming.length === 0 && outgoing.length === 0)) {
+    // The second clause catches a card with no wires AND nothing to wire -
+    // a recipe the solver has no flows for. There are no bare slots to mark,
+    // but "unwired" is still the only true thing to say about it.
+    return { kind: "unwired", pct, bare };
   }
 
   // A dead ring outranks every other reading. Its members ARE starved and
@@ -421,10 +451,13 @@ export function deriveNodeVerdict(
   // inputs are fine) and not demand-set (something downstream may be begging
   // for the OTHER output) - it is clogged, and neither of those two words
   // would send you to the pipe that is actually full.
+  // Strictly below capability, so a card that is short at BOTH ends tells the
+  // input story first: you have to feed a machine before where its output goes
+  // is a question worth answering.
   if (
     nodeResult.clogOutputKey !== undefined &&
     disposal < 1 - VERDICT_EPSILON &&
-    disposal <= capable + VERDICT_EPSILON
+    disposal < capable - VERDICT_EPSILON
   ) {
     const clog = describeClog(nodeResult, utilization, disposal);
     if (clog) {
@@ -461,6 +494,44 @@ export function deriveNodeVerdict(
     binding: findBindingInput(project, result, nodeResult, nodeId, incoming),
     deficit,
   };
+}
+
+/**
+ * Every slot with no wire on it, or undefined when the card is fully wired.
+ *
+ * Consumed inputs and real outputs only: a non-consumed input is not an
+ * ingredient and a zero-rate output is not a product, so neither has anything
+ * to connect. Matching is by resource key, the same way ports pool.
+ */
+function findBareSlots(
+  project: FactoryProject,
+  nodeResult: NodeThroughputResult,
+  incoming: ProjectEdge[],
+  outgoing: ProjectEdge[],
+): NodeVerdict["bare"] {
+  const describe = (
+    flow: { kind: ResourceKind; resourceId: string; displayName?: string },
+    key: string,
+  ) => ({ resourceKey: key, kind: flow.kind, displayName: flow.displayName ?? flow.resourceId });
+
+  const wiredOn = (edges: ProjectEdge[], key: string) =>
+    edges.some((edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === key);
+
+  const inputs: NonNullable<NodeVerdict["bare"]>["inputs"] = [];
+  for (const [key, flow] of Object.entries(nodeResult.inputs)) {
+    if (flow.amountPerSecond > RATE_EPSILON && !wiredOn(incoming, key)) {
+      inputs.push(describe(flow, key));
+    }
+  }
+
+  const outputs: NonNullable<NodeVerdict["bare"]>["outputs"] = [];
+  for (const [key, flow] of Object.entries(nodeResult.outputs)) {
+    if (flow.amountPerSecond > RATE_EPSILON && !wiredOn(outgoing, key)) {
+      outputs.push(describe(flow, key));
+    }
+  }
+
+  return inputs.length > 0 || outputs.length > 0 ? { inputs, outputs } : undefined;
 }
 
 /**
@@ -727,8 +798,11 @@ function findBindingInput(
     const edges = incoming.filter(
       (edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === key,
     );
-    // Unconnected inputs are hand-fed by convention and never bind.
+    // A bare input delivers nothing and binds hardest of all. It used to be
+    // skipped here as hand-fed, which meant the one input actually stopping
+    // the machine could never be named.
     if (edges.length === 0) {
+      candidates.push({ key, ratio: 0, supplied: 0, need: flow.amountPerSecond, edges });
       continue;
     }
     let supplied = 0;
@@ -995,8 +1069,12 @@ export interface RailPort {
   /** Recipe entry backing the port, for icon rendering. */
   resource?: ResourceAmount;
   connected: boolean;
-  /** Consumed input with no line attached: assumed supplied by hand. */
-  handFed: boolean;
+  /**
+   * Consumed input with no line attached. Nothing declares where it comes
+   * from, so the machine cannot run. It was `handFed` back when the planner
+   * assumed a bare input arrived by hand forever.
+   */
+  unsupplied: boolean;
   currentPerSecond: number;
   nameplatePerSecond: number;
   /**
@@ -1147,7 +1225,12 @@ export function buildRailPorts(
           ? clamp01(askRate > RATE_EPSILON ? available / askRate : 1, 1)
           : 1;
         if (!connected) {
-          tone = "idle";
+          // Every bare slot marked, not one crowned: they are all equally the
+          // reason, and the card's job is to show you the whole list of wires
+          // to draw. `idle` was for the old world where a bare input was a
+          // standing assumption rather than a stop.
+          tone = "bind";
+          badge = { kind: "short", perSecond: nameplate };
         } else if (isBinding) {
           tone = "bind";
           badge = { kind: "short", perSecond: verdict.binding?.shortfallPerSecond ?? 0 };
@@ -1162,7 +1245,12 @@ export function buildRailPorts(
         // The chip is the MACHINE's story only: at full speed it reads green
         // no matter how loudly the plugs beg — "everything here is amazing,
         // it's the plug that says where's my stuff". One machine, one color.
-        if (isSupplyShort(verdict.kind)) {
+        if (!connected) {
+          // The mirror of a bare input: a product with no taker stops the
+          // machine just as dead, so it is marked just as loudly. Checked
+          // first because it outranks both readings below it.
+          tone = "bind";
+        } else if (isSupplyShort(verdict.kind)) {
           tone = "slowed";
         } else if (verdict.kind === "demand-set") {
           tone = "calm";
@@ -1235,7 +1323,7 @@ export function buildRailPorts(
         handleId: makeResourceHandleId(side, { kind, id: resourceId }),
         resource,
         connected,
-        handFed: isInput && !connected,
+        unsupplied: isInput && !connected,
         currentPerSecond,
         nameplatePerSecond: nameplate,
         wantedPerSecond,
@@ -1324,8 +1412,14 @@ export function buildLimitLadder(
     const edges = incoming.filter(
       (edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === key,
     );
-    // Hand-fed inputs never limit: the planner assumes they always arrive.
+    // A bare input is a 0% rung, not an absent one: nothing declares where it
+    // comes from, so the machine stands on it until something does.
     if (edges.length === 0) {
+      rungs.push({
+        pct: 0,
+        label: `${flow.displayName ?? flow.resourceId} has no supply`,
+        now: false,
+      });
       continue;
     }
     let available = 0;
@@ -1353,6 +1447,15 @@ export function buildLimitLadder(
   let demandRatio: number | undefined;
   for (const [key, flow] of Object.entries(nodeResult.outputs)) {
     if (flow.amountPerSecond <= RATE_EPSILON) {
+      continue;
+    }
+    // Nothing at all carries this away: a 0% rung, the mirror of a bare input.
+    if (!outgoing.some((edge) => makeResourceKey(edge.resourceKind, edge.resourceId) === key)) {
+      rungs.push({
+        pct: 0,
+        label: `${flow.displayName ?? flow.resourceId} has nowhere to go`,
+        now: false,
+      });
       continue;
     }
     const machineEdges = outgoing.filter(

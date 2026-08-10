@@ -1211,7 +1211,7 @@ function GlanceIoRow({ port }: { port: RailPort }) {
 interface VerdictWord {
   word: string;
   /** fine = nothing to do. Then: nobody waiting, waiting on upstream, ACT. */
-  tone: "fine" | "starved" | "blocked" | "bottleneck" | "clogged";
+  tone: "fine" | "starved" | "blocked" | "bottleneck" | "clogged" | "unwired";
 }
 
 function verdictWord(verdict: NodeVerdict, isCustomRate: boolean): VerdictWord {
@@ -1237,7 +1237,7 @@ function verdictWord(verdict: NodeVerdict, isCustomRate: boolean): VerdictWord {
     case "balanced":
       return { word: isCustomRate ? "at the dial" : "full", tone: "fine" };
     case "unwired":
-      return { word: isCustomRate ? "no wires" : "hand-fed", tone: "fine" };
+      return { word: "no wires", tone: isCustomRate ? "fine" : "unwired" };
     case "off":
       return { word: "off", tone: "fine" };
     case "no-recipe":
@@ -1251,6 +1251,7 @@ const VERDICT_WORD_CLASS: Record<VerdictWord["tone"], string> = {
   blocked: "font-bold text-[var(--verdict-blocked-ink)]",
   bottleneck: "font-bold text-[var(--verdict-bottleneck-ink)]",
   clogged: "font-bold text-[var(--verdict-clogged-ink)]",
+  unwired: "font-bold text-[var(--verdict-unwired-ink)]",
 };
 
 /**
@@ -1314,7 +1315,10 @@ function UsageStat({
           </div>
           <div
             className={[
-              "truncate text-[13px] font-bold uppercase leading-5 tracking-[0.4px]",
+              // verdict-word: the pulse on an unwired card hangs off this
+              // (globals.css), so the word and the bare slots it refers to
+              // breathe on one clock.
+              "verdict-word truncate text-[13px] font-bold uppercase leading-5 tracking-[0.4px]",
               VERDICT_WORD_CLASS[state.tone],
             ].join(" ")}
           >
@@ -1399,6 +1403,45 @@ function VerdictHoverContent({
   );
 }
 
+/**
+ * The unwired card names the slots, because that IS the whole story: every
+ * one of them is a wire you have not drawn yet, and the card has already
+ * marked them. Counts rather than a list once there are more than a couple,
+ * so a twelve-slot multiblock does not write a paragraph.
+ */
+function unwiredTitle(verdict: NodeVerdict): string {
+  const inputs = verdict.bare?.inputs ?? [];
+  const outputs = verdict.bare?.outputs ?? [];
+  const total = inputs.length + outputs.length;
+  if (total === 0) {
+    return "Nothing is wired to it";
+  }
+  if (total === 1) {
+    const only = inputs[0] ?? outputs[0]!;
+    return inputs.length === 1
+      ? `Nothing supplies the ${only.displayName}`
+      : `Nothing takes the ${only.displayName}`;
+  }
+  return `${total} slots have no wire`;
+}
+
+function unwiredDetail(verdict: NodeVerdict): string {
+  const inputs = verdict.bare?.inputs ?? [];
+  const outputs = verdict.bare?.outputs ?? [];
+  const name = (list: typeof inputs) =>
+    list.length <= 2 ? list.map((entry) => entry.displayName).join(" and ") : `${list.length} of them`;
+
+  const parts: string[] = [];
+  if (inputs.length > 0) {
+    parts.push(`nothing supplies ${name(inputs)}`);
+  }
+  if (outputs.length > 0) {
+    parts.push(`nothing takes ${name(outputs)}`);
+  }
+  const marked = parts.join(", and ");
+  return `A machine runs on what arrives and stops when what it makes has nowhere to go, so ${marked}. Wire each marked slot to a machine, or to a SOURCE or DRAIN drawer to say you handle that end yourself.`;
+}
+
 function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string {
   switch (verdict.kind) {
     case "starved":
@@ -1416,7 +1459,7 @@ function verdictHoverTitle(verdict: NodeVerdict, isCustomRate: boolean): string 
     case "balanced":
       return isCustomRate ? "Dialed rate met exactly" : "Full speed, all asks met";
     case "unwired":
-      return isCustomRate ? "No wires on this dial" : "Hand-fed";
+      return isCustomRate ? "No wires on this dial" : unwiredTitle(verdict);
     case "off":
       return "Disabled";
     case "no-recipe":
@@ -1465,8 +1508,13 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
       if (!clog) {
         return undefined;
       }
-      const taken = formatSlotRate(clog.takenPerSecond, clog.kind);
       const spare = formatSlotRate(clog.surplusPerSecond, clog.kind);
+      // Nothing takes it at all is a different sentence from some of it is
+      // taken, and the first is what a port with no wire on it means.
+      if (clog.takenPerSecond <= 0.0005) {
+        return `Nothing takes the ${clog.displayName}, so all ${spare} of it would pile up. A machine cannot run with an output it never empties.`;
+      }
+      const taken = formatSlotRate(clog.takenPerSecond, clog.kind);
       return `Only ${taken} of ${clog.displayName} is taken, so ${spare} would pile up with nowhere to go. That holds the whole machine at ${formatPct(verdict.pct)}%.`;
     }
     case "dead-loop": {
@@ -1485,7 +1533,7 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
     case "unwired":
       return isCustomRate
         ? "This dial does nothing until something is wired to it."
-        : "The plan assumes you keep it stocked by hand.";
+        : unwiredDetail(verdict);
     default:
       return undefined;
   }
@@ -1727,13 +1775,23 @@ export function OutputSocketRow({
       ) : (
         <MinecraftTooltip
           label={
-            formatSlotRateOrNull(port.currentPerSecond, port.kind)
-              ? `Empty socket — ${formatSlotRate(port.currentPerSecond, port.kind)} vanishes. Wire it to keep it.`
-              : "Empty socket — nothing plugged in."
+            port.nameplatePerSecond > 0
+              ? "Nothing takes this, so it backs up and the machine stops. Wire it to a machine that wants it, a DRAIN drawer, or a trash can."
+              : "Empty socket: nothing plugged in."
           }
         >
+          {/* The mirror of an input's NO SUPPLY. It used to read "—" beside a
+              tooltip saying the output vanished, which is exactly the thing
+              that stopped being true when the plan became a closed system. */}
           <span className="flow-socket-empty nodrag">
-            <PlugDragHandle nodeId={nodeId} port={port} />—
+            <PlugDragHandle nodeId={nodeId} port={port} />
+            {port.nameplatePerSecond > 0 ? (
+              <span className="text-[7px] font-black leading-3 tracking-[0.5px] text-[var(--verdict-unwired-ink)]">
+                NO TAKER
+              </span>
+            ) : (
+              "—"
+            )}
           </span>
         </MinecraftTooltip>
       )}
@@ -2168,9 +2226,9 @@ export function PortChip({
             <span className="block truncate text-[10px] leading-[12px] tabular-nums text-[var(--mc-ink-muted)] opacity-80">
               {rateText}
             </span>
-            {port.handFed ? (
-              <span className="block text-[7px] font-black leading-3 tracking-[0.5px] text-[var(--mc-ink-muted)]">
-                HAND-FED
+            {port.unsupplied ? (
+              <span className="block text-[7px] font-black leading-3 tracking-[0.5px] text-[var(--verdict-blocked-ink)]">
+                NO SUPPLY
               </span>
             ) : (
               <span className="mt-0.5 flex items-center gap-0.5">
@@ -2458,7 +2516,7 @@ function renderPortHoverContent(port: RailPort, nodeId: string) {
         </span>
       </div>
 
-      {!port.handFed ? (
+      {!port.unsupplied ? (
         <div className={["mt-2 flex items-center gap-1", caretPct !== undefined ? "mb-2" : "mb-1"].join(" ")}>
           <div
             className="relative h-[9px] flex-1"

@@ -289,7 +289,7 @@ describe("explainPort — inputs", () => {
     expect(story.action?.text).toContain("next bottleneck, at 80%");
   });
 
-  it("explains hand-fed inputs without riddles", () => {
+  it("explains an input with no supply without riddles", () => {
     const proj = project({
       recipes: towerRecipes,
       nodes: [machineNode("N"), machineNode("C")],
@@ -318,9 +318,13 @@ describe("explainPort — inputs", () => {
     );
     const story = explainPort(proj, result, "N", rails.inputs[0]!, verdict);
 
-    expect(story.stateWord).toBe("HAND-FED");
-    expect(story.lines[0]).toContain("Nothing wired");
-    expect(story.action?.text).toContain("Wire a source");
+    // It used to read HAND-FED and shrug that the planner assumed you carried
+    // the ethylene in. A closed plan makes no such assumption: nothing feeds
+    // this, so the machine does not run, and the fix names both honest ways
+    // to say where it comes from.
+    expect(story.stateWord).toBe("NO SUPPLY");
+    expect(story.lines[0]).toContain("cannot run");
+    expect(story.action?.text).toContain("SOURCE drawer");
   });
 });
 

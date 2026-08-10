@@ -49,19 +49,27 @@ const EPSILON = 0.000001;
  * A 2000/s fleet next to a 400/s fleet on a 26/s tank therefore cannot
  * crush the small asker out of the trickle it needs.
  *
- * CONSERVATION. A wired output may not vanish. Only three things absorb a
- * surplus nobody asked for: a trash can, a DRAIN drawer (one nothing draws
- * from), and the outside world through a port with no wire on it at all. A
- * buffer is not one of them - it passes on what its consumers pull and no
- * more - so a machine whose leftovers have nowhere to go is capped by its
- * ability to get rid of them, not by what its hungriest output asks for. That
- * cap is `disposalByNode`, and a node standing on it is CLOGGED.
+ * CONSERVATION. The plan is a CLOSED system. Nothing appears from nowhere and
+ * nothing vanishes, and the only places that rule is suspended are the two a
+ * player declares by hand:
  *
- * The unwired port is the deliberate hole, and it is the exact mirror of the
- * unwired INPUT that the planner has always assumed you keep stocked by hand.
- * Modelling an unwired output as a clog would stall the last machine of every
- * chain on every board ever built, for the crime of being the thing the plan
- * makes.
+ *   a SOURCE drawer  nothing feeds it, so it invents its resource
+ *   a DRAIN drawer   nothing draws from it, so it swallows what arrives
+ *
+ * plus the trash can, which is a drain you can see destroying things. A
+ * BUFFER is neither: it passes on exactly what its consumers pull.
+ *
+ * So a machine is bounded at BOTH ends. `capableByNode` asks whether every
+ * ingredient has somewhere to come from, `disposalByNode` whether everything
+ * it makes has somewhere to go, and it runs at the lesser. A port with no
+ * wire on it is not an escape hatch in either direction: an input with no
+ * feeder is an empty bus and an output with no taker is a full one, and both
+ * stop the machine dead. A node standing on the disposal limit is CLOGGED.
+ *
+ * This is a real cost and it is the point. Every plan now has to say where
+ * its raw materials come from and where its product goes, in drawers, on the
+ * board - and until it does, it reads zero rather than quietly inventing the
+ * answer at both ends.
  */
 
 export interface EdgeAllocationResult {
@@ -167,6 +175,12 @@ interface MachineNodeInfo {
   id: string;
   /** Consumed inputs that have at least one incoming wire. */
   wiredInputs: Array<{ needKey: string; nameplatePerSecond: number }>;
+  /** Consumed inputs with NO incoming wire: nothing declares where they come
+   * from, so the machine cannot run. */
+  bareInputKeys: ResourceKey[];
+  /** Outputs with NO outgoing wire: nothing carries them away, so they back
+   * up and the machine cannot run. */
+  bareOutputKeys: ResourceKey[];
   hasOutputs: boolean;
   hasOutgoingWires: boolean;
   budgets: Budget[];
@@ -327,6 +341,7 @@ export function solveEquilibrium(
     }
 
     const wiredInputs: MachineNodeInfo["wiredInputs"] = [];
+    const bareInputKeys: ResourceKey[] = [];
     for (const [inputKey, flow] of Object.entries(nodeResult.inputs)) {
       if (flow.amountPerSecond <= EPSILON) {
         continue;
@@ -334,6 +349,12 @@ export function solveEquilibrium(
       const needKey = `${node.id}|${inputKey}`;
       if (needs.has(needKey)) {
         wiredInputs.push({ needKey, nameplatePerSecond: flow.amountPerSecond });
+      } else {
+        // Nothing feeds this ingredient. In a closed plan that is not a
+        // standing assumption that you carry it in by hand, it is a machine
+        // with an empty input bus: it does not run until something declares
+        // where the ingredient comes from.
+        bareInputKeys.push(inputKey as ResourceKey);
       }
     }
 
@@ -349,9 +370,23 @@ export function solveEquilibrium(
       targetFloors.push(projectShare);
     }
 
+    // Outputs with no wire on them. Same rule as a bare input, the other way
+    // round: a full output bus with nothing carrying it away stops the machine.
+    const bareOutputKeys: ResourceKey[] = [];
+    for (const [outputKey, flow] of Object.entries(nodeResult.outputs)) {
+      if (flow.amountPerSecond <= EPSILON) {
+        continue;
+      }
+      if (!budgets.has(`${node.id}|${outputKey}`)) {
+        bareOutputKeys.push(outputKey as ResourceKey);
+      }
+    }
+
     const info: MachineNodeInfo = {
       id: node.id,
       wiredInputs,
+      bareInputKeys,
+      bareOutputKeys,
       hasOutputs: Object.keys(nodeResult.outputs).length > 0,
       hasOutgoingWires: (budgetsByOwner.get(node.id) ?? []).length > 0,
       budgets: budgetsByOwner.get(node.id) ?? [],
@@ -538,6 +573,15 @@ export function solveEquilibrium(
         const pool = pools.get(edge.poolKey);
         const deficitShare =
           (poolDeficit.get(edge.poolKey) ?? 0) / Math.max(1, pool?.sinkEdges.length ?? 1);
+        // NOTE: a drain's absorption is reported as DEMAND, which quietly
+        // paces its producer to full blast just by existing. That is wrong for
+        // a plan TARGET dialled below full rate on a terminal machine (see the
+        // two skipped cases in throughput.test.ts), but it cannot simply be
+        // zeroed: the reporting pass in throughput.ts derives each node's
+        // required rate from these same edge demands, so a drained output at
+        // zero demand reads as a node at 0%. Splitting "what the edge carries"
+        // from "what the edge asks for" is the fix, and it is a bigger change
+        // than the one this note sits in.
         demandByEdge.set(edge.id, absorbed + deficitShare);
         poolInflowNext.set(edge.poolKey, (poolInflowNext.get(edge.poolKey) ?? 0) + absorbed);
         continue;
@@ -576,7 +620,9 @@ export function solveEquilibrium(
     const disposalNext = new Map<string, number>();
     const clogOutputNext = new Map<string, ResourceKey>();
     for (const info of machineNodes) {
-      let capability = 1;
+      // A closed plan has to say where every ingredient comes from. An input
+      // with no wire is an empty bus, not a standing delivery.
+      let capability = info.bareInputKeys.length > 0 ? 0 : 1;
       for (const input of info.wiredInputs) {
         const need = needs.get(input.needKey);
         if (!need) {
@@ -596,14 +642,6 @@ export function solveEquilibrium(
         demNext.set(info.id, 1);
         continue;
       }
-      if (!info.hasOutgoingWires && info.targetFloors.length === 0) {
-        // Nothing wired out at all: this is the end of a chain, and what it
-        // makes is what the plan is FOR. Conservation does not reach here -
-        // see the unwired-port note at the top of the file.
-        demNext.set(info.id, 1);
-        continue;
-      }
-
       let pressure = 0;
       for (const budget of info.budgets) {
         // A voided output is a fully demanded output: the can drinks whatever
@@ -667,8 +705,21 @@ export function solveEquilibrium(
           clogKey = budget.outputKey;
         }
       }
+      // A wired output moving exactly what is asked of it is DEMAND, not a
+      // clog: the takers simply want no more. Only an output held below what
+      // something is still asking for has anything stuck in it.
+      if (clogKey !== undefined && !(disposal < pressure - CLOG_EPSILON)) {
+        clogKey = undefined;
+      }
+      // A bare output is a hard zero, but it is never NAMED as the clog: a
+      // slot with no wire on it is reported as UNWIRED, which says the same
+      // thing in a word the reader can act on without any arithmetic.
+      if (info.bareOutputKeys.length > 0) {
+        disposal = 0;
+        clogKey = undefined;
+      }
       disposalNext.set(info.id, disposal);
-      if (clogKey !== undefined && disposal < pressure - CLOG_EPSILON) {
+      if (clogKey !== undefined) {
         clogOutputNext.set(info.id, clogKey);
       }
       demNext.set(info.id, Math.min(pressure, disposal));
@@ -1013,6 +1064,40 @@ type PreparedEdgeRef = Pick<PreparedEdge, "id" | "budgetKey" | "needKey" | "pool
  * Project-level target rate, split across producers of the target resource
  * that have no outgoing wire for it (the plan's terminal makers).
  */
+/**
+ * Producers that carry the plan's target rate: the ones with nowhere for the
+ * target resource to go except out of the plan.
+ *
+ * A wire into a DRAIN or a trash can does NOT count as somewhere it goes.
+ * Those accept without asking, so a node that drains its product is still the
+ * end of the line and still on the hook for the rate you dialled. That matters
+ * far more than it used to: draining the product IS how a closed plan says
+ * "this is the thing I make", so without this exception dialling a target and
+ * then declaring your export would silently cancel the target.
+ *
+ * Shared with the reporting pass in throughput.ts, which has to pick the same
+ * nodes or the two would disagree about who owes the rate.
+ */
+export function selectProjectTargetNodes(
+  project: FactoryProject,
+  nodes: Record<string, NodeThroughputResult>,
+  targetKey: ResourceKey,
+): FactoryProject["nodes"] {
+  const roles = getStorageRoles(project);
+  const trashIds = collectTrashNodeIds(project);
+  return project.nodes.filter(
+    (node) =>
+      nodes[node.id]?.outputs[targetKey] !== undefined &&
+      !project.edges.some(
+        (edge) =>
+          edge.source === node.id &&
+          makeResourceKey(edge.resourceKind, edge.resourceId) === targetKey &&
+          !trashIds.has(edge.target) &&
+          roles.get(edge.target) !== "drain",
+      ),
+  );
+}
+
 function calculateProjectTargetShares(
   project: FactoryProject,
   nodes: Record<string, NodeThroughputResult>,
@@ -1023,15 +1108,7 @@ function calculateProjectTargetShares(
   }
 
   const targetKey = makeResourceKey(project.targetRate.kind, project.targetRate.resourceId);
-  const producers = project.nodes.filter((node) => nodes[node.id]?.outputs[targetKey]);
-  const terminal = producers.filter(
-    (node) =>
-      !project.edges.some(
-        (edge) =>
-          edge.source === node.id &&
-          makeResourceKey(edge.resourceKind, edge.resourceId) === targetKey,
-      ),
-  );
+  const terminal = selectProjectTargetNodes(project, nodes, targetKey);
   if (terminal.length === 0) {
     return shares;
   }

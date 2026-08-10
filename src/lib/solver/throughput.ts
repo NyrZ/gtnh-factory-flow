@@ -24,12 +24,14 @@ import type {
 import { TICKS_PER_SECOND } from "../model/types";
 import { applyRecipeInputOverrides } from "../model/recipe-input-overrides";
 import { applyMachineHandlerToRecipe } from "../model/recipe-rules";
+import { getStorageRoles } from "../model/storage-role";
 import { calculateEffectiveBalances, splitBalances } from "./balances";
 import {
   addRequiredRate,
   clampUtilization,
   getCompatibleOutputFlowForKey,
   getEdgeTargetDemandKey,
+  selectProjectTargetNodes,
   solveEquilibrium,
   type EquilibriumSolution,
 } from "./equilibrium";
@@ -385,10 +387,28 @@ function refreshStorageResultsFromEdges(
 
 function calculateConnectedInputSupply(
   project: FactoryProject,
+  nodes: Record<string, NodeThroughputResult>,
   edgeResults: Record<string, EdgeThroughput>,
   storagesById: Map<string, FactoryStorage>,
 ): Map<string, Map<ResourceKey, number>> {
   const supplyByNodeAndResource = new Map<string, Map<ResourceKey, number>>();
+  const storageRoles = getStorageRoles(project);
+
+  // Seed every consumed input at zero, so an ingredient with no feeder is a
+  // real supply limit rather than an absent one. The old convention read a
+  // bare input as hand-stocked and infinite; a closed plan has to name the
+  // source. Edges below add to these.
+  for (const node of project.nodes) {
+    const nodeResult = nodes[node.id];
+    if (!nodeResult || !nodeResult.enabled || nodeResult.status === "missing-recipe") {
+      continue;
+    }
+    for (const [inputKey, flow] of Object.entries(nodeResult.inputs)) {
+      if (flow.amountPerSecond > EPSILON) {
+        addRequiredRate(supplyByNodeAndResource, node.id, inputKey as ResourceKey, 0);
+      }
+    }
+  }
 
   for (const edge of project.edges) {
     if (storagesById.has(edge.target)) {
@@ -397,15 +417,24 @@ function calculateConnectedInputSupply(
 
     const targetDemandKey =
       getEdgeTargetDemandKey(project, edge) ?? makeResourceKey(edge.resourceKind, edge.resourceId);
-    addRequiredRate(
-      supplyByNodeAndResource,
-      edge.target,
-      targetDemandKey,
-      // Availability, not consumption: capability and the utilization clamp
-      // must see what the line COULD carry, or demand throttles would bleed
-      // into capability and ratchet it down.
-      edgeResults[edge.id]?.availablePerSecond ?? edgeResults[edge.id]?.transferredPerSecond ?? 0,
-    );
+    const edgeResult = edgeResults[edge.id];
+    // A SOURCE drawer is infinite BY CONSTRUCTION - nothing feeds it, so it
+    // is the plan's declared import and can never be a ceiling. Its line only
+    // ever carries what was asked of it, and reading that back as
+    // availability would cap the consumer at exactly 1, erasing every "you
+    // would need 2x the machines" reading, which is the whole point of an
+    // unclamped utilization.
+    //
+    // Only a SOURCE. A buffer is capped by its own inflow and a dry one is a
+    // real ceiling, so it has to keep reporting what it can actually deliver.
+    const available =
+      storageRoles.get(edge.source) === "source"
+        ? Number.POSITIVE_INFINITY
+        : // Availability, not consumption: capability and the utilization clamp
+          // must see what the line COULD carry, or demand throttles would bleed
+          // into capability and ratchet it down.
+          (edgeResult?.availablePerSecond ?? edgeResult?.transferredPerSecond ?? 0);
+    addRequiredRate(supplyByNodeAndResource, edge.target, targetDemandKey, available);
   }
 
   return supplyByNodeAndResource;
@@ -476,6 +505,7 @@ function finalizeNodeReports(
   const requiredByNodeAndResource = new Map<string, Map<ResourceKey, number>>();
   const inputSupplyByNodeAndResource = calculateConnectedInputSupply(
     project,
+    nodes,
     edgeResults,
     storagesById,
   );
@@ -633,9 +663,11 @@ function finalizeNodeReports(
         if (!flow || flow.amountPerSecond <= EPSILON) {
           continue;
         }
+        // No honest entry at all means no incoming wire: a bare input delivers
+        // nothing, so it ranks bottom and gets the blame it deserves. It used
+        // to rank top (Infinity, hand-fed) and could never be crowned.
         const honest = honestMap?.get(key);
-        const ratio =
-          honest === undefined ? Number.POSITIVE_INFINITY : honest / flow.amountPerSecond;
+        const ratio = honest === undefined ? 0 : honest / flow.amountPerSecond;
         if (ratio < bestRatio) {
           bestRatio = ratio;
           limitingKey = key;
@@ -652,8 +684,10 @@ function finalizeNodeReports(
           if (!flow || flow.amountPerSecond <= EPSILON) {
             continue;
           }
-          const honest = honestMap?.get(key);
-          if (honest !== undefined && honest / flow.amountPerSecond <= bestRatio + tieWindow) {
+          // Same convention as above: a bare input delivers 0, and two bare
+          // inputs are genuinely tied rather than both unmeasurable.
+          const honest = honestMap?.get(key) ?? 0;
+          if (honest / flow.amountPerSecond <= bestRatio + tieWindow) {
             tied.push(key);
           }
         }
@@ -830,21 +864,10 @@ function applyProjectTarget(
   }
 
   const targetKey = makeResourceKey(project.targetRate.kind, project.targetRate.resourceId);
-  const producers = project.nodes.filter((node) => nodes[node.id]?.outputs[targetKey]);
-
-  if (producers.length === 0) {
-    return;
-  }
-
-  const nodesWithNoOutgoingTargetEdge = producers.filter(
-    (node) =>
-      !project.edges.some(
-        (edge) =>
-          edge.source === node.id &&
-          makeResourceKey(edge.resourceKind, edge.resourceId) === targetKey,
-      ),
-  );
-  const targetNodes = nodesWithNoOutgoingTargetEdge;
+  // Same pick as the engine's, from the same function, so the two can never
+  // disagree about who owes the dialled rate. A drain or a can on the target
+  // output does not take a node off the hook: see selectProjectTargetNodes.
+  const targetNodes = selectProjectTargetNodes(project, nodes, targetKey);
   if (targetNodes.length === 0) {
     return;
   }
@@ -852,7 +875,18 @@ function applyProjectTarget(
   const targetShare = project.targetRate.amountPerSecond / targetNodes.length;
 
   for (const node of targetNodes) {
-    addRequiredRate(requiredByNodeAndResource, node.id, targetKey, targetShare);
+    // MAX, not sum. "Make at least this much", never "this much on top of
+    // what the lines already take" - the same reading the engine's target
+    // floors use, and the same one `node.targetOutput` gets a few lines
+    // below. Summing is what made a target look doubled once its output was
+    // routed anywhere, which the old rule worked around by exempting those
+    // nodes from the target altogether.
+    const byResource = requiredByNodeAndResource.get(node.id);
+    if (byResource) {
+      byResource.set(targetKey, Math.max(byResource.get(targetKey) ?? 0, targetShare));
+    } else {
+      requiredByNodeAndResource.set(node.id, new Map([[targetKey, targetShare]]));
+    }
   }
 }
 

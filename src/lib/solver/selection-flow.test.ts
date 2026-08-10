@@ -10,6 +10,11 @@ import { calculateSelectionFlow } from "./selection-flow";
  * of scoping - which group a resource lands in depends on where you draw the
  * box.
  */
+// A LEGAL plan: ore comes from a source drawer and plate goes to a drain one,
+// because a plan that leaves those bare is a plan that reads zero now. Both
+// still show up in the books as a need and an output - drawers add nothing to
+// those - which is what makes "select everything and it matches the plan"
+// meaningful rather than a comparison of two zeroes.
 function makeChainProject(): FactoryProject {
   return {
     schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -57,13 +62,31 @@ function makeChainProject(): FactoryProject {
         position: { x: 200, y: 0 },
       },
     ],
+    storages: [
+      { id: "ore-source", kind: "item", resourceId: "ore", position: { x: -200, y: 0 } },
+      { id: "plate-drain", kind: "item", resourceId: "plate", position: { x: 400, y: 0 } },
+    ],
     edges: [
+      {
+        id: "source-to-smelter",
+        source: "ore-source",
+        target: "smelter",
+        resourceKind: "item",
+        resourceId: "ore",
+      },
       {
         id: "smelter-to-bender",
         source: "smelter",
         target: "bender",
         resourceKind: "item",
         resourceId: "ingot",
+      },
+      {
+        id: "bender-to-drain",
+        source: "bender",
+        target: "plate-drain",
+        resourceKind: "item",
+        resourceId: "plate",
       },
     ],
     fuelProfiles: gtnhFuelProfiles,

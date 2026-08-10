@@ -3,17 +3,22 @@ import { PROJECT_SCHEMA_VERSION, type FactoryProject, type FactoryStorage } from
 import { calculateThroughput } from "./throughput";
 
 /**
- * Conservation: a wired output may not vanish.
+ * The plan is a CLOSED system.
  *
- * Only a trash can, a DRAIN drawer (one nothing draws from) and a port with no
- * wire on it can absorb a surplus nobody asked for. A buffer passes on what
- * its consumers pull and no more, so a machine whose leftovers have nowhere to
- * go is capped by its ability to shift them, and reads CLOGGED.
+ * Nothing appears from nowhere and nothing vanishes. The only places that
+ * rule is suspended are the ones a player declares by hand: a SOURCE drawer
+ * (nothing feeds it), a DRAIN drawer (nothing draws from it), and the trash
+ * can, which is a drain you can watch destroying things. A BUFFER is neither
+ * and passes on exactly what its takers pull.
  *
- * Every recipe here runs exactly one operation per second: 20 ticks at 20
- * ticks/s, one machine, no parallel, and LV on an LV recipe is not an
- * overclock. So an output of `n` is a rate of `n` per second and the
- * percentages below can be read straight off the amounts.
+ * So every fixture here wires its own boundary, deliberately and visibly -
+ * these are the tests that are ABOUT the boundary, so they must never go
+ * through `closeBoundaries`.
+ *
+ * Every recipe runs exactly one operation per second: 20 ticks at 20 ticks/s,
+ * one machine, no parallel, and LV on an LV recipe is not an overclock. So an
+ * output of `n` is a rate of `n` per second and the percentages below can be
+ * read straight off the amounts.
  */
 
 function recipe(id: string, inputs: [string, number][], outputs: [string, number][]) {
@@ -68,6 +73,12 @@ const DUAL = [
   recipe("eat-gold", [["gold", 5]], [["goldblock", 1]]),
 ];
 
+/** The two takers' own products, drained, so only the case under test binds. */
+const TAKER_DRAINS = {
+  storages: [drawer("d-rs", "rsblock"), drawer("d-au", "goldblock")],
+  edges: [wire("d1", "rs", "d-rs", "rsblock"), wire("d2", "au", "d-au", "goldblock")],
+};
+
 describe("conservation: a wired surplus has to go somewhere", () => {
   it("clogs a machine whose wired output makes more than its takers pull", () => {
     // 10 redstone + 5 gold. Redstone taker wants 5, gold taker wants 5. The
@@ -77,7 +88,12 @@ describe("conservation: a wired surplus has to go somewhere", () => {
       project({
         recipes: DUAL,
         nodes: [node("dual", "dual"), node("rs", "eat-redstone"), node("au", "eat-gold")],
-        edges: [wire("r1", "dual", "rs", "redstone"), wire("g1", "dual", "au", "gold")],
+        storages: TAKER_DRAINS.storages,
+        edges: [
+          wire("r1", "dual", "rs", "redstone"),
+          wire("g1", "dual", "au", "gold"),
+          ...TAKER_DRAINS.edges,
+        ],
       }),
       { generatedAt: "fixed" },
     );
@@ -97,11 +113,12 @@ describe("conservation: a wired surplus has to go somewhere", () => {
       project({
         recipes: DUAL,
         nodes: [node("dual", "dual"), node("rs", "eat-redstone"), node("au", "eat-gold")],
-        storages: [drawer("spare", "redstone")],
+        storages: [...TAKER_DRAINS.storages, drawer("spare", "redstone")],
         edges: [
           wire("r1", "dual", "rs", "redstone"),
           wire("g1", "dual", "au", "gold"),
           wire("r2", "dual", "spare", "redstone"),
+          ...TAKER_DRAINS.edges,
         ],
       }),
       { generatedAt: "fixed" },
@@ -128,12 +145,14 @@ describe("conservation: a wired surplus has to go somewhere", () => {
           node("au", "eat-gold"),
           node("sip", "sip-redstone"),
         ],
-        storages: [drawer("mid", "redstone")],
+        storages: [...TAKER_DRAINS.storages, drawer("mid", "redstone"), drawer("d-sip", "rsdust")],
         edges: [
           wire("r1", "dual", "rs", "redstone"),
           wire("g1", "dual", "au", "gold"),
           wire("r2", "dual", "mid", "redstone"),
           wire("r3", "mid", "sip", "redstone"),
+          wire("d3", "sip", "d-sip", "rsdust"),
+          ...TAKER_DRAINS.edges,
         ],
       }),
       { generatedAt: "fixed" },
@@ -151,11 +170,7 @@ describe("conservation: a wired surplus has to go somewhere", () => {
       project({
         recipes: [
           ...DUAL,
-          {
-            ...recipe("void", [], []),
-            machineType: "Trash Can",
-            name: "Trash Can",
-          },
+          { ...recipe("void", [], []), machineType: "Trash Can", name: "Trash Can" },
         ],
         nodes: [
           node("dual", "dual"),
@@ -163,10 +178,12 @@ describe("conservation: a wired surplus has to go somewhere", () => {
           node("au", "eat-gold"),
           node("can", "void"),
         ],
+        storages: TAKER_DRAINS.storages,
         edges: [
           wire("r1", "dual", "rs", "redstone"),
           wire("g1", "dual", "au", "gold"),
           wire("r2", "dual", "can", "redstone"),
+          ...TAKER_DRAINS.edges,
         ],
       }),
       { generatedAt: "fixed" },
@@ -176,26 +193,70 @@ describe("conservation: a wired surplus has to go somewhere", () => {
     expect(result.nodes["dual"].clogOutputKey).toBeUndefined();
     expect(result.edges["g1"].transferredPerSecond).toBeCloseTo(5);
   });
+});
 
-  it("an UNWIRED output is the outside world, not a clog", () => {
-    // The mirror of the hand-fed input. Without this the last machine of every
-    // chain ever built would stall for making the thing the plan is for.
+describe("conservation: both ends, or the machine does not run", () => {
+  it("stops a machine whose output has no wire at all", () => {
+    // The gold is wired and wanted; the redstone has nothing on it. Under the
+    // closed rule that is a full output bus, so the whole machine stops -
+    // including the gold its taker is waiting for.
     const result = calculateThroughput(
       project({
         recipes: DUAL,
         nodes: [node("dual", "dual"), node("au", "eat-gold")],
-        edges: [wire("g1", "dual", "au", "gold")],
+        storages: [drawer("d-au", "goldblock")],
+        edges: [wire("g1", "dual", "au", "gold"), wire("d2", "au", "d-au", "goldblock")],
       }),
       { generatedAt: "fixed" },
     );
 
-    expect(result.nodes["dual"].utilization).toBeCloseTo(1);
-    expect(result.nodes["dual"].clogOutputKey).toBeUndefined();
-    expect(
-      result.unconsumedOutputs.find((b) => b.resourceId === "redstone")?.surplusPerSecond,
-    ).toBeCloseTo(10);
+    expect(result.nodes["dual"].utilization).toBeCloseTo(0);
+    expect(result.nodes["dual"].disposalUtilization).toBeCloseTo(0);
+    expect(result.edges["g1"].transferredPerSecond).toBeCloseTo(0);
+    // Nothing was made, so nothing is spare. The old model booked 10/s of
+    // redstone here as an output the plan produced out of a bare port.
+    expect(result.unconsumedOutputs.find((b) => b.resourceId === "redstone")).toBeUndefined();
   });
 
+  it("stops a machine whose input has no wire at all", () => {
+    // The mirror. `eat-gold` has a drain on its product but nothing feeding
+    // it, and an empty input bus is as final as a full output one.
+    const result = calculateThroughput(
+      project({
+        recipes: DUAL,
+        nodes: [node("au", "eat-gold")],
+        storages: [drawer("d-au", "goldblock")],
+        edges: [wire("d2", "au", "d-au", "goldblock")],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.nodes["au"].utilization).toBeCloseTo(0);
+    expect(result.nodes["au"].capableUtilization).toBeCloseTo(0);
+    // A machine that never runs eats nothing, so it asks the plan for nothing.
+    expect(result.externalInputs.find((b) => b.resourceId === "gold")).toBeUndefined();
+  });
+
+  it("a SOURCE drawer is how a plan says it imports something", () => {
+    const result = calculateThroughput(
+      project({
+        recipes: DUAL,
+        nodes: [node("au", "eat-gold")],
+        storages: [drawer("src", "gold"), drawer("d-au", "goldblock")],
+        edges: [wire("s1", "src", "au", "gold"), wire("d2", "au", "d-au", "goldblock")],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    expect(result.nodes["au"].utilization).toBeCloseTo(1);
+    expect(result.edges["s1"].transferredPerSecond).toBeCloseTo(5);
+    // Declared, and still honestly booked as something you have to bring in:
+    // drawers add nothing to the resource books.
+    expect(result.externalInputs[0]?.resourceId).toBe("gold");
+  });
+});
+
+describe("conservation: drawers", () => {
   it("a fed drawer still hands out only what it received", () => {
     const result = calculateThroughput(
       project({
@@ -204,8 +265,12 @@ describe("conservation: a wired surplus has to go somewhere", () => {
           recipe("eat-cobble", [["cobble", 20]], [["gravel", 1]]),
         ],
         nodes: [node("producer", "make-cobble"), node("taker", "eat-cobble")],
-        storages: [drawer("mid", "cobble")],
-        edges: [wire("e1", "producer", "mid", "cobble"), wire("e2", "mid", "taker", "cobble")],
+        storages: [drawer("mid", "cobble"), drawer("d-gravel", "gravel")],
+        edges: [
+          wire("e1", "producer", "mid", "cobble"),
+          wire("e2", "mid", "taker", "cobble"),
+          wire("e3", "taker", "d-gravel", "gravel"),
+        ],
       }),
       { generatedAt: "fixed" },
     );
@@ -223,8 +288,11 @@ describe("conservation: a wired surplus has to go somewhere", () => {
       project({
         recipes: [recipe("eat-cobble", [["cobble", 20]], [["gravel", 1]])],
         nodes: [node("taker", "eat-cobble")],
-        storages: [drawer("src", "cobble")],
-        edges: [wire("e2", "src", "taker", "cobble")],
+        storages: [drawer("src", "cobble"), drawer("d-gravel", "gravel")],
+        edges: [
+          wire("e2", "src", "taker", "cobble"),
+          wire("e3", "taker", "d-gravel", "gravel"),
+        ],
       }),
       { generatedAt: "fixed" },
     );

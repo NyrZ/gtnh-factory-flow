@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.44.0",
+    date: "2026-08-09",
+    headline: "Every slot has to be wired now",
+    notes: [
+      "A plan now says where everything comes from and where it goes. A machine with a slot that has no wire on it does not run: an input with nothing feeding it is an empty bus, and an output with nothing taking it is a full one. The card reads NO WIRES and marks every bare slot with a dashed white box that pulses, so you can see what is left to connect.",
+      "Two drawers are how you say a thing crosses the edge of your plan. A drawer nothing feeds is a SOURCE: it never runs out, and what leaves it is something you bring in yourself. A drawer nothing draws from is a DRAIN: your finished product goes there. Both wear an infinity mark.",
+      "Your Need and Output lists work exactly as before. A drawer adds nothing to them, so ore fed from a source still shows as something you need, and plates sent to a drain still show as something you make.",
+      "Selecting part of your board still answers what that part would do on its own. The panel closes the edges of whatever you picked, so scoping never reports a dead factory just because you cut the wires around it.",
+      "Boards you already have will light up with slots to connect. Nothing is broken on them: the planner used to quietly invent the missing ingredients and quietly swallow the leftovers, and it is now asking you to say what really happens at both ends.",
+    ],
+  },
+  {
     version: "1.43.0",
     date: "2026-08-09",
     headline: "What a machine makes has to go somewhere",

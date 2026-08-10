@@ -9,6 +9,7 @@ import {
   type ResourceBalance,
 } from "@/lib/model/types";
 import { calculateThroughput } from "@/lib/solver";
+import { closeBoundaries } from "@/lib/solver/close-boundaries";
 import { useFactoryStore } from "@/store/factory-store";
 import { InspectorPanel } from "./InspectorPanel";
 
@@ -287,9 +288,14 @@ describe("InspectorPanel", () => {
         selectedFuelProfileId: "biodiesel",
       };
 
+      // Boundary closed: this is about how the panel GROUPS a plan's books,
+      // not about where ore comes from, and an unwired chain reads zero now.
+      // Ore still lands in Need and plate in Output - drawers add nothing to
+      // the books. See close-boundaries.ts.
+      const closed = closeBoundaries(project);
       useFactoryStore.setState({
-        project,
-        lastResult: calculateThroughput(project, { generatedAt: "fixed" }),
+        project: closed,
+        lastResult: calculateThroughput(closed, { generatedAt: "fixed" }),
         selectedBoardIds: [],
       });
     }

@@ -407,7 +407,7 @@ export function buildPocketRailPorts(
         connected,
         // A consumed input with no line on it is fed by hand, exactly as on a
         // machine card. Pockets never said so before.
-        handFed: isInput && !connected,
+        unsupplied: isInput && !connected,
         currentPerSecond,
         nameplatePerSecond,
         wantedPerSecond: isInput ? nameplatePerSecond : connected ? lineAsk : 0,
