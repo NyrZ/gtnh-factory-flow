@@ -60,12 +60,16 @@ export function ChangelogDialog({
   /**
    * The unread entries that ASKED to be acknowledged: ones carrying a warning,
    * which is the flag for "a plan you already saved now behaves differently".
-   * Closing past one of those without a word is the failure this whole feature
-   * exists to prevent, so it costs one extra click.
+   *
+   * Only when the notes ARRIVED. Somebody who pressed What's new is having a
+   * look, and stopping them on the way out is nagging a reader who was already
+   * curious - the interruption is spent on the one who did not ask for this
+   * and is about to go back to a board that no longer works how they remember.
    */
   const unreadWarnings = useMemo(
-    () => entries.filter((entry) => entry.warning && unseen.has(entry.version)),
-    [entries, unseen],
+    () =>
+      isInterrupt ? entries.filter((entry) => entry.warning && unseen.has(entry.version)) : [],
+    [entries, unseen, isInterrupt],
   );
   const [confirmingClose, setConfirmingClose] = useState(false);
 
@@ -190,10 +194,15 @@ export function ChangelogDialog({
  * One question, on its own, after the notes have gone.
  *
  * A release carrying a warning is one where a plan somebody saved months ago
- * now behaves differently, and they have no reason to suspect it. Closing past
- * that unread is the failure the whole feature exists to prevent, so it costs
- * one click - and the warning itself is repeated here, because a reader who
- * scrolled past it once is not going to be persuaded by a reference to it.
+ * now behaves differently, and they have no reason to suspect it. So the first
+ * attempt to leave the notes unread lands here instead, with the warning's own
+ * sentence on it - a reader who scrolled past that once is not going to be
+ * persuaded by a reference to it.
+ *
+ * Exactly ONE speed bump, then out. Every exit gesture on this card - the
+ * button, Escape, a click in the void - closes for real. Making any of them
+ * loop back would turn a warning worth reading into a modal that will not shut,
+ * and the second feeling is the one people remember.
  *
  * Not `window.confirm`: a native box over a blurred modal reads as the page
  * breaking, and it cannot show the sentence that matters.
@@ -210,9 +219,12 @@ function CloseGuard({
   return (
     <div
       className="fixed inset-0 z-[122] grid place-items-center bg-neutral-950/88 p-4 backdrop-blur-lg"
-      // Backdrop dismiss goes BACK to the notes, never out. A stray click
-      // outside a warning must not be able to answer it.
-      onClick={onBack}
+      // Clicking beside a modal means CLOSE. It briefly meant "back to the
+      // notes" on the theory that a stray click should not answer a warning,
+      // which got the gesture backwards: someone clicking the void is reaching
+      // for the exit, and landing them back in the wall of text they were
+      // leaving reads as the app refusing to shut.
+      onClick={onClose}
     >
       <div
         role="alertdialog"
