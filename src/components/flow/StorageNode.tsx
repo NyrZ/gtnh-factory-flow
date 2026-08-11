@@ -440,7 +440,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
                 className="!h-[36px] !w-[36px]"
               />
             </div>
-            <NetLine net={net} kind={storage.kind} />
+            <NetLine net={net} kind={storage.kind} role={role} />
           </div>
         </div>
         </MinecraftTooltip>
@@ -462,13 +462,47 @@ export const StorageNode = memo(
  * trickle like +0.000000001/s is a real number the player dialled for, and
  * clipping it printed a confident wrong one. Stepped by string length rather
  * than measured, so the board never reads the DOM for it.
+ *
+ * The room it has depends on the SILHOUETTE, not the box: the tile's
+ * clip-path cuts its children too, and the shield's tapered base and the
+ * hexagon's points bite exactly the row this line sits on. Each role's width
+ * is the shape's clearance at the line's own height, worked from the
+ * polygons in globals.css over the fixed 100x80 tile.
  */
-function rateFitClass(label: string): string {
-  return label.length <= 10 ? "text-[12px]" : label.length <= 14 ? "text-[10px]" : "text-[8px]";
+const NET_LINE_WIDTH_BY_ROLE: Record<StorageRole, number> = {
+  product: 92,
+  idle: 92,
+  source: 84,
+  buffer: 70,
+  // The shield's base taper is the deepest bite of the four, and it takes it
+  // exactly across this line's lowest pixels.
+  byproduct: 66,
+};
+/**
+ * Advance per character at each step. Measured against the rendered bold
+ * pixel font, not the em size: 12px Monocraft draws its digits a full 8px
+ * wide, which is how "+123k L/s" cleared the arithmetic and still lost its
+ * tail to the shield.
+ */
+const NET_LINE_FIT_STEPS = [
+  { className: "text-[12px]", perChar: 8 },
+  { className: "text-[10px]", perChar: 6.6 },
+  { className: "text-[8px]", perChar: 5.3 },
+  { className: "text-[7px]", perChar: 4.7 },
+] as const;
+
+function rateFitClass(label: string, role: StorageRole): string {
+  const width = NET_LINE_WIDTH_BY_ROLE[role];
+  for (const step of NET_LINE_FIT_STEPS) {
+    if (label.length * step.perChar <= width) {
+      return step.className;
+    }
+  }
+  return NET_LINE_FIT_STEPS[NET_LINE_FIT_STEPS.length - 1].className;
 }
 
-/** The tile's one line of news: the net rate, sized to fit its box. */
-function NetLine({ net, kind }: { net: number; kind: string }) {
+/** The tile's one line of news: the net rate, sized to fit its silhouette. */
+function NetLine({ net, kind, role }: { net: number; kind: string; role: StorageRole }) {
   const label = `${net >= 0 ? "+" : ""}${formatCompactRate(net, kind)}`;
   return (
     <div
@@ -476,7 +510,7 @@ function NetLine({ net, kind }: { net: number; kind: string }) {
         // No "Net" word: the sign and the colour already say it, and
         // the number is the thing worth reading.
         "storage-net-line relative z-10 h-4 whitespace-nowrap text-center font-bold leading-4 tabular-nums",
-        rateFitClass(label),
+        rateFitClass(label, role),
         net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
       ].join(" ")}
     >
