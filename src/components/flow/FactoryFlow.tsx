@@ -191,7 +191,7 @@ import {
 import { compareEdgeDepth, edgeCasingWidth } from "./edge-geometry";
 import { describeDeathSpiral, findDeathSpirals } from "./death-spiral";
 import { findUnwiredNodeIds } from "./node-verdict";
-import { useSharedAnimationPhase } from "./animation-phase";
+import { useBoardPulseSync } from "./animation-phase";
 import { getDockTabsRight, getDockTopInset } from "./dock-insets";
 import {
   isWiringConnection,
@@ -1580,6 +1580,10 @@ export function FactoryFlow() {
   const dropFitFrameRef = useRef<number | undefined>(undefined);
   const exportInProgressRef = useRef(false);
   const boardRef = useRef<HTMLDivElement>(null);
+  // Every breathing mark under this element - dead rings and their wires,
+  // unwired cards and the notice about them, the hovered-resource wash - shares
+  // one period (--board-pulse) and, from here, one phase. See animation-phase.ts.
+  useBoardPulseSync(boardRef);
   const flowInstanceRef = useRef<ReactFlowInstance<BoardFlowNode, ResourceFlowEdge> | null>(null);
   // A phone changes several things about the board: which cards can be dragged,
   // which toolbars are folded, where the centred banners sit.
@@ -5696,11 +5700,6 @@ function ResourceEdgeComponent({
     Boolean(state.hoveredFlowScope?.edges[id]),
   );
   const setHoveredFlowScope = useFactoryStore((state) => state.setHoveredFlowScope);
-  // The ring's wires breathe with the ring's cards, on the document timeline.
-  const deadLoopPhaseRef = useSharedAnimationPhase<SVGPathElement>(
-    data?.isDeadLoop === true,
-    "dead-loop-wire-breathe",
-  );
   const isHighlighted = selected || data?.isFlowHighlighted === true || isFlowScopeLit;
   // The width this line actually draws at, resolved once. It used to be
   // written out twice — inline in the casing and again in the stroke — which
@@ -6003,7 +6002,6 @@ function ResourceEdgeComponent({
           route is untouched and nothing reroutes. */}
       {data?.isDeadLoop ? (
         <path
-          ref={deadLoopPhaseRef}
           className="dead-loop-wire"
           d={routedEdge.path}
           fill="none"

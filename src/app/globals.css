@@ -121,6 +121,15 @@
      ring answers "what did I click". */
   --glow-line: #ffd257;
   --glow-halo: rgba(255, 202, 84, 0.8);
+
+  /* The board's heartbeat. EVERY breathing mark on the board runs for exactly
+     this long - the hovered-resource wash, an unwired card's dashes, ring and
+     reason cell, a dead ring's cards and its wires - so no two of them can
+     drift apart over time. They are pinned to the same phase in JS as well;
+     see animation-phase.ts, which also lists them. Marks used to run at
+     1.15s, 1.9s and 2.6s, which meant a board showing two kinds of trouble
+     never looked like one board. */
+  --board-pulse: 1.9s;
 }
 
 /* The pointed-at resource row, redrawn wide over the board. It grows out of
@@ -213,7 +222,7 @@
      click target. */
   pointer-events: none;
   z-index: 2;
-  animation: resource-breathe 1.15s ease-in-out infinite;
+  animation: resource-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 @keyframes resource-breathe {
@@ -279,7 +288,7 @@
 
 /* The shape-clipped wash breathes on the same clock as the square one. */
 .storage-wash {
-  animation: resource-breathe 1.15s ease-in-out infinite;
+  animation: resource-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1224,11 +1233,11 @@ img {
 
 .recipe-node-shell[data-verdict="unwired"] .flow-port--bind {
   border-style: dashed;
-  animation: unwired-port-breathe 1.9s ease-in-out infinite;
+  animation: unwired-port-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 .recipe-node-shell[data-verdict="unwired"] .verdict-reason-cell {
-  animation: unwired-reason-breathe 1.9s ease-in-out infinite;
+  animation: unwired-reason-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 .unwired-ring {
@@ -1238,7 +1247,7 @@ img {
   pointer-events: none;
   --unwired-ring: 2px;
   --unwired-halo: 12px;
-  animation: unwired-ring-breathe 1.9s ease-in-out infinite;
+  animation: unwired-ring-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 /* Zoomed out the card says nothing else, so the ring is allowed to be the
@@ -1256,7 +1265,7 @@ img {
 
 /* The board-level tally breathes on the same clock as the cards it counts. */
 .unwired-notice {
-  animation: unwired-reason-breathe 1.9s ease-in-out infinite;
+  animation: unwired-reason-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 /* Same bargain the dead-loop ring strikes: keep the mark, drop the movement. */
@@ -1356,7 +1365,7 @@ img {
   --dead-loop-ring: 3px;
   --dead-loop-halo: 10px;
   --dead-loop-halo-lit: 24px;
-  animation: dead-loop-breathe 2.6s ease-in-out infinite;
+  animation: dead-loop-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 /* Selection, the over-tier warning and a search hit: the same overlay trick,
@@ -1420,7 +1429,7 @@ img {
 /* The ring's wires, on the SAME clock as its cards: the whole circle has to
    breathe as one shape, or it reads as unrelated things blinking.
 
-   Matching the 2.6s period is necessary but NOT sufficient. A CSS animation's
+   Sharing --board-pulse is necessary but NOT sufficient. A CSS animation's
    clock starts when it is applied to the element, so cards and wires that
    mount at different moments — scrolled into view, recycled by React Flow,
    pulled into the ring by a fresh solve — each run their own cycle and drift
@@ -1437,7 +1446,7 @@ img {
 }
 
 .dead-loop-wire {
-  animation: dead-loop-wire-breathe 2.6s ease-in-out infinite;
+  animation: dead-loop-wire-breathe var(--board-pulse) ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

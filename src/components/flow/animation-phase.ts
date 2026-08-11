@@ -1,65 +1,111 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, type RefObject } from "react";
 
 /**
- * Phase-locks a CSS animation to the document's timeline.
+ * Every animation on the board that BREATHES, by keyframe name.
  *
- * A CSS animation's clock starts when the animation is applied to the element,
- * not when the page loads. So two cards showing the same 2.6s pulse breathe
- * together only if they happened to mount on the same frame — and on a board
- * they never do. Cards mount as they scroll into view, re-mount when React
- * Flow recycles them, and join a ring the moment the solver's answer changes.
- * The result was a ring where half the machines were bright while the other
- * half were dark, which reads as broken rather than as one shape.
+ * The board has one heartbeat, not several. Two things that pulse at different
+ * moments read as unrelated faults; the same two pulsing together read as one
+ * board telling you something. That takes two properties, and both are easy to
+ * lose:
  *
- * `startTime = 0` pins the animation to the origin of the document timeline,
- * which every element on the page shares. Set it on every mark in a ring and
- * they are all at the same point of the same cycle, whenever each one arrived.
+ *  - one PERIOD, which is `--board-pulse` in globals.css. Every rule below
+ *    animates for that long, so no two marks can drift apart over time.
+ *  - one PHASE, which is what this module does. Period alone is not enough:
+ *    a CSS animation's clock starts when it is applied to the element, so a
+ *    card scrolled into view, recycled by React Flow, or pulled into a dead
+ *    ring by a fresh solve each starts its own cycle wherever it happens to
+ *    arrive.
  *
- * The cost is one property write per element per mount. There is no per-frame
- * work here at all, and no shared clock to keep — the timeline IS the clock.
+ * Add a keyframe here when you add a breathing state, and give it
+ * `--board-pulse` as its duration. A pulse missing from this list still runs;
+ * it just runs alone, which is the exact bug this exists to prevent.
+ *
+ * One-shot flashes are deliberately absent: `board-card-placed` fires four
+ * times and stops, and lining it up with the board's clock would only delay
+ * the answer to "where did my card land".
  */
-export function useSharedAnimationPhase<T extends Element>(
-  active: boolean,
-  /**
-   * The `@keyframes` name to pin. Required, not optional: `subtree` sweeps up
-   * every animation under the element, and silently re-timing an unrelated one
-   * (a spinner, a transition someone adds later) would be a bug nobody would
-   * think to look for here.
-   */
-  animationName: string,
-) {
-  const ref = useRef<T | null>(null);
+export const BOARD_PULSE_ANIMATIONS = [
+  // Hovered/selected resource: the glow wash on cards, and the shape-clipped
+  // one drawers wear.
+  "resource-breathe",
+  "resource-breathe-led",
+  // A card with a slot nobody wired: the dashed slot, the reason cell, the ring.
+  "unwired-port-breathe",
+  "unwired-reason-breathe",
+  "unwired-ring-breathe",
+  // A ring of machines feeding each other with nothing coming in, and the
+  // wires that close the loop.
+  "dead-loop-breathe",
+  "dead-loop-wire-breathe",
+] as const;
 
+const BOARD_PULSE_SET: ReadonlySet<string> = new Set(BOARD_PULSE_ANIMATIONS);
+
+/**
+ * `startTime = 0` pins an animation to the origin of the document timeline,
+ * which every element on the page shares. Set it on every mark and they are all
+ * at the same point of the same cycle, whenever each one arrived.
+ *
+ * `subtree` because a glow is often painted by a ::after, and a pseudo
+ * element's animation is not on its element's own list.
+ */
+function pinToDocumentTimeline(element: Element, names: ReadonlySet<string>) {
+  if (!element.getAnimations) {
+    return;
+  }
+  for (const animation of element.getAnimations({ subtree: true })) {
+    const name = (animation as Animation & { animationName?: string }).animationName;
+    if (!name || !names.has(name)) {
+      continue;
+    }
+    try {
+      animation.startTime = 0;
+    } catch {
+      // A timeline that refuses the write is not worth a broken board; the
+      // mark still shows, it just keeps its own phase.
+    }
+  }
+}
+
+/**
+ * Puts every breathing mark on the board on one clock. Called once, from the
+ * board root — not per card.
+ *
+ * `animationstart` BUBBLES, so the root hears about every pulse that begins
+ * anywhere beneath it: a card scrolled into view, a ring the solver just found,
+ * a slot that lost its wire, a card lit by the side panel, and the board's own
+ * notices, which live outside any card and were the last thing left out of step
+ * when each card pinned only itself. Pinning does not restart an animation, so
+ * the handler cannot feed itself, and it runs once per mark rather than per
+ * frame.
+ *
+ * The mount sweep covers what was already running before the listener existed.
+ */
+export function useBoardPulseSync(ref: RefObject<Element | null>) {
   useEffect(() => {
-    if (!active) {
+    const element = ref.current;
+    if (!element) {
       return;
     }
-    // One frame's grace: the animation does not exist on the element until
+    // One frame's grace: an animation does not exist on the element until
     // styles have been applied, and an effect can run before that. Without the
-    // wait getAnimations() returns nothing and the element stays adrift.
+    // wait getAnimations() returns nothing and the mark stays adrift.
     const frame = requestAnimationFrame(() => {
-      const element = ref.current;
-      if (!element?.getAnimations) {
+      pinToDocumentTimeline(element, BOARD_PULSE_SET);
+    });
+    const onStart = (event: Event) => {
+      const { animationName, target } = event as AnimationEvent;
+      if (!BOARD_PULSE_SET.has(animationName) || !(target instanceof Element)) {
         return;
       }
-      // `subtree` because the glow is painted by a ::after, and a pseudo
-      // element's animation is not on the element's own list.
-      for (const animation of element.getAnimations({ subtree: true })) {
-        if ((animation as Animation & { animationName?: string }).animationName !== animationName) {
-          continue;
-        }
-        try {
-          animation.startTime = 0;
-        } catch {
-          // A timeline that refuses the write is not worth a broken board;
-          // the mark still shows, it just keeps its own phase.
-        }
-      }
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [active, animationName]);
-
-  return ref;
+      pinToDocumentTimeline(target, BOARD_PULSE_SET);
+    };
+    element.addEventListener("animationstart", onStart);
+    return () => {
+      cancelAnimationFrame(frame);
+      element.removeEventListener("animationstart", onStart);
+    };
+  }, [ref]);
 }

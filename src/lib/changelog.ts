@@ -71,6 +71,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.7.0",
+    date: "2026-08-11",
+    headline: "The board breathes as one",
+    notes: [
+      "Everything that pulses now pulses together: a dead loop, a card with a slot nobody wired, the notice at the bottom, and the glow on whatever you are pointing at.",
+      "They used to run at three different speeds and start whenever each card happened to appear, so a board in trouble looked like a fault rather than one board telling you something.",
+    ],
+  },
+  {
     version: "2.6.4",
     date: "2026-08-11",
     headline: "One colour for a highlight",

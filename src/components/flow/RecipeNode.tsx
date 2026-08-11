@@ -97,7 +97,6 @@ import {
   type RailPort,
 } from "./node-verdict";
 import { describeDeathSpiral } from "./death-spiral";
-import { useSharedAnimationPhase } from "./animation-phase";
 import {
   edgeTouchesResource,
   explainPlug,
@@ -542,16 +541,6 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     ? (machineHandlers.find((handler) => handler.id === previewHandlerId) ?? selectedMachineHandler)
     : selectedMachineHandler;
   const isPreviewing = hasMachinePicker && previewHandler.id !== selectedMachineHandler.id;
-  const deadLoopPhaseRef = useSharedAnimationPhase<HTMLDivElement>(
-    verdict.kind === "dead-loop",
-    "dead-loop-breathe",
-  );
-  // Shared clock, same as the ring above: a board full of half-wired cards
-  // has to breathe as one thing, or it reads as unrelated flickering.
-  const unwiredPhaseRef = useSharedAnimationPhase<HTMLDivElement>(
-    verdict.kind === "unwired",
-    "unwired-ring-breathe",
-  );
   // The outlines the card is wearing, innermost first. They STACK rather than
   // override: each ring starts where the one inside it stopped. Selection is
   // innermost, which is also the ring painted on top — clicking a card has to
@@ -674,13 +663,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           pointer events, and carries no text, so it is invisible to
           everything except the eye. */}
       {verdict.kind === "dead-loop" ? (
-        <div ref={deadLoopPhaseRef} aria-hidden className="dead-loop-ring" />
+        <div aria-hidden className="dead-loop-ring" />
       ) : null}
       {/* The same trick for an unfinished card, and quiet on purpose: the
           slots are what you have to go and fix, so THEY carry the loud pulse
           and the card only breathes enough to be findable on a busy board. */}
       {verdict.kind === "unwired" ? (
-        <div ref={unwiredPhaseRef} aria-hidden className="unwired-ring" />
+        <div aria-hidden className="unwired-ring" />
       ) : null}
       {/* Selection, the over-tier warning and a search hit, on the card's own
           box for the same reason the ring above is. One element and one
