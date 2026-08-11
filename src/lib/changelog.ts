@@ -78,6 +78,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       "The board tour grew: after reading the machines it now walks *every drawer job*, then flips the product off and the buffer strict, *live*, with the whole board following each flip.",
       "It also says the quiet part: cards under 100% are *a factory working, not broken*. The one worth hunting is the bottleneck.",
       "A ring that stopped because its *supplier* stopped now says exactly that, names the machine, and sends you to it. Only a ring dying of its own losses reads DEAD LOOP.",
+      "New drawer shapes: *products are squares, byproducts shields, buffers hexagons*, so the product and byproduct swap keeps its buttons still. A catching buffer wears a *dashed ring*; a strict one is solid.",
       "Every grey browser tooltip is now the planner's own: same words, proper panel, no delay.",
     ],
     actions: [{ label: "Take the tour", lessonId: "read-the-board" }],

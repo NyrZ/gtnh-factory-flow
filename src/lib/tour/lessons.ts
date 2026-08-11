@@ -40,6 +40,8 @@ import {
   openTourPlan,
   restoreDrawerLab,
   restoreTheDecks,
+  restoreTourRateUnit,
+  tuneTourRateUnit,
   tourBlockedInputsSelector,
   tourBlockedOutputsSelector,
   tourBlockedSelector,
@@ -314,12 +316,17 @@ const READ_THE_BOARD: TourLesson = {
   // to magnify a card into. They come back exactly as they were.
   setup: () => {
     clearTheDecks();
-    return openTourPlan();
+    // AFTER the plan opens, not before: switching to the tour's design tab
+    // applies that design's saved view, rate unit included, which would
+    // stamp straight over a dial turned any earlier.
+    return openTourPlan().then(tuneTourRateUnit);
   },
   // The lab steps rewrite the plan to make their point. However the lesson
-  // ends - finished, skipped, closed - the plan goes back exactly as it loaded.
+  // ends - finished, skipped, closed - the plan goes back exactly as it loaded,
+  // and so do the rate dial and the columns.
   teardown: () => {
     restoreDrawerLab();
+    restoreTourRateUnit();
     restoreTheDecks();
   },
   steps: [
@@ -477,9 +484,9 @@ const READ_THE_BOARD: TourLesson = {
       rows: [
         { text: "Machines make. *Drawers decide*: what comes in, what leaves, what waits." },
         { chip: "SOURCE", tone: "need", text: "*Red, rounded*: never runs out. The plan's imports." },
-        { chip: "PRODUCT", tone: "product", text: "*Blue, eight-sided*: what the plan is for." },
-        { chip: "BYPRODUCT", tone: "output", text: "*Green, square*: catches what is left over." },
-        { chip: "BUFFER", tone: "internal", text: "*Steel, shield*: holds stock and passes it on." },
+        { chip: "PRODUCT", tone: "product", text: "*Blue, square*: the crate the plan ships. What it is for." },
+        { chip: "BYPRODUCT", tone: "output", text: "*Green, shield*: catches what is left over." },
+        { chip: "BUFFER", tone: "internal", text: "*Steel, hexagon*: the flow passes through it, in one side and out the other." },
         { text: "Same colours as the books on the right. Visit each in turn." },
       ],
     },

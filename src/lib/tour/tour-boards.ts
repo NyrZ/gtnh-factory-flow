@@ -438,6 +438,33 @@ export const frameTourByproductDrawer = frameDrawers("byproductDrawerIds");
 export const tourBufferDrawerSelector = drawerSelector("bufferDrawerIds");
 export const frameTourBufferDrawer = frameDrawers("bufferDrawerIds");
 
+/**
+ * The lesson reads its rates per MINUTE. The titanium line's numbers are
+ * honest but small - a freezer sipping 0.006/s reads as noise, while 0.38/m
+ * reads as a rate - so the lesson turns the dial for the duration and puts
+ * it back exactly as it found it, the same contract as the columns.
+ */
+let rateUnitBefore: ReturnType<(typeof useFactoryStore)["getState"]>["rateUnit"] | undefined;
+
+export function tuneTourRateUnit(): void {
+  const store = useFactoryStore.getState();
+  rateUnitBefore ??= store.rateUnit;
+  if (store.rateUnit !== "minute") {
+    store.setRateUnit("minute");
+  }
+}
+
+export function restoreTourRateUnit(): void {
+  if (rateUnitBefore === undefined) {
+    return;
+  }
+  const store = useFactoryStore.getState();
+  if (store.rateUnit !== rateUnitBefore) {
+    store.setRateUnit(rateUnitBefore);
+  }
+  rateUnitBefore = undefined;
+}
+
 /** The whole line at once, for the steps that talk about all of it. */
 export function frameTourWholeBoard(): void {
   moveCamera(() => {

@@ -357,6 +357,35 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           data-storage-shape={role}
           className="storage-shape-content relative z-10 flex min-h-0 flex-1 flex-col"
         >
+          {/* Which of the two buffers this is, readable at a glance without
+              the hover: a catching buffer wears a thick dashed ring TRACING
+              its hexagon tight inside the frame, while a STRICT one is solid
+              border and nothing else. An SVG rather than a CSS border,
+              because a border follows the element's box and only a path can
+              follow the silhouette. It sits UNDER the header, the word and
+              the numbers (z-0): the chrome reads on top, and the ring shows
+              wherever the tile is bare. The coordinates are the 100x80
+              tile's hexagon inset by 3px, and they can be exact because
+              STORAGE_NODE_WIDTH/HEIGHT are fixed. */}
+          {role === "buffer" && !isStrictBuffer(storage) ? (
+            <svg
+              aria-hidden
+              className="pointer-events-none absolute inset-0 z-0"
+              viewBox="0 0 100 80"
+              width="100%"
+              height="100%"
+            >
+              <polygon
+                points="16.1,3 83.9,3 96.8,40 83.9,77 16.1,77 3.2,40"
+                fill="none"
+                stroke={tint}
+                strokeWidth={3}
+                strokeDasharray="7 5.5"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            </svg>
+          ) : null}
           <StorageHeader storage={storage} isTank={isTank} tint={tint} role={role} />
           {/* Everything under the header is the wire zone: drag from the
               left or right half to pull a wire. The header is plain card,
