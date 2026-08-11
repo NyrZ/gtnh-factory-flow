@@ -264,12 +264,43 @@
   outline-offset: 2px;
 }
 
+/* Drawer highlights follow the SILHOUETTE, not the box. The square outline
+   and the full-box wash switch off here, and StorageNode draws them back as
+   shape-clipped layers (.storage-rim / .storage-wash) that wear the tile's
+   own polygon. Only the drop-shadow survives from the shared rule: a filter
+   follows the rendered alpha, cut corners included. */
+[data-storage-node-id].resource-glow,
+[data-storage-node-id].flow-scope-glow {
+  outline: none;
+}
+[data-storage-node-id].resource-glow::after {
+  content: none;
+}
+
+/* The shape-clipped wash breathes on the same clock as the square one. */
+.storage-wash {
+  animation: resource-breathe 1.15s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .storage-wash {
+    animation: none;
+    opacity: 0.3;
+  }
+}
+
 /* Zoomed out a storage card is already reduced to its item; a glowing frame
    around a glowing icon is noise. LED mode glows nothing — the wires and
-   machine cards still light, the drawer itself stays quiet. */
+   machine cards still light, the drawer itself stays quiet. The selection
+   rim is not a glow and stays. */
 .factory-flow-board[data-detail-level="glance"] [data-storage-node-id] {
   outline: none !important;
   filter: none !important;
+}
+
+.factory-flow-board[data-detail-level="glance"] .storage-rim--glow,
+.factory-flow-board[data-detail-level="glance"] .storage-wash {
+  display: none;
 }
 
 @theme inline {
@@ -1813,15 +1844,11 @@ img {
 }
 
 /* Storage cards: the net line stops signing its number in red and green.
-   The role word is a constant neutral, so it needs no calming - but with
-   the edit buttons gone it moves to where they were, on the left. */
+   The role word is a constant neutral and stays put: it is centred over the
+   whole header whether or not the edit buttons are drawn, so hiding them
+   changes nothing about where the word sits. */
 .factory-flow-board--calm .storage-net-line {
   color: #a8afbb;
-}
-
-.factory-flow-board--calm .storage-node-word {
-  text-align: left;
-  padding-left: 2px;
 }
 
 /* Editing chrome — the delete/clone buttons on drawer, tank and trash

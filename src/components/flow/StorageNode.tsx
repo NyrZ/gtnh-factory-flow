@@ -243,7 +243,6 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
       data-storage-resource-id={storage.resourceId}
       className={[
         "group relative text-[#e8e9ee]",
-        selected ? "ring-2 ring-purple-500" : "",
         isFlowScopeLit && !isHighlighted ? "flow-scope-glow" : "",
         isHighlighted ? "resource-glow" : "",
       ].join(" ")}
@@ -277,6 +276,22 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           isHighlighted || isSearchHighlighted ? "brightness-125 saturate-150" : "",
         ].join(" ")}
       >
+        {/* The highlight, wearing the silhouette. A slightly larger clone of
+            the shape behind the frame reads as an outline that follows the
+            cut corners, where the shared box ring drew a square around a
+            hexagon. Selection outranks the hover glow; the flow-scope rim is
+            the quiet 2px version of the same idea. */}
+        {selected || isHighlighted || isFlowScopeLit ? (
+          <span
+            aria-hidden
+            data-storage-shape={role}
+            className={[
+              "storage-shape pointer-events-none absolute",
+              selected ? "-inset-[3px]" : isHighlighted ? "storage-rim--glow -inset-[3px]" : "storage-rim--glow -inset-[2px]",
+            ].join(" ")}
+            style={{ background: selected ? "#a855f7" : "var(--glow-line)" }}
+          />
+        ) : null}
         {/* The SHAPE, on its own layer rather than on the card.
             Two reasons it cannot live on the card div. The glance icon is
             deliberately bigger than the card and spills past the frame, and a
@@ -300,6 +315,17 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             }}
           />
         </span>
+        {/* The breathing wash, clipped to the same silhouette the square
+            ::after used to ignore. Same layer rules as before: above the
+            card's surfaces, below its chrome, never a click target. */}
+        {isHighlighted ? (
+          <span
+            aria-hidden
+            data-storage-shape={role}
+            className="storage-shape storage-wash pointer-events-none absolute inset-0 z-[2]"
+            style={{ background: "var(--glow-halo)" }}
+          />
+        ) : null}
         <NodeGlanceIcon tileTint={tint}>
           {/* Deliberately bigger than the card it sits on.
               Zoomed out, WHAT is in the drawer is the only thing worth
@@ -567,8 +593,15 @@ function StorageHeader({
           learn. The tile is five cells wide precisely so the longest word
           (BYPRODUCT) clears the buttons; truncate is the safety net, not the
           plan. No title here: the card-wide tooltip already explains it.
+          The tapered shapes narrow their own header, so their word steps
+          down a point to keep clear of the slopes.
           storage-node-word: calm mode leans on this hook too. */}
-      <div className="storage-node-word pointer-events-none absolute inset-x-0 truncate text-center text-[8px] font-black tracking-[0.4px] text-[#e8e9ee] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]">
+      <div
+        className={[
+          "storage-node-word pointer-events-none absolute inset-x-0 truncate text-center font-black tracking-[0.4px] text-[#e8e9ee] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]",
+          role === "buffer" || role === "byproduct" ? "text-[7px]" : "text-[8px]",
+        ].join(" ")}
+      >
         {word}
       </div>
       {isDrainRole(role) ? <DrainModeSwap storageId={storageId} role={role} /> : null}
