@@ -329,6 +329,7 @@ function FlowIOPanel() {
             <button
               type="button"
               onClick={() => writeWorkspaceView({ netFlowRates: false })}
+              title="Both sides, as they are."
               aria-label="Show raw rates"
               aria-pressed={!workspace.netFlowRates}
               className={[
@@ -343,6 +344,7 @@ function FlowIOPanel() {
             <button
               type="button"
               onClick={() => writeWorkspaceView({ netFlowRates: true })}
+              title="Outputs minus needs."
               aria-label="Show net rates"
               aria-pressed={workspace.netFlowRates}
               className={[

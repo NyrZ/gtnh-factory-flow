@@ -365,8 +365,9 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               follow the silhouette. It sits UNDER the header, the word and
               the numbers (z-0): the chrome reads on top, and the ring shows
               wherever the tile is bare. The coordinates are the 100x80
-              tile's hexagon inset by 3px, and they can be exact because
-              STORAGE_NODE_WIDTH/HEIGHT are fixed. */}
+              tile's hexagon inset by 1.5px - hugging the frame, so the
+              stroke stays off the word and the net line - and they can be
+              exact because STORAGE_NODE_WIDTH/HEIGHT are fixed. */}
           {role === "buffer" && !isStrictBuffer(storage) ? (
             <svg
               aria-hidden
@@ -376,7 +377,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               height="100%"
             >
               <polygon
-                points="16.1,3 83.9,3 96.8,40 83.9,77 16.1,77 3.2,40"
+                points="15.1,1.5 84.9,1.5 98.4,40 84.9,78.5 15.1,78.5 1.6,40"
                 fill="none"
                 stroke={tint}
                 strokeWidth={3}
