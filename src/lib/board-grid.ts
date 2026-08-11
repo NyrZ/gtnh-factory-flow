@@ -78,16 +78,18 @@ export const FOOTER_HEIGHT = cells(2); // 40
 export const CONFIG_PANEL_ROW_HEIGHT = cells(3); // 60
 
 /**
- * Drawers and tanks. One cell narrower and one shorter than they used to be:
- * a drawer holds one thing and says one word about it, so it never needed the
- * footprint of a machine card.
+ * Drawers and tanks. Four cells square: a drawer holds one thing, and with
+ * buffers between machines everywhere now, a board full of them has to read
+ * as small tiles rather than a second fleet of machine cards. The height
+ * stays an EVEN number of cells so the side-centre dock points (height / 2)
+ * land on a grid line.
  */
-export const STORAGE_NODE_WIDTH = cells(6); // 120
-export const STORAGE_NODE_HEIGHT = cells(7); // 140
+export const STORAGE_NODE_WIDTH = cells(4); // 80
+export const STORAGE_NODE_HEIGHT = cells(4); // 80
 
-/** Trash cans. */
-export const TRASH_NODE_WIDTH = cells(6); // 120
-export const TRASH_NODE_HEIGHT = cells(7); // 140
+/** Trash cans, same tile. */
+export const TRASH_NODE_WIDTH = cells(4); // 80
+export const TRASH_NODE_HEIGHT = cells(4); // 80
 
 /** Default sizes for the annotation shapes, all whole cells. */
 export const ANNOTATION_DEFAULT_BOX = { width: cells(14), height: cells(9) }; // 280×180

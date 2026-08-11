@@ -165,8 +165,8 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         // Glance root is the CARD, so the can keeps its frame and colour and
         // only loses the buttons and the title.
         data-node-glance-root=""
-        // Six cells by seven, fixed — the can docks wires on its perimeter.
-        className="trash-node-card relative h-[140px] w-[120px] border-2 p-1"
+        // Four cells square, fixed — the can docks wires on its perimeter.
+        className="trash-node-card relative h-[80px] w-[80px] border-2 p-1"
         style={{
           borderColor: `color-mix(in srgb, ${tint} 55%, #262b34)`,
           background: `color-mix(in srgb, ${tint} 24%, #101318)`,
@@ -174,10 +174,10 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
         }}
       >
         <NodeGlanceIcon tileTint={tint}>
-          {/* Same reasoning as the drawer: bigger than the w-[116px] card, so
-              the can reads at a glance. The art is a viewBox SVG, so it scales
+          {/* Same reasoning as the drawer: bigger than the card, so the can
+              reads at a glance. The art is a viewBox SVG, so it scales
               cleanly at any size. */}
-          <div className="[&>svg]:!h-[156px] [&>svg]:!w-[147px]">
+          <div className="[&>svg]:!h-[104px] [&>svg]:!w-[98px]">
             <TrashCanPixelArt />
           </div>
         </NodeGlanceIcon>
@@ -220,8 +220,8 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
           {/* The dark well is the wire zone: drop or drag a wire anywhere on
               it. The frame and header around it move the node. */}
           {/* Square, and sized to fill what the header leaves of the card's
-              128px interior: 20 (header, pulled up by its -m-1) + 6 + 100 + 2. */}
-          <div className="relative mx-auto mb-0.5 mt-1.5 h-[100px] w-[100px]">
+              interior at the four-cell tile size. */}
+          <div className="relative mx-auto mb-0.5 mt-1 h-[44px] w-[44px]">
             <Handle
               id={inputHandleId}
               type="target"
@@ -236,7 +236,7 @@ function TrashNodeComponent({ data, selected }: NodeProps<TrashFlowNode>) {
             {/* No boxed well: the dark card is the surface, and the can art
                 fills nearly all of it — same doctrine as drawers and tanks. */}
             <div className="grid h-full w-full place-items-center">
-              <TrashCanPixelArt width={94} height={100} />
+              <TrashCanPixelArt width={41} height={44} />
             </div>
           </div>
         </MinecraftTooltip>

@@ -104,15 +104,15 @@ const WELL_HANDLE_RIGHT: CSSProperties = { ...WELL_HANDLE_BASE, left: "auto", ri
  * spends a row on its mode) and stretching a sprite to a non-square hole
  * distorts it.
  */
-const CARD_ICON_PX = 60;
+const CARD_ICON_PX = 36;
 /**
  * Plain-fluid swatches draw edge to edge — no baked-in margin like item
- * sprites — so undiluted they brush right up against the name above and the
+ * sprites — so undiluted they brush right up against the header above and the
  * net line below. Shrink only them; items keep the full box.
  */
-const FLUID_BREATHE_PX = 8;
+const FLUID_BREATHE_PX = 6;
 /** Oversized glance icon (zoomed out) — deliberately larger than the card. */
-const GLANCE_ICON_PX = 168;
+const GLANCE_ICON_PX = 112;
 
 /**
  * Rendered and atlas item sprites carry a big baked-in transparent margin —
@@ -254,9 +254,11 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         // still reads as a copper-coloured card.
         data-node-glance-root=""
         className={[
-          // Six cells by seven, fixed. Wires dock on the card's perimeter, so
-          // an off-grid edge would mean off-grid endpoints.
-          "storage-node-card relative flex h-[140px] w-[120px] flex-col p-1",
+          // Four cells square, fixed. Wires dock on the card's perimeter, so
+          // an off-grid edge would mean off-grid endpoints. A drawer is a
+          // TILE now: silhouette for the role, icon for the item, net rate
+          // for the news, and every word lives on the hover.
+          "storage-node-card relative flex h-[80px] w-[80px] flex-col p-1",
           isHighlighted || isSearchHighlighted ? "brightness-125 saturate-150" : "",
         ].join(" ")}
       >
@@ -296,7 +298,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             showAmount={false}
             bare
             iconPixelSize={storageIconPixelSize(GLANCE_ICON_PX, storage)}
-            className="!h-[168px] !w-[168px]"
+            className="!h-[112px] !w-[112px]"
           />
           {glanceMode === "identity" ? (
             // The hover reveal, same machinery as the recipe cards' (see
@@ -335,28 +337,18 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           className="storage-shape-content relative z-10 flex min-h-0 flex-1 flex-col"
         >
           <StorageHeader storage={storage} isTank={isTank} tint={tint} role={role} />
-        {/* The name sits ABOVE the item, not in the header — the header
-            carries the setting word; this line says what is inside. */}
-        <div
-          title={title}
-          className="minecraft-title relative z-10 h-4 truncate px-1 text-center text-[10px] leading-4"
-        >
-          {title}
-        </div>
         <MinecraftTooltip content={renderStorageHoverContent(storage, role)}>
-          {/* The icon well is the wire zone: drag from its left/right half
-              to pull a wire. Everything around it - header, frame, name,
-              net line - is plain card, so grabbing the border moves the
-              node. The handles carry inline styles pinned to the well box;
-              stylesheet !important wars once let them blanket the whole
-              card and swallow the header buttons.
-              The well is also the resource-hover trigger — the ITEM lights
+          {/* Everything under the header is the wire zone: drag from the
+              left or right half to pull a wire. The header is plain card,
+              so grabbing it (or the frame) moves the node. The handles
+              carry inline styles pinned to this box; stylesheet !important
+              wars once let them blanket the whole card and swallow the
+              header buttons.
+              The zone is also the resource-hover trigger — the ITEM lights
               the flow, not the card around it. Wiring is a mode; a held
               wire must not also be lighting up cards. */}
           <div
-            // Flexible, not fixed: the mode pill only exists on a drain, and
-            // the well simply takes whatever height is left over either way.
-            className="relative mx-auto min-h-0 w-full flex-1"
+            className="relative mx-auto flex min-h-0 w-full flex-1 flex-col"
             onMouseEnter={() =>
               isWiringConnection() ? undefined : setHoveredStorageResourceKey(resourceKey)
             }
@@ -386,7 +378,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             />
             {/* No wood face, no glass box: the dark tinted card IS the
                 surface, and the item fills nearly the whole well. */}
-            <div className="grid h-full w-full place-items-center">
+            <div className="grid min-h-0 w-full flex-1 place-items-center">
               <ResourceIcon
                 resource={{ ...storage, id: storage.resourceId, amount: 1 }}
                 showAmount={false}
@@ -395,22 +387,22 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
                   isPlainFluid ? CARD_ICON_PX - FLUID_BREATHE_PX : CARD_ICON_PX,
                   storage,
                 )}
-                className="!h-[60px] !w-[60px]"
+                className="!h-[36px] !w-[36px]"
               />
+            </div>
+            <div
+              className={[
+                // No "Net" word: the sign and the colour already say it, and
+                // the number is the thing worth reading.
+                "storage-net-line relative z-10 h-4 text-center text-[12px] font-bold leading-4 tabular-nums",
+                net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
+              ].join(" ")}
+            >
+              {net >= 0 ? "+" : ""}
+              {formatCompactRate(net, storage.kind)}
             </div>
           </div>
         </MinecraftTooltip>
-        <div
-          className={[
-            // No "Net" word: the sign and the colour already say it, and the
-            // number is the thing worth reading.
-            "storage-net-line relative z-10 h-4 text-center text-[13px] font-bold leading-4 tabular-nums",
-            net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
-          ].join(" ")}
-        >
-          {net >= 0 ? "+" : ""}
-          {formatCompactRate(net, storage.kind)}
-        </div>
         </div>
       </div>
     </div>
@@ -441,7 +433,6 @@ function StorageHeader({
   const noun = isTank ? "tank" : "drawer";
   const presentation = ROLE_PRESENTATION[role];
   const strict = role === "buffer" && isStrictBuffer(storage);
-  const word = strict ? "STRICT" : presentation.word;
   const line = strict ? STRICT_BUFFER_LINE : presentation.line;
 
   return (
@@ -469,17 +460,11 @@ function StorageHeader({
             baseline-align the hyphen low instead of centring it. */}
         <span aria-hidden className="block h-[2px] w-[8px] bg-white" />
       </button>
-      {/* The role, centred, and the only word on the card that is not the
-          item's name. One colour for all four: the SILHOUETTE is what tells
-          them apart now, so tinting the word too would be saying the same
-          thing twice in a channel the item's own colour already owns.
-          storage-node-word: calm mode leans on this hook too. */}
-      <div
-        title={line}
-        className="storage-node-word pointer-events-none absolute inset-x-0 truncate text-center text-[8px] font-black tracking-[0.4px] text-[#e8e9ee] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]"
-      >
-        {word}
-      </div>
+      {/* No role word on the tile: the SILHOUETTE tells the four apart, and
+          the hover says it in letters. At this size a centred word and the
+          two buttons cannot share the strip, and the buttons earn their
+          keep. The header still wears the role line as its title. */}
+      <span title={line} className="pointer-events-auto min-w-0 flex-1 self-stretch" />
       {isDrainRole(role) ? <DrainModeSwap storageId={storageId} role={role} /> : null}
       {role === "buffer" ? <BufferModeSwap storageId={storageId} strict={strict} /> : null}
     </div>
