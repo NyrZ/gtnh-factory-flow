@@ -2,6 +2,7 @@ import type { FactoryProject } from "./types";
 import { normalizeProjectFuelProfiles } from "./fuels";
 import { isCustomRateRecipe, releaseCustomRates } from "./custom-rate";
 import { dedupeEdgeWires } from "./edge-identity";
+import { isTrashRecipe } from "./trash";
 import { snapPositionToGrid, snapSizeUpToGrid } from "@/lib/board-grid";
 
 /**
@@ -128,6 +129,14 @@ function dropCrossFormConnections(project: FactoryProject): FactoryProject {
     const recipe = node ? recipesById.get(node.recipeId) : undefined;
     if (!recipe) {
       // A pocket card, or a recipe this plan does not carry. Not ours to judge.
+      return true;
+    }
+    // A TRASH CAN has no slots at all and swallows anything wired to it. Its
+    // emptiness is what it IS, not evidence of a broken wire - and asking an
+    // empty slot list whether it holds a slot of some kind always answers no,
+    // so this check used to delete every wire into a can on load. Somebody
+    // would pipe an output into the void, save, reload, and find the line gone.
+    if (isTrashRecipe(recipe)) {
       return true;
     }
     const slots = side === "source" ? recipe.outputs : recipe.inputs;

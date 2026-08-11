@@ -71,6 +71,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.2.1",
+    date: "2026-08-10",
+    headline: "Wires into a trash can stay put",
+    notes: ["A line into a trash can was *deleted when the plan loaded*. It survives now."],
+  },
+  {
     version: "2.2.0",
     date: "2026-08-10",
     headline: "Product drawers ask for everything now",

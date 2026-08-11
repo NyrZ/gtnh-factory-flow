@@ -122,6 +122,63 @@ describe("dropping cross-form connections on load", () => {
   });
 });
 
+describe("wires into a trash can survive a reload", () => {
+  /** A plate maker with its output piped into a can, saved and loaded back. */
+  function createTrashProject(kind: "item" | "fluid"): FactoryProject {
+    return {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "trash",
+      name: "Trash",
+      recipes: [
+        {
+          id: "maker",
+          name: "Maker",
+          machineType: "Chemical Reactor",
+          minimumTier: "LV",
+          durationTicks: 20,
+          eut: 30,
+          inputs: [],
+          outputs: [{ kind, id: "waste", amount: 1 }],
+        },
+        {
+          id: "trash-recipe",
+          name: "Trash Can",
+          kind: "custom",
+          category: "trash",
+          machineType: "Trash Can",
+          minimumTier: "NONE",
+          durationTicks: 20,
+          eut: 0,
+          inputs: [],
+          outputs: [],
+        },
+      ],
+      nodes: [
+        { id: "maker", recipeId: "maker", machineCount: 1, parallel: 1, position: { x: 0, y: 0 } },
+        { id: "can", recipeId: "trash-recipe", machineCount: 1, parallel: 1, position: { x: 400, y: 0 } },
+      ],
+      storages: [],
+      edges: [
+        { id: "to-can", source: "maker", target: "can", resourceKind: kind, resourceId: "waste" },
+      ],
+      fuelProfiles: [],
+    } as unknown as FactoryProject;
+  }
+
+  // A can has no slots at all, so the "does this end have a slot of that kind"
+  // test answered no for every wire into one and quietly deleted it on load.
+  // Emptiness is what a can IS, not evidence of a broken wire.
+  it("keeps an item wire into a can", () => {
+    const normalized = normalizeLoadedProject(createTrashProject("item"));
+    expect(normalized.edges.map((edge) => edge.id)).toEqual(["to-can"]);
+  });
+
+  it("keeps a fluid wire into a can", () => {
+    const normalized = normalizeLoadedProject(createTrashProject("fluid"));
+    expect(normalized.edges.map((edge) => edge.id)).toEqual(["to-can"]);
+  });
+});
+
 describe("dropping doubled wires on load", () => {
   it("keeps one wire when the same two rows were wired twice", () => {
     const doubled = createCrossFormProject();
