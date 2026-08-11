@@ -136,12 +136,19 @@ function isStrictBuffer(storage: FactoryStorage): boolean {
 }
 
 // Inline (not utility classes) so React Flow's own handle stylesheet can
-// never reposition or resize these: the well is the wire zone, exactly.
-const WELL_HANDLE_BASE: CSSProperties = {
+// never reposition or resize this: the well is the wire zone, exactly.
+//
+// ONE handle over the whole well, not two halves. A drawer holds one item, so
+// "wire this up" is one gesture and the far end decides which way it runs. The
+// card used to be split down the middle - left half asked who FEEDS it, right
+// half who it feeds - with nothing on screen saying which half you had hold
+// of, so half of all drags asked the wrong question and washed a perfectly
+// good target red. Wires still dock through both port ids; only the grab is
+// one thing now. See `bidirectional` in FactoryFlow.tsx.
+const WELL_HANDLE: CSSProperties = {
   position: "absolute",
-  top: 0,
-  bottom: 0,
-  width: "50%",
+  inset: 0,
+  width: "100%",
   height: "100%",
   minWidth: 0,
   minHeight: 0,
@@ -153,8 +160,6 @@ const WELL_HANDLE_BASE: CSSProperties = {
   opacity: 0,
   zIndex: 30,
 };
-const WELL_HANDLE_LEFT: CSSProperties = { ...WELL_HANDLE_BASE, left: 0, right: "auto" };
-const WELL_HANDLE_RIGHT: CSSProperties = { ...WELL_HANDLE_BASE, left: "auto", right: 0 };
 
 /**
  * Item icon box on the card face; fluids invert FLUID_ICON_SCALE to match.
@@ -500,17 +505,11 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             }
             onMouseLeave={() => setHoveredFlowScope(undefined)}
           >
-            <Handle
-              id={inputHandleId}
-              type="target"
-              position={Position.Left}
-              data-resource-handle="true"
-              data-resource-node-id={storage.id}
-              data-resource-handle-id={inputHandleId}
-              onClick={selectOnHandleClick}
-              className="nodrag"
-              style={WELL_HANDLE_LEFT}
-            />
+            {/* The whole well, one grab point. Typed as a source so a drag can
+                START anywhere on it; the board runs in ConnectionMode.Loose,
+                so a wire coming the other way still lands here, and the drop
+                resolves a drawer by direction rather than by which element the
+                pointer happened to be over (getStorageHandleAtPosition). */}
             <Handle
               id={outputHandleId}
               type="source"
@@ -520,7 +519,16 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               data-resource-handle-id={outputHandleId}
               onClick={selectOnHandleClick}
               className="nodrag"
-              style={WELL_HANDLE_RIGHT}
+              style={WELL_HANDLE}
+            />
+            {/* The input port keeps its id for WIRES - edges dock on it, plans
+                store it - but it is no longer a place you grab. Zero-sized and
+                inert so React Flow still knows the port exists. */}
+            <Handle
+              id={inputHandleId}
+              type="target"
+              position={Position.Left}
+              className="nodrag !pointer-events-none !h-0 !w-0 !min-h-0 !min-w-0 !border-0 !bg-transparent !opacity-0"
             />
             {/* No wood face, no glass box: the dark tinted card IS the
                 surface, and the item fills nearly the whole well. */}

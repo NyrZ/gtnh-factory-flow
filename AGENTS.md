@@ -16,9 +16,11 @@ Working notes for future agents on GTNH Factory Flow.
   chip in the header. ONE bump per RELEASE - a deploy to the live site - never
   one per commit. Minor for a release carrying features (1.1.0), patch for one
   that is only fixes (1.0.1).
-  - Check what `https://gtnhplanner.com/` is serving before bumping. If it is
-    already on the number in `version.ts`, the release has not shipped: fold
-    the new work into the top changelog entry instead of adding another.
+  - Check what `https://gtnhplanner.com/api/version` reports before bumping.
+    Behind `version.ts` means the release has not shipped yet: fold the new
+    work into the top changelog entry and leave the number alone. Equal to
+    `version.ts` means everything is live, so this is a new release: bump, and
+    open one new entry.
 - The chip opens the changelog, so every release needs ONE entry in
   `src/lib/changelog.ts`. Write it for players, not developers: what changed on
   THEIR board, a headline plus at most four notes. Every note is one short

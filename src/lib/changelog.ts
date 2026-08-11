@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.8.0",
+    date: "2026-08-11",
+    headline: "Drawers wire from anywhere",
+    notes: [
+      "Grab a drawer anywhere on its face. Drop it on something that eats the item and it feeds it; drop it on something that makes the item and it fills up.",
+      "Dropping a wire slightly off, on the wrong row of a card, now lands on the row that fits instead of doing nothing.",
+    ],
+  },
+  {
     version: "2.7.0",
     date: "2026-08-11",
     headline: "Highlights and menus",

@@ -1304,8 +1304,23 @@ type DraggedResourceConnection = Pick<
   | "alternatives"
 > & {
   nodeId: string;
+  /**
+   * The side the drag LEFT from, and so the default direction of the wire it
+   * makes. For a drawer this is always "output" and means nothing more than
+   * "the drawer offers what it holds" - see `bidirectional`.
+   */
   side: "input" | "output";
   handleId: string;
+  /**
+   * The drag can go EITHER way, and the far end decides which.
+   *
+   * A drawer holds one item and the whole card is one grab point, so "wire
+   * this drawer up" is a single gesture: drop it on something that eats the
+   * item and the drawer feeds it, drop it on something that makes the item and
+   * it fills the drawer. It used to be two invisible half-cards, one per
+   * direction, and grabbing the wrong half washed a perfectly good target red.
+   */
+  bidirectional?: boolean;
 };
 
 interface ResolvedResourceHandle {
@@ -2802,18 +2817,37 @@ export function FactoryFlow() {
       }
       const clientPosition = getClientPosition(event) ?? lastConnectionPointerRef.current;
       lastConnectionPointerRef.current = undefined;
-      const targetHandle =
-        getResourceHandleAtPosition(clientPosition) ??
-        getResourceHandleAtPointer(event) ??
-        getStorageHandleAtPosition(clientPosition, draggedResource) ??
-        getStorageHandleAtPointer(event, draggedResource) ??
+      // Ranked candidates, not a first-match chain. Aiming still beats
+      // guessing - the exact slot under the pointer is asked first - but a
+      // candidate the drop cannot USE must not end the search. It used to:
+      // release a wire one row off on a multi-slot card and the precise
+      // hit-test answered with that wrong slot, the drop refused it, and the
+      // whole-card rule underneath (the one the green wash and the snapped
+      // pipe were both promising) never got a turn.
+      const candidates = [
+        // Drawers answer first. A drawer's one handle is minted "output" so a
+        // drag can start anywhere on it, which makes it a misleading answer to
+        // "what did this drop land on": read literally, dropping drawer A on
+        // drawer B says B supplies A, the reverse of the gesture. These two
+        // resolve a drawer by DIRECTION instead - the one you drag feeds the
+        // one you drop on - and a drawer holds one item, so there is never a
+        // more specific slot on it to lose by asking here first.
+        getStorageHandleAtPosition(clientPosition, draggedResource),
+        getStorageHandleAtPointer(event, draggedResource),
+        getResourceHandleAtPosition(clientPosition),
+        getResourceHandleAtPointer(event),
         // Anywhere on a trash card counts as its well: dropping an output on
         // the frame or header must void it, never spawn a tank on top.
-        getTrashHandleAtPosition(clientPosition, draggedResource, event) ??
-        // Last resort: any card that takes the resource anywhere on it. The
-        // exact slot hit-tests above already had their say, so aiming still
-        // beats guessing.
-        getNodeCardHandleAtPosition(project, clientPosition, draggedResource);
+        getTrashHandleAtPosition(clientPosition, draggedResource, event),
+        // Last resort: any card that takes the resource anywhere on it.
+        getNodeCardHandleAtPosition(project, clientPosition, draggedResource),
+      ].filter((candidate): candidate is ResolvedResourceHandle => Boolean(candidate));
+
+      const targetHandle = draggedResource
+        ? (candidates.find((candidate) =>
+            isUsableDropTarget(project, draggedResource, candidate),
+          ) ?? candidates[0])
+        : candidates[0];
 
       if (connectCompletedRef.current) {
         return;
@@ -2855,30 +2889,29 @@ export function FactoryFlow() {
           return;
         }
         if (isCompatibleDraggedResourceTarget(project, draggedResource, targetHandle)) {
-          const source =
-            draggedResource.side === "output"
-              ? {
-                  nodeId: draggedResource.nodeId,
-                  handleId: draggedResource.handleId,
-                }
-              : {
-                  nodeId: targetHandle.nodeId,
-                  handleId: targetHandle.handleId,
-                };
-          const target =
-            draggedResource.side === "input"
-              ? {
-                  nodeId: draggedResource.nodeId,
-                  handleId: draggedResource.handleId,
-                }
-              : {
-                  nodeId: targetHandle.nodeId,
-                  handleId: targetHandle.handleId,
-                };
-          const outputResource =
-            draggedResource.side === "output"
-              ? draggedResource
-              : getResourceForHandle(project, targetHandle.nodeId, targetHandle.handleId);
+          // The SLOT it landed on names the direction: a wire runs into an
+          // input and out of an output, whichever end the gesture started
+          // from. That is what lets a drawer be one grab point - drop it on
+          // something that eats the item and the drawer feeds it, drop it on
+          // something that makes the item and it fills the drawer.
+          const draggedIsSource = targetHandle.side === "input";
+          const draggedEnd = {
+            nodeId: draggedResource.nodeId,
+            // A drawer's single handle is minted "output", so the end that
+            // RECEIVES has to be re-minted as its input port.
+            handleId: draggedResource.bidirectional
+              ? makeResourceHandleId(draggedIsSource ? "output" : "input", {
+                  kind: draggedResource.kind,
+                  id: draggedResource.id,
+                })
+              : draggedResource.handleId,
+          };
+          const farEnd = { nodeId: targetHandle.nodeId, handleId: targetHandle.handleId };
+          const source = draggedIsSource ? draggedEnd : farEnd;
+          const target = draggedIsSource ? farEnd : draggedEnd;
+          const outputResource = draggedIsSource
+            ? draggedResource
+            : getResourceForHandle(project, targetHandle.nodeId, targetHandle.handleId);
 
           if (!outputResource) {
             return;
@@ -7947,6 +7980,38 @@ function readResourceHandleElement(element: HTMLElement | null) {
   return undefined;
 }
 
+/**
+ * Would a drop on this handle DO something? The three cards that take a wire
+ * on terms of their own answer for themselves; everything else has to be a
+ * resource match.
+ */
+function isUsableDropTarget(
+  project: FactoryProject,
+  draggedResource: DraggedResourceConnection,
+  handle: ResolvedResourceHandle,
+) {
+  if (handle.nodeId === draggedResource.nodeId) {
+    // A machine wired into itself is legitimate, but only through a real slot
+    // match, which the compatibility check below decides.
+    return isCompatibleDraggedResourceTarget(project, draggedResource, handle);
+  }
+
+  const draggingUniversalPort =
+    draggedResource.id === TRASH_ANY_RESOURCE_ID ||
+    draggedResource.id === CUSTOM_RATE_ANY_RESOURCE_ID;
+
+  if (handle.resourceId === TRASH_ANY_RESOURCE_ID) {
+    // A can only ever drinks, so the far end has to be something being made.
+    return !draggingUniversalPort && draggedResource.side === "output";
+  }
+
+  if (isCustomRateNodeId(project, handle.nodeId)) {
+    return !draggingUniversalPort;
+  }
+
+  return isCompatibleDraggedResourceTarget(project, draggedResource, handle);
+}
+
 function isCompatibleDraggedResourceTarget(
   project: FactoryProject,
   draggedResource: DraggedResourceConnection,
@@ -7958,8 +8023,13 @@ function isCompatibleDraggedResourceTarget(
     return false;
   }
 
+  // A drawer's drag fits either kind of slot, because the slot decides which
+  // way the wire runs. Everything else still has to land on the opposite side
+  // from the one it left.
+  const sidesFit = draggedResource.bidirectional || draggedResource.side !== targetHandle.side;
+
   return (
-    draggedResource.side !== targetHandle.side &&
+    sidesFit &&
     (targetHandle.side === "input"
       ? resourceMatchesInput(draggedResource, targetResource)
       : resourceMatchesInput(targetResource, draggedResource))
@@ -8169,7 +8239,31 @@ function findNodeDropTarget(
   nodeId: string,
   draggedResource: DraggedResourceConnection,
 ): ResolvedResourceHandle | undefined {
-  const side: ResourceHandleSide = draggedResource.side === "output" ? "input" : "output";
+  // A drawer's drag asks "what does this item connect to", not "what feeds
+  // me": try the card as a CONSUMER first (the drawer feeds it, the commoner
+  // intent), and if it does not eat the item, try it as a maker. A card that
+  // does both - a recycler eating and making the same thing - takes the first,
+  // and a drop aimed at an actual slot overrules this anyway.
+  if (draggedResource.bidirectional) {
+    return (
+      findNodeDropTargetOnSide(project, nodeId, draggedResource, "input") ??
+      findNodeDropTargetOnSide(project, nodeId, draggedResource, "output")
+    );
+  }
+  return findNodeDropTargetOnSide(
+    project,
+    nodeId,
+    draggedResource,
+    draggedResource.side === "output" ? "input" : "output",
+  );
+}
+
+function findNodeDropTargetOnSide(
+  project: FactoryProject,
+  nodeId: string,
+  draggedResource: DraggedResourceConnection,
+  side: ResourceHandleSide,
+): ResolvedResourceHandle | undefined {
   const accepts = (candidate: Pick<ResourceAmount, "kind" | "id" | "alternatives">) =>
     side === "input"
       ? resourceMatchesInput(draggedResource, candidate)
@@ -8640,6 +8734,10 @@ function getDraggedResourceForHandle(
       nodeId,
       side: handle.side,
       handleId,
+      // The whole drawer is one grab point and it holds one item, so the drag
+      // is a question about that item rather than about a direction. Whatever
+      // it lands on answers it.
+      bidirectional: true,
       kind: storage.kind,
       id: storage.resourceId,
       displayName: storage.displayName,

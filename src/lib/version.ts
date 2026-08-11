@@ -7,12 +7,13 @@
  * features (1.1.0), patch for one that is only fixes (1.0.1). Started at 1.0.0
  * the day the equilibrium solver shipped (2026-08-02).
  *
- * So: check what the live site is on, and if it already matches the number
- * here, this release has not shipped yet - fold the new work into the entry
- * that is already at the top rather than opening another one.
+ * So: check `https://gtnhplanner.com/api/version` first. If it is BEHIND this
+ * number, the release is still waiting to ship - fold the new work into the
+ * entry already at the top and leave the number alone. If it MATCHES,
+ * everything here is live and the next change starts a new release.
  *
  * The chip opens the changelog, so every bump needs an entry in
  * `src/lib/changelog.ts` written for players, not for developers, and kept to
  * a headline plus a few one-line notes.
  */
-export const APP_VERSION = "2.7.0";
+export const APP_VERSION = "2.8.0";
