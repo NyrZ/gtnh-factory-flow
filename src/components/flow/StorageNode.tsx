@@ -439,17 +439,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
                 className="!h-[36px] !w-[36px]"
               />
             </div>
-            <div
-              className={[
-                // No "Net" word: the sign and the colour already say it, and
-                // the number is the thing worth reading.
-                "storage-net-line relative z-10 h-4 text-center text-[12px] font-bold leading-4 tabular-nums",
-                net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
-              ].join(" ")}
-            >
-              {net >= 0 ? "+" : ""}
-              {formatCompactRate(net, storage.kind)}
-            </div>
+            <NetLine net={net} kind={storage.kind} />
           </div>
         </div>
         </MinecraftTooltip>
@@ -465,6 +455,34 @@ export const StorageNode = memo(
   StorageNodeComponent,
   (previous, next) => previous.data === next.data && previous.selected === next.selected,
 );
+
+/**
+ * A rate that will not fit gives up SIZE, never digits and never pixels: a
+ * trickle like +0.000000001/s is a real number the player dialled for, and
+ * clipping it printed a confident wrong one. Stepped by string length rather
+ * than measured, so the board never reads the DOM for it.
+ */
+function rateFitClass(label: string): string {
+  return label.length <= 10 ? "text-[12px]" : label.length <= 14 ? "text-[10px]" : "text-[8px]";
+}
+
+/** The tile's one line of news: the net rate, sized to fit its box. */
+function NetLine({ net, kind }: { net: number; kind: string }) {
+  const label = `${net >= 0 ? "+" : ""}${formatCompactRate(net, kind)}`;
+  return (
+    <div
+      className={[
+        // No "Net" word: the sign and the colour already say it, and
+        // the number is the thing worth reading.
+        "storage-net-line relative z-10 h-4 whitespace-nowrap text-center font-bold leading-4 tabular-nums",
+        rateFitClass(label),
+        net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
+      ].join(" ")}
+    >
+      {label}
+    </div>
+  );
+}
 
 function StorageHeader({
   storage,
@@ -615,8 +633,16 @@ function renderStorageHoverContent(storage: FactoryStorage, role: StorageRole): 
   const strict = role === "buffer" && isStrictBuffer(storage);
   const rate = (value: number) => formatSlotRate(value, storage.kind);
 
+  // The three figures never wrap mid-number: the box grows to hold them, and
+  // past its cap the NUMBERS give up size instead - same rule as the tile.
+  const inLabel = `In ${rate(inTotal)}`;
+  const outLabel = `Out ${rate(outTotal)}`;
+  const netLabel = `${net >= 0 ? "+" : ""}${rate(net)}`;
+  const rateLength = inLabel.length + outLabel.length + netLabel.length;
+  const rateSize = rateLength <= 34 ? "text-[12px]" : rateLength <= 44 ? "text-[11px]" : "text-[10px]";
+
   return (
-    <div className="w-56">
+    <div className="w-max min-w-56 max-w-80">
       <div className="text-[13px] font-semibold text-white">
         {storage.displayName ?? storage.resourceId}
         <span className="ml-1.5 text-[11px] font-bold text-slate-400">
@@ -626,17 +652,21 @@ function renderStorageHoverContent(storage: FactoryStorage, role: StorageRole): 
       <p className="mt-0.5 text-[11px] leading-4 text-slate-300">
         {strict ? STRICT_BUFFER_LINE : presentation.line}
       </p>
-      <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-white/15 pt-1 text-[12px] text-slate-300">
-        <span>In {rate(inTotal)}</span>
-        <span>Out {rate(outTotal)}</span>
+      <div
+        className={[
+          "mt-1.5 flex items-baseline justify-between gap-3 border-t border-white/15 pt-1 text-slate-300",
+          rateSize,
+        ].join(" ")}
+      >
+        <span className="whitespace-nowrap">{inLabel}</span>
+        <span className="whitespace-nowrap">{outLabel}</span>
         <span
           className={[
-            "font-semibold tabular-nums",
+            "whitespace-nowrap font-semibold tabular-nums",
             net > 0.005 ? "text-emerald-300" : net < -0.005 ? "text-red-300" : "text-slate-200",
           ].join(" ")}
         >
-          {net >= 0 ? "+" : ""}
-          {rate(net)}
+          {netLabel}
         </span>
       </div>
     </div>

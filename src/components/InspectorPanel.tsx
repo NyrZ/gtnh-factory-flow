@@ -335,7 +335,7 @@ function FlowIOPanel() {
                 "px-1.5 text-[9px] font-black leading-none tracking-tight",
                 workspace.netFlowRates
                   ? "text-fg-muted hover:text-fg"
-                  : "bg-surface-sunken text-fg",
+                  : "bg-cyan-500/20 text-cyan-200",
               ].join(" ")}
             >
               RAW
