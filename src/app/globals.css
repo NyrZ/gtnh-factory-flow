@@ -609,11 +609,27 @@ textarea {
    parked way out (a 2px border at 0.2 zoom is 0.4px: gone) nor fattens as
    you come back in. min() caps it so a deep zoom-out can't turn the rim
    into the card. !important because the identity tile's border arrives as
-   an inline shorthand. */
-.factory-flow-board[data-detail-level="glance"] .storage-node-card,
+   an inline shorthand. Drawers are absent on purpose: forcing a width onto
+   the bare card div painted a border with no colour of its own - currentColor,
+   a white box - over a tile whose real frame was hidden with the rest of its
+   children. Their silhouette stays painted instead (below). */
 .factory-flow-board[data-detail-level="glance"] .trash-node-card,
 .factory-flow-board[data-detail-level="glance"] .glance-identity-tile {
   border-width: min(calc(2px / var(--board-zoom, 1)), 12px) !important;
+}
+
+/* Zoomed out a drawer KEEPS its silhouette: the shape spans stay painted in
+   the role's colour with the big item icon riding on top, and the frame
+   thickens against the zoom exactly like the LED rim it replaces - the fill
+   is inset by the frame's thickness, so pushing the inset out IS the frame
+   growing. The selection rim is a shape span too, so a selected drawer stays
+   marked at any distance; the glow variants are switched off above. */
+.factory-flow-board[data-detail-level="glance"] [data-node-glance-root] > .storage-shape {
+  visibility: visible;
+}
+
+.factory-flow-board[data-detail-level="glance"] .storage-shape-fill {
+  inset: min(calc(2px / var(--board-zoom, 1)), 12px) !important;
 }
 
 /* The identity glance's hover reveal: name, count and I/O rates in a panel

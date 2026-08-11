@@ -326,7 +326,10 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             style={{ background: "var(--glow-halo)" }}
           />
         ) : null}
-        <NodeGlanceIcon tileTint={tint}>
+        {/* No tileTint: the glance layer's box wash would paint a rectangle
+            over a card that now keeps its SILHOUETTE at glance - the shaped
+            fill underneath is already the role-coloured ground. */}
+        <NodeGlanceIcon>
           {/* Deliberately bigger than the card it sits on.
               Zoomed out, WHAT is in the drawer is the only thing worth
               reading, and a sprite confined inside the frame is a few pixels
