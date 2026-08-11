@@ -126,7 +126,7 @@ const CARD_ICON_PX = 36;
  */
 const FLUID_BREATHE_PX = 6;
 /** Oversized glance icon (zoomed out) — deliberately larger than the card. */
-const GLANCE_ICON_PX = 112;
+const GLANCE_ICON_PX = 128;
 
 /**
  * Rendered and atlas item sprites carry a big baked-in transparent margin —
@@ -269,11 +269,11 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         // still reads as a copper-coloured card.
         data-node-glance-root=""
         className={[
-          // Four cells square, fixed. Wires dock on the card's perimeter, so
+          // Five cells by four, fixed. Wires dock on the card's perimeter, so
           // an off-grid edge would mean off-grid endpoints. A drawer is a
-          // TILE now: silhouette for the role, icon for the item, net rate
-          // for the news, and every word lives on the hover.
-          "storage-node-card relative flex h-[80px] w-[80px] flex-col p-1",
+          // TILE: silhouette and colour for the role, the word to say it in
+          // letters, icon for the item, net rate for the news.
+          "storage-node-card relative flex h-[80px] w-[100px] flex-col p-1",
           isHighlighted || isSearchHighlighted ? "brightness-125 saturate-150" : "",
         ].join(" ")}
       >
@@ -301,7 +301,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           />
         </span>
         <NodeGlanceIcon tileTint={tint}>
-          {/* Deliberately bigger than the card it sits on (w-[140px]).
+          {/* Deliberately bigger than the card it sits on.
               Zoomed out, WHAT is in the drawer is the only thing worth
               reading, and a sprite confined inside the frame is a few pixels
               on screen. Nothing clips it — the card sets no overflow — so it
@@ -313,7 +313,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             showAmount={false}
             bare
             iconPixelSize={storageIconPixelSize(GLANCE_ICON_PX, storage)}
-            className="!h-[112px] !w-[112px]"
+            className="!h-[128px] !w-[128px]"
           />
           {glanceMode === "identity" ? (
             // The hover reveal, same machinery as the recipe cards' (see
@@ -347,12 +347,17 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             wearing an octagon. The glance icon stays outside this wrapper on
             purpose: it is deliberately bigger than the card and spills past
             the frame, which a clip would eat. */}
+        {/* The hover tooltip covers the WHOLE card, header and buttons
+            included: it is the drawer's one explanation, and it should not
+            matter which pixel of a small tile the pointer found. The span is
+            display:contents, so the flex column underneath lays out as if it
+            were not there. */}
+        <MinecraftTooltip content={renderStorageHoverContent(storage, role)}>
         <div
           data-storage-shape={role}
           className="storage-shape-content relative z-10 flex min-h-0 flex-1 flex-col"
         >
           <StorageHeader storage={storage} isTank={isTank} tint={tint} role={role} />
-        <MinecraftTooltip content={renderStorageHoverContent(storage, role)}>
           {/* Everything under the header is the wire zone: drag from the
               left or right half to pull a wire. The header is plain card,
               so grabbing it (or the frame) moves the node. The handles
@@ -417,8 +422,8 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
               {formatCompactRate(net, storage.kind)}
             </div>
           </div>
-        </MinecraftTooltip>
         </div>
+        </MinecraftTooltip>
       </div>
     </div>
   );
@@ -448,7 +453,7 @@ function StorageHeader({
   const noun = isTank ? "tank" : "drawer";
   const presentation = ROLE_PRESENTATION[role];
   const strict = role === "buffer" && isStrictBuffer(storage);
-  const line = strict ? STRICT_BUFFER_LINE : presentation.line;
+  const word = strict ? "STRICT" : presentation.word;
 
   return (
     <div
@@ -475,11 +480,15 @@ function StorageHeader({
             baseline-align the hyphen low instead of centring it. */}
         <span aria-hidden className="block h-[2px] w-[8px] bg-white" />
       </button>
-      {/* No role word on the tile: the SILHOUETTE tells the four apart, and
-          the hover says it in letters. At this size a centred word and the
-          two buttons cannot share the strip, and the buttons earn their
-          keep. The header still wears the role line as its title. */}
-      <span title={line} className="pointer-events-auto min-w-0 flex-1 self-stretch" />
+      {/* The role, in letters, centred between the two buttons. Colour and
+          silhouette say it too, but a word is the one channel nobody has to
+          learn. The tile is five cells wide precisely so the longest word
+          (BYPRODUCT) clears the buttons; truncate is the safety net, not the
+          plan. No title here: the card-wide tooltip already explains it.
+          storage-node-word: calm mode leans on this hook too. */}
+      <div className="storage-node-word pointer-events-none absolute inset-x-0 truncate text-center text-[8px] font-black tracking-[0.4px] text-[#e8e9ee] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]">
+        {word}
+      </div>
       {isDrainRole(role) ? <DrainModeSwap storageId={storageId} role={role} /> : null}
       {role === "buffer" ? <BufferModeSwap storageId={storageId} strict={strict} /> : null}
     </div>
