@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ResourceBalance } from "@/lib/model/types";
 import {
+  applyNetFlow,
   applyResourceMarks,
   buildFlowRows,
   filterFlowBalances,
@@ -44,7 +45,7 @@ function makeSection(id: FlowSectionId, items: ResourceBalance[]): FlowSection {
   };
 }
 
-const NONE_COLLAPSED = { need: false, product: false, byproduct: false, internal: false };
+const NONE_COLLAPSED = { need: false, output: false, internal: false };
 
 describe("buildFlowRows", () => {
   it("emits a header followed by each item", () => {
@@ -72,7 +73,7 @@ describe("buildFlowRows", () => {
   });
 
   it("emits a placeholder row for an expanded but empty section", () => {
-    const rows = buildFlowRows([makeSection("product", [])], NONE_COLLAPSED);
+    const rows = buildFlowRows([makeSection("output", [])], NONE_COLLAPSED);
     expect(rows.map((row) => row.type)).toEqual(["header", "empty"]);
   });
 
@@ -100,7 +101,7 @@ describe("measureFlowRows", () => {
   });
 
   it("ends with a sentinel offset equal to the total", () => {
-    const rows = buildFlowRows([makeSection("product", [])], NONE_COLLAPSED);
+    const rows = buildFlowRows([makeSection("output", [])], NONE_COLLAPSED);
     const { offsets, totalHeight } = measureFlowRows(rows, HEIGHTS);
 
     expect(offsets).toHaveLength(rows.length + 1);
@@ -157,18 +158,72 @@ describe("getFlowRowValue", () => {
     expect(getFlowRowValue("need", balance)).toBe(240);
   });
 
-  // Each section reports its OWN drawers. They used to share one surplus, so
-  // a resource sitting in both printed the combined figure under each.
-  it("reports what the product drawers caught", () => {
-    expect(getFlowRowValue("product", balance)).toBe(40);
-  });
-
-  it("reports what the byproduct drawers caught", () => {
-    expect(getFlowRowValue("byproduct", balance)).toBe(24);
+  // One Outputs figure: product drawers, byproduct drawers and unclaimed
+  // surplus are one answer to "how much leaves the line".
+  it("reports the whole surplus for an output", () => {
+    expect(getFlowRowValue("output", balance)).toBe(64);
   });
 
   it("reports throughput for an internal resource", () => {
     expect(getFlowRowValue("internal", balance)).toBe(360);
+  });
+});
+
+describe("applyNetFlow", () => {
+  const need = (key: ResourceBalance["key"], deficit: number, surplus = 0) =>
+    makeBalance({ key, deficitPerSecond: deficit, surplusPerSecond: surplus });
+  const output = (key: ResourceBalance["key"], surplus: number, deficit = 0) =>
+    makeBalance({ key, surplusPerSecond: surplus, deficitPerSecond: deficit });
+
+  it("leaves one-sided items alone", () => {
+    const needs = [need("item:coal", 5)];
+    const outputs = [output("item:steel", 3)];
+    const netted = applyNetFlow(needs, outputs);
+
+    expect(netted.needs).toEqual(needs);
+    expect(netted.outputs).toEqual(outputs);
+  });
+
+  it("collapses a two-sided item onto the side its sign says", () => {
+    // The same balance object sits in both raw lists, as splitBalances files it.
+    const shortChlorine = makeBalance({
+      key: "item:cl-short",
+      deficitPerSecond: 10,
+      surplusPerSecond: 4,
+    });
+    const spareChlorine = makeBalance({
+      key: "item:cl-spare",
+      deficitPerSecond: 3,
+      surplusPerSecond: 8,
+    });
+    const netted = applyNetFlow([shortChlorine, spareChlorine], [shortChlorine, spareChlorine]);
+
+    expect(netted.needs).toEqual([
+      expect.objectContaining({ key: "item:cl-short", deficitPerSecond: 6, surplusPerSecond: 0 }),
+    ]);
+    expect(netted.outputs).toEqual([
+      expect.objectContaining({ key: "item:cl-spare", surplusPerSecond: 5, deficitPerSecond: 0 }),
+    ]);
+  });
+
+  it("keeps an exactly covered item listed as an output at zero", () => {
+    // "You do not need to source this" said out loud, instead of the item
+    // silently vanishing from both lists.
+    const covered = makeBalance({ key: "item:even", deficitPerSecond: 7, surplusPerSecond: 7 });
+    const netted = applyNetFlow([covered], [covered]);
+
+    expect(netted.needs).toEqual([]);
+    expect(netted.outputs).toEqual([
+      expect.objectContaining({ key: "item:even", surplusPerSecond: 0, deficitPerSecond: 0 }),
+    ]);
+  });
+
+  it("re-ranks each netted list by its new size", () => {
+    const big = makeBalance({ key: "item:big", deficitPerSecond: 2, surplusPerSecond: 20 });
+    const small = output("item:small", 9);
+    const netted = applyNetFlow([big], [small, big]);
+
+    expect(netted.outputs.map((entry) => entry.key)).toEqual(["item:big", "item:small"]);
   });
 });
 

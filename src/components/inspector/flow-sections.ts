@@ -1,24 +1,15 @@
 import { makeResourceKey } from "@/lib/model/resources";
-import { getStorageRoles } from "@/lib/model/storage-role";
 import type { FactoryProject, ResourceBalance } from "@/lib/model/types";
 
 /**
- * Which kind of end-of-the-line a spare resource reaches, read off the drawer
- * catching it. Everything in Output is spare by definition; this says whether
- * the plan MEANT it.
+ * Outputs are ONE section. Product against byproduct is how a drawer asks its
+ * machine (pull flat out, or catch what is left), and the board's tiles wear
+ * that difference; to the reader of this panel both are simply what leaves
+ * the line, and splitting them made one resource show up twice with neither
+ * figure being the answer. The split lasted one day (13551d6) before the
+ * players asked for the total back.
  */
-export type OutputKind = "product" | "byproduct";
-
-/**
- * Products and byproducts are two SECTIONS, not one section with a glyph.
- *
- * They were one list ordered products-first with a small mark beside each
- * name, which asked the reader to learn two 10px silhouettes and then check
- * every row against them. The distinction is the whole question the panel
- * answers - is this what the factory is for, or what it also happens to make -
- * so it gets a heading and a colour, and the marks are gone.
- */
-export type FlowSectionId = "need" | "product" | "byproduct" | "internal";
+export type FlowSectionId = "need" | "output" | "internal";
 
 export type FlowSectionTone = FlowSectionId;
 
@@ -52,21 +43,11 @@ export function getFlowRowValue(section: FlowSectionId, balance: ResourceBalance
   switch (section) {
     case "need":
       return balance.deficitPerSecond;
-    // Each section reports ITS OWN drawers, because one resource can sit in
-    // both: some of the carbon is what the line is for, the rest is what it
-    // could not help making. A shared `surplusPerSecond` printed the combined
-    // figure twice.
-    //
-    // With NO drawer either way there is nothing to split, and the row is in
-    // whichever list `partitionOutputsByKind` filed it under - so it falls
-    // back to the whole surplus rather than rendering a confident zero.
-    case "product":
-    case "byproduct":
-      return balance.productPerSecond === 0 && balance.byproductPerSecond === 0
-        ? balance.surplusPerSecond
-        : section === "product"
-          ? balance.productPerSecond
-          : balance.byproductPerSecond;
+    // The whole spare figure: product drawers, byproduct drawers and unclaimed
+    // surplus are one number, because they are one answer to "how much of this
+    // leaves the line".
+    case "output":
+      return balance.surplusPerSecond;
     case "internal":
     default:
       return balance.consumedPerSecond;
@@ -74,69 +55,49 @@ export function getFlowRowValue(section: FlowSectionId, balance: ResourceBalance
 }
 
 /**
- * Which spare resources the plan calls products and which it calls byproducts,
- * read off the drawers catching them.
+ * The NET reading: an item cannot be a need and an output at once.
  *
- * A resource with a PRODUCT drawer anywhere counts as a product even if a
- * byproduct drawer also holds some: wanting a thing on purpose in one place
- * outranks catching the extra in another. Anything with no drawer at all is
- * absent from the map - it is spare because nobody took it, which is neither.
+ * RAW shows both figures - bring 10 in over here, take 4 away over there -
+ * which is the honest ledger of the boundary drawers. NET does the
+ * subtraction the reader was doing in their head: one signed figure per item,
+ * filed under whichever side of the boundary the sign says. It is arithmetic
+ * on the totals the panel already shows, never a claim that anything was
+ * wired: an exactly-covered item stays listed as an output at 0/s, which is
+ * the panel saying "you do not need to source this" out loud.
+ *
+ * Netted lists are re-ranked by their new size, the same ordering the raw
+ * lists arrive with.
  */
-export function classifyPlanOutputs(project: FactoryProject): Map<string, OutputKind> {
-  const kinds = new Map<string, OutputKind>();
-  const roles = getStorageRoles(project);
-  for (const storage of project.storages ?? []) {
-    const role = roles.get(storage.id);
-    if (role !== "product" && role !== "byproduct") {
-      continue;
-    }
-    const key = makeResourceKey(storage.kind, storage.resourceId);
-    if (role === "product" || !kinds.has(key)) {
-      kinds.set(key, role);
-    }
-  }
-  return kinds;
-}
+export function applyNetFlow(
+  needs: ResourceBalance[],
+  outputs: ResourceBalance[],
+): { needs: ResourceBalance[]; outputs: ResourceBalance[] } {
+  const nettedNeeds: ResourceBalance[] = [];
+  const nettedOutputs: ResourceBalance[] = [];
 
-/**
- * Splits what is left over into the two lists the panel shows.
- *
- * A resource can land in BOTH, carrying a different number in each. One item
- * with a product drawer and a byproduct drawer is making that claim honestly:
- * this much is what the factory is for, this much it also happens to make.
- * The old winner-takes-all rule picked "product" and printed the combined
- * total under it, hiding the second drawer entirely.
- *
- * Anything NO drawer claims goes with the byproducts. It is coming out and
- * nobody asked for it, which is what a byproduct is in plain English, and the
- * alternative - calling it a product because a product drawer has not been
- * placed yet - would put "what this factory is for" on the reader's behalf.
- *
- * A stable partition rather than a sort, so the solver's own size ordering
- * survives inside each list and equal rows can never swap between renders.
- */
-export function partitionOutputsByKind(
-  items: ResourceBalance[],
-  kinds: Map<string, OutputKind>,
-): { products: ResourceBalance[]; byproducts: ResourceBalance[] } {
-  const products: ResourceBalance[] = [];
-  const byproducts: ResourceBalance[] = [];
-  for (const balance of items) {
-    const asProduct = balance.productPerSecond > 0;
-    const asByproduct = balance.byproductPerSecond > 0;
-    if (asProduct) {
-      products.push(balance);
+  for (const balance of needs) {
+    const net = balance.surplusPerSecond - balance.deficitPerSecond;
+    if (balance.surplusPerSecond <= 0) {
+      nettedNeeds.push(balance);
+    } else if (net < 0) {
+      nettedNeeds.push({ ...balance, deficitPerSecond: -net, surplusPerSecond: 0 });
     }
-    if (asByproduct) {
-      byproducts.push(balance);
-    }
-    // Spare with no drawer at all: no boundary figure to split, so the
-    // resource-level label decides, and absent that it reads as a byproduct.
-    if (!asProduct && !asByproduct) {
-      (kinds.get(balance.key) === "product" ? products : byproducts).push(balance);
-    }
+    // net >= 0: the outputs pass below files it on the other side.
   }
-  return { products, byproducts };
+
+  for (const balance of outputs) {
+    const net = balance.surplusPerSecond - balance.deficitPerSecond;
+    if (balance.deficitPerSecond <= 0) {
+      nettedOutputs.push(balance);
+    } else if (net >= 0) {
+      nettedOutputs.push({ ...balance, surplusPerSecond: net, deficitPerSecond: 0 });
+    }
+    // net < 0: already filed as a need above.
+  }
+
+  nettedNeeds.sort((left, right) => right.deficitPerSecond - left.deficitPerSecond);
+  nettedOutputs.sort((left, right) => right.surplusPerSecond - left.surplusPerSecond);
+  return { needs: nettedNeeds, outputs: nettedOutputs };
 }
 
 export function filterFlowBalances(items: ResourceBalance[], filter: string) {

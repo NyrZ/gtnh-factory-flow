@@ -26,6 +26,11 @@ export interface WorkspaceView {
   showHiddenResources: boolean;
   /** Only favourites are listed. */
   favouritesOnly: boolean;
+  /**
+   * Net the resource panel's boundary: an item in Need and Outputs at once
+   * shows as one signed figure instead of both. Display arithmetic only.
+   */
+  netFlowRates: boolean;
   /** The trend graphs at the foot of the resource panel. */
   trendsOpen: boolean;
   /** Resources the user has hidden, by ResourceKey. */
@@ -41,6 +46,7 @@ export const DEFAULT_WORKSPACE_VIEW: WorkspaceView = {
   rightPanelOpen: true,
   showHiddenResources: false,
   favouritesOnly: false,
+  netFlowRates: false,
   trendsOpen: true,
   hiddenResourceKeys: [],
   favouriteResourceKeys: [],
@@ -101,6 +107,7 @@ function readWorkspaceView(): WorkspaceView {
         DEFAULT_WORKSPACE_VIEW.showHiddenResources,
       ),
       favouritesOnly: flag(parsed.favouritesOnly, DEFAULT_WORKSPACE_VIEW.favouritesOnly),
+      netFlowRates: flag(parsed.netFlowRates, DEFAULT_WORKSPACE_VIEW.netFlowRates),
       trendsOpen: flag(parsed.trendsOpen, DEFAULT_WORKSPACE_VIEW.trendsOpen),
     };
   } catch {
