@@ -13,12 +13,17 @@ Working notes for future agents on GTNH Factory Flow.
 ## Branches, Deploy, Dataset
 
 - App version lives in `src/lib/version.ts` (`APP_VERSION`) and renders as a
-  chip in the header. Bump it with EVERY merge to main - minor for features
-  (1.1.0), patch for fixes (1.0.1) - so the live site is self-identifying.
-- The chip opens the changelog, so every bump also needs an entry in
-  `src/lib/changelog.ts`. Write it for players, not developers: what changed
-  on THEIR board, a headline plus one to three short lines. No jargon
-  (no "solver", "refactor", "edge role"), newest first.
+  chip in the header. ONE bump per RELEASE - a deploy to the live site - never
+  one per commit. Minor for a release carrying features (1.1.0), patch for one
+  that is only fixes (1.0.1).
+  - Check what `https://gtnhplanner.com/` is serving before bumping. If it is
+    already on the number in `version.ts`, the release has not shipped: fold
+    the new work into the top changelog entry instead of adding another.
+- The chip opens the changelog, so every release needs ONE entry in
+  `src/lib/changelog.ts`. Write it for players, not developers: what changed on
+  THEIR board, a headline plus at most four notes. Every note is one short
+  sentence. No second sentence saying what it used to do, no reasoning, no
+  jargon ("solver", "refactor", "edge role"). Newest first.
 - Default working branch for feature work is `develop`.
 - `main` is production. Push/merge there only when the user asks for main/prod deployment.
 - `https://gtnhplanner.com/` is production for this repo.

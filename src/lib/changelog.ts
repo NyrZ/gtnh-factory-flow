@@ -2,13 +2,15 @@
  * What's new, in players' words.
  *
  * Read by people planning factories, not by developers: say what changed on
- * THEIR board, never how it was built. Newest first. Add an entry with every
- * version bump (see version.ts).
+ * THEIR board, never how it was built. Newest first. ONE entry per release,
+ * where a release is a deploy to the live site, not a commit (see version.ts).
  *
- * KEEP EACH ENTRY SHORT. This is read in two situations and both are
- * impatient: someone clicked the version chip out of mild curiosity, or the
- * update popup put it in front of them uninvited. A headline plus two or three
- * lines is the whole budget.
+ * BE BRIEF. Every note is ONE short sentence naming what changed, and four
+ * notes is the ceiling. No second sentence explaining what it used to do, no
+ * reasoning, no reassurance: the reader either clicked the chip out of mild
+ * curiosity or had the popup put in front of them uninvited, and neither of
+ * them asked for an essay. If a change cannot be said in a line, it is
+ * probably two changes or one nobody needs told about.
  *
  * The LIST, though, runs all the way back, and that is deliberate. The dialog
  * opens on the releases a given reader has not seen - usually one to four - and
@@ -73,45 +75,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.7.0",
     date: "2026-08-11",
-    headline: "The board breathes as one",
+    headline: "Highlights and menus",
     notes: [
-      "Everything that pulses now pulses together: a dead loop, a card with a slot nobody wired, the notice at the bottom, and the glow on whatever you are pointing at.",
-      "They used to run at three different speeds and start whenever each card happened to appear, so a board in trouble looked like a fault rather than one board telling you something.",
-    ],
-  },
-  {
-    version: "2.6.4",
-    date: "2026-08-11",
-    headline: "One colour for a highlight",
-    notes: [
-      "Slots and drawers light up in the same warm gold the wires do. They used to come out a paler yellow, so the two ends of one highlight looked like two different things.",
-    ],
-  },
-  {
-    version: "2.6.3",
-    date: "2026-08-11",
-    headline: "Hovering a drawer follows its own wires",
-    notes: [
-      "Point at a drawer and it lights the wires plugged into it and the slots on the far end of them. It used to light every wire and drawer on the board holding that item, wired to it or not.",
-      "It also stopped pulsing. A steady outline, the same as pointing at a slot on a machine.",
-      "The item lists on the side panel still light everything carrying an item, wherever it is. That is what they are for.",
-    ],
-  },
-  {
-    version: "2.6.2",
-    date: "2026-08-11",
-    headline: "Menus close when you click away",
-    notes: [
-      "A tab menu or the export menu used to stay open when you clicked the board behind it. Clicking anywhere outside now closes it.",
-    ],
-  },
-  {
-    version: "2.6.1",
-    date: "2026-08-11",
-    headline: "Clearer names either side",
-    notes: [
-      "The right panel's first list is now called *Inputs*, to sit beside Outputs.",
-      "The tab menu reads on one line: *Close tabs to left*, *Close tabs to right*, *Close other tabs*, and plain *Close* for the tab you opened it on.",
+      "Point at a drawer: it lights its own wires and the slots they plug into, and no longer pulses.",
+      "Slots, drawers and wires light in one colour, and everything that pulses now pulses together.",
+      "Tab menu reads plainly: *Close tabs to left / right / other tabs / Close*. Menus shut when you click the board.",
+      "The right panel's first list is called *Inputs*.",
     ],
   },
   {
