@@ -1778,14 +1778,18 @@ img {
 
 /* A port pulled into the hovered flow scope must be unmissable: the one warm
    glow colour the whole app lights up in (see --glow-line). Works over tints
-   and semantic tones alike. */
+   and semantic tones alike.
+
+   No brightness lift: a filter applies to the box-shadow too, and lifting
+   #ffd257 clips red and green to 255 while raising blue, so the ring came out
+   a flat yellow while the wires — which carry no filter — stayed gold. The
+   ring and the halo are the signal; they do not need the row brightened. */
 .flow-port--flow-lit {
   position: relative;
   z-index: 15;
   box-shadow:
     0 0 0 2px var(--glow-line),
     0 0 10px 2px var(--glow-halo);
-  filter: brightness(1.22);
 }
 
 /* ===== Calm colours (the presentation toggle) ============================

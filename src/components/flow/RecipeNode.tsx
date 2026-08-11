@@ -1726,9 +1726,13 @@ const PLUG_DUMP_WORD: Record<"trash" | "tank" | "store", string> = {
   store: "DRAIN",
 };
 
+// No brightness lift here, and none on the port row below. A CSS filter applies
+// to the element's SHADOWS as well as its content, and brightness(1.22) on
+// #ffd257 clips red and green to 255 while lifting blue: the ring came out
+// near #ffff6a, a flat yellow. Wires carry no filter, so they kept the true
+// gold, and the two ends of the same highlight looked like two colours.
 const PLUG_GLOW_STYLE: CSSProperties = {
   boxShadow: "0 0 0 2px var(--glow-line), 0 0 10px 2px var(--glow-halo)",
-  filter: "brightness(1.22)",
   zIndex: 15,
 };
 
@@ -2019,7 +2023,6 @@ export function PortChip({
         isFlowScopeLit
           ? {
               boxShadow: "0 0 0 2px var(--glow-line), 0 0 10px 2px var(--glow-halo)",
-              filter: "brightness(1.22)",
               zIndex: 15,
             }
           : undefined

@@ -71,6 +71,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.6.4",
+    date: "2026-08-11",
+    headline: "One colour for a highlight",
+    notes: [
+      "Slots and drawers light up in the same warm gold the wires do. They used to come out a paler yellow, so the two ends of one highlight looked like two different things.",
+    ],
+  },
+  {
     version: "2.6.3",
     date: "2026-08-11",
     headline: "Hovering a drawer follows its own wires",

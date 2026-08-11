@@ -331,9 +331,12 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           // TILE: silhouette and colour for the role, the word to say it in
           // letters, icon for the item, net rate for the news.
           "storage-node-card relative flex h-[80px] w-[100px] flex-col p-1",
-          isHighlighted || isFlowScopePort || isSearchHighlighted
-            ? "brightness-125 saturate-150"
-            : "",
+          // Search has no rim of its own, so the card itself brightens to say
+          // "this one matched". The glow states deliberately do NOT: a filter
+          // here also lifts the rim and the wash drawn inside this box, and
+          // brightening #ffd257 clips it to a flat yellow that no longer
+          // matched the gold on the wires. See PLUG_GLOW_STYLE in RecipeNode.
+          isSearchHighlighted ? "brightness-125 saturate-150" : "",
         ].join(" ")}
       >
         {/* The highlight, wearing the silhouette. A slightly larger clone of
