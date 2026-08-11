@@ -59,7 +59,7 @@ const ROLE_PRESENTATION: Record<
   buffer: {
     word: "BUFFER",
     boundary: false,
-    line: "Fed and drawn from, so it passes on exactly what its takers pull. It is not a place to dump a surplus.",
+    line: "Fed and drawn from. It hands its takers what they pull and catches the extra, filling at the rate shown. It never invents supply: a shortfall slows the taker.",
   },
   idle: {
     word: "STORAGE",
@@ -67,6 +67,15 @@ const ROLE_PRESENTATION: Record<
     line: "Unwired. Feed it to make a product, draw from it to make a source, or both for a buffer.",
   },
 };
+
+/** The strict-buffer line, swapped in for ROLE_PRESENTATION.buffer.line. */
+const STRICT_BUFFER_LINE =
+  "Set strict: it passes on exactly what its takers pull. A surplus stays with the machine that made it and clogs it, in the open.";
+
+/** Which of the two buffer behaviours this drawer runs (absent is overflow). */
+function isStrictBuffer(storage: FactoryStorage): boolean {
+  return storage.bufferMode === "strict";
+}
 
 // Inline (not utility classes) so React Flow's own handle stylesheet can
 // never reposition or resize these: the well is the wire zone, exactly.
@@ -325,7 +334,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           data-storage-shape={role}
           className="storage-shape-content relative z-10 flex min-h-0 flex-1 flex-col"
         >
-          <StorageHeader storageId={storage.id} isTank={isTank} tint={tint} role={role} />
+          <StorageHeader storage={storage} isTank={isTank} tint={tint} role={role} />
         {/* The name sits ABOVE the item, not in the header — the header
             carries the setting word; this line says what is inside. */}
         <div
@@ -417,19 +426,23 @@ export const StorageNode = memo(
 );
 
 function StorageHeader({
-  storageId,
+  storage,
   isTank,
   tint,
   role,
 }: {
-  storageId: string;
+  storage: FactoryStorage;
   isTank: boolean;
   tint: string;
   role: StorageRole;
 }) {
+  const storageId = storage.id;
   const deleteStorage = useFactoryStore((state) => state.deleteStorage);
   const noun = isTank ? "tank" : "drawer";
   const presentation = ROLE_PRESENTATION[role];
+  const strict = role === "buffer" && isStrictBuffer(storage);
+  const word = strict ? "STRICT" : presentation.word;
+  const line = strict ? STRICT_BUFFER_LINE : presentation.line;
 
   return (
     <div
@@ -462,13 +475,43 @@ function StorageHeader({
           thing twice in a channel the item's own colour already owns.
           storage-node-word: calm mode leans on this hook too. */}
       <div
-        title={presentation.line}
+        title={line}
         className="storage-node-word pointer-events-none absolute inset-x-0 truncate text-center text-[8px] font-black tracking-[0.4px] text-[#e8e9ee] [text-shadow:1px_1px_0_rgba(0,0,0,0.65)]"
       >
-        {presentation.word}
+        {word}
       </div>
       {isDrainRole(role) ? <DrainModeSwap storageId={storageId} role={role} /> : null}
+      {role === "buffer" ? <BufferModeSwap storageId={storageId} strict={strict} /> : null}
     </div>
+  );
+}
+
+/**
+ * The one thing about a BUFFER you choose: whether it catches a surplus
+ * (overflow, the default, the way the real chest behaves) or hands it back to
+ * the feeder as a clog (strict, for players who want the imbalance surfaced
+ * on the machine).
+ */
+function BufferModeSwap({ storageId, strict }: { storageId: string; strict: boolean }) {
+  const updateStorage = useFactoryStore((state) => state.updateStorage);
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        updateStorage(storageId, { bufferMode: strict ? "overflow" : "strict" });
+      }}
+      title={
+        strict
+          ? "Strict: this only passes on what its takers pull, so a surplus backs up the machine feeding it. Switch to overflow to catch the extra here instead."
+          : "Overflow: this catches whatever its takers leave, so the machine feeding it never backs up. Switch to strict to hand a surplus back to the machine."
+      }
+      aria-label={strict ? "Switch to overflow" : "Switch to strict"}
+      className="board-edit-chrome nodrag relative z-40 ml-auto flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
+    >
+      <ArrowLeftRight aria-hidden className="h-2.5 w-2.5" />
+    </button>
   );
 }
 
@@ -529,15 +572,20 @@ function renderStorageHoverContent(storage: FactoryStorage, role: StorageRole): 
   }
   const net = inTotal - outTotal;
   const presentation = ROLE_PRESENTATION[role];
+  const strict = role === "buffer" && isStrictBuffer(storage);
   const rate = (value: number) => formatSlotRate(value, storage.kind);
 
   return (
     <div className="w-56">
       <div className="text-[13px] font-semibold text-white">
         {storage.displayName ?? storage.resourceId}
-        <span className="ml-1.5 text-[11px] font-bold text-slate-400">{presentation.word}</span>
+        <span className="ml-1.5 text-[11px] font-bold text-slate-400">
+          {strict ? "STRICT" : presentation.word}
+        </span>
       </div>
-      <p className="mt-0.5 text-[11px] leading-4 text-slate-300">{presentation.line}</p>
+      <p className="mt-0.5 text-[11px] leading-4 text-slate-300">
+        {strict ? STRICT_BUFFER_LINE : presentation.line}
+      </p>
       <div className="mt-1.5 flex items-baseline justify-between gap-3 border-t border-white/15 pt-1 text-[12px] text-slate-300">
         <span>In {rate(inTotal)}</span>
         <span>Out {rate(outTotal)}</span>
