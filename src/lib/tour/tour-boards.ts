@@ -466,12 +466,48 @@ export function frameTourWholeBoard(): void {
  */
 let drawerLabBaseline: FactoryProject | undefined;
 
-function applyDrawerLab(state: "quiet" | "strict"): boolean {
+/**
+ * The flip never rides the camera move. Each lab step is two beats: the
+ * camera settles on the whole line with NOTHING changed, and only after a
+ * pause does the flip land, alone on an unmoving picture, with a flash on
+ * the tiles that did it - so what changed is the only thing that moves.
+ */
+const LAB_BEAT_MS = 900;
+let labIntent = 0;
+
+/** One bright pulse on the cards that just changed the board's mind. */
+function pulseTiles(ids: string[]): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  for (const id of ids) {
+    const tile = document.querySelector<HTMLElement>(
+      `.react-flow__node[data-id="${CSS.escape(id)}"]`,
+    );
+    tile?.animate(
+      [
+        { filter: "brightness(2.6) saturate(1.4)" },
+        { filter: "brightness(1) saturate(1)" },
+      ],
+      { duration: 750, easing: "ease-out" },
+    );
+  }
+}
+
+function applyDrawerLab(state: "quiet" | "strict" | "reset"): boolean {
   const found = ensurePicks();
   if (!found) {
     return false;
   }
   const store = useFactoryStore.getState();
+  if (state === "reset") {
+    if (drawerLabBaseline) {
+      store.markHydratedProject(drawerLabBaseline);
+      drawerLabBaseline = undefined;
+    }
+    pulseTiles([...found.productDrawerIds, ...found.bufferDrawerIds]);
+    return true;
+  }
   drawerLabBaseline ??= store.project;
   const products = new Set(found.productDrawerIds);
   const buffers = new Set(found.bufferDrawerIds);
@@ -485,36 +521,67 @@ function applyDrawerLab(state: "quiet" | "strict"): boolean {
           : storage,
     ),
   });
-  useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
+  pulseTiles(state === "strict" ? found.bufferDrawerIds : found.productDrawerIds);
   return true;
 }
 
+function runDrawerLab(state: "quiet" | "strict" | "reset"): void {
+  labIntent += 1;
+  const intent = labIntent;
+  // Beat one: the shot, untouched.
+  let framed = false;
+  moveCamera(() => {
+    if (!ensurePicks()) {
+      return false;
+    }
+    useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
+    framed = true;
+    return true;
+  });
+  // Beat two: the flip. Superseded by any newer step (the intent check), and
+  // still on the house retry loop so a step entered before the plan finished
+  // arriving keeps trying - framing first if beat one never landed.
+  window.setTimeout(() => {
+    if (intent !== labIntent) {
+      return;
+    }
+    moveCamera(() => {
+      if (intent !== labIntent) {
+        return true;
+      }
+      if (!framed) {
+        if (!ensurePicks()) {
+          return false;
+        }
+        useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
+        framed = true;
+      }
+      return applyDrawerLab(state);
+    });
+  }, LAB_BEAT_MS);
+}
+
 export function tourDrawerLabQuiet(): void {
-  moveCamera(() => applyDrawerLab("quiet"));
+  runDrawerLab("quiet");
 }
 
 export function tourDrawerLabStrict(): void {
-  moveCamera(() => applyDrawerLab("strict"));
+  runDrawerLab("strict");
 }
 
-/** Baseline again, framed: the lesson's own "put it back" step lands here. */
+/** Baseline again, same rhythm: settle, beat, restore, flash. */
 export function tourDrawerLabReset(): void {
-  moveCamera(() => {
-    if (useFactoryStore.getState().project.nodes.length === 0) {
-      return false;
-    }
-    restoreDrawerLab();
-    useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
-    return true;
-  });
+  runDrawerLab("reset");
 }
 
 /**
- * Baseline without the camera. Runs on the way out of the lesson however it
- * ends - finished, skipped, closed - so the plan the tour borrowed goes back
- * exactly as it loaded.
+ * Baseline without the camera or the beat. Runs on the way out of the lesson
+ * however it ends - finished, skipped, closed - so the plan the tour borrowed
+ * goes back exactly as it loaded. Bumps the intent first, so a flip still
+ * waiting on its beat cannot land after the restore.
  */
 export function restoreDrawerLab(): void {
+  labIntent += 1;
   if (!drawerLabBaseline) {
     return;
   }

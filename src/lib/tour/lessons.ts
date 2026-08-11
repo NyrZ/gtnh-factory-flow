@@ -306,8 +306,7 @@ const READ_THE_BOARD: TourLesson = {
   title: "Read the board",
   recommended: true,
   blurb:
-    "Opens a real titanium line, flies in on one machine and reads it out loud: what a bottleneck is, what blocked means, and how one shortage travels.",
-  nextLessonId: "drawers-and-buffers",
+    "Opens a real titanium line and reads it out loud: the machines and their words first, then every drawer job, then it flips a product and a buffer live and lets you watch the board follow.",
   // Both columns out of the way for the duration: this lesson is about the
   // canvas and nothing else, and with them open there is not enough board left
   // to magnify a card into. They come back exactly as they were.
@@ -315,7 +314,10 @@ const READ_THE_BOARD: TourLesson = {
     clearTheDecks();
     return openTourPlan();
   },
+  // The lab steps rewrite the plan to make their point. However the lesson
+  // ends - finished, skipped, closed - the plan goes back exactly as it loaded.
   teardown: () => {
+    restoreDrawerLab();
     restoreTheDecks();
   },
   steps: [
@@ -450,41 +452,21 @@ const READ_THE_BOARD: TourLesson = {
       anchor: "board",
       side: "inside",
       before: frameTourWholeBoard,
-      title: "Around the machines, the drawers",
+      title: "None of these words is an alarm",
       rows: [
-        { text: "Every card that is not a machine is a *drawer*, and its colour is its job." },
         {
-          text: "*Red* imports, *blue* product, *green* byproducts, *steel* buffer. The same inks as the books on the right.",
+          text: "Step back and count: *almost nothing here sits at 100 percent*. A real line never does, and it does not have to.",
         },
         {
-          text: "They are the half of the board that decides how fast the other half runs, and they have a *tour of their own*. It flips things live. Take it next.",
+          text: "Machines come in whole numbers and recipes do not, so most cards idle part of the time. That is a factory *working*, not a factory broken.",
+        },
+        {
+          chip: "BOTTLENECK",
+          tone: "bottleneck",
+          text: "The one worth hunting. Want more product? Find the bottleneck, *add machines there*, and watch the next one appear. That loop IS the game.",
         },
       ],
     },
-  ],
-};
-
-/**
- * The third walk: the drawers, each job in turn, and then the lesson performs
- * its point instead of describing it - the product flipped to a byproduct
- * live, the buffer flipped strict, the whole line following each flip.
- */
-const DRAWERS_AND_BUFFERS: TourLesson = {
-  id: "drawers-and-buffers",
-  title: "Drawers and buffers",
-  blurb:
-    "Every drawer job on the titanium line, then the fun part: the product flipped off and the buffer flipped strict, live, with the whole board following.",
-  setup: () => {
-    clearTheDecks();
-    return openTourPlan();
-  },
-  // Two of the steps rewrite the plan to make their point. However the lesson
-  // ends - finished, skipped, closed - the plan goes back exactly as it loaded.
-  teardown: () => {
-    restoreDrawerLab();
-    restoreTheDecks();
-  },
-  steps: [
     {
       anchor: "board",
       side: "inside",
@@ -631,7 +613,7 @@ const DRAWERS_AND_BUFFERS: TourLesson = {
   ],
 };
 
-export const TOUR_LESSONS: TourLesson[] = [LOOK_AROUND, READ_THE_BOARD, DRAWERS_AND_BUFFERS];
+export const TOUR_LESSONS: TourLesson[] = [LOOK_AROUND, READ_THE_BOARD];
 
 export function findLesson(lessonId: string | undefined): TourLesson | undefined {
   return lessonId ? TOUR_LESSONS.find((lesson) => lesson.id === lessonId) : undefined;
