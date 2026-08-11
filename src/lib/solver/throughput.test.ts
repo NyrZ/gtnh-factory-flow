@@ -621,13 +621,20 @@ describe("calculateThroughput", () => {
 
     const result = solveClosed(project);
 
-    expect(result.nodes.consumer.utilization).toBeCloseTo(0.1);
-    expect(result.nodes.source.utilization).toBeCloseTo(0.1);
+    // Two separate drawers are two separate boundaries: the fed one is a
+    // PRODUCT drawer pulling its source flat out, the drawn one is a SOURCE
+    // drawer feeding the consumer, and neither forces the other's pace. The
+    // closed boundary drains the consumer's plates too, so it also runs flat
+    // out - the 1/s target is a floor, never a ceiling.
+    expect(result.nodes.consumer.utilization).toBeCloseTo(1);
+    expect(result.nodes.source.utilization).toBeCloseTo(1);
     expect(result.edges["source-to-drawer"].demandPerSecond).toBeCloseTo(10);
     expect(result.edges["source-to-drawer"].transferredPerSecond).toBeCloseTo(10);
     expect(result.storages["dust-drawer-out"].producedPerSecond).toBeCloseTo(10);
-    expect(result.storages["dust-drawer-out"].consumedPerSecond).toBeCloseTo(1);
-    expect(result.storages["dust-drawer-out"].netPerSecond).toBeCloseTo(9);
+    expect(result.storages["dust-drawer-out"].consumedPerSecond).toBeCloseTo(0);
+    expect(result.storages["dust-drawer-out"].netPerSecond).toBeCloseTo(10);
+    // The books net out: the source machine makes 10/s, the consumer eats
+    // 10/s; that one side banks and the other imports is boundary business.
     expect(result.resources["item:dust"].netPerSecond).toBeCloseTo(0);
   });
 
@@ -916,13 +923,15 @@ describe("calculateThroughput", () => {
 
     const result = solveClosed(project);
 
-    // A BUFFER is not a dump. The tower pulls 1,000 L/s of the extractor's
-    // 4,000, so the extractor idles at a quarter speed instead of running flat
-    // out into a tank that fills forever. Its ONE output is the one being
-    // relayed, so nothing piles up and this is demand, not a clog: to be
-    // CLOGGED something else has to still be asking for more.
+    // A buffer never drives production. The tower pulls 1,000 L/s of the
+    // extractor's 4,000, and the tank relays exactly that pull as demand, so
+    // the extractor idles at a quarter speed instead of running flat out into
+    // a tank that fills forever. This is DEMAND, not disposal: an overflow
+    // buffer can always catch more, so nothing bounds the machine from the
+    // disposal side and nothing reads as a clog.
     expect(result.nodes.extractor.utilization).toBeCloseTo(0.25);
-    expect(result.nodes.extractor.disposalUtilization).toBeCloseTo(0.25);
+    expect(result.nodes.extractor.demandUtilization).toBeCloseTo(0.25);
+    expect(result.nodes.extractor.disposalUtilization).toBeCloseTo(1);
     expect(result.nodes.extractor.clogOutputKey).toBeUndefined();
     expect(result.edges["extractor-to-tank"].transferredPerSecond).toBeCloseTo(1_000);
     expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(0);
@@ -1096,7 +1105,11 @@ describe("calculateThroughput", () => {
 
     const result = solveClosed(project);
 
-    expect(result.nodes["tree-growth"].utilization).toBeCloseTo(2 / 18);
+    // The fed dead-end drawer is a PRODUCT drawer: it pulls the simulator
+    // flat out. The consumer takes its 2 logs off the direct wire and the
+    // drawer banks the rest of the simulator's boosted output (18/s at this
+    // tier, so 16).
+    expect(result.nodes["tree-growth"].utilization).toBeCloseTo(1);
     expect(result.edges["tree-to-consumer"].transferredPerSecond).toBeCloseTo(2);
     expect(result.edges["tree-to-drawer"].transferredPerSecond).toBeCloseTo(16);
     expect(result.storages["log-drawer"].netPerSecond).toBeCloseTo(16);

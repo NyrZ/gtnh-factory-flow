@@ -132,10 +132,12 @@ describe("conservation: a wired surplus has to go somewhere", () => {
     expect(result.storages["spare"].producedPerSecond).toBeCloseTo(5);
   });
 
-  it("a BUFFER is not a dump: it only takes what its own takers pull", () => {
-    // Same drawer, but something draws from it. It stops being the boundary
-    // and becomes a pass-through, so it can only relay the 1/s its taker
-    // wants, and the machine clogs again at the level that adds up.
+  it("a BUFFER catches the overflow, visibly, and the machine keeps running", () => {
+    // Same drawer, but something draws from it, so it is a BUFFER now - and a
+    // buffer behaves like the chest it is in game: it relays the 1/s its taker
+    // wants and CATCHES the rest, filling at a rate the books show. Nothing is
+    // hidden (the fill rate is the surplus, in the open) and nothing is
+    // invented (its takers can never draw more than really arrived).
     const result = calculateThroughput(
       project({
         recipes: [...DUAL, recipe("sip-redstone", [["redstone", 1]], [["rsdust", 1]])],
@@ -146,6 +148,47 @@ describe("conservation: a wired surplus has to go somewhere", () => {
           node("sip", "sip-redstone"),
         ],
         storages: [...TAKER_DRAINS.storages, drawer("mid", "redstone"), drawer("d-sip", "rsdust")],
+        edges: [
+          wire("r1", "dual", "rs", "redstone"),
+          wire("g1", "dual", "au", "gold"),
+          wire("r2", "dual", "mid", "redstone"),
+          wire("r3", "mid", "sip", "redstone"),
+          wire("d3", "sip", "d-sip", "rsdust"),
+          ...TAKER_DRAINS.edges,
+        ],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    const dual = result.nodes["dual"];
+    expect(dual.utilization).toBeCloseTo(1);
+    expect(dual.clogOutputKey).toBeUndefined();
+    expect(result.edges["g1"].transferredPerSecond).toBeCloseTo(5);
+    // The taker's 5 go to the taker; the buffer catches the other 5, hands
+    // its sipper the 1 it wants, and banks the 4 nobody asked for.
+    expect(result.storages["mid"].producedPerSecond).toBeCloseTo(5);
+    expect(result.storages["mid"].netPerSecond).toBeCloseTo(4);
+  });
+
+  it("a STRICT buffer only takes what its own takers pull", () => {
+    // The opt-out. Set the buffer strict and it is a pure pass-through again:
+    // it relays the 1/s its taker wants, declines the rest, and the machine
+    // clogs at the level that adds up - for players who want the imbalance
+    // surfaced on the machine rather than stored in a tank.
+    const result = calculateThroughput(
+      project({
+        recipes: [...DUAL, recipe("sip-redstone", [["redstone", 1]], [["rsdust", 1]])],
+        nodes: [
+          node("dual", "dual"),
+          node("rs", "eat-redstone"),
+          node("au", "eat-gold"),
+          node("sip", "sip-redstone"),
+        ],
+        storages: [
+          ...TAKER_DRAINS.storages,
+          { ...drawer("mid", "redstone"), bufferMode: "strict" as const },
+          drawer("d-sip", "rsdust"),
+        ],
         edges: [
           wire("r1", "dual", "rs", "redstone"),
           wire("g1", "dual", "au", "gold"),

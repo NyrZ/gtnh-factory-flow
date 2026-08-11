@@ -302,12 +302,24 @@ export interface FactoryNode {
  */
 export type StorageDrainMode = "product" | "byproduct";
 
+/**
+ * How a BUFFER treats a surplus. `overflow` (the default) catches what its
+ * takers leave, filling at a visible rate, so the feeder never clogs on it -
+ * the way a real chest or tank behaves. `strict` passes through only what is
+ * pulled and hands the surplus back to the feeder as a clog, for players who
+ * want the imbalance surfaced instead of stored. Neither mode can run the
+ * tank net-negative: a buffer never invents supply.
+ */
+export type StorageBufferMode = "overflow" | "strict";
+
 export interface FactoryStorage {
   id: string;
   kind: ResourceKind;
   resourceId: ResourceId;
   /** Drains only; absent means `product`. See StorageDrainMode. */
   drainMode?: StorageDrainMode;
+  /** Buffers only; absent means `overflow`. See StorageBufferMode. */
+  bufferMode?: StorageBufferMode;
   colorTag?: FactoryNodeColorTag;
   displayName?: string;
   iconPath?: string;

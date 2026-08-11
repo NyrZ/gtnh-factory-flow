@@ -130,6 +130,14 @@ interface PreparedEdge {
    * zero, so the pace comes from whoever genuinely wants the output.
    */
   silent: boolean;
+  /**
+   * An OVERFLOW buffer sink: a buffer that catches what its takers leave
+   * instead of clogging its feeder, filling at a visible rate. It relays only
+   * its takers' pull as demand (it never drives production), and it can never
+   * run net-negative: its outflow is still bounded by what really arrived.
+   * A buffer set to `strict` opts back into the pass-through-only rule.
+   */
+  overflow: boolean;
   sourceCapacityPerSecond: number;
 }
 
@@ -246,6 +254,14 @@ export function solveEquilibrium(
     // the same item are two containers, whatever their roles - to move goods
     // between them you wire them together, like everything else on the board.
     const poolKey = targetStorage?.id ?? sourceStorage?.id ?? "";
+    // A buffer catches overflow unless the player set it strict. This is what
+    // makes "machine into tank into machine" behave like the in-game build:
+    // the tank soaks up a surplus (visibly, at a net fill rate) instead of
+    // backing it up into the feeder as a clog.
+    const isOverflowBufferSink =
+      role === "storage-sink" &&
+      storageRoles.get(edge.target) === "buffer" &&
+      targetStorage?.bufferMode !== "strict";
     const prepared: PreparedEdge = {
       id: edge.id,
       sourceId: edge.source,
@@ -259,15 +275,19 @@ export function solveEquilibrium(
       // A can always. A drawer only when nothing draws from it, which is what
       // makes it the plan's declared export rather than an ordinary buffer.
       // BOTH kinds of drain accept without limit; they differ only in whether
-      // they ask (see `silent` below).
+      // they ask (see `silent` below). An overflow buffer accepts freely too,
+      // but unlike a drain the material stays in the plan's books: it piles up
+      // in the tank at a rate the card shows.
       freeDisposal:
         role === "trash" ||
+        isOverflowBufferSink ||
         (role === "storage-sink" && isDrainRole(storageRoles.get(edge.target) ?? "idle")),
       // A BYPRODUCT drawer takes what is left and asks for nothing, so it must
       // not report what it absorbed as demand: doing so would pace its feeder
       // to full blast purely by existing, which is what a PRODUCT drawer is
       // for. This is the one flag that separates the two.
       silent: role === "storage-sink" && storageRoles.get(edge.target) === "byproduct",
+      overflow: isOverflowBufferSink,
       sourceCapacityPerSecond:
         sourceStorage || !sourceResult
           ? Number.POSITIVE_INFINITY
@@ -436,6 +456,10 @@ export function solveEquilibrium(
     dem.set(info.id, 1);
     disp.set(info.id, 1);
   }
+  // The priority tranche starts empty: round one splits fairly, and from the
+  // second round on each output's must-ship rate is served first (see the
+  // priority map in runRound).
+  let unconditionalByBudget = new Map<string, number>();
   // A tank's sustainable outflow is last round's inflow; before the first
   // round assume every feeder ships nameplate (full blast, like the rest).
   let poolInflow = new Map<string, number>();
@@ -452,6 +476,9 @@ export function solveEquilibrium(
     demNext: Map<string, number>;
     disposalNext: Map<string, number>;
     clogOutputNext: Map<string, ResourceKey>;
+    /** Per budget: the rate its owner runs at regardless of this output's
+     * takers - the priority tranche of the next round's fills. */
+    unconditionalNext: Map<string, number>;
     poolInflowNext: Map<string, number>;
     availableByEdge: Map<string, number>;
     eatenByEdge: Map<string, number>;
@@ -496,9 +523,26 @@ export function solveEquilibrium(
         budgetKey,
         stoppedByBareSlot.has(budget.ownerId) ? 0 : budget.makePerSecond * capable,
       );
+      // The actual offer is floored at the budget's own must-ship rate. The
+      // disposal throttle exists so a machine choked by ANOTHER output cannot
+      // hand out material it will not make - but a budget's own clog must not
+      // cap its own offer, or the fill can never drain the clog it is being
+      // asked to relieve: the throttled offer keeps the demand low, the low
+      // demand keeps the clog, and a loop that one more grant would clear
+      // settles half-dead instead. The must-ship rate already respects the
+      // machine's inputs and its OTHER outputs' throttles, so nothing here
+      // offers material that would not exist.
       budgetOfferActual.set(
         budgetKey,
-        budget.makePerSecond * clampUtilization(Math.min(capable, disposal)),
+        stoppedByBareSlot.has(budget.ownerId)
+          ? 0
+          : Math.max(
+              budget.makePerSecond * clampUtilization(Math.min(capable, disposal)),
+              Math.min(
+                unconditionalByBudget.get(budgetKey) ?? 0,
+                budget.makePerSecond * capable,
+              ),
+            ),
       );
     }
     // TWO offers again, for the same reason the budgets have two.
@@ -579,8 +623,20 @@ export function solveEquilibrium(
       );
     }
 
-    const availabilityFill = runFill(needs, budgetOffer, poolOfferCapable, askAvailability);
-    const desireFill = runFill(needs, budgetOfferActual, poolOffer, askDesire);
+    const availabilityFill = runFill(
+      needs,
+      budgetOffer,
+      poolOfferCapable,
+      askAvailability,
+      unconditionalByBudget,
+    );
+    const desireFill = runFill(
+      needs,
+      budgetOfferActual,
+      poolOffer,
+      askDesire,
+      unconditionalByBudget,
+    );
 
     // Sinks absorb whatever production the desire fill left unclaimed, so a
     // buffered producer keeps running at capability. A tank running dry on
@@ -661,7 +717,10 @@ export function solveEquilibrium(
       const drains = budget.drainEdges.length + budget.trashEdges.length;
       let asking = budget.trashEdges.length;
       for (const drain of budget.drainEdges) {
-        if (!drain.silent) {
+        // An overflow buffer catches a share of the leftovers like any drain,
+        // but it never asks on its own behalf - its demand is its takers'
+        // pull, computed below - so it counts as a catcher here, not an asker.
+        if (!drain.silent && !drain.overflow) {
           asking += 1;
         }
       }
@@ -697,12 +756,24 @@ export function solveEquilibrium(
         // (`eatenByEdge` above, so conservation holds and nothing clogs), it
         // simply never begs, which leaves the pace to real consumers and to
         // the plan's target rate.
+        //
+        // An OVERFLOW buffer asks for what its takers pull, and not one item
+        // more. It still catches the whole surplus (so the feeder never clogs
+        // on it), but reporting the catch as demand would drive the feeder to
+        // produce FOR the tank, and a buffer that manufactures demand is a
+        // product drawer wearing the wrong badge.
+        const overflowPull =
+          (desireFill.poolRequested.get(edge.poolKey) ?? 0) /
+          Math.max(1, pool?.sinkEdges.length ?? 1);
         demandByEdge.set(
           edge.id,
           edge.silent
             ? 0
-            : absorbed * (edge.freeDisposal ? (drainClaimByBudget.get(edge.budgetKey) ?? 1) : 1) +
-              deficitShare,
+            : edge.overflow
+              ? Math.min(absorbed, overflowPull) + deficitShare
+              : absorbed *
+                  (edge.freeDisposal ? (drainClaimByBudget.get(edge.budgetKey) ?? 1) : 1) +
+                deficitShare,
         );
         poolInflowNext.set(edge.poolKey, (poolInflowNext.get(edge.poolKey) ?? 0) + absorbed);
         continue;
@@ -740,6 +811,7 @@ export function solveEquilibrium(
     const demNext = new Map<string, number>();
     const disposalNext = new Map<string, number>();
     const clogOutputNext = new Map<string, ResourceKey>();
+    const unconditionalNext = new Map<string, number>();
     for (const info of machineNodes) {
       // A closed plan has to say where every ingredient comes from. An input
       // with no wire is an empty bus, not a standing delivery.
@@ -763,8 +835,21 @@ export function solveEquilibrium(
         demNext.set(info.id, 1);
         continue;
       }
-      let pressure = 0;
-      for (const budget of info.budgets) {
+      // One walk over the budgets collects everything the three verdicts and
+      // the priority map below read: what each output is asked for, and
+      // whether a can or an asking drain pins it fully demanded.
+      const nodeResult = nodes[info.id];
+      const budgetStats = info.budgets.map((budget) => {
+        let demandSum = 0;
+        for (const edge of budget.edges) {
+          demandSum += demandByEdge.get(edge.id) ?? 0;
+        }
+        let required = demandSum;
+        for (const floor of info.targetFloors) {
+          if (floor.key === budget.outputKey) {
+            required = Math.max(required, floor.amountPerSecond);
+          }
+        }
         // A voided output is a fully demanded output: the can drinks whatever
         // arrives, so this budget can never pace the machine below full blast
         // (the in-game void-pipe semantic, the jump-start trick built in).
@@ -773,33 +858,35 @@ export function solveEquilibrium(
         // can says "run flat out and destroy the rest", a drain says only
         // "a surplus here is allowed". Pinning drains too would drive every
         // machine feeding a dead-end drawer to full blast for no reason but
-        // the drawer's existence.
-        if (budget.trashEdges.length > 0 || budget.drainEdges.some((e) => !e.silent)) {
-          pressure = Math.max(pressure, 1);
-        }
-        let required = 0;
-        for (const edge of budget.edges) {
-          required += demandByEdge.get(edge.id) ?? 0;
-        }
-        for (const floor of info.targetFloors) {
-          if (floor.key === budget.outputKey) {
-            required = Math.max(required, floor.amountPerSecond);
-          }
-        }
-        if (budget.makePerSecond > EPSILON) {
-          pressure = Math.max(pressure, required / budget.makePerSecond);
-        } else if (required > EPSILON) {
-          pressure = Number.POSITIVE_INFINITY;
-        }
-      }
-      const nodeResult = nodes[info.id];
+        // the drawer's existence. Overflow buffers are absent from the pin for
+        // the same reason: catching a surplus is not wanting one, and a tank
+        // must never be the reason a machine runs flat out.
+        const pinned =
+          budget.trashEdges.length > 0 ||
+          budget.drainEdges.some((e) => !e.silent && !e.overflow);
+        return { budget, demandSum, required, pinned };
+      });
+      // Target floors on outputs no wire carries still ask the machine to run.
+      let floorPressure = 0;
       for (const floor of info.targetFloors) {
         if (info.budgets.some((budget) => budget.outputKey === floor.key)) {
           continue;
         }
         const flow = nodeResult ? getCompatibleOutputFlowForKey(nodeResult, floor.key) : undefined;
         if (flow && flow.amountPerSecond > EPSILON) {
-          pressure = Math.max(pressure, floor.amountPerSecond / flow.amountPerSecond);
+          floorPressure = Math.max(floorPressure, floor.amountPerSecond / flow.amountPerSecond);
+        }
+      }
+
+      let pressure = floorPressure;
+      for (const stat of budgetStats) {
+        if (stat.pinned) {
+          pressure = Math.max(pressure, 1);
+        }
+        if (stat.budget.makePerSecond > EPSILON) {
+          pressure = Math.max(pressure, stat.required / stat.budget.makePerSecond);
+        } else if (stat.required > EPSILON) {
+          pressure = Number.POSITIVE_INFINITY;
         }
       }
 
@@ -812,19 +899,51 @@ export function solveEquilibrium(
       // put the result.
       let disposal = Number.POSITIVE_INFINITY;
       let clogKey: ResourceKey | undefined;
-      for (const budget of info.budgets) {
-        if (budget.freeDisposal || budget.makePerSecond <= EPSILON) {
+      for (const stat of budgetStats) {
+        if (stat.budget.freeDisposal || stat.budget.makePerSecond <= EPSILON) {
           continue;
         }
-        let taken = 0;
-        for (const edge of budget.edges) {
-          taken += demandByEdge.get(edge.id) ?? 0;
-        }
-        const ceiling = taken / budget.makePerSecond;
+        const ceiling = stat.demandSum / stat.budget.makePerSecond;
         if (ceiling < disposal) {
           disposal = ceiling;
-          clogKey = budget.outputKey;
+          clogKey = stat.budget.outputKey;
         }
+      }
+
+      // THE PRIORITY MAP. For each output, the rate the machine would run at
+      // even if this output's takers pulled nothing: what the REST of the node
+      // wants of it (its other outputs' demand and pins, the plan's dialled
+      // floors), bounded by what its inputs allow. Whatever this output makes
+      // at that rate exists whether or not anybody drinks it - so next round's
+      // fills serve it FIRST, before any feeder that is free to idle. This is
+      // what lets a byproduct return-feed be drained ahead of an honest supply
+      // line instead of clogging its machine while the supply line hogs the
+      // ask (the NyrZ collapse), without touching the fairness rule between
+      // competing consumers.
+      for (const stat of budgetStats) {
+        let pressureExcl = floorPressure;
+        let dispExcl = Number.POSITIVE_INFINITY;
+        for (const other of budgetStats) {
+          if (other === stat) {
+            continue;
+          }
+          if (other.pinned) {
+            pressureExcl = Math.max(pressureExcl, 1);
+          }
+          if (other.budget.makePerSecond > EPSILON) {
+            pressureExcl = Math.max(pressureExcl, other.required / other.budget.makePerSecond);
+          } else if (other.required > EPSILON) {
+            pressureExcl = Number.POSITIVE_INFINITY;
+          }
+          if (!other.budget.freeDisposal && other.budget.makePerSecond > EPSILON) {
+            dispExcl = Math.min(dispExcl, other.demandSum / other.budget.makePerSecond);
+          }
+        }
+        unconditionalNext.set(
+          `${info.id}|${stat.budget.outputKey}`,
+          stat.budget.makePerSecond *
+            clampUtilization(Math.min(capability, pressureExcl, dispExcl)),
+        );
       }
       // A wired output moving exactly what is asked of it is DEMAND, not a
       // clog: the takers simply want no more. Only an output held below what
@@ -851,6 +970,7 @@ export function solveEquilibrium(
       demNext,
       disposalNext,
       clogOutputNext,
+      unconditionalNext,
       poolInflowNext,
       availableByEdge,
       eatenByEdge,
@@ -896,6 +1016,7 @@ export function solveEquilibrium(
       disp.set(info.id, output.disposalNext.get(info.id) ?? 1);
     }
     poolInflow = output.poolInflowNext;
+    unconditionalByBudget = output.unconditionalNext;
     lastRound = output;
 
     if (maxDelta < CONVERGENCE_EPS) {
@@ -1022,16 +1143,33 @@ interface FillResult {
 }
 
 /**
- * Water-filling over the edge graph. Machine budgets first (a machine wire
- * outranks a buffer top-up), then storage pools. Grant factors are frozen
- * per budget per round so iteration order cannot shortchange later edges,
- * and leftovers migrate to still-hungry lines until nothing moves.
+ * Water-filling over the edge graph, in FOUR passes, and the order of the
+ * passes is drain priority:
+ *
+ *   1. must-ship machine output   (the priority tranche: co-products of
+ *                                  machines that run anyway - see the
+ *                                  priority map in runRound)
+ *   2. tanks                      (material already committed into a buffer)
+ *   3. machine supply free to idle
+ *   4. source drawers             (bottomless makeup, always last)
+ *
+ * A consumer therefore drinks what EXISTS before asking anybody to make more,
+ * and asks everybody real before touching the infinite drawer. This is what
+ * lets a byproduct return-feed or a recycling loop be drained first while the
+ * honest supply line paces down to cover the difference - the fix for the
+ * whole-board collapse a closed loop used to cause. Within every pass the
+ * max-min rule stands unchanged: each hungry line gets an equal share of a
+ * contended budget, small askers saturate, and the slack is re-offered, so a
+ * 2000/s zombie ask still cannot crush a 10/s asker out of its trickle.
+ * Grant factors are frozen per budget per round so iteration order cannot
+ * shortchange later edges.
  */
 function runFill(
   needs: Map<string, Need>,
   budgetOfferBase: Map<string, number>,
   poolOfferBase: Map<string, number>,
   asks: Map<string, number>,
+  unconditionalByBudget: Map<string, number>,
 ): FillResult {
   const remainingBudget = new Map(budgetOfferBase);
   const remainingPool = new Map(poolOfferBase);
@@ -1041,68 +1179,146 @@ function runFill(
     remainingNeed.set(needKey, asks.get(needKey) ?? 0);
   }
 
-  for (let round = 0; round < MACHINE_FILL_ROUNDS; round += 1) {
-    const requestsByBudget = new Map<string, number>();
-    const requestByEdge = new Map<PreparedEdgeRef, number>();
-
-    for (const [needKey, need] of needs) {
-      const rem = remainingNeed.get(needKey) ?? 0;
-      if (rem <= EPSILON) {
-        continue;
-      }
-      const liveEdges = need.machineEdges.filter(
-        (edge) => (remainingBudget.get(edge.budgetKey) ?? 0) > EPSILON,
-      );
-      if (liveEdges.length === 0) {
-        continue;
-      }
-      const perEdge = rem / liveEdges.length;
-      for (const edge of liveEdges) {
-        requestByEdge.set(edge, perEdge);
-        requestsByBudget.set(edge.budgetKey, (requestsByBudget.get(edge.budgetKey) ?? 0) + perEdge);
-      }
-    }
-
-    if (requestByEdge.size === 0) {
-      break;
-    }
-
-    // Max-min at every contended budget: each hungry line gets an EQUAL
-    // absolute share, capped at its own request; slack from small askers is
-    // re-offered next round. Proportional-to-ask grants were the gridlock's
-    // teeth - a 2000/s zombie ask (its owner starved on another input, so
-    // the ask never shrinks) would crush a 10/s asker out of the trickle it
-    // needed to recover. Shares are frozen per budget before any grant
-    // applies so iteration order cannot shortchange later edges.
-    const liveCountByBudget = new Map<string, number>();
-    for (const [edge] of requestByEdge) {
-      liveCountByBudget.set(edge.budgetKey, (liveCountByBudget.get(edge.budgetKey) ?? 0) + 1);
-    }
-    const shareByBudget = new Map<string, number>();
-    for (const [budgetKey] of requestsByBudget) {
-      const budget = remainingBudget.get(budgetKey) ?? 0;
-      shareByBudget.set(budgetKey, budget / Math.max(1, liveCountByBudget.get(budgetKey) ?? 1));
-    }
-
-    let granted = 0;
-    for (const [edge, request] of requestByEdge) {
-      const grant = Math.min(request, shareByBudget.get(edge.budgetKey) ?? 0);
-      if (grant <= EPSILON) {
-        continue;
-      }
-      grants.set(edge.id, (grants.get(edge.id) ?? 0) + grant);
-      remainingBudget.set(edge.budgetKey, (remainingBudget.get(edge.budgetKey) ?? 0) - grant);
-      remainingNeed.set(edge.needKey, (remainingNeed.get(edge.needKey) ?? 0) - grant);
-      granted += grant;
-    }
-    if (granted <= EPSILON) {
-      break;
+  // The priority tranche, bounded by what the budget can offer at all this
+  // round (a must-ship rate above a throttled offer is wishful thinking).
+  const remainingUnconditional = new Map<string, number>();
+  for (const [budgetKey, amount] of unconditionalByBudget) {
+    const capped = Math.min(amount, remainingBudget.get(budgetKey) ?? 0);
+    if (capped > EPSILON) {
+      remainingUnconditional.set(budgetKey, capped);
     }
   }
 
-  // The honest pull on each tank: what the consumers still want after the
-  // machine wires have given everything they can.
-  const poolRequested = new Map<string, number>();
+  const runMachinePass = (tranche: Map<string, number> | undefined) => {
+    for (let round = 0; round < MACHINE_FILL_ROUNDS; round += 1) {
+      const requestByEdge = new Map<PreparedEdgeRef, number>();
+      for (const [needKey, need] of needs) {
+        const rem = remainingNeed.get(needKey) ?? 0;
+        if (rem <= EPSILON) {
+          continue;
+        }
+        const liveEdges = need.machineEdges.filter((edge) => {
+          if ((remainingBudget.get(edge.budgetKey) ?? 0) <= EPSILON) {
+            return false;
+          }
+          return tranche === undefined || (tranche.get(edge.budgetKey) ?? 0) > EPSILON;
+        });
+        if (liveEdges.length === 0) {
+          continue;
+        }
+        const perEdge = rem / liveEdges.length;
+        for (const edge of liveEdges) {
+          requestByEdge.set(edge, perEdge);
+        }
+      }
+
+      if (requestByEdge.size === 0) {
+        break;
+      }
+
+      const liveCountByBudget = new Map<string, number>();
+      for (const [edge] of requestByEdge) {
+        liveCountByBudget.set(edge.budgetKey, (liveCountByBudget.get(edge.budgetKey) ?? 0) + 1);
+      }
+      const shareByBudget = new Map<string, number>();
+      for (const [budgetKey, liveCount] of liveCountByBudget) {
+        const available = Math.min(
+          remainingBudget.get(budgetKey) ?? 0,
+          tranche === undefined
+            ? Number.POSITIVE_INFINITY
+            : (tranche.get(budgetKey) ?? 0),
+        );
+        shareByBudget.set(budgetKey, available / Math.max(1, liveCount));
+      }
+
+      let granted = 0;
+      for (const [edge, request] of requestByEdge) {
+        const grant = Math.min(request, shareByBudget.get(edge.budgetKey) ?? 0);
+        if (grant <= EPSILON) {
+          continue;
+        }
+        grants.set(edge.id, (grants.get(edge.id) ?? 0) + grant);
+        remainingBudget.set(edge.budgetKey, (remainingBudget.get(edge.budgetKey) ?? 0) - grant);
+        if (tranche !== undefined) {
+          tranche.set(edge.budgetKey, (tranche.get(edge.budgetKey) ?? 0) - grant);
+        }
+        remainingNeed.set(edge.needKey, (remainingNeed.get(edge.needKey) ?? 0) - grant);
+        granted += grant;
+      }
+      if (granted <= EPSILON) {
+        break;
+      }
+    }
+  };
+
+  const grantsByPool = new Map<string, number>();
+  const runStoragePass = (finitePools: boolean) => {
+    for (let round = 0; round < STORAGE_FILL_ROUNDS; round += 1) {
+      const requestByEdge = new Map<PreparedEdgeRef, number>();
+      for (const [needKey, need] of needs) {
+        const rem = remainingNeed.get(needKey) ?? 0;
+        if (rem <= EPSILON) {
+          continue;
+        }
+        const liveEdges = need.storageEdges.filter((edge) => {
+          const pool = remainingPool.get(edge.poolKey) ?? 0;
+          return Number.isFinite(pool) === finitePools && pool > EPSILON;
+        });
+        if (liveEdges.length === 0) {
+          continue;
+        }
+        const perEdge = rem / liveEdges.length;
+        for (const edge of liveEdges) {
+          requestByEdge.set(edge, perEdge);
+        }
+      }
+
+      if (requestByEdge.size === 0) {
+        break;
+      }
+
+      const liveCountByPool = new Map<string, number>();
+      for (const [edge] of requestByEdge) {
+        liveCountByPool.set(edge.poolKey, (liveCountByPool.get(edge.poolKey) ?? 0) + 1);
+      }
+      const shareByPool = new Map<string, number>();
+      for (const [poolKey, liveCount] of liveCountByPool) {
+        const pool = remainingPool.get(poolKey) ?? 0;
+        shareByPool.set(
+          poolKey,
+          Number.isFinite(pool) ? pool / Math.max(1, liveCount) : Number.POSITIVE_INFINITY,
+        );
+      }
+
+      let granted = 0;
+      for (const [edge, request] of requestByEdge) {
+        const grant = Math.min(request, shareByPool.get(edge.poolKey) ?? 0);
+        if (grant <= EPSILON) {
+          continue;
+        }
+        grants.set(edge.id, (grants.get(edge.id) ?? 0) + grant);
+        grantsByPool.set(edge.poolKey, (grantsByPool.get(edge.poolKey) ?? 0) + grant);
+        const pool = remainingPool.get(edge.poolKey) ?? 0;
+        if (Number.isFinite(pool)) {
+          remainingPool.set(edge.poolKey, pool - grant);
+        }
+        remainingNeed.set(edge.needKey, (remainingNeed.get(edge.needKey) ?? 0) - grant);
+        granted += grant;
+      }
+      if (granted <= EPSILON) {
+        break;
+      }
+    }
+  };
+
+  runMachinePass(remainingUnconditional);
+  runStoragePass(true);
+  runMachinePass(undefined);
+  runStoragePass(false);
+
+  // The honest pull on each tank: what it actually gave, plus its share of
+  // whatever the consumers still want after every supplier has spoken.
+  const poolRequested = new Map(grantsByPool);
   for (const [needKey, need] of needs) {
     const rem = remainingNeed.get(needKey) ?? 0;
     if (rem <= EPSILON || need.storageEdges.length === 0) {
@@ -1111,68 +1327,6 @@ function runFill(
     const perEdge = rem / need.storageEdges.length;
     for (const edge of need.storageEdges) {
       poolRequested.set(edge.poolKey, (poolRequested.get(edge.poolKey) ?? 0) + perEdge);
-    }
-  }
-
-  for (let round = 0; round < STORAGE_FILL_ROUNDS; round += 1) {
-    const requestsByPool = new Map<string, number>();
-    const requestByEdge = new Map<PreparedEdgeRef, number>();
-
-    for (const [needKey, need] of needs) {
-      const rem = remainingNeed.get(needKey) ?? 0;
-      if (rem <= EPSILON) {
-        continue;
-      }
-      const liveEdges = need.storageEdges.filter(
-        (edge) => (remainingPool.get(edge.poolKey) ?? 0) > EPSILON,
-      );
-      if (liveEdges.length === 0) {
-        continue;
-      }
-      const perEdge = rem / liveEdges.length;
-      for (const edge of liveEdges) {
-        requestByEdge.set(edge, perEdge);
-        requestsByPool.set(edge.poolKey, (requestsByPool.get(edge.poolKey) ?? 0) + perEdge);
-      }
-    }
-
-    if (requestByEdge.size === 0) {
-      break;
-    }
-
-    // Same max-min rule at the tanks: equal shares, saturate small askers,
-    // re-offer the slack. An infinite (unfed) pool serves every request.
-    const liveCountByPool = new Map<string, number>();
-    for (const [edge] of requestByEdge) {
-      liveCountByPool.set(edge.poolKey, (liveCountByPool.get(edge.poolKey) ?? 0) + 1);
-    }
-    const shareByPool = new Map<string, number>();
-    for (const [poolKey] of requestsByPool) {
-      const pool = remainingPool.get(poolKey) ?? 0;
-      shareByPool.set(
-        poolKey,
-        Number.isFinite(pool)
-          ? pool / Math.max(1, liveCountByPool.get(poolKey) ?? 1)
-          : Number.POSITIVE_INFINITY,
-      );
-    }
-
-    let granted = 0;
-    for (const [edge, request] of requestByEdge) {
-      const grant = Math.min(request, shareByPool.get(edge.poolKey) ?? 0);
-      if (grant <= EPSILON) {
-        continue;
-      }
-      grants.set(edge.id, (grants.get(edge.id) ?? 0) + grant);
-      const pool = remainingPool.get(edge.poolKey) ?? 0;
-      if (Number.isFinite(pool)) {
-        remainingPool.set(edge.poolKey, pool - grant);
-      }
-      remainingNeed.set(edge.needKey, (remainingNeed.get(edge.needKey) ?? 0) - grant);
-      granted += grant;
-    }
-    if (granted <= EPSILON) {
-      break;
     }
   }
 
