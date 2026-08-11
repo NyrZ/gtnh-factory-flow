@@ -4668,6 +4668,7 @@ const SourceToolbar = memo(function SourceToolbar({
       </button>
       <button
         type="button"
+        data-tour-anchor="sketch"
         onClick={() => setAssumeBoundaries(!assumeBoundaries)}
         className={[
           "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",

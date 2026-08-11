@@ -71,6 +71,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.4.0",
+    date: "2026-08-10",
+    headline: "A tour that flips drawers live, and loops that blame the right machine",
+    notes: [
+      "New tour: *Drawers and buffers*. Every drawer job on the titanium line, then the product flipped off and the buffer flipped strict, *live*, with the whole board following.",
+      "A ring that stopped because its *supplier* stopped now says exactly that, names the machine, and sends you to it. Only a ring dying of its own losses reads DEAD LOOP.",
+      "Every grey browser tooltip is now the planner's own: same words, proper panel, no delay.",
+    ],
+    actions: [{ label: "Take the drawer tour", lessonId: "drawers-and-buffers" }],
+  },
+  {
     version: "2.3.0",
     date: "2026-08-10",
     headline: "Loops run, buffers hold the extra, and a wand for sketches",

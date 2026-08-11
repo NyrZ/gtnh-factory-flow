@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 
 export type GlanceTone =
   | "need"
+  | "product"
   | "output"
   | "internal"
   | "fine"
@@ -57,6 +58,8 @@ export const GLANCE_LINE = "#2a3441";
  */
 export const GLANCE_TONES: Record<GlanceTone, string> = {
   need: "#f87171",
+  // The product-drawer blue, since the drawer tiles became colour-coded.
+  product: "#60a5fa",
   output: "#4ade80",
   internal: "#9a9ca4",
   fine: "#9a9ca4",

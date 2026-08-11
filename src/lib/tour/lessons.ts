@@ -30,8 +30,6 @@ import { openSidebarTab } from "@/lib/sidebar-tab";
 import { writeWorkspaceView } from "@/lib/workspace-view";
 import {
   clearTheDecks,
-  cutTourProduct,
-  restoreTourProduct,
   frameTourWholeBoard,
   frameTourBlocked,
   frameTourBottleneck,
@@ -40,6 +38,7 @@ import {
   frameTourProductDrawer,
   frameTourSourceDrawer,
   openTourPlan,
+  restoreDrawerLab,
   restoreTheDecks,
   tourBlockedInputsSelector,
   tourBlockedOutputsSelector,
@@ -51,6 +50,9 @@ import {
   tourBottleneckUsageSelector,
   tourBufferDrawerSelector,
   tourByproductDrawerSelector,
+  tourDrawerLabQuiet,
+  tourDrawerLabReset,
+  tourDrawerLabStrict,
   tourProductDrawerSelector,
   tourSourceDrawerSelector,
 } from "./tour-boards";
@@ -304,7 +306,8 @@ const READ_THE_BOARD: TourLesson = {
   title: "Read the board",
   recommended: true,
   blurb:
-    "Opens a real titanium line, flies in on one machine and reads it out, then shows what the drawers around it are for.",
+    "Opens a real titanium line, flies in on one machine and reads it out loud: what a bottleneck is, what blocked means, and how one shortage travels.",
+  nextLessonId: "drawers-and-buffers",
   // Both columns out of the way for the duration: this lesson is about the
   // canvas and nothing else, and with them open there is not enough board left
   // to magnify a card into. They come back exactly as they were.
@@ -312,10 +315,7 @@ const READ_THE_BOARD: TourLesson = {
     clearTheDecks();
     return openTourPlan();
   },
-  // The last step cuts a drawer off the board to make its point. However the
-  // lesson ends - finished, skipped, closed - the plan goes back as it was.
   teardown: () => {
-    restoreTourProduct();
     restoreTheDecks();
   },
   steps: [
@@ -393,7 +393,7 @@ const READ_THE_BOARD: TourLesson = {
       side: "right",
       title: "Only one of these is the problem",
       rows: [
-        { text: "*Teo* of these inputs arent getting what they want." },
+        { text: "*Two* of these inputs are not getting what they want." },
         {
           text: "But only the slowest of them is marked, and that is the one actually setting the speed.",
         },
@@ -426,74 +426,9 @@ const READ_THE_BOARD: TourLesson = {
       ],
     },
     {
-      anchorSelector: tourSourceDrawerSelector,
-      side: "right",
-      before: frameTourSourceDrawer,
-      title: "Drawers: where the plan meets the world",
-      rows: [
-        { text: "Not a machine. A *Source* is where a plan actually gets resources." },
-        {
-          text: "Sources are denoted with rounded corners.",
-        },
-        {
-          chip: "NEED",
-          tone: "need",
-          text: "What comes out of it is listed under NEED. It is considered a input of the plan itself.",
-        },
-      ],
-    },
-    {
-      anchorSelector: tourProductDrawerSelector,
-      side: "right",
-      before: frameTourProductDrawer,
-      title: "A product asks for everything",
-      rows: [
-        { text: "This is the thing your factory is *for*." },
-        {
-          text: "A product drawer asks the machine feeding it for *100% of what that machine can make*.",
-        },
-        { text: "Which is why a machine with one of these on it runs flat out." },
-        {
-          text: "Products are consited primary outputs of a plan."
-        }
-      ],
-    },
-    {
-      anchorSelector: tourByproductDrawerSelector,
-      side: "right",
-      before: frameTourByproductDrawer,
-      title: "A byproduct asks for nothing",
-      rows: [
-        { text: "A byproduct drawer asks for *nothing at all*. It just takes whatever it is given." },
-        {
-          text: "So it never speeds a machine up. Use it for the second thing a machine spits out that you only need *somewhere to put*.",
-        },
-        { text: "Swap a drawer between the two with the button in its *top right button*." },
-      ],
-    },
-    {
-      anchorSelector: tourBufferDrawerSelector,
-      side: "right",
-      before: frameTourBufferDrawer,
-      title: "And a buffer does no magic at all",
-      rows: [
-        {
-          text: "An input and an output. *It can never put out more than it takes in.*",
-        },
-        {
-          text: "So it is no place to dump a surplus, and it cannot rescue a machine that is not being fed enough. It passes along what its takers pull, and no more.",
-        },
-      ],
-    },
-    {
       anchorSelector: tourBottleneckUsageSelector,
       side: "right",
-      // Also puts the product drawer back, so stepping BACK out of the last
-      // step undoes the cut the same way stepping forward made it.
-      before: () => {
-        restoreTourProduct();
-        frameTourBottleneck();
-      },
+      before: frameTourBottleneck,
       title: "Two more words you will meet",
       rows: [
         {
@@ -514,47 +449,189 @@ const READ_THE_BOARD: TourLesson = {
     {
       anchor: "board",
       side: "inside",
-      // Frames the whole line and puts the drawer back if we have arrived here
-      // by stepping BACK out of the cut. The camera settles HERE, and the next
-      // step deliberately does not touch it: the before and the after have to
-      // be the same picture or there is nothing to compare.
-      before: () => {
-        restoreTourProduct();
-        frameTourWholeBoard();
-      },
-      title: "So let us break it on purpose",
+      before: frameTourWholeBoard,
+      title: "Around the machines, the drawers",
       rows: [
-        { text: "The whole line, running. Every machine on it is doing something." },
+        { text: "Every card that is not a machine is a *drawer*, and its colour is its job." },
         {
-          text: "That *titanium ingot drawer* is the only thing taking the finished titanium off the end of it.",
-        },
-        { text: "Press next and we delete it. *Nothing else will move.* Watch the board." },
-      ],
-    },
-    {
-      anchor: "board",
-      side: "inside",
-      before: cutTourProduct,
-      title: "And there it goes",
-      rows: [
-        {
-          chip: "NO WIRES",
-          tone: "starved",
-          text: "The freezer that made the titanium now has an output with *nothing on it*, so it stops dead.",
+          text: "*Red* imports, *blue* product, *green* byproducts, *steel* buffer. The same inks as the books on the right.",
         },
         {
-          text: "And look at the rest. *Every machine on the board is at 0%.* Nobody is asking for anything any more, so the whole line behind it has nothing left to do.",
+          text: "They are the half of the board that decides how fast the other half runs, and they have a *tour of their own*. It flips things live. Take it next.",
         },
-        {
-          text: "One drawer. Six machines. *Everything a machine makes has to be going somewhere*, or it does not run at all, exactly as in game.",
-        },
-        { text: "Leave the tour and the drawer comes back." },
       ],
     },
   ],
 };
 
-export const TOUR_LESSONS: TourLesson[] = [LOOK_AROUND, READ_THE_BOARD];
+/**
+ * The third walk: the drawers, each job in turn, and then the lesson performs
+ * its point instead of describing it - the product flipped to a byproduct
+ * live, the buffer flipped strict, the whole line following each flip.
+ */
+const DRAWERS_AND_BUFFERS: TourLesson = {
+  id: "drawers-and-buffers",
+  title: "Drawers and buffers",
+  blurb:
+    "Every drawer job on the titanium line, then the fun part: the product flipped off and the buffer flipped strict, live, with the whole board following.",
+  setup: () => {
+    clearTheDecks();
+    return openTourPlan();
+  },
+  // Two of the steps rewrite the plan to make their point. However the lesson
+  // ends - finished, skipped, closed - the plan goes back exactly as it loaded.
+  teardown: () => {
+    restoreDrawerLab();
+    restoreTheDecks();
+  },
+  steps: [
+    {
+      anchor: "board",
+      side: "inside",
+      before: frameTourWholeBoard,
+      title: "Four jobs, four colours",
+      rows: [
+        { text: "Machines make. *Drawers decide*: what comes in, what leaves, what waits." },
+        { chip: "SOURCE", tone: "need", text: "*Red, rounded*: never runs out. The plan's imports." },
+        { chip: "PRODUCT", tone: "product", text: "*Blue, eight-sided*: what the plan is for." },
+        { chip: "BYPRODUCT", tone: "output", text: "*Green, square*: catches what is left over." },
+        { chip: "BUFFER", tone: "internal", text: "*Steel, shield*: holds stock and passes it on." },
+        { text: "Same colours as the books on the right. Visit each in turn." },
+      ],
+    },
+    {
+      anchorSelector: tourSourceDrawerSelector,
+      side: "right",
+      before: frameTourSourceDrawer,
+      title: "A source never runs out",
+      rows: [
+        { text: "Nothing feeds it, so it *invents* its item. These two are draining into the line." },
+        {
+          chip: "NEED",
+          tone: "need",
+          text: "Everything a source hands out is something your real base must supply.",
+        },
+        { text: "Draw a wire *out* of any drawer and it becomes one. That is the whole setup." },
+      ],
+    },
+    {
+      anchorSelector: tourProductDrawerSelector,
+      side: "right",
+      before: frameTourProductDrawer,
+      title: "A product pulls",
+      rows: [
+        { text: "The *titanium ingot* drawer. Nothing draws from it, and it *asks*." },
+        {
+          chip: "PRODUCT",
+          tone: "product",
+          text: "It asks its machine for *everything that machine can make*. The pace of the whole line starts here.",
+        },
+        {
+          text: "The button on its header flips it to a byproduct. Which is exactly what we are about to do.",
+        },
+      ],
+    },
+    {
+      anchorSelector: tourByproductDrawerSelector,
+      side: "right",
+      before: frameTourByproductDrawer,
+      title: "A byproduct only catches",
+      rows: [
+        { text: "Two of them here: *cast iron* and *carbon monoxide*." },
+        {
+          chip: "BYPRODUCT",
+          tone: "output",
+          text: "A byproduct asks for *nothing*. It takes what happens to arrive and never speeds a machine up.",
+        },
+        {
+          text: "The number on its tile is live: the CO drawer is banking a rate it never asked for. That is the whole job.",
+        },
+      ],
+    },
+    {
+      anchorSelector: tourBufferDrawerSelector,
+      side: "right",
+      before: frameTourBufferDrawer,
+      title: "A buffer holds",
+      rows: [
+        { text: "*Hot titanium ingot*, sitting between the furnace and the freezer." },
+        {
+          chip: "BUFFER",
+          tone: "internal",
+          text: "It hands the freezer what the freezer pulls, and *catches anything extra* at the rate on its tile.",
+        },
+        {
+          text: "It never invents supply: run it short and the taker slows. Its header button can also make it *strict*. Watch what both of those mean.",
+        },
+      ],
+    },
+    {
+      anchor: "board",
+      side: "inside",
+      before: tourDrawerLabQuiet,
+      title: "Watch the product let go",
+      rows: [
+        {
+          text: "The titanium drawer is a *byproduct* now. Nothing on the board asks for titanium any more.",
+        },
+        {
+          chip: "UNUSED",
+          tone: "internal",
+          text: "*Only the freezer stopped.* Its ingots have no takers, so it has nothing to do.",
+        },
+        {
+          text: "Everything upstream keeps running - and the *buffer is quietly banking* the hot ingots the furnace keeps making. Its tile shows the rate.",
+        },
+        { text: "A byproduct never sets the pace. That is the entire difference." },
+      ],
+    },
+    {
+      anchor: "board",
+      side: "inside",
+      before: tourDrawerLabStrict,
+      title: "Now make the buffer strict",
+      rows: [
+        { text: "One more flip: the buffer now *refuses to bank the surplus*." },
+        {
+          chip: "UNUSED",
+          tone: "internal",
+          text: "With nothing asking and nothing catching, the furnace has *nowhere to send a single ingot*. It stops, and every machine behind it follows. *The whole line reads zero.*",
+        },
+        {
+          text: "Strict is the loud setting: nothing gets stored, so an imbalance stops the line instead of hiding in a tank.",
+        },
+      ],
+    },
+    {
+      anchor: "board",
+      side: "inside",
+      before: tourDrawerLabReset,
+      title: "And put it back",
+      rows: [
+        { text: "Product asking, buffer catching. The line breathes again." },
+        {
+          text: "That is the whole grammar: *who asks, who catches, who holds*. Every drawer on any board is doing one of those.",
+        },
+        { text: "Flip them freely: the header buttons are always one click, and never a rewire." },
+      ],
+    },
+    {
+      anchor: "sketch",
+      side: "bottom",
+      title: "When you just want numbers",
+      rows: [
+        {
+          text: "The wand is *sketch mode*: every unwired input is fed for free, and every unwired output is exported.",
+        },
+        {
+          text: "For quick math on a half-built idea. Turn it off when you are ready to draw the boundary for real - with the drawers you now know.",
+        },
+      ],
+    },
+  ],
+};
+
+export const TOUR_LESSONS: TourLesson[] = [LOOK_AROUND, READ_THE_BOARD, DRAWERS_AND_BUFFERS];
 
 export function findLesson(lessonId: string | undefined): TourLesson | undefined {
   return lessonId ? TOUR_LESSONS.find((lesson) => lesson.id === lessonId) : undefined;

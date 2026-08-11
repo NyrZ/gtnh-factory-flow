@@ -433,20 +433,7 @@ export const frameTourByproductDrawer = frameDrawers("byproductDrawerIds");
 export const tourBufferDrawerSelector = drawerSelector("bufferDrawerIds");
 export const frameTourBufferDrawer = frameDrawers("bufferDrawerIds");
 
-/**
- * The last step performs its point rather than describing it: it pulls the
- * plan's product drawer off the board and lets the reader watch the whole line
- * go dark.
- *
- * Nothing else in the lesson touches the plan, so this is the one thing here
- * that has to be undoable. The whole project is snapshotted rather than the
- * drawer and its wires, because putting a card back is not the same operation
- * as deleting one - `deleteStorage` also drops every edge that touched it, and
- * rebuilding those by hand is a second chance to get it wrong.
- */
-let planBeforeCut: FactoryProject | undefined;
-
-/** The whole line at once, for the two steps that talk about all of it. */
+/** The whole line at once, for the steps that talk about all of it. */
 export function frameTourWholeBoard(): void {
   moveCamera(() => {
     if (useFactoryStore.getState().project.nodes.length === 0) {
@@ -458,44 +445,81 @@ export function frameTourWholeBoard(): void {
 }
 
 /**
- * Pull the drawer, and DO NOT touch the camera.
+ * The drawer laboratory: the states the drawers-and-buffers lesson walks the
+ * board through, each rebuilt whole from a pristine snapshot.
  *
- * The step before this one framed the whole line and said "watch the board".
- * If this moved the camera as well, the reader would be comparing two
- * different pictures and the only thing they could be sure had changed is the
- * view. The before and the after have to be the same shot with one thing
- * different in it.
+ *   quiet   every product drawer flipped to byproduct. Nothing asks for
+ *           titanium, so ONLY the freezer stops - the furnace was never
+ *           working for the freezer, and the buffer quietly banks the hot
+ *           ingots it keeps making.
+ *   strict  quiet, plus every buffer set strict. The refused surplus backs
+ *           up into the furnace, the furnace stops, and the stall rolls all
+ *           the way upstream: the whole line reads zero.
  *
- * Still routed through `moveCamera` for its retry-and-supersede behaviour
- * rather than for any camera work: it keeps trying until the picks resolve,
- * and a newer intention (stepping back) cancels a cut that has not landed yet.
+ * Rebuilt from the snapshot rather than toggled, because the progress dots
+ * let a reader jump to any step from any other, and a toggle would need to
+ * know where it was coming from. Every state frames the same whole-board
+ * shot: the states are the pictures being compared, so the camera must not
+ * be part of the difference. Routed through `moveCamera` for its
+ * retry-and-supersede behaviour - it keeps trying until the picks resolve,
+ * and a newer intention cancels a flip that has not landed yet.
  */
-export function cutTourProduct(): void {
+let drawerLabBaseline: FactoryProject | undefined;
+
+function applyDrawerLab(state: "quiet" | "strict"): boolean {
+  const found = ensurePicks();
+  if (!found) {
+    return false;
+  }
+  const store = useFactoryStore.getState();
+  drawerLabBaseline ??= store.project;
+  const products = new Set(found.productDrawerIds);
+  const buffers = new Set(found.bufferDrawerIds);
+  store.markHydratedProject({
+    ...drawerLabBaseline,
+    storages: (drawerLabBaseline.storages ?? []).map((storage) =>
+      products.has(storage.id)
+        ? { ...storage, drainMode: "byproduct" as const }
+        : state === "strict" && buffers.has(storage.id)
+          ? { ...storage, bufferMode: "strict" as const }
+          : storage,
+    ),
+  });
+  useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
+  return true;
+}
+
+export function tourDrawerLabQuiet(): void {
+  moveCamera(() => applyDrawerLab("quiet"));
+}
+
+export function tourDrawerLabStrict(): void {
+  moveCamera(() => applyDrawerLab("strict"));
+}
+
+/** Baseline again, framed: the lesson's own "put it back" step lands here. */
+export function tourDrawerLabReset(): void {
   moveCamera(() => {
-    const ids = ensurePicks()?.productDrawerIds ?? [];
-    if (ids.length === 0) {
+    if (useFactoryStore.getState().project.nodes.length === 0) {
       return false;
     }
-    const store = useFactoryStore.getState();
-    planBeforeCut ??= store.project;
-    for (const id of ids) {
-      store.deleteStorage(id);
-    }
+    restoreDrawerLab();
+    useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
     return true;
   });
 }
 
 /**
- * Put it back. Runs on the way out of the lesson however it ends, and on the
- * way BACK into the step before it, so stepping backwards undoes the cut the
- * same way stepping forwards made it.
+ * Baseline without the camera. Runs on the way out of the lesson however it
+ * ends - finished, skipped, closed - so the plan the tour borrowed goes back
+ * exactly as it loaded.
  */
-export function restoreTourProduct(): void {
-  if (!planBeforeCut) {
+export function restoreDrawerLab(): void {
+  if (!drawerLabBaseline) {
     return;
   }
-  useFactoryStore.getState().markHydratedProject(planBeforeCut);
-  planBeforeCut = undefined;
+  useFactoryStore.getState().markHydratedProject(drawerLabBaseline);
+  drawerLabBaseline = undefined;
 }
 
 /**
