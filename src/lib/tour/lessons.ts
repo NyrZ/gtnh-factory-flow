@@ -526,16 +526,13 @@ const READ_THE_BOARD: TourLesson = {
       anchorSelector: tourByproductDrawerSelector,
       side: "right",
       before: frameTourByproductDrawer,
-      title: "A byproduct only catches",
+      title: "A byproduct wont ever ask for more",
       rows: [
         { text: "Two of them here: *cast iron* and *carbon monoxide*." },
         {
           chip: "BYPRODUCT",
           tone: "output",
-          text: "A byproduct asks for *nothing*. It takes what arrives and never speeds a machine up.",
-        },
-        {
-          text: "The number on its tile is live: the CO drawer is catching a rate it never asked for.",
+          text: "A byproduct *wont ask for a machine to speed up* even if the machine has enough input. It always matches the rate of the product",
         },
       ],
     },
