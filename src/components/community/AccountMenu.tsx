@@ -20,14 +20,16 @@ export function AccountMenu() {
       return;
     }
 
-    const close = (event: MouseEvent) => {
+    const close = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) {
         setMenuOpen(false);
       }
     };
 
-    window.addEventListener("mousedown", close);
-    return () => window.removeEventListener("mousedown", close);
+    // Capture phase: the board's pan handler stops a press on the canvas before
+    // it reaches a bubble-phase listener, which left this menu open over it.
+    window.addEventListener("pointerdown", close, true);
+    return () => window.removeEventListener("pointerdown", close, true);
   }, [isMenuOpen]);
 
   if (isLoading) {

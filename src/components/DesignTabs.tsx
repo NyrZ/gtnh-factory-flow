@@ -329,7 +329,7 @@ function DesignMenu({
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const closeOnOutsideClick = (event: MouseEvent) => {
+    const closeOnOutsideClick = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) {
         onClose();
       }
@@ -340,7 +340,12 @@ function DesignMenu({
       }
     };
 
-    document.addEventListener("mousedown", closeOnOutsideClick);
+    // Capture phase, and pointerdown rather than mousedown: the board's pan
+    // handler stops the event dead on the way up (d3-zoom calls
+    // stopImmediatePropagation), so a bubble-phase listener here never heard a
+    // press on the canvas and the menu just sat there. Pointer events also
+    // cover a finger without waiting for the synthesized mouse press.
+    document.addEventListener("pointerdown", closeOnOutsideClick, true);
     document.addEventListener("keydown", closeOnEscape);
     // A fixed menu does not travel with the strip, so it is dismissed rather
     // than left floating somewhere it no longer points at.
@@ -348,7 +353,7 @@ function DesignMenu({
     window.addEventListener("resize", onClose);
 
     return () => {
-      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("pointerdown", closeOnOutsideClick, true);
       document.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("scroll", onClose, true);
       window.removeEventListener("resize", onClose);

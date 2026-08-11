@@ -71,6 +71,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.6.2",
+    date: "2026-08-11",
+    headline: "Menus close when you click away",
+    notes: [
+      "A tab menu or the export menu used to stay open when you clicked the board behind it. Clicking anywhere outside now closes it.",
+    ],
+  },
+  {
     version: "2.6.1",
     date: "2026-08-11",
     headline: "Clearer names either side",

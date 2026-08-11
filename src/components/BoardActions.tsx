@@ -168,14 +168,16 @@ export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = 
   };
 
   useEffect(() => {
-    const closeMenus = (event: MouseEvent) => {
+    const closeMenus = (event: PointerEvent) => {
       if (!exportMenuRef.current?.contains(event.target as Node)) {
         setExportMenuOpen(false);
       }
     };
 
-    window.addEventListener("mousedown", closeMenus);
-    return () => window.removeEventListener("mousedown", closeMenus);
+    // Capture phase: the board's pan handler stops a press on the canvas before
+    // it reaches a bubble-phase listener, which left this menu open over it.
+    window.addEventListener("pointerdown", closeMenus, true);
+    return () => window.removeEventListener("pointerdown", closeMenus, true);
   }, []);
 
   useEffect(() => {
