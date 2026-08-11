@@ -45,6 +45,16 @@ export interface DeathSpiral {
   externalSourceDry: boolean;
   /** The outside supplier's name, when exactly one is wired in. */
   externalSourceName?: string;
+  /**
+   * Outside MACHINES wired into the ring that could deliver nothing at all
+   * and are themselves stopped. When any exist the ring is not dying of its
+   * own losses - it is waiting on a supplier that has its own problem (an
+   * unwired slot, a clog, a switch), and the story must point THERE. The
+   * titanium line was the proving case: a healthy chlorine ring read
+   * "dead loop" because the machine feeding it rutile dust had an unwired
+   * output, and the one actionable card on the board went unmentioned.
+   */
+  deadFeeders: Array<{ nodeId: string; name: string; resourceName: string }>;
 }
 
 /**
@@ -240,6 +250,7 @@ export function findDeathSpirals(
     let hasExternalSource = false;
     let externalInflow = 0;
     const externalSourceNames = new Set<string>();
+    const deadFeeders: DeathSpiral["deadFeeders"] = [];
     for (const edge of project.edges) {
       const targetInside = members.has(edge.target);
       const sourceInside = members.has(edge.source);
@@ -260,7 +271,23 @@ export function findDeathSpirals(
         } else {
           const sourceNode = nodeById.get(edge.source);
           const recipe = sourceNode ? recipeById.get(sourceNode.recipeId) : undefined;
-          externalSourceNames.add(recipe?.machineType ?? recipe?.name ?? "a machine");
+          const feederName = recipe?.machineType ?? recipe?.name ?? "a machine";
+          externalSourceNames.add(feederName);
+          // A supplier that could deliver NOTHING (capability, not desire -
+          // an idle-but-able feeder shows available flow) and is itself at a
+          // standstill. Only machines qualify: a source drawer is bottomless
+          // and a dry buffer already tells its own story through its feeder.
+          const couldDeliver = result.edges[edge.id]?.availablePerSecond ?? 0;
+          const feederUtilization = result.nodes[edge.source]?.utilization ?? 0;
+          if (couldDeliver <= RATE_EPSILON && feederUtilization <= DEAD_EPSILON) {
+            const key = makeResourceKey(edge.resourceKind, edge.resourceId);
+            const resourceName =
+              result.nodes[edge.target]?.inputs[key]?.displayName ??
+              result.nodes[edge.source]?.outputs[key]?.displayName ??
+              edge.label ??
+              edge.resourceId;
+            deadFeeders.push({ nodeId: edge.source, name: feederName, resourceName });
+          }
         }
       }
     }
@@ -275,6 +302,7 @@ export function findDeathSpirals(
       externalSourceDry: hasExternalSource && externalInflow <= RATE_EPSILON,
       externalSourceName:
         externalSourceNames.size === 1 ? [...externalSourceNames][0] : undefined,
+      deadFeeders,
     };
     spirals.push(spiral);
     for (const id of component) {
@@ -313,6 +341,23 @@ export function describeDeathSpiral(spiral: DeathSpiral): {
       : spiral.resourceNames.length <= 2
         ? spiral.resourceNames.join(" and ")
         : `${spiral.resourceNames.slice(0, 2).join(", ")} and ${spiral.resourceNames.length - 2} more`;
+
+  // A ring waiting on a stopped supplier is NOT dying of its own losses, and
+  // saying "loop" first would send the player priming a ring whose real
+  // problem is one ordinary card somewhere else. Name the supplier, say the
+  // ring restarts on its own, and stop.
+  const feeder = spiral.deadFeeders[0];
+  if (feeder) {
+    const others =
+      spiral.deadFeeders.length > 1 ? ` (and ${spiral.deadFeeders.length - 1} more like it)` : "";
+    return {
+      title: "This loop is waiting on its supplier",
+      short: `${count === 1 ? "A self-feeding machine" : `A ring of ${count} machines`} stopped because ${feeder.name} stopped sending ${feeder.resourceName}. Fix that machine and the ring restarts.`,
+      what: `${machines} in a ring, passing ${goods} round it. The ring also needs ${feeder.resourceName} from outside, and none is arriving.`,
+      why: `${feeder.name}${others} has stopped, so the ${feeder.resourceName} line into this ring delivers nothing. A ring only keeps itself going once material moves round it; with its top-up gone there is nothing to go round.`,
+      fix: `Go to ${feeder.name}: its own card says why it stopped. Get it running and this ring comes back on its own.`,
+    };
+  }
 
   return {
     title: count === 1 ? "This loop cannot start itself" : "These machines are stuck in a loop",

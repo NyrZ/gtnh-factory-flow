@@ -189,6 +189,66 @@ describe("findDeathSpirals", () => {
     expect(findDeathSpirals(proj, result).spirals).toHaveLength(0);
   });
 
+  it("blames a stopped supplier instead of the ring it starves", () => {
+    // The titanium-line shape: a healthy ring fed from outside by a machine
+    // that is itself stopped (an unwired second output, here `waste`). The
+    // ring reads 0% across the board, but it is not dying of its own losses -
+    // it is waiting on the feeder, and the story must send the player THERE.
+    const proj = ring(10, { outlet: true });
+    proj.recipes.push(
+      recipe(
+        "r-feed",
+        [],
+        [
+          { kind: "item", id: "item:a", amount: 10 },
+          { kind: "item", id: "item:waste", amount: 5 },
+        ],
+      ),
+    );
+    proj.nodes.push(node("FEED", "r-feed"));
+    proj.edges.push(edge("eFeed", "FEED", "A", "item:a"));
+    const result = calculateThroughput(proj);
+
+    expect(result.nodes.FEED!.utilization).toBeLessThan(1e-4);
+    const { spirals } = findDeathSpirals(proj, result);
+    expect(spirals).toHaveLength(1);
+    expect(spirals[0]!.deadFeeders).toHaveLength(1);
+    expect(spirals[0]!.deadFeeders[0]!.name).toBe("Machine r-feed");
+
+    const story = describeDeathSpiral(spirals[0]!);
+    expect(story.title).toBe("This loop is waiting on its supplier");
+    expect(story.fix).toContain("Machine r-feed");
+    expect(story.fix).toContain("its own card says why");
+  });
+
+  it("stands down entirely once the supplier runs", () => {
+    // Same board, waste output wired to a drawer: the feeder starts, the
+    // ring fills, and there is nothing to report.
+    const proj = ring(10, { outlet: true });
+    proj.recipes.push(
+      recipe(
+        "r-feed",
+        [],
+        [
+          { kind: "item", id: "item:a", amount: 10 },
+          { kind: "item", id: "item:waste", amount: 5 },
+        ],
+      ),
+    );
+    proj.nodes.push(node("FEED", "r-feed"));
+    proj.edges.push(edge("eFeed", "FEED", "A", "item:a"));
+    proj.storages = [
+      { id: "wasteDrawer", kind: "item", resourceId: "item:waste", position: { x: 0, y: 0 } },
+    ];
+    proj.edges.push(edge("eWaste", "FEED", "wasteDrawer", "item:waste"));
+    const result = calculateThroughput(proj);
+
+    // The outlet's 2/s tap is the only pull on the ring, so 20% of nameplate
+    // is the honest pace - what matters is that it turns at all.
+    expect(result.nodes.A!.utilization).toBeGreaterThan(0.1);
+    expect(findDeathSpirals(proj, result).spirals).toHaveLength(0);
+  });
+
   it("names the ring on every card instead of pointing round it", () => {
     const proj = ring(9);
     const result = calculateThroughput(proj);
