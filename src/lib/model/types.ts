@@ -461,6 +461,13 @@ export interface FactoryProject {
   /** Only shared setups carry this; see PlanViewState. */
   view?: PlanViewState;
   targetRate?: TargetRate;
+  /**
+   * Sketch mode. When true the solve assumes the plan's boundary: every bare
+   * input is supplied for free and every bare output is exported, via virtual
+   * drawers that never reach the board. Declared boundaries still win - only
+   * slots with no wire are filled in. For quick math before the wiring.
+   */
+  assumeBoundaries?: boolean;
   recipes: Recipe[];
   nodes: FactoryNode[];
   storages?: FactoryStorage[];

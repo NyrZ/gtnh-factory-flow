@@ -411,6 +411,8 @@ export const factoryProjectSchema = z.object({
   name: z.string().min(1),
   view: planViewStateSchema.optional(),
   targetRate: targetRateSchema.optional(),
+  // Sketch mode: solve as if every bare slot had its boundary drawer.
+  assumeBoundaries: z.boolean().optional(),
   recipes: z.array(recipeSchema),
   nodes: z.array(factoryNodeSchema),
   storages: z.array(factoryStorageSchema).optional().default([]),

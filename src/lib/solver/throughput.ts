@@ -42,6 +42,7 @@ import {
   runtimeCalculationWarning,
   selectRuntimeCalculationVariant,
 } from "./runtime-calculation";
+import { closeBoundaries } from "./close-boundaries";
 
 const EPSILON = 0.000001;
 
@@ -55,6 +56,15 @@ export function calculateThroughput(
   project: FactoryProject,
   options: SolverOptions = {},
 ): ThroughputResult {
+  // Sketch mode: the player asked the plan to assume its own boundary, so
+  // every bare input gets a virtual source and every bare output a virtual
+  // drain before the solve. The virtual drawers never reach the board - they
+  // exist only inside this result - and a boundary the player DID declare
+  // still wins, because closeBoundaries only fills slots with no wire on
+  // them. Quick math first, honest wiring when it matters.
+  if (project.assumeBoundaries) {
+    project = closeBoundaries(project);
+  }
   const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
   const nodes: Record<string, NodeThroughputResult> = {};
   const storages: Record<string, StorageThroughputResult> = {};

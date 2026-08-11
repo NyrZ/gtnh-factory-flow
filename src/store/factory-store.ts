@@ -273,6 +273,8 @@ interface FactoryStore {
   ) => void;
   /** Drains only: flip between pulling the feeder flat out and catching the extra. */
   setStorageDrainMode: (storageId: string, drainMode: StorageDrainMode) => void;
+  /** Sketch mode: solve as if every bare slot had its boundary drawer. */
+  setAssumeBoundaries: (assumeBoundaries: boolean) => void;
   deleteStorage: (storageId: string) => void;
   /** Clone a node (same recipe/config, no wires) beside the original. */
   duplicateNode: (nodeId: string) => void;
@@ -2232,6 +2234,18 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       const project = touchProject({
         ...state.project,
         targetRate,
+      });
+      return withProjectHistory(state, {
+        project,
+        lastResult: calculateThroughput(project),
+      });
+    });
+  },
+  setAssumeBoundaries: (assumeBoundaries) => {
+    set((state) => {
+      const project = touchProject({
+        ...state.project,
+        assumeBoundaries: assumeBoundaries || undefined,
       });
       return withProjectHistory(state, {
         project,

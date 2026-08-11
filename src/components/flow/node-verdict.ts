@@ -429,12 +429,18 @@ export function deriveNodeVerdict(
   // arithmetic to explain. Naming it here keeps the two subtler words honest:
   // STARVED means a feeder cannot keep up, CLOGGED means a wired output cannot
   // shift its surplus. Neither should ever mean "you have not wired it yet".
-  const bare = findBareSlots(project, nodeResult, incoming, outgoing);
-  if (bare || (incoming.length === 0 && outgoing.length === 0)) {
-    // The second clause catches a card with no wires AND nothing to wire -
-    // a recipe the solver has no flows for. There are no bare slots to mark,
-    // but "unwired" is still the only true thing to say about it.
-    return { kind: "unwired", pct, bare };
+  //
+  // In SKETCH MODE the plan assumes its own boundary, so a bare slot is not a
+  // to-do item: the solve already fed and drained it, and the card reads off
+  // the numbers like any other.
+  if (!project.assumeBoundaries) {
+    const bare = findBareSlots(project, nodeResult, incoming, outgoing);
+    if (bare || (incoming.length === 0 && outgoing.length === 0)) {
+      // The second clause catches a card with no wires AND nothing to wire -
+      // a recipe the solver has no flows for. There are no bare slots to mark,
+      // but "unwired" is still the only true thing to say about it.
+      return { kind: "unwired", pct, bare };
+    }
   }
 
   // A dead ring outranks every other reading. Its members ARE starved and
@@ -510,6 +516,11 @@ export function findUnwiredNodeIds(
   project: FactoryProject,
   result: ThroughputResult | undefined,
 ): string[] {
+  // Sketch mode feeds and drains every bare slot itself; a checklist of
+  // things the mode already handled would just nag.
+  if (project.assumeBoundaries) {
+    return [];
+  }
   const incomingBy = new Map<string, ProjectEdge[]>();
   const outgoingBy = new Map<string, ProjectEdge[]>();
   for (const edge of project.edges) {

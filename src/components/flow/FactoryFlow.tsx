@@ -53,6 +53,7 @@ import {
   Trash2,
   Type,
   Undo2,
+  Wand2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -4576,6 +4577,8 @@ const SourceToolbar = memo(function SourceToolbar({
   const addCustomRateNode = useFactoryStore((state) => state.addCustomRateNode);
   const rateUnit = useFactoryStore((state) => state.rateUnit);
   const setRateUnit = useFactoryStore((state) => state.setRateUnit);
+  const assumeBoundaries = useFactoryStore((state) => Boolean(state.project.assumeBoundaries));
+  const setAssumeBoundaries = useFactoryStore((state) => state.setAssumeBoundaries);
   // Subscribe to the DEPTHS, not the history arrays: a selector returning the
   // array itself would re-render this toolbar on every project edit.
   const undo = useFactoryStore((state) => state.undo);
@@ -4662,6 +4665,21 @@ const SourceToolbar = memo(function SourceToolbar({
         aria-label="Add custom rate node"
       >
         <Gauge className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => setAssumeBoundaries(!assumeBoundaries)}
+        className={[
+          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          assumeBoundaries
+            ? "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+            : "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110",
+        ].join(" ")}
+        title="Sketch mode: every unwired input is supplied for free and every unwired output is exported. Quick math without drawing the boundary. Anything you DO wire still behaves exactly as wired."
+        aria-label="Sketch mode"
+        aria-pressed={assumeBoundaries}
+      >
+        <Wand2 className="h-4 w-4" />
       </button>
       <div className="pointer-events-auto flex">
         {RATE_UNIT_CHOICES.map((choice) => (
