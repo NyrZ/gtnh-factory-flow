@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { Analytics } from "./Analytics";
 import { AnalyticsHeartbeat } from "./AnalyticsHeartbeat";
 import { WhatsNewGate } from "@/components/WhatsNewGate";
+import { GlobalTitleTooltip } from "@/components/nei/GlobalTitleTooltip";
 import "./globals.css";
 
 const monocraft = localFont({
@@ -89,6 +90,9 @@ export default function RootLayout({
         {/* Above the app rather than inside it: what changed is a fact about
             the whole planner, not about whichever tab happens to be open. */}
         <WhatsNewGate />
+        {/* Every `title` attribute in the app, worn as the planner's own
+            tooltip: the browser's grey box never renders again. */}
+        <GlobalTitleTooltip />
         <Analytics />
         <AnalyticsHeartbeat />
       </body>
