@@ -491,8 +491,8 @@ export function SetupsPanel() {
             {search
               ? "No setups match."
               : scope === "mine"
-                ? "Nothing shared yet. Hit the Share button above the board to put a setup on the network."
-                : "Nothing shared yet. Build a factory, hit the Share button up top, and yours becomes the network's first."}
+                ? "Nothing shared yet. Use the Share button above the board to post a setup."
+                : "Nothing shared yet. Build a factory and use the Share button above the board to post it."}
           </p>
         ) : (
           <>

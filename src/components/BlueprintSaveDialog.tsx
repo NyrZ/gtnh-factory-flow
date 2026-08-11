@@ -207,7 +207,7 @@ function SaveDialogBody({ request }: { request: BlueprintSaveRequest }) {
             <span className="block leading-tight">Publish to everyone</span>
             <span className="block text-[11px] leading-tight text-neutral-500">
               {isOverwrite
-                ? "Off takes it private; your shelf keeps it either way."
+                ? "Off keeps it private. It stays on your shelf either way."
                 : "On the Public shelf the moment it saves. You can flip this any time."}
             </span>
           </span>

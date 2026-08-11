@@ -287,7 +287,7 @@ export function explainPlug(
       lines = [short];
       break;
     case "blocked":
-      lines = [`${short} The machine is short itself, so this is not where it starts.`];
+      lines = [`${short} The machine is short itself, so the fix is upstream.`];
       break;
     case "clogged":
       // Worth its own clause: the obvious reading of a short plug is "add
@@ -349,7 +349,7 @@ function explainOutputPort(
       stateWord: "LEFTOVER",
       tone: "dim",
 
-      lines: [`${fmt(current)} vanishes — nothing wired.`],
+      lines: [`${fmt(current)} vanishes: nothing is wired.`],
     };
   }
 
@@ -364,7 +364,7 @@ function explainOutputPort(
         stateWord: "SLOWED",
         tone,
 
-        lines: [`At ${formatPct(verdict.pct)}% — ${bindingName} sets that. Nothing is waiting on it.`],
+        lines: [`At ${formatPct(verdict.pct)}%: ${bindingName} sets that. Nothing is waiting on it.`],
       };
     }
 
@@ -373,14 +373,14 @@ function explainOutputPort(
         stateWord: "SQUEEZED",
         tone,
 
-        lines: [`At ${formatPct(verdict.pct)}% on ${bindingName} — and plugs want ${fmt(wanted)}, over its ${fmt(nameplate)} max.`],
+        lines: [`At ${formatPct(verdict.pct)}% on ${bindingName}. Plugs want ${fmt(wanted)}, over its ${fmt(nameplate)} max.`],
       };
     }
     return {
       stateWord: "SLOWED",
       tone,
 
-      lines: [`At ${formatPct(verdict.pct)}% — ${bindingName} runs short, so this does too.`],
+      lines: [`At ${formatPct(verdict.pct)}%: ${bindingName} runs short, so this does too.`],
     };
   }
 
@@ -391,7 +391,7 @@ function explainOutputPort(
       tone: "green",
 
       lines: [
-        `Makes ${fmt(current)}, plugs take ${fmt(machineWant)} — ${fmt(spare)} ${
+        `Makes ${fmt(current)}, plugs take ${fmt(machineWant)}. The spare ${fmt(spare)} ${
           storageTake >= spare - EPS ? "goes to the buffer" : "vanishes"
         }.`,
       ],
@@ -403,7 +403,7 @@ function explainOutputPort(
       stateWord: "CALM",
       tone: "steel",
 
-      lines: [`At ${formatPct(verdict.pct)}% — all that's asked. Could do ${fmt(nameplate)}.`],
+      lines: [`At ${formatPct(verdict.pct)}%: all that is asked. Could do ${fmt(nameplate)}.`],
     };
   }
 
@@ -413,7 +413,7 @@ function explainOutputPort(
       stateWord: "DONE",
       tone: "green",
 
-      lines: [`Full speed. The plug wants ${times} more — hover the plug for the fix.`],
+      lines: [`Full speed. The plug wants ${times} more: hover it for the fix.`],
     };
   }
 
@@ -562,8 +562,8 @@ export function buildEdgeStory(
     giverNote = giverAtFullSpeed
       ? "at full speed"
       : capable < 0.995
-        ? `runs at ${formatPct(giverPct)}% — missing ingredients too`
-        : `runs at ${formatPct(giverPct)}% — could send more if asked`;
+        ? `runs at ${formatPct(giverPct)}%, missing ingredients too`
+        : `runs at ${formatPct(giverPct)}%, could send more if asked`;
   }
 
   // ---- the receiving end(s) -------------------------------------------
@@ -579,7 +579,7 @@ export function buildEdgeStory(
     if (targetStorage) {
       to.push({
         name: describeStorage(targetStorage, storageRoles.get(edge.target)),
-        text: `takes whatever arrives — ${fmt(gets)}`,
+        text: `takes whatever arrives: ${fmt(gets)}`,
       });
       continue;
     }
@@ -606,8 +606,8 @@ export function buildEdgeStory(
           (flow) => flow.resourceId === edge.resourceId,
         )?.amountPerSecond;
       shareNote = totalNeed
-        ? ` — its share of ${fmt(totalNeed)} over ${siblings} lines`
-        : ` — one of ${siblings} lines`;
+        ? `, its share of ${fmt(totalNeed)} over ${siblings} lines`
+        : `, one of ${siblings} lines`;
     }
 
     to.push({
@@ -633,7 +633,7 @@ export function buildEdgeStory(
         ? `the ${lastMachineReceiver}`
         : `the ${machineReceivers} machines it feeds`;
     const lines = [
-      `This line carries everything its maker has — ${fmt(carries)} — but that covers only ${formatPct(coverPct)}% of what ${receiverPhrase} wants.`,
+      `Carries all ${fmt(carries)} its maker has. That covers only ${formatPct(coverPct)}% of what ${receiverPhrase} wants.`,
     ];
     let action: EdgeStory["action"];
     if (sourceStorage) {
@@ -661,9 +661,9 @@ export function buildEdgeStory(
         tone: "fix",
       };
     } else {
-      lines.push(`And the ${giverName} runs at just ${formatPct(giverPct)}% — it's missing ingredients too.`);
+      lines.push(`The ${giverName} runs at only ${formatPct(giverPct)}%: it is missing ingredients too.`);
       action = {
-        text: `→ The real fix is upstream of the ${giverName} — follow the chain.`,
+        text: `→ The fix is upstream of the ${giverName}.`,
         tone: "fix",
       };
     }
@@ -700,7 +700,7 @@ export function buildEdgeStory(
     capacity = Math.max(capacity, result.edges[edge.id]?.sourceCapacityPerSecond ?? 0);
   }
   if (!sourceStorage && outlets === edges.length && capacity > carries * 1.05) {
-    lines.push(`The ${giverName} could send ${fmt(capacity)} — ${fmt(capacity - carries)} spare.`);
+    lines.push(`The ${giverName} could send ${fmt(capacity)}, with ${fmt(capacity - carries)} spare.`);
   }
   return {
     stateWord: "OK",

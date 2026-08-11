@@ -27,7 +27,7 @@ export function createTrashPlaceholderRecipe(id: string): Recipe {
     eut: 0,
     inputs: [],
     outputs: [],
-    notes: "Voids everything piped in — trashed resources never show as outputs.",
+    notes: "Voids everything piped in. Trashed resources never show as outputs.",
     source: { recipeMap: "trash" },
   };
 }

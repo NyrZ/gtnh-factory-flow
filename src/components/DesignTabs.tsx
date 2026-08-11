@@ -202,7 +202,7 @@ export function DesignTabs() {
                         void switchToDesign(design.id);
                       }}
                       onDoubleClick={() => setRenamingId(design.id)}
-                      title={`${design.name} — double-click to rename`}
+                      title={`${design.name} (double-click to rename)`}
                       className="max-w-[150px] truncate text-xs font-medium"
                     >
                       {design.name}
@@ -410,7 +410,7 @@ function DesignMenu({
       ) : null}
 
       {armed === "delete" ? (
-        <MenuItem label="Delete — confirm" tone="danger" onClick={onDelete} />
+        <MenuItem label="Confirm delete" tone="danger" onClick={onDelete} />
       ) : (
         <MenuItem label="Delete" tone="danger" onClick={() => onArm("delete")} />
       )}
@@ -435,7 +435,7 @@ function BulkCloseItem({
 }) {
   return (
     <MenuItem
-      label={armed ? `Close ${count} — confirm` : `${label} (${count})`}
+      label={armed ? `Confirm close ${count}` : `${label} (${count})`}
       tone={armed ? "danger" : undefined}
       onClick={armed ? onFire : onArm}
     />

@@ -149,7 +149,7 @@ export async function POST(request: Request) {
 
   if (!(await checkRateLimit(`user:${sessionUser.id}`, "blueprint-save", 60, 60 * 60))) {
     return NextResponse.json(
-      { error: "Blueprint save limit reached — try again later." },
+      { error: "Blueprint save limit reached. Try again later." },
       { status: 429 },
     );
   }

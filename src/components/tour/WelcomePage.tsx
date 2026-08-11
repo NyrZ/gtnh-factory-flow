@@ -263,7 +263,7 @@ export function WelcomePage() {
                       {/* Stays up after it has been done: see `recommended`. */}
                       {lesson.recommended ? (
                         <span
-                          title="The rules this one covers are the ones that keep changing."
+                          title="This tour covers the rules that change most often."
                           className="inline-flex items-center gap-1 rounded border border-cyan-500/70 bg-cyan-500/20 px-1.5 py-px text-[10px] font-black uppercase tracking-wide text-cyan-200"
                         >
                           <Sparkles className="h-3 w-3" aria-hidden />
@@ -272,7 +272,7 @@ export function WelcomePage() {
                       ) : null}
                       {isDone ? (
                         <span
-                          title="You have been through this one"
+                          title="You have completed this tour"
                           className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-400"
                         >
                           <Check className="h-3 w-3" />
@@ -285,7 +285,7 @@ export function WelcomePage() {
                     </p>
                     {lesson.recommended ? (
                       <p className="mt-1 text-xs font-semibold leading-snug text-cyan-300">
-                        {isDone ? "This one has changed. Worth another look." : "Do this one first."}
+                        {isDone ? "This tour has changed since you took it." : "Do this one first."}
                       </p>
                     ) : null}
                   </div>
@@ -413,7 +413,7 @@ function RecentUploads({ onOpened }: { onOpened: () => void }) {
     <section className="min-w-0">
       <SectionTitle>Recent uploads</SectionTitle>
       {failed ? (
-        <p className="mt-2 text-xs text-fg-muted">The setup shelf is not answering right now.</p>
+        <p className="mt-2 text-xs text-fg-muted">Could not load shared setups.</p>
       ) : !plans ? (
         <p className="mt-2 text-xs text-fg-muted">Loading…</p>
       ) : plans.length === 0 ? (

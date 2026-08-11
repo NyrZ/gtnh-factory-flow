@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const actorKey = makeActorKey(request);
     if (!(await checkRateLimit(actorKey, "register", 5, 60 * 60))) {
       return NextResponse.json(
-        { error: "Too many accounts created — try again later." },
+        { error: "Too many accounts created. Try again later." },
         { status: 429 },
       );
     }

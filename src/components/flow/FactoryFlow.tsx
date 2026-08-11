@@ -3841,12 +3841,12 @@ export function FactoryFlow() {
       return undefined;
     }
     if (hasDots && edgeCount >= 50) {
-      return `Rewires all ${edgeCount} lines and your pinned dots — may take a moment and look odd at first. Flipping back restores it. Continue?`;
+      return `Rewires all ${edgeCount} lines and your pinned dots. It may take a moment and look odd at first. Flipping back restores it. Continue?`;
     }
     if (hasDots) {
-      return "Rewires your lines and pinned dots — may look odd for a moment. Flipping back restores it. Continue?";
+      return "Rewires your lines and pinned dots. It may look odd for a moment. Flipping back restores it. Continue?";
     }
-    return `Rewires all ${edgeCount} lines — may take a moment. Flipping back restores it. Continue?`;
+    return `Rewires all ${edgeCount} lines. It may take a moment. Flipping back restores it. Continue?`;
   }, [project.edges]);
 
   const paintCursor =
@@ -4380,7 +4380,7 @@ const SelectionActionsBar = memo(function SelectionActionsBar({
       <button
         type="button"
         onClick={onCompact}
-        title="Compact the selected cards into a pocket dimension (Ctrl+G): they become one card with the group's inputs and outputs, and you can dive in any time"
+        title="Compact the selected cards into a pocket dimension (Ctrl+G): they become one card with the group's inputs and outputs. Double-click it to step inside"
         className="flex h-9 items-center gap-1.5 whitespace-nowrap border-2 border-[#8d6fd1] bg-[#3b2d52] px-3 font-mono text-[12px] font-bold text-white shadow-[inset_2px_2px_0_#5e4a85,inset_-2px_-2px_0_#241b33] hover:brightness-110"
       >
         <Box className="h-4 w-4" />
@@ -4529,7 +4529,7 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
         type="button"
         onClick={() => onModeChange("identity")}
         className={buttonClass(glanceMode === "identity")}
-        title="Cards show WHAT they are: their own colours up close, the machine icon zoomed out. Hover a card for its rates."
+        title="Cards show what they are: their own colours up close, the machine icon zoomed out. Hover a card for its rates."
         aria-label="Show machines"
         aria-pressed={glanceMode === "identity"}
       >
@@ -4643,7 +4643,7 @@ const SourceToolbar = memo(function SourceToolbar({
         type="button"
         onClick={addCropFarmNode}
         className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-        title="Add crop farm: pick a crop and stats, it produces at the computed rate"
+        title="Add crop farm: pick a crop and its stats. It produces at the computed rate"
         aria-label="Add crop farm"
       >
         <Sprout className="h-4 w-4" />
@@ -4652,7 +4652,7 @@ const SourceToolbar = memo(function SourceToolbar({
         type="button"
         onClick={addTrashNode}
         className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-        title="Add trash can: wire any output into it — whatever flows in is voided and never shows as an output"
+        title="Add trash can: wire any output into it. Whatever flows in is voided and never shows as an output"
         aria-label="Add trash can"
       >
         <Trash className="h-4 w-4" />
@@ -4661,7 +4661,7 @@ const SourceToolbar = memo(function SourceToolbar({
         type="button"
         onClick={addCustomRateNode}
         className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-        title="Add custom rate node: wire it to any port, dial a rate — supplies the resource, or flips to a constant request drain"
+        title="Add custom rate node: wire it to any port and dial a rate. It supplies the resource, or flips to a constant request drain"
         aria-label="Add custom rate node"
       >
         <Gauge className="h-4 w-4" />
@@ -4676,7 +4676,7 @@ const SourceToolbar = memo(function SourceToolbar({
             ? "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
             : "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110",
         ].join(" ")}
-        title="Sketch mode: every unwired input is supplied for free and every unwired output is exported. Quick math without drawing the boundary. Anything you DO wire still behaves exactly as wired."
+        title="Sketch mode: every unwired input is supplied for free and every unwired output is exported. Quick math without drawing the boundary. Anything you do wire still behaves as wired."
         aria-label="Sketch mode"
         aria-pressed={assumeBoundaries}
       >
@@ -5321,7 +5321,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
           })
         }
         className={buttonClass(false)}
-        title={`${CANVAS_PATTERN_LABEL[canvasPattern]} — click to change`}
+        title={`${CANVAS_PATTERN_LABEL[canvasPattern]}: click to change`}
         aria-label={CANVAS_PATTERN_LABEL[canvasPattern]}
       >
         <PatternIcon className="h-4 w-4" />
@@ -5415,8 +5415,8 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         className={buttonClass(calmMode)}
         title={
           calmMode
-            ? "Calm colours on — the board still names every problem, just without the alarm reds and greens. Click to bring them back."
-            : "Calm the colours: keep every readout but drop the alarm reds, ambers and greens — for showing a plan off"
+            ? "Calm colours on. The board still names every problem, without the alarm reds and greens. Click to bring them back."
+            : "Calm the colours: keep every readout but drop the alarm reds, ambers and greens. Made for presenting a plan"
         }
         aria-label={calmMode ? "Turn calm colours off" : "Turn calm colours on"}
         aria-pressed={calmMode}
@@ -6189,7 +6189,7 @@ function ResourceEdgeComponent({
                 setDraftWaypoints(undefined);
               }}
             >
-              <title>Drag to steer this wire — double-click to remove the stop</title>
+              <title>Drag to steer this wire. Double-click to remove the stop</title>
             </circle>
           ))
         : null}

@@ -199,7 +199,7 @@ export async function POST(request: Request) {
     const actorKey = makeActorKey(request, deviceId);
     if (!(await checkRateLimit(actorKey, "upload", 10, 60 * 60))) {
       return NextResponse.json(
-        { error: "Upload rate limit reached — try again later." },
+        { error: "Upload rate limit reached. Try again later." },
         { status: 429 },
       );
     }

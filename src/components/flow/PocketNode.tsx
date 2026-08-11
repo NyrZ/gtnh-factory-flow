@@ -216,8 +216,8 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                 className="minecraft-title flex h-6 min-w-0 items-center border-2 border-[#241b33] bg-[#5e4a85] px-2 text-[13px] leading-[18px] shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140]"
                 title={
                   calmMode
-                    ? `${pocket.name} — double-click the card to open`
-                    : `${pocket.name} — double-click the name to rename, double-click the card to open`
+                    ? `${pocket.name} (double-click the card to open)`
+                    : `${pocket.name} (double-click the name to rename, double-click the card to open)`
                 }
                 onDoubleClick={
                   // Renaming is editing, so calm mode lets the double-click
@@ -271,7 +271,7 @@ function PocketNodeComponent({ data, selected }: NodeProps<PocketFlowNode>) {
                     dissolvePocket(pocket.id);
                   }}
                   className="nodrag flex h-6 w-6 items-center justify-center border-2 border-[#241b33] bg-[#5e4a85] text-white shadow-[inset_2px_2px_0_#8d6fd1,inset_-2px_-2px_0_#2b2140] hover:bg-[#8d6fd1]"
-                  title="Unpack: spill everything back onto this board"
+                  title="Unpack: put everything back on this board"
                   aria-label={`Unpack pocket ${pocket.name}`}
                 >
                   <PackageOpen aria-hidden className="h-3.5 w-3.5" />

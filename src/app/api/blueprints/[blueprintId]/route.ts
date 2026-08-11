@@ -83,7 +83,7 @@ export async function PUT(request: Request, context: RouteContext) {
 
   if (!(await checkRateLimit(`user:${sessionUser.id}`, "blueprint-update", 60, 60 * 60))) {
     return NextResponse.json(
-      { error: "Editing too fast — try again later." },
+      { error: "Editing too fast. Try again later." },
       { status: 429 },
     );
   }

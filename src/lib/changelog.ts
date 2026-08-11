@@ -71,6 +71,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.4.1",
+    date: "2026-08-11",
+    headline: "Plainer tooltips and tours",
+    notes: [
+      "Every tooltip, help card and tour step is shorter and plainer.",
+      "Nothing on your board behaves differently.",
+    ],
+  },
+  {
     version: "2.4.0",
     date: "2026-08-10",
     headline: "One big tour that flips drawers live, and loops that blame the right machine",

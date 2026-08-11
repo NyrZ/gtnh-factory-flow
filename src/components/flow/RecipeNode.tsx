@@ -796,7 +796,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       ? `Makes ${resourceLabel(customRateSlot.resource)} at the dialed rate for anything that asks.`
                       : `Constantly drains ${resourceLabel(customRateSlot.resource)} at the dialed rate.`
                   ) : (
-                    "Wire any port to this — it adopts that resource."
+                    "Wire any port to this and it adopts that resource."
                   )
                 ) : (
                   <MachineStatsContent
@@ -1446,7 +1446,7 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
       const supplied = formatSlotRate(binding.suppliedPerSecond, binding.kind);
       const needed = formatSlotRate(binding.neededPerSecond, binding.kind);
       const tied = binding.tiedWithNames?.length
-        ? ` Tied with ${binding.tiedWithNames.join(", ")} — raise either.`
+        ? ` Tied with ${binding.tiedWithNames.join(", ")}. Raise either.`
         : "";
       // The two states differ in one thing only: whether the shortage costs
       // anybody anything. Say which, because that is the whole reason one is
@@ -1745,7 +1745,7 @@ function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
   const coveredPct = Math.round(Math.min(Math.max(plug.coveredFraction, 0), 1) * 100);
   return (
     <MinecraftTooltip
-      label={`${port.displayName} — the asker's side`}
+      label={`${port.displayName}: who takes it`}
       content={renderPlugHoverContent(port, nodeId)}
     >
       <span
@@ -2161,7 +2161,7 @@ export function PortChip({
           data-resource-handle="true"
           data-resource-node-id={nodeId}
           data-resource-handle-id={port.handleId}
-          title={`${isInput ? "Input" : "Output"}: ${port.displayName} — click for what makes it, right click for what uses it (R and U do the same), drag to wire`}
+          title={`${isInput ? "Input" : "Output"}: ${port.displayName}. Click for what makes it, right click for what uses it (R and U do the same), drag to wire`}
           className={[
             "resource-slot-handle nodrag !absolute !left-0 !right-auto !top-0 !z-30 !h-full !w-full !min-w-0 !translate-x-0 !translate-y-0",
             "!rounded-none !border-0 !bg-transparent !opacity-0",
@@ -3062,13 +3062,13 @@ function CropHelpPanel({
           <span className="text-white">{feeding.tier * 10}</span> food out of a possible 275. Every
           point of extra food makes it grow{" "}
           <span style={{ color: CROP_HELP_GOOD }}>a little faster</span>; every missing point slows
-          it <span style={{ color: CROP_HELP_BAD }}>four times as hard</span> — and if it&apos;s 25
-          or more short, it <span style={{ color: CROP_HELP_BAD }}>stops growing completely</span>.
+          it <span style={{ color: CROP_HELP_BAD }}>four times as hard</span>. If it is 25 or more
+          short, it <span style={{ color: CROP_HELP_BAD }}>stops growing completely</span>.
         </p>
       ) : null}
       {finePrint ? (
         <p className="mt-2 border-t border-white/10 pt-1.5 text-[13px] leading-relaxed text-slate-400">
-          For the curious: {finePrint}
+          Formula: {finePrint}
         </p>
       ) : null}
     </div>
@@ -3093,7 +3093,7 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
     case "cropGrowthStat":
       return (
         <CropHelpPanel
-          title="Growth — how fast it regrows"
+          title="Growth: how fast it regrows"
           finePrint={
             <>
               every 12.8 s the plant gains (6 + Growth) points, scaled by feeding. This crop is
@@ -3114,7 +3114,7 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
     case "cropGainStat":
       return (
         <CropHelpPanel
-          title="Gain — how much loot per harvest"
+          title="Gain: how much loot per harvest"
           finePrint={
             <>
               drop rounds = {stats.dropChance.toFixed(3)} × 1.03^Gain, and every successful drop
@@ -3128,20 +3128,19 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
           </p>
           <p className="text-slate-300">
             Like Growth, it&apos;s raised by cross-breeding. It never changes how fast the plant
-            grows — only how much falls out.
+            grows, only how much it drops.
           </p>
         </CropHelpPanel>
       );
     case "cropWater":
       return (
         <CropHelpPanel
-          title="Water — keep it topped up"
+          title="Water: keep it topped up"
           feeding={{ tier: stats.tier }}
           finePrint={<>water bonus = floor((water + 9) ÷ 10): 0 → +1, 50 → +5, 100 → +10.</>}
         >
           <p>
-            A well-watered crop is a well-fed crop: full water is {good("+10 food")}, one of the
-            two biggest boosts you control.
+            Full water is {good("+10 food")}, one of the two biggest boosts you control.
           </p>
           <p className="text-slate-300">
             A Crop Manager keeps water at full automatically, so &quot;Full&quot; matches an
@@ -3152,37 +3151,36 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
     case "cropFertilizer":
       return (
         <CropHelpPanel
-          title="Fertilizer — food from a bag"
+          title="Fertilizer: extra food"
           feeding={{ tier: stats.tier }}
           finePrint={<>fertilizer bonus = floor((fertilizer + 9) ÷ 10): 0 → +1, 50 → +5, 100 → +10.</>}
         >
           <p>
-            Fertilizer works exactly like water: keeping it full is {good("+10 food")}. Skip it and
-            a hungry high-tier crop will {bad("crawl or stall")}.
+            Fertilizer works like water: keeping it full is {good("+10 food")}. Without it a
+            high-tier crop {bad("slows down or stops")}.
           </p>
           <p className="text-slate-300">
-            Crop Managers and Industrial Farms can supply it for you (Fertilia crops literally grow
-            the stuff).
+            Crop Managers and Industrial Farms can supply it for you.
           </p>
         </CropHelpPanel>
       );
     case "cropSky":
       return (
         <CropHelpPanel
-          title="Sky — a little sunshine"
+          title="Sky: open air above the crop"
           feeding={{ tier: stats.tier }}
           finePrint={<>sky bonus = +2 when the block above the crop can see the sky.</>}
         >
           <p>
             Plants under open sky get a small {good("+2 food")} bonus. Roofed or underground farms
-            lose it — usually fine, unless the crop is right on the edge of being underfed.
+            lose it. That only matters when the crop is close to being underfed.
           </p>
         </CropHelpPanel>
       );
     case "cropBiome":
       return (
         <CropHelpPanel
-          title="Biome — plant it where it's happy"
+          title="Biome: where it grows best"
           feeding={{ tier: stats.tier }}
           finePrint={
             <>
@@ -3200,11 +3198,11 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
             ) : (
               <>This crop has no favourite biome.</>
             )}{" "}
-            Each matching like is {good("+14 food")}, so hitting both is {good("+28")} — the
+            Each matching like is {good("+14 food")}, so matching both is {good("+28")}, the
             biggest feeding boost there is.
           </p>
           <p className="text-slate-300">
-            No matching biome nearby? A wet one (80%+ humidity, like a swamp or jungle) still gives
+            Without a matching biome, a wet one (80%+ humidity, like a swamp or jungle) still gives
             up to +14.
           </p>
         </CropHelpPanel>

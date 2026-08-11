@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
     const actorKey = makeActorKey(request);
     if (!(await checkRateLimit(actorKey, "login", 20, 60 * 10))) {
-      return NextResponse.json({ error: "Too many attempts — slow down." }, { status: 429 });
+      return NextResponse.json({ error: "Too many attempts. Slow down." }, { status: 429 });
     }
 
     const { data } = await getCommunityDb()

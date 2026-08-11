@@ -55,7 +55,7 @@ export function AccountMenu() {
             >
               <h2 className="mb-1 text-base font-semibold">Community account</h2>
               <p className="mb-3 text-xs text-fg-muted">
-                Just a username and password — needed to share plans and manage your posts.
+                Just a username and password. Needed to share plans and manage your posts.
               </p>
               <AuthForm
                 onSignedIn={(signedInUser) => {

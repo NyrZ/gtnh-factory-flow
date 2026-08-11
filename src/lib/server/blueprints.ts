@@ -138,10 +138,10 @@ export function blueprintStorageErrorMessage(
   fallback: string,
 ): string {
   if (error?.code === "PGRST205") {
-    return "Blueprint storage is not set up yet — run supabase/schema.sql in the Supabase SQL editor.";
+    return "Blueprint storage is not set up yet: run supabase/schema.sql in the Supabase SQL editor.";
   }
   if (error?.code === "PGRST204" || error?.code === "42703") {
-    return "Blueprint storage is out of date — re-run the latest supabase/schema.sql in the Supabase SQL editor.";
+    return "Blueprint storage is out of date: re-run the latest supabase/schema.sql in the Supabase SQL editor.";
   }
   return fallback;
 }

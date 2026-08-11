@@ -178,7 +178,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
             <p className="text-sm">
               {shared.kind === "updated"
                 ? "Your post has been updated."
-                : "Your setup is live. Thanks for sharing!"}
+                : "Your setup is live."}
             </p>
             <div className="flex flex-wrap gap-2">
               <button

@@ -923,7 +923,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           <button
             type="button"
             onClick={() => writeWorkspaceView({ leftPanelOpen: false })}
-            title="Hide this column and give the board the room"
+            title="Hide this column"
             aria-label="Hide the items, pockets and setups column"
             className="flex h-7 w-6 shrink-0 items-center justify-center rounded-[4px] border border-neutral-700 text-neutral-400 hover:border-cyan-600 hover:text-cyan-400"
           >
@@ -1539,7 +1539,7 @@ function RecentResourceStrip({
         <button
           type="button"
           onClick={clearResourceHistory}
-          title="Forget these"
+          title="Clear recent items"
           className="text-[10px] font-medium text-neutral-500 hover:text-neutral-200"
         >
           Clear

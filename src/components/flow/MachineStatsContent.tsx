@@ -200,18 +200,18 @@ function CropSourceStatsContent({
             <span>
               That&apos;s <span style={{ color: BONUS_COLOR }}>{surplus} more than it needs</span>,
               so it grows at{" "}
-              <span style={{ color: BONUS_COLOR }}>{speedPercent}% speed</span> — a well-fed crop
+              <span style={{ color: BONUS_COLOR }}>{speedPercent}% speed</span>. A well-fed crop
               grows faster.
             </span>
           ) : supply + 25 <= demand ? (
             <span style={{ color: PENALTY_COLOR }}>
-              That&apos;s {-surplus} less than it needs — far too hungry. It will not grow at all
+              That&apos;s {-surplus} less than it needs: far too hungry. It will not grow at all
               until you feed it better (more water, fertilizer, sky or a better biome).
             </span>
           ) : (
             <span>
               That&apos;s <span style={{ color: PENALTY_COLOR }}>{-surplus} less than it needs</span>
-              , and hunger hurts four times harder than surplus helps: it limps along at{" "}
+              , and hunger costs four times more than surplus helps: it runs at{" "}
               <span style={{ color: PENALTY_COLOR }}>{speedPercent}% speed</span>.
             </span>
           )}
@@ -230,13 +230,12 @@ function CropSourceStatsContent({
             over and over.{" "}
             <span className="text-slate-400">
               (It gains {rate} of its {stats.growthPoints.toLocaleString()} growth points every
-              12.8 s — {cycles} rounds in total.)
+              12.8 s, {cycles} rounds in total.)
             </span>
           </p>
         ) : (
           <p className="mt-1 text-[16px] leading-relaxed" style={{ color: PENALTY_COLOR }}>
-            Never — it&apos;s too hungry to grow. Fix the feeding above and this section comes back
-            to life.
+            Never: it&apos;s too hungry to grow. Fix the feeding above and this section returns.
           </p>
         )}
       </div>
@@ -247,7 +246,7 @@ function CropSourceStatsContent({
           What do you get each harvest?
         </p>
         <p className="mt-1 text-[16px] leading-relaxed text-slate-100">
-          Gain {env.gain} shakes the loot table about{" "}
+          Gain {env.gain} rolls the loot table about{" "}
           <span className="text-white">{formatNumber(rounds, 1)} times</span> per harvest, with a
           small chance of bonus items on top. On average:
         </p>
@@ -286,9 +285,9 @@ function CropSourceStatsContent({
                 <span style={{ color: BONUS_COLOR }}>
                   {formatNumber(cropsPerMachine, 0)} crop sticks per machine
                 </span>
-                . It shakes the loot table{" "}
+                . It rolls the loot table{" "}
                 <span style={{ color: BONUS_COLOR }}>
-                  {formatNumber((roundMultiplier - 1) * 100, 0)}% harder
+                  {formatNumber((roundMultiplier - 1) * 100, 0)}% more
                 </span>{" "}
                 than picking by hand, and spends{" "}
                 {formatNumber(cropsNhManagerEuPerHarvest(setup), 0)} EU on every crop it picks.
@@ -324,10 +323,10 @@ function CropSourceStatsContent({
       ) : null}
 
       <p className="mt-2 border-t border-white/10 pt-2 text-[13px] leading-relaxed text-slate-400">
-        For the curious: food = (5 + water + fertilizer + sky + biome) × 5 vs Tier × 10 demand
+        Formulas: food = (5 + water + fertilizer + sky + biome) × 5 vs Tier × 10 demand
         (+1% speed per spare point, −4% per missing); growth = (6 + Growth) points per 12.8 s;
         loot rolls = {formatNumber(stats.dropChance, 3)} × 1.03^Gain with a (Gain + 1)% bonus roll.
-        Straight from the game&apos;s own code. Resistance never changes these rates — it only
+        Straight from the game&apos;s own code. Resistance never changes these rates. It only
         fights weeds and sickness.
       </p>
     </div>

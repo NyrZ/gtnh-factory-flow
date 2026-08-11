@@ -343,7 +343,7 @@ function Masthead({
 
       <p className="relative mt-2 text-sm text-fg-muted">
         {missedCount === 1
-          ? "One release since you were last here. Here it is."
+          ? "One release since your last visit."
           : missedCount > 1
             ? // Counted and dated, because "some updates" is not a reason to
               // read anything.

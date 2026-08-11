@@ -37,7 +37,7 @@ export async function POST(
 
   if (!(await checkRateLimit(`user:${sessionUser.id}`, "blueprint-publish", 30, 60 * 60))) {
     return NextResponse.json(
-      { error: "Publishing too fast — try again later." },
+      { error: "Publishing too fast. Try again later." },
       { status: 429 },
     );
   }

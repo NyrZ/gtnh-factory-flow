@@ -49,7 +49,7 @@ const ROLE_PRESENTATION: Record<
   product: {
     word: "PRODUCT",
     boundary: true,
-    line: "Pulls its machine flat out. What the factory is for.",
+    line: "Pulls its machine flat out. The plan's output.",
   },
   byproduct: {
     word: "BYPRODUCT",

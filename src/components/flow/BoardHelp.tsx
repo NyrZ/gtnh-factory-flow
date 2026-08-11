@@ -153,7 +153,7 @@ const CALLOUTS: Array<{
     align: "start",
     // Pushed further out so the card clears the view row's ring below.
     offset: 56,
-    title: "Dressing it up",
+    title: "Paint and notes",
     rows: [
       { icon: Paintbrush, text: "Paint cards" },
       { icon: Square, text: "Box, arrow, note" },
@@ -164,7 +164,7 @@ const CALLOUTS: Array<{
     anchor: "view",
     side: "below",
     align: "end",
-    title: "How it looks",
+    title: "View options",
     rows: [
       { text: "View only, *never the plan*" },
       { icon: Grid3x3, text: "Background pattern" },
@@ -399,7 +399,7 @@ function ToursCard({ onStart }: { onStart: (lessonId: string) => void }) {
       className={`${GLANCE_CARD_CLASS} pointer-events-auto px-3 py-2.5`}
       style={{ border: "2px solid #1c4a56" }}
     >
-      <GlanceTitle dense>Or be shown around</GlanceTitle>
+      <GlanceTitle dense>Guided tours</GlanceTitle>
       <div className="mt-2 flex flex-col gap-1">
         {TOUR_LESSONS.map((lesson) => (
           <button
@@ -415,7 +415,7 @@ function ToursCard({ onStart }: { onStart: (lessonId: string) => void }) {
         ))}
       </div>
       <p className="mt-1.5 px-1.5 text-[10px] leading-snug text-[#5e7183]">
-        Esc leaves at any point.
+        Press Esc to leave a tour at any point.
       </p>
     </div>
   );
@@ -464,7 +464,7 @@ function HelpSheet({
         {CALLOUTS.map((callout) => (
           <GlanceCard key={callout.anchor} title={callout.title} rows={callout.rows} />
         ))}
-        <GlanceCard title="Moves worth knowing" rows={MOVES} />
+        <GlanceCard title="Mouse and keys" rows={MOVES} />
       </div>
     </div>
   );
@@ -542,7 +542,7 @@ function HelpGlanceSheet({
             className="absolute flex w-[360px] flex-col gap-2"
             style={{ left: button.left, bottom: vh - button.top + 10 }}
           >
-            <GlanceCard title="Moves worth knowing" rows={MOVES} />
+            <GlanceCard title="Mouse and keys" rows={MOVES} />
             <ToursCard onStart={onStart} />
           </div>
         </Fragment>
@@ -591,7 +591,7 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
           onClick={() => setSheetOpen(true)}
           data-tour-anchor="help"
           className={HELP_BUTTON_CLASS}
-          title="What does everything do?"
+          title="Board help"
           aria-label="Show board help"
         >
           ?
@@ -619,7 +619,7 @@ export const BoardHelp = memo(function BoardHelp({ compact }: { compact: boolean
         onBlur={scheduleHide}
         data-tour-anchor="help"
         className={HELP_BUTTON_CLASS}
-        title="What does everything do?"
+        title="Board help"
         aria-label="Show board help"
       >
         ?

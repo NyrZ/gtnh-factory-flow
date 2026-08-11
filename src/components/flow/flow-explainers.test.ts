@@ -716,7 +716,7 @@ describe("buildEdgeStory", () => {
 
     expect(story?.stateWord).toBe("OK");
     expect(story?.lines[0]).toBe("Delivers exactly what's asked: 4.00/s.");
-    expect(story?.lines[1]).toContain("could send 10.0/s — 6.00/s spare");
+    expect(story?.lines[1]).toContain("could send 10.0/s, with 6.00/s spare");
     expect(story?.from.note).toContain("could send more if asked");
   });
 });

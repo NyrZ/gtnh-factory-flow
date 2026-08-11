@@ -1565,7 +1565,7 @@ export function buildLimitLadder(
   const utilizationPct = clamp01(nodeResult.utilization, 0) * 100;
   if (capped.length > 0 && utilizationPct < capped[0]!.pct - 0.5) {
     capped[0] = { ...capped[0]!, now: false };
-    capped.unshift({ pct: utilizationPct, label: "current — the plan under-asks it", now: true });
+    capped.unshift({ pct: utilizationPct, label: "current: the plan asks for less", now: true });
     if (capped.length > 4) {
       capped.pop();
     }

@@ -38,7 +38,7 @@ export async function POST(
 
     const actorKey = makeActorKey(request, deviceId);
     if (!(await checkRateLimit(actorKey, "blueprint-vote", 60, 60 * 10))) {
-      return NextResponse.json({ error: "Voting too fast — slow down." }, { status: 429 });
+      return NextResponse.json({ error: "Voting too fast. Slow down." }, { status: 429 });
     }
 
     const db = getCommunityDb();
