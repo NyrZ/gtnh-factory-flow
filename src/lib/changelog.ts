@@ -71,6 +71,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.3.0",
+    date: "2026-08-10",
+    headline: "Loops run, buffers hold the extra, and a wand for sketches",
+    notes: [
+      "Recycling loops work. A byproduct fed back into an earlier machine is *used up first* and the fresh supply line slows to make room. Boards that collapsed to 0% run now.",
+      "A buffer *catches what its takers leave* instead of backing up the machine, and its tile shows *how fast it is filling*. It still never invents supply: a shortfall slows the taker, so wire a source in for make-up.",
+      "New wand button, top left: *sketch mode*. Every unwired input is fed for free and every unwired output is exported, so a rough idea shows numbers before you draw the boundary.",
+      "Drawers, tanks and trash cans are *small tiles* now, coloured by their job: *red imports, blue products, green byproducts, steel buffers*. Shape says it too, and the hover says the words.",
+    ],
+    warning:
+      "A machine that used to read CLOGGED into a buffer runs now, and the buffer fills instead. A tank filling forever is not free storage: speed its taker up, or set the buffer to *strict* on its header button to get the old stop back.",
+  },
+  {
     version: "2.2.1",
     date: "2026-08-10",
     headline: "Wires into a trash can stay put",

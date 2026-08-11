@@ -1014,20 +1014,20 @@ img {
   --state-accent: #ffd76a;
 }
 
-/* A drawer's SILHOUETTE says which of its four jobs it is doing.
+/* A drawer's SILHOUETTE and COLOUR both say which of its four jobs it is
+ * doing - the same fact in two channels, because they fail differently.
+ * Colour is the side panel's own dialect (red import, blue product, green
+ * byproduct, steel plumbing; ROLE_TINTS in StorageNode.tsx) and reads at any
+ * distance; shape is the channel that survives BOTH the glance step (text
+ * gone, outline remains) and calm mode (colour flattened, outline remains).
+ * The ITEM'S colour lives in its icon, not on the frame: a copper drawer and
+ * a copper product drawer are different facts, and the frame carries the job.
  *
- * Shape rather than colour, because colour on these cards is already spoken
- * for: the frame is tinted by the item's own dominant colour, which is what
- * makes a copper drawer read as copper. Shape is the only channel left, and
- * it is the only one that survives BOTH the glance step (text gone, outline
- * remains) and calm mode (colour flattened, outline remains).
+ * BYPRODUCT is the plain rectangle: a box the extra lands in. Every departure
+ * from the box is a louder statement - a source opens, a product stops, a
+ * buffer holds.
  *
- * BUFFER is the plain rectangle on purpose. It is the only one of the four
- * that lives inside the system and obeys conservation, so every other shape
- * is a departure from it - and a glance across the board picks out exactly
- * where the plan touches the outside world.
- *
- * The card's BOX never changes: 6x7 cells, whatever is painted inside it.
+ * The card's BOX never changes: 4x4 cells, whatever is painted inside it.
  * Wires dock on the box perimeter and the router is centre-biased, so the
  * corners these shapes cut away were already the least likely dock points.
  */
@@ -1037,7 +1037,8 @@ img {
 .storage-shape,
 .storage-shape-fill,
 .storage-shape-content {
-  /* Square by default: that is BUFFER, and idle inherits it. */
+  /* Square by default: that is BYPRODUCT (a plain box the extra lands in),
+     and idle inherits it. */
   clip-path: none;
   border-radius: 0;
 }
@@ -1074,7 +1075,7 @@ img {
 /* The header sits in the top row, which is exactly the material a rounded or
    chamfered corner takes away - so its delete and swap buttons were being
    sliced by the clip. Pull that row in by the corner's own inset on the two
-   shapes that cut up there. A BYPRODUCT funnel opens at the BOTTOM, so its
+   shapes that cut up there. A BUFFER shield tapers at the BOTTOM, so its
    top row is square and needs nothing; the net line below it is centred text
    and clears the cut on its own.
 
@@ -1093,11 +1094,13 @@ img {
   padding-right: 8px;
 }
 
-/* BYPRODUCT: the same family, opened out at the bottom - a funnel. Reads as
-   "product, but passive": stuff falls in here rather than being pulled. */
-.storage-shape[data-storage-shape="byproduct"],
-.storage-shape[data-storage-shape="byproduct"] .storage-shape-fill,
-.storage-shape-content[data-storage-shape="byproduct"] {
+/* BUFFER: the shield - square shoulders, tapered base. The one drawer that
+   HOLDS: stock sits in it and passes through, so it wears the keep-safe
+   silhouette, and its taper points on down the line rather than out of the
+   plan. Strict buffers share it; the header button says which one it is. */
+.storage-shape[data-storage-shape="buffer"],
+.storage-shape[data-storage-shape="buffer"] .storage-shape-fill,
+.storage-shape-content[data-storage-shape="buffer"] {
   clip-path: polygon(
     0 0,
     100% 0,

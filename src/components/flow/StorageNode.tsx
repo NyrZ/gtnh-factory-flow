@@ -2,7 +2,7 @@
 
 import { Handle, Position, useStoreApi, type Node, type NodeProps } from "@xyflow/react";
 import { memo, type CSSProperties, type ReactNode } from "react";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight } from "lucide-react";
 import type {
   FactoryStorage,
   StorageDrainMode,
@@ -11,7 +11,7 @@ import type {
 import { formatCompact, makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
 import { isDrainRole, type StorageRole } from "@/lib/model/storage-role";
 import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
-import { FLUID_ICON_SCALE, ResourceIcon, getFallbackFluidColor } from "@/components/nei/ResourceIcon";
+import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { NodeGlanceIcon } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
@@ -44,33 +44,47 @@ const ROLE_PRESENTATION: Record<
   source: {
     word: "SOURCE",
     boundary: true,
-    line: "Nothing feeds this, so it never runs out. Whatever leaves it counts as something the plan imports.",
+    line: "Never runs out. Counts as an import.",
   },
   product: {
     word: "PRODUCT",
     boundary: true,
-    line: "The thing this factory is for. It asks the machine feeding it for everything that machine can make.",
+    line: "Pulls its machine flat out. What the factory is for.",
   },
   byproduct: {
     word: "BYPRODUCT",
     boundary: true,
-    line: "Catches what is left over. It asks for nothing, so the pace is set by whatever really wants the output.",
+    line: "Catches what is left over. Asks for nothing.",
   },
   buffer: {
     word: "BUFFER",
     boundary: false,
-    line: "Fed and drawn from. It hands its takers what they pull and catches the extra, filling at the rate shown. It never invents supply: a shortfall slows the taker.",
+    line: "Passes on what is pulled. Extra piles up here.",
   },
   idle: {
     word: "STORAGE",
     boundary: false,
-    line: "Unwired. Feed it to make a product, draw from it to make a source, or both for a buffer.",
+    line: "Unwired. Feed it, draw from it, or both.",
   },
 };
 
 /** The strict-buffer line, swapped in for ROLE_PRESENTATION.buffer.line. */
-const STRICT_BUFFER_LINE =
-  "Set strict: it passes on exactly what its takers pull. A surplus stays with the machine that made it and clogs it, in the open.";
+const STRICT_BUFFER_LINE = "Passes on what is pulled. Extra backs up the machine.";
+
+/**
+ * Each job's colour, borrowed from the side panel's sections so board and
+ * books say the same thing in the same ink: NEED red for a source (it is the
+ * plan's import), PRODUCTS blue, BYPRODUCTS green, quiet steel for the
+ * internal plumbing that buffers are. Idle is dimmer still - a drawer
+ * mid-drag has nothing to announce.
+ */
+const ROLE_TINTS: Record<StorageRole, string> = {
+  source: "#ef4444",
+  product: "#3b82f6",
+  byproduct: "#10b981",
+  buffer: "#8a93a6",
+  idle: "#5d6877",
+};
 
 /** Which of the two buffer behaviours this drawer runs (absent is overflow). */
 function isStrictBuffer(storage: FactoryStorage): boolean {
@@ -203,14 +217,15 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
   const title = storage.displayName ?? storage.resourceId;
   const isTank = storage.kind === "fluid";
   const isPlainFluid = isTank && !storage.iconPath && !storage.iconAtlas;
-  // The whole card wears the item's colour: paint (colorTag) wins if the user
-  // painted it, then the item's dominant sprite colour, then the same fallback
-  // colour the fluid swatch itself renders in, then neutral steel.
+  // The card wears its JOB's colour, the same dialect the side panel already
+  // speaks: red is what the plan imports (NEED), blue is what it is for
+  // (PRODUCTS), green is what it also makes (BYPRODUCTS), steel is internal
+  // plumbing. The item's own colour lives in its icon; painting the frame
+  // with it too said the same thing twice and left the four jobs looking
+  // alike. Paint (colorTag) still wins when the player chose one.
   const tint =
     (storage.colorTag ? GT_NODE_COLORS[storage.colorTag].swatch : undefined) ??
-    storage.dominantColor ??
-    storage.iconAtlas?.dominantColor ??
-    (isTank ? getFallbackFluidColor(storage.resourceId) : "#8a93a6");
+    ROLE_TINTS[role];
   const borderColor = `color-mix(in srgb, ${tint} 55%, #262b34)`;
   const inputHandleId = makeResourceHandleId("input", {
     kind: storage.kind,
@@ -472,13 +487,14 @@ function StorageHeader({
 }
 
 /**
- * The one thing about a BUFFER you choose: whether it catches a surplus
- * (overflow, the default, the way the real chest behaves) or hands it back to
- * the feeder as a clog (strict, for players who want the imbalance surfaced
- * on the machine).
+ * The one thing about a BUFFER you choose, worn as its own icon so the tile
+ * SAYS which one it is: an arrow dropping into a tray while the tank catches
+ * overflow, plain left-right arrows when it is a strict pass-through.
+ * Clicking flips it.
  */
 function BufferModeSwap({ storageId, strict }: { storageId: string; strict: boolean }) {
   const updateStorage = useFactoryStore((state) => state.updateStorage);
+  const Icon = strict ? ArrowLeftRight : ArrowDownToLine;
 
   return (
     <button
@@ -489,13 +505,14 @@ function BufferModeSwap({ storageId, strict }: { storageId: string; strict: bool
       }}
       title={
         strict
-          ? "Strict: this only passes on what its takers pull, so a surplus backs up the machine feeding it. Switch to overflow to catch the extra here instead."
-          : "Overflow: this catches whatever its takers leave, so the machine feeding it never backs up. Switch to strict to hand a surplus back to the machine."
+          ? "Strict: extra backs up the machine. Click to let it pile up here."
+          : "Overflow: extra piles up here. Click to back it up the machine instead."
       }
       aria-label={strict ? "Switch to overflow" : "Switch to strict"}
+      aria-pressed={strict}
       className="board-edit-chrome nodrag relative z-40 ml-auto flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
     >
-      <ArrowLeftRight aria-hidden className="h-2.5 w-2.5" />
+      <Icon aria-hidden className="h-2.5 w-2.5" />
     </button>
   );
 }
@@ -522,8 +539,8 @@ function DrainModeSwap({ storageId, role }: { storageId: string; role: StorageRo
       }}
       title={
         role === "byproduct"
-          ? "Byproduct: this asks for nothing and catches what is left over. Switch it to a product to pull the machine feeding it flat out."
-          : "Product: this asks the machine feeding it for everything it can make. Switch it to a byproduct to only catch the extra."
+          ? "Byproduct: catches what is left over. Click to make it a product."
+          : "Product: pulls the machine flat out. Click to make it a byproduct."
       }
       aria-label={`Switch to ${next}`}
       className="board-edit-chrome nodrag relative z-40 ml-auto flex h-4 w-4 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]"
