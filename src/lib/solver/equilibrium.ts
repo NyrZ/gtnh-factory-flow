@@ -501,12 +501,35 @@ export function solveEquilibrium(
         budget.makePerSecond * clampUtilization(Math.min(capable, disposal)),
       );
     }
+    // TWO offers again, for the same reason the budgets have two.
+    //
+    // `poolOffer` is what a tank can really hand out this round: last round's
+    // inflow, which is the rule that stops a buffer inventing material.
+    //
+    // `poolOfferCapable` is what its feeders COULD put in if everything ran
+    // flat out. Capability has to be demand-blind or a buffer launders a
+    // downstream choke into an upstream shortage: a consumer thottled to 91%
+    // by its own clogged output pulls 91% of the nitrogen, so 91% is all that
+    // ever entered the tank, so the tank offers 91%, so the consumer reads as
+    // STARVED of nitrogen - by a producer sitting at 4% with plenty to spare.
+    // Wire the same producer straight in and it reads correctly, because a
+    // machine budget already answers this question with `budgetOffer`. A tank
+    // in the middle must not change the diagnosis.
     const poolOffer = new Map<string, number>();
+    const poolOfferCapable = new Map<string, number>();
     for (const [poolKey, pool] of pools) {
-      poolOffer.set(
-        poolKey,
-        pool.sinkEdges.length > 0 ? (poolInflow.get(poolKey) ?? 0) : Number.POSITIVE_INFINITY,
-      );
+      if (pool.sinkEdges.length === 0) {
+        // Nothing feeds it: a SOURCE drawer, infinite by construction.
+        poolOffer.set(poolKey, Number.POSITIVE_INFINITY);
+        poolOfferCapable.set(poolKey, Number.POSITIVE_INFINITY);
+        continue;
+      }
+      poolOffer.set(poolKey, poolInflow.get(poolKey) ?? 0);
+      let capable = 0;
+      for (const sink of pool.sinkEdges) {
+        capable += budgetOffer.get(sink.budgetKey) ?? 0;
+      }
+      poolOfferCapable.set(poolKey, capable);
     }
 
     // Potentials: what each input could draw if everything else wanted it -
@@ -519,7 +542,7 @@ export function solveEquilibrium(
         potential += budgetOffer.get(edge.budgetKey) ?? 0;
       }
       for (const edge of need.storageEdges) {
-        potential += poolOffer.get(edge.poolKey) ?? 0;
+        potential += poolOfferCapable.get(edge.poolKey) ?? 0;
       }
       potentialByNeed.set(needKey, potential);
     }
@@ -556,7 +579,7 @@ export function solveEquilibrium(
       );
     }
 
-    const availabilityFill = runFill(needs, budgetOffer, poolOffer, askAvailability);
+    const availabilityFill = runFill(needs, budgetOffer, poolOfferCapable, askAvailability);
     const desireFill = runFill(needs, budgetOfferActual, poolOffer, askDesire);
 
     // Sinks absorb whatever production the desire fill left unclaimed, so a
@@ -751,7 +774,7 @@ export function solveEquilibrium(
         // "a surplus here is allowed". Pinning drains too would drive every
         // machine feeding a dead-end drawer to full blast for no reason but
         // the drawer's existence.
-        if (budget.trashEdges.length > 0) {
+        if (budget.trashEdges.length > 0 || budget.drainEdges.some((e) => !e.silent)) {
           pressure = Math.max(pressure, 1);
         }
         let required = 0;

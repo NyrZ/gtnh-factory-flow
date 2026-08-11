@@ -71,6 +71,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.2.0",
+    date: "2026-08-10",
+    headline: "Product drawers ask for everything now",
+    notes: [
+      "A product drawer asks its machine for *its full speed*, not just for whatever turned up. Machines that cannot keep up say *how many more you need*.",
+      "A buffer no longer makes a machine look *short of an ingredient* when it is really backed up on an output.",
+    ],
+  },
+  {
     version: "2.1.0",
     date: "2026-08-10",
     headline: "A thing can be a need and a byproduct at once",

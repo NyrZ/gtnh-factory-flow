@@ -526,6 +526,62 @@ describe("conservation: drawers", () => {
     ).toBeCloseTo(10);
   });
 
+  it("a buffer in the middle does not change the diagnosis", () => {
+    // A consumer throttled by its OWN clogged output pulls less than it could.
+    // Through a buffer, that reduced pull used to be all that ever entered the
+    // tank, so the tank offered only that much back, and the consumer read as
+    // STARVED of a resource its feeder had plenty of. Wiring the same producer
+    // straight in read correctly, so a tank in the middle changed the answer.
+    //
+    // Solved both ways here, and the two must agree.
+    const parts = {
+      recipes: [
+        recipe("make-n", [], [["nitrogen", 1000]]),
+        recipe("use-n", [["nitrogen", 10]], [["widget", 10], ["ash", 10]]),
+        // Takes only half the ash, so `use-n` is held at 50% by its own clog.
+        recipe("eat-ash", [["ash", 5]], [["slag", 1]]),
+      ],
+      nodes: [node("prod", "make-n"), node("cons", "use-n"), node("ash", "eat-ash")],
+      tail: [
+        wire("t1", "cons", "d-widget", "widget"),
+        wire("t2", "cons", "ash", "ash"),
+        wire("t3", "ash", "d-slag", "slag"),
+      ],
+      drains: [drawer("d-widget", "widget"), drawer("d-slag", "slag")],
+    };
+
+    const direct = calculateThroughput(
+      project({
+        recipes: parts.recipes,
+        nodes: parts.nodes,
+        storages: parts.drains,
+        edges: [wire("n", "prod", "cons", "nitrogen"), ...parts.tail],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    const buffered = calculateThroughput(
+      project({
+        recipes: parts.recipes,
+        nodes: parts.nodes,
+        storages: [...parts.drains, drawer("buf", "nitrogen")],
+        edges: [
+          wire("n1", "prod", "buf", "nitrogen"),
+          wire("n2", "buf", "cons", "nitrogen"),
+          ...parts.tail,
+        ],
+      }),
+      { generatedAt: "fixed" },
+    );
+
+    // Held at half by the ash clog, not by nitrogen - in both wirings.
+    expect(direct.nodes["cons"].capableUtilization).toBeCloseTo(1);
+    expect(buffered.nodes["cons"].capableUtilization).toBeCloseTo(1);
+    expect(buffered.nodes["cons"].utilization).toBeCloseTo(direct.nodes["cons"].utilization);
+    expect(buffered.nodes["cons"].clogOutputKey).toBe(direct.nodes["cons"].clogOutputKey);
+    expect(buffered.nodes["prod"].utilization).toBeCloseTo(direct.nodes["prod"].utilization);
+  });
+
   it("each drawer reports its own wires, not every drawer of that item", () => {
     // Two source drawers of one item used to show the SUM: both read 30/s when
     // one shipped 20 and the other 10.

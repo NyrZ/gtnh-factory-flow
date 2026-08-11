@@ -928,10 +928,13 @@ describe("calculateThroughput", () => {
     expect(result.storages["woodtar-tank"].netPerSecond).toBeCloseTo(0);
   });
 
-  // Same known gap as above: the mega consumer's own product is drained, so
-  // it is paced to full blast and the tank's limit no longer shows through in
-  // its utilization. Pinned with it.fails for the same reason.
-  it.fails("limits parallel storage consumers to available incoming storage supply", () => {
+  // Was pinned with it.fails: the mega consumer's own product is drained, so
+  // it was paced to whatever it happened to receive and the tank's limit never
+  // showed through in its utilization. It does now. A PRODUCT drawer asks its
+  // machine for the machine's own nameplate rather than for what just arrived,
+  // so a consumer that cannot be fed reads as under-supplied instead of
+  // quietly agreeing that a trickle was all it ever wanted.
+  it("limits parallel storage consumers to available incoming storage supply", () => {
     const project: FactoryProject = {
       schemaVersion: PROJECT_SCHEMA_VERSION,
       id: "parallel-storage-consumer-project",
