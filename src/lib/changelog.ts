@@ -71,6 +71,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.5.0",
+    date: "2026-08-11",
+    headline: "Drawers wire to drawers",
+    notes: [
+      "A drawer can feed a drawer. Wire a *source into a buffer* and it covers exactly what the buffer's takers are short, so a recycling loop keeps its make-up line on the board.",
+      "When the loop makes *more* than it eats, that source just sits at 0/s. No more deleting it to dodge a dead loop and then finding you cannot put it back.",
+      "A drawer wired into a *product or byproduct* drawer hands over whatever its takers leave, so one catch can split into an export with no machine in between.",
+      "Dragging off a drawer into empty space makes a *source* wired into it. A drawer already catches its own extra, so what space adds is supply.",
+    ],
+  },
+  {
     version: "2.4.1",
     date: "2026-08-11",
     headline: "Plainer tooltips and tours",

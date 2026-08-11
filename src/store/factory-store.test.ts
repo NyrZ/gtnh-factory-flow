@@ -374,6 +374,116 @@ describe("factory resource links", () => {
     );
   });
 
+  it("connects a drawer into a drawer of the same resource", () => {
+    const base = useFactoryStore.getState().project;
+    useFactoryStore.getState().setProject({
+      ...base,
+      storages: [
+        ...(base.storages ?? []),
+        {
+          id: "dust-drawer-2",
+          kind: "item",
+          resourceId: "dust",
+          displayName: "Dust 2",
+          position: { x: 300, y: 0 },
+        },
+      ],
+    });
+
+    useFactoryStore.getState().connectNodes("dust-drawer", "dust-drawer-2", {
+      kind: "item",
+      id: "dust",
+      sourceHandle: makeResourceHandleId("output", { kind: "item", id: "dust" }),
+      targetHandle: makeResourceHandleId("input", { kind: "item", id: "dust" }),
+    });
+
+    expect(useFactoryStore.getState().project.edges[0]).toEqual(
+      expect.objectContaining({
+        source: "dust-drawer",
+        target: "dust-drawer-2",
+        resourceKind: "item",
+        resourceId: "dust",
+      }),
+    );
+
+    // The same gesture again is the undo: one wire between two rows, toggled.
+    useFactoryStore.getState().connectNodes("dust-drawer", "dust-drawer-2", {
+      kind: "item",
+      id: "dust",
+      sourceHandle: makeResourceHandleId("output", { kind: "item", id: "dust" }),
+      targetHandle: makeResourceHandleId("input", { kind: "item", id: "dust" }),
+    });
+    expect(useFactoryStore.getState().project.edges).toHaveLength(0);
+  });
+
+  it("refuses a drawer wired to a drawer of a different resource, or to itself", () => {
+    useFactoryStore.getState().connectNodes("dust-drawer", "mold-drawer", {
+      kind: "item",
+      id: "dust",
+      sourceHandle: makeResourceHandleId("output", { kind: "item", id: "dust" }),
+      targetHandle: makeResourceHandleId("input", { kind: "item", id: "mold" }),
+    });
+    useFactoryStore.getState().connectNodes("dust-drawer", "dust-drawer", {
+      kind: "item",
+      id: "dust",
+      sourceHandle: makeResourceHandleId("output", { kind: "item", id: "dust" }),
+      targetHandle: makeResourceHandleId("input", { kind: "item", id: "dust" }),
+    });
+
+    expect(useFactoryStore.getState().project.edges).toHaveLength(0);
+  });
+
+  it("spawns a wired feeder drawer off a drawer, the make-up source", () => {
+    const store = useFactoryStore.getState();
+    store.addStorageForConnection(
+      { kind: "item", id: "dust", displayName: "Dust" },
+      "dust-drawer",
+      "input",
+      { x: 320, y: 200 },
+      makeResourceHandleId("input", { kind: "item", id: "dust" }),
+    );
+
+    const project = useFactoryStore.getState().project;
+    const feeder = (project.storages ?? []).find((entry) => entry.id !== "dust-drawer");
+    expect(feeder).toBeDefined();
+    expect(project.edges).toEqual([
+      expect.objectContaining({ source: feeder?.id, target: "dust-drawer" }),
+    ]);
+  });
+
+  it("keeps a drawer-to-drawer wire through the edge validity prune", () => {
+    const base = useFactoryStore.getState().project;
+    useFactoryStore.getState().setProject({
+      ...base,
+      storages: [
+        ...(base.storages ?? []),
+        {
+          id: "dust-drawer-2",
+          kind: "item",
+          resourceId: "dust",
+          displayName: "Dust 2",
+          position: { x: 300, y: 0 },
+        },
+      ],
+      edges: [
+        {
+          id: "drawer-feed",
+          source: "dust-drawer",
+          target: "dust-drawer-2",
+          resourceKind: "item",
+          resourceId: "dust",
+        },
+      ],
+    });
+
+    // updateNode runs the invalid-edge prune; the drawer wire must survive it.
+    useFactoryStore.getState().updateNode("item-source", { machineCount: 2 });
+
+    expect(useFactoryStore.getState().project.edges).toEqual([
+      expect.objectContaining({ source: "dust-drawer", target: "dust-drawer-2" }),
+    ]);
+  });
+
   it("does not create multiple storage cards from the same recipe slot", () => {
     const store = useFactoryStore.getState();
     store.addStorageForConnection(

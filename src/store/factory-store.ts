@@ -2769,6 +2769,17 @@ function isFactoryEdgeStillValid(project: FactoryProject, edge: FactoryEdge): bo
     );
   }
 
+  // A drawer-to-drawer line stays valid while both drawers still hold the
+  // wired resource.
+  if (sourceStorage && targetStorage) {
+    return (
+      edge.resourceKind === sourceStorage.kind &&
+      edge.resourceId === sourceStorage.resourceId &&
+      edge.resourceKind === targetStorage.kind &&
+      edge.resourceId === targetStorage.resourceId
+    );
+  }
+
   if (sourceStorage && targetRecipe) {
     const effectiveTargetRecipe = targetNode
       ? applyRecipeInputOverrides(targetRecipe, targetNode)
@@ -3045,6 +3056,34 @@ function buildEdgeBetweenNodes(
 
   if ((!sourceNode && !sourceStorage) || (!targetNode && !targetStorage)) {
     return undefined;
+  }
+
+  // Two drawers of the same resource wire together like anything else: the
+  // line moves stock from one container to the other. This is how a SOURCE
+  // tops up a buffer (and so a recycling loop) without pretending the loop
+  // feeds itself from nowhere. A drawer cannot feed itself, and a drawer of
+  // spruce logs has no business filling one of oak.
+  if (sourceStorage && targetStorage) {
+    if (
+      sourceStorage.id === targetStorage.id ||
+      !resourceMatchesInput(
+        sourceStorageResource(sourceStorage),
+        sourceStorageResource(targetStorage),
+      )
+    ) {
+      return undefined;
+    }
+
+    return {
+      id: createId("edge"),
+      source: sourceStorage.id,
+      target: targetStorage.id,
+      sourceHandle: selectedResource?.sourceHandle,
+      targetHandle: selectedResource?.targetHandle,
+      resourceKind: sourceStorage.kind,
+      resourceId: sourceStorage.resourceId,
+      label: sourceStorage.displayName ?? sourceStorage.resourceId,
+    };
   }
 
   if (sourceStorage && targetRecipe && selectedResource) {

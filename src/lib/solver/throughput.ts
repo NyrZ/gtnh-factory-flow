@@ -301,6 +301,26 @@ function writeEdgeResultsFromEquilibrium(
       continue;
     }
 
+    if (allocation.role === "storage-transfer") {
+      // A drawer-to-drawer line. Carried is what settled across it; demand is
+      // the receiver's pull (carried plus its unserved share), so a dry chain
+      // reads limited; availability doubles as the feeder's capacity, which
+      // classifies a shortfall as SUPPLY - the feeder has nothing left - and
+      // never as the receiver merely wanting less.
+      edgeResults[edge.id] = buildEdgeResult(
+        edge,
+        allocation.resourceKey,
+        allocation.demandPerSecond,
+        allocation.transferredPerSecond,
+        {
+          nameplateDemandPerSecond: allocation.demandPerSecond,
+          sourceCapacityPerSecond: allocation.availablePerSecond,
+          availablePerSecond: allocation.availablePerSecond,
+        },
+      );
+      continue;
+    }
+
     if (allocation.role === "storage-sink" || allocation.role === "trash") {
       // A sink line carries whatever the producer had left over; its demand
       // additionally carries the tank's unmet pull-through so a dry buffer
@@ -384,6 +404,11 @@ function refreshStorageResultsFromEdges(
     if (storageIds.has(edge.target) && !storageIds.has(edge.source)) {
       updateStorageFlow(storages[edge.target], edgeResult.transferredPerSecond, 0);
     } else if (storageIds.has(edge.source) && !storageIds.has(edge.target)) {
+      updateStorageFlow(storages[edge.source], 0, edgeResult.transferredPerSecond);
+    } else if (storageIds.has(edge.source) && storageIds.has(edge.target)) {
+      // A drawer-to-drawer line: outflow for the feeder, inflow for the fed,
+      // so both tiles' net figures carry the move.
+      updateStorageFlow(storages[edge.target], edgeResult.transferredPerSecond, 0);
       updateStorageFlow(storages[edge.source], 0, edgeResult.transferredPerSecond);
     }
   }

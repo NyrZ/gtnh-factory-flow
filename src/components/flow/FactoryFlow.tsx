@@ -2917,12 +2917,10 @@ export function FactoryFlow() {
         return;
       }
 
-      if ((project.storages ?? []).some((storage) => storage.id === draggedResource.nodeId)) {
-        return;
-      }
-
       // Landing on a card that just washed red means "no" — dropping a fresh
       // drawer on top of it would be a strange answer to a refused wire.
+      // A drag off a DRAWER spawns a drawer too: drawers wire to drawers now,
+      // so the void answers the same way it does for a machine port.
       if (getBoardNodeIdAtPosition(clientPosition)) {
         return;
       }
@@ -2939,14 +2937,26 @@ export function FactoryFlow() {
         return;
       }
 
+      // A drag off a DRAWER into space always answers with a SOURCE feeding
+      // it, whichever half the drag left from. A drawer already catches its
+      // own excess - its face shows the pile - so the one thing empty canvas
+      // can add is supply: the drawer reads short, the new source covers it.
+      const originIsStorage = (project.storages ?? []).some(
+        (storage) => storage.id === draggedResource.nodeId,
+      );
+      const spawnSide = originIsStorage ? "input" : draggedResource.side;
+      const spawnHandleId = originIsStorage
+        ? makeResourceHandleId("input", { kind: draggedResource.kind, id: draggedResource.id })
+        : draggedResource.handleId;
+
       const position = flowInstance.screenToFlowPosition(clientPosition);
       addStorageForConnection(
         draggedResource,
         storageAnchorIds,
-        draggedResource.side,
+        spawnSide,
         // Centre the new drawer on the pointer; the store snaps it to a cell.
         { x: position.x - STORAGE_NODE_WIDTH / 2, y: position.y - STORAGE_NODE_HEIGHT / 2 },
-        draggedResource.handleId,
+        spawnHandleId,
       );
     },
     [addStorageForConnection, connectCustomRate, connectResourceEdges, connectTrash, project],

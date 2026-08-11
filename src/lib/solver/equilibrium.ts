@@ -73,7 +73,7 @@ const EPSILON = 0.000001;
  */
 
 export interface EdgeAllocationResult {
-  role: "machine" | "storage-source" | "storage-sink" | "trash";
+  role: "machine" | "storage-source" | "storage-sink" | "storage-transfer" | "trash";
   resourceKey: ResourceKey;
   targetDemandKey: ResourceKey;
   needKey: string;
@@ -110,13 +110,19 @@ interface PreparedEdge {
   id: string;
   sourceId: string;
   targetId: string;
-  role: "machine" | "storage-source" | "storage-sink" | "trash";
+  role: "machine" | "storage-source" | "storage-sink" | "storage-transfer" | "trash";
   resourceKey: ResourceKey;
   targetDemandKey: ResourceKey;
   /** `${target}|${targetDemandKey}` for machine targets, "" for sinks/trash. */
   needKey: string;
   /** `${source}|${outputKey}` for machine sources, "" for storage sources. */
   budgetKey: string;
+  /**
+   * The RECEIVING drawer of a storage-transfer line, else "". A transfer
+   * touches two pools, so `poolKey` names the giving drawer and this one the
+   * fed drawer.
+   */
+  sinkPoolKey: string;
   /** The drawer this line touches (its node id) for storage roles, else "". */
   poolKey: string;
   /**
@@ -179,6 +185,16 @@ interface Pool {
   sourceEdges: PreparedEdge[];
   /** Trash cans draining this tank: they take what real consumers leave. */
   trashEdges: PreparedEdge[];
+  /** Drawer-to-drawer lines INTO this drawer: its own feeders of last resort. */
+  feedInEdges: PreparedEdge[];
+  /** Drawer-to-drawer lines OUT of this drawer: containers it stocks. */
+  feedOutEdges: PreparedEdge[];
+  /**
+   * Somewhere up this drawer's feed chain sits a SOURCE, so its takers can
+   * never run dry: real material still moves first, and the chain covers only
+   * what is left owing. Set once after preparation - it is wiring, not state.
+   */
+  hasBottomlessBackup: boolean;
 }
 
 /** Half a percent: below this, two utilizations are the same number. */
@@ -219,10 +235,57 @@ export function solveEquilibrium(
   const trashNodeIds = collectTrashNodeIds(project);
   const storageRoles = getStorageRoles(project);
 
+  const ensurePool = (poolKey: string): Pool => {
+    const existing = pools.get(poolKey);
+    if (existing) {
+      return existing;
+    }
+    const pool: Pool = {
+      sinkEdges: [],
+      bufferSinkEdges: [],
+      sourceEdges: [],
+      trashEdges: [],
+      feedInEdges: [],
+      feedOutEdges: [],
+      hasBottomlessBackup: false,
+    };
+    pools.set(poolKey, pool);
+    return pool;
+  };
+
   for (const edge of project.edges) {
     const sourceStorage = storagesById.get(edge.source);
     const targetStorage = storagesById.get(edge.target);
     if (sourceStorage && targetStorage) {
+      // A drawer feeding a drawer. No budget and no need - neither end is a
+      // machine - just two containers and a line that moves stock from one to
+      // the other. How much moves is settled AFTER the fills each round (see
+      // the transfer settlement in runRound): the fed drawer's takers set the
+      // pull, real deliveries count against it, and the feeder covers what is
+      // left owing - from its own stock, or bottomlessly when it is (or is
+      // backed by) a SOURCE.
+      const transferKey = makeResourceKey(edge.resourceKind, edge.resourceId);
+      const prepared: PreparedEdge = {
+        id: edge.id,
+        sourceId: edge.source,
+        targetId: edge.target,
+        role: "storage-transfer",
+        resourceKey: transferKey,
+        targetDemandKey: transferKey,
+        needKey: "",
+        budgetKey: "",
+        sinkPoolKey: targetStorage.id,
+        poolKey: sourceStorage.id,
+        freeDisposal: false,
+        // A feed into a BYPRODUCT drawer catches leftovers and never begs,
+        // same as the machine-fed kind.
+        silent: storageRoles.get(edge.target) === "byproduct",
+        overflow: false,
+        sourceCapacityPerSecond: Number.POSITIVE_INFINITY,
+      };
+      edges.push(prepared);
+      ensurePool(sourceStorage.id).feedOutEdges.push(prepared);
+      ensurePool(targetStorage.id).feedInEdges.push(prepared);
       continue;
     }
 
@@ -271,6 +334,7 @@ export function solveEquilibrium(
       targetDemandKey,
       needKey: targetStorage || role === "trash" ? "" : `${edge.target}|${targetDemandKey}`,
       budgetKey: sourceStorage ? "" : `${edge.source}|${sourceOutputFlow?.key ?? key}`,
+      sinkPoolKey: "",
       poolKey,
       // A can always. A drawer only when nothing draws from it, which is what
       // makes it the plan's declared export rather than an ordinary buffer.
@@ -347,16 +411,7 @@ export function solveEquilibrium(
     }
 
     if (poolKey) {
-      const existing = pools.get(poolKey);
-      const pool = existing ?? {
-        sinkEdges: [],
-        bufferSinkEdges: [],
-        sourceEdges: [],
-        trashEdges: [],
-      };
-      if (!existing) {
-        pools.set(poolKey, pool);
-      }
+      const pool = ensurePool(poolKey);
       if (role === "storage-sink") {
         pool.sinkEdges.push(prepared);
         if (!prepared.freeDisposal) {
@@ -369,6 +424,41 @@ export function solveEquilibrium(
       }
     }
   }
+
+  // A pool is bottomless when NOTHING feeds it - no machine line and no
+  // drawer line - which is the SOURCE rule with drawer feeders now counted.
+  // Walking the feed lines out from every bottomless pool marks the drawers
+  // that have one somewhere behind them; that mark is what lets their takers
+  // read full capability and their shortfalls pull through the chain.
+  const isBottomlessPool = (poolKey: string): boolean => {
+    const pool = pools.get(poolKey);
+    return pool !== undefined && pool.sinkEdges.length === 0 && pool.feedInEdges.length === 0;
+  };
+  {
+    const frontier: string[] = [];
+    for (const [poolKey, pool] of pools) {
+      if (pool.feedOutEdges.length > 0 && isBottomlessPool(poolKey)) {
+        frontier.push(poolKey);
+      }
+    }
+    while (frontier.length > 0) {
+      const upstream = pools.get(frontier.pop()!);
+      for (const feedEdge of upstream?.feedOutEdges ?? []) {
+        const downstream = pools.get(feedEdge.sinkPoolKey);
+        if (downstream && !downstream.hasBottomlessBackup) {
+          downstream.hasBottomlessBackup = true;
+          frontier.push(feedEdge.sinkPoolKey);
+        }
+      }
+    }
+  }
+  const backedPoolKeys = new Set<string>();
+  for (const [poolKey, pool] of pools) {
+    if (pool.hasBottomlessBackup) {
+      backedPoolKeys.add(poolKey);
+    }
+  }
+  const storageFeedEdges = edges.filter((edge) => edge.role === "storage-transfer");
 
   const machineNodes: MachineNodeInfo[] = [];
   const infoById = new Map<string, MachineNodeInfo>();
@@ -562,7 +652,7 @@ export function solveEquilibrium(
     const poolOffer = new Map<string, number>();
     const poolOfferCapable = new Map<string, number>();
     for (const [poolKey, pool] of pools) {
-      if (pool.sinkEdges.length === 0) {
+      if (pool.sinkEdges.length === 0 && pool.feedInEdges.length === 0) {
         // Nothing feeds it: a SOURCE drawer, infinite by construction.
         poolOffer.set(poolKey, Number.POSITIVE_INFINITY);
         poolOfferCapable.set(poolKey, Number.POSITIVE_INFINITY);
@@ -573,7 +663,36 @@ export function solveEquilibrium(
       for (const sink of pool.sinkEdges) {
         capable += budgetOffer.get(sink.budgetKey) ?? 0;
       }
-      poolOfferCapable.set(poolKey, capable);
+      poolOfferCapable.set(poolKey, pool.hasBottomlessBackup ? Number.POSITIVE_INFINITY : capable);
+    }
+    // Capability flows down the drawer chains: a tank fed from another tank
+    // can deliver what that tank's own feeders could make. Relaxed against a
+    // snapshot each pass (read old, write new) so wiring order cannot change
+    // the answer; bottomless backup was already stamped above, and a chain
+    // deeper than these passes settles across solver rounds like every other
+    // lagged figure here.
+    for (let relax = 0; relax < STORAGE_FILL_ROUNDS; relax += 1) {
+      let changed = false;
+      const snapshot = new Map(poolOfferCapable);
+      for (const [poolKey, pool] of pools) {
+        if (pool.feedInEdges.length === 0 || pool.hasBottomlessBackup) {
+          continue;
+        }
+        let capable = 0;
+        for (const sink of pool.sinkEdges) {
+          capable += budgetOffer.get(sink.budgetKey) ?? 0;
+        }
+        for (const feedEdge of pool.feedInEdges) {
+          capable += snapshot.get(feedEdge.poolKey) ?? 0;
+        }
+        if (capable !== snapshot.get(poolKey)) {
+          poolOfferCapable.set(poolKey, capable);
+          changed = true;
+        }
+      }
+      if (!changed) {
+        break;
+      }
     }
 
     // Potentials: what each input could draw if everything else wanted it -
@@ -629,6 +748,7 @@ export function solveEquilibrium(
       poolOfferCapable,
       askAvailability,
       unconditionalByBudget,
+      backedPoolKeys,
     );
     const desireFill = runFill(
       needs,
@@ -636,6 +756,7 @@ export function solveEquilibrium(
       poolOffer,
       askDesire,
       unconditionalByBudget,
+      backedPoolKeys,
     );
 
     // Sinks absorb whatever production the desire fill left unclaimed, so a
@@ -728,6 +849,11 @@ export function solveEquilibrium(
     }
 
     for (const edge of edges) {
+      if (edge.role === "storage-transfer") {
+        // Settled after this loop, once the fed drawer's machine deliveries
+        // are known - a drawer feeder covers what is left owing, never more.
+        continue;
+      }
       // Drains and trash cans on a machine output drink whatever is left after
       // the buffers, splitting it evenly; the difference is that a drain
       // relays its tank's unmet pull as demand while trash never begs - its
@@ -798,8 +924,128 @@ export function solveEquilibrium(
       const unmet = Math.max(0, desireFill.remainingNeed.get(edge.needKey) ?? 0);
       demandByEdge.set(edge.id, eaten + unmet / Math.max(1, need?.edgeCount ?? 1));
     }
+
+    // ---- Drawer-to-drawer settlement. ------------------------------------
+    // A drawer feeder owes its drawer what the drawer's takers pulled beyond
+    // what machine deliveries covered - the buffer's own "pass on the pull,
+    // not one item more" rule, applied one container up. Committed stock
+    // migrates first; a chain ending in a SOURCE covers the rest, which is
+    // what holds a top-up line at exactly the loop's shortfall - and at 0/s
+    // the day the loop turns net-positive. Relayed a few passes so a chain
+    // settles inside the round; deeper ones converge across rounds like
+    // every other lagged figure here.
+    if (storageFeedEdges.length > 0) {
+      // Stock still uncommitted after the fills. Cans already drank theirs.
+      const stockByPool = new Map<string, number>();
+      for (const [poolKey, pool] of pools) {
+        if (pool.feedOutEdges.length === 0) {
+          continue;
+        }
+        const remaining = desireFill.remainingPool.get(poolKey) ?? 0;
+        stockByPool.set(
+          poolKey,
+          !Number.isFinite(remaining) || pool.trashEdges.length > 0
+            ? 0
+            : Math.max(0, remaining),
+        );
+      }
+      const owedByPool = new Map<string, number>();
+      for (const [poolKey, pool] of pools) {
+        if (pool.feedInEdges.length === 0) {
+          continue;
+        }
+        const requested = desireFill.poolRequested.get(poolKey) ?? 0;
+        const arrived = poolInflowNext.get(poolKey) ?? 0;
+        owedByPool.set(poolKey, Math.max(0, requested - arrived));
+      }
+
+      for (let pass = 0; pass < STORAGE_FILL_ROUNDS; pass += 1) {
+        let moved = 0;
+        for (const [poolKey, pool] of pools) {
+          const owed = owedByPool.get(poolKey) ?? 0;
+          if (owed <= EPSILON || pool.feedInEdges.length === 0) {
+            continue;
+          }
+          // Even share per feeder; a feeder that cannot cover its share
+          // leaves the rest for the next pass, where the ones that can pick
+          // it up - the same saturate-and-reoffer rule the fills use.
+          const share = owed / pool.feedInEdges.length;
+          let served = 0;
+          for (const feedEdge of pool.feedInEdges) {
+            const stock = stockByPool.get(feedEdge.poolKey) ?? 0;
+            const fromStock = Math.min(share, stock);
+            const chainServes =
+              isBottomlessPool(feedEdge.poolKey) || backedPoolKeys.has(feedEdge.poolKey);
+            const grant = chainServes ? share : fromStock;
+            if (grant <= EPSILON) {
+              continue;
+            }
+            if (fromStock > EPSILON) {
+              stockByPool.set(feedEdge.poolKey, stock - fromStock);
+            }
+            // Shipped beyond its own stock is owed to ITS feeders in turn.
+            const passedThrough = grant - fromStock;
+            if (passedThrough > EPSILON && !isBottomlessPool(feedEdge.poolKey)) {
+              owedByPool.set(
+                feedEdge.poolKey,
+                (owedByPool.get(feedEdge.poolKey) ?? 0) + passedThrough,
+              );
+            }
+            eatenByEdge.set(feedEdge.id, (eatenByEdge.get(feedEdge.id) ?? 0) + grant);
+            poolInflowNext.set(poolKey, (poolInflowNext.get(poolKey) ?? 0) + grant);
+            served += grant;
+            moved += grant;
+          }
+          owedByPool.set(poolKey, Math.max(0, owed - served));
+        }
+        if (moved <= EPSILON) {
+          break;
+        }
+      }
+
+      // A drawer wired into a PRODUCT or BYPRODUCT drawer is exporting: the
+      // drain catches whatever stock the feeder's takers left, exactly what
+      // a can would have drunk there. It catches; it does not ask.
+      for (const feedEdge of storageFeedEdges) {
+        const targetRole = storageRoles.get(feedEdge.targetId);
+        if (targetRole !== "product" && targetRole !== "byproduct") {
+          continue;
+        }
+        const stock = stockByPool.get(feedEdge.poolKey) ?? 0;
+        if (stock <= EPSILON) {
+          continue;
+        }
+        const catchers = (pools.get(feedEdge.poolKey)?.feedOutEdges ?? []).filter((edge) =>
+          isDrainRole(storageRoles.get(edge.targetId) ?? "idle"),
+        ).length;
+        const take = stock / Math.max(1, catchers);
+        stockByPool.set(feedEdge.poolKey, stock - take);
+        eatenByEdge.set(feedEdge.id, (eatenByEdge.get(feedEdge.id) ?? 0) + take);
+        poolInflowNext.set(
+          feedEdge.sinkPoolKey,
+          (poolInflowNext.get(feedEdge.sinkPoolKey) ?? 0) + take,
+        );
+      }
+
+      // The line's books. Carried is what settled; availability adds the
+      // feeder's untouched stock; demand adds the receiver's still-unserved
+      // share, so a dry chain reads hungry instead of quiet. A byproduct
+      // feed stays silent, like its machine-fed kind.
+      for (const feedEdge of storageFeedEdges) {
+        const carried = eatenByEdge.get(feedEdge.id) ?? 0;
+        const residualShare =
+          (owedByPool.get(feedEdge.sinkPoolKey) ?? 0) /
+          Math.max(1, pools.get(feedEdge.sinkPoolKey)?.feedInEdges.length ?? 1);
+        availableByEdge.set(feedEdge.id, carried + (stockByPool.get(feedEdge.poolKey) ?? 0));
+        demandByEdge.set(feedEdge.id, feedEdge.silent ? carried : carried + residualShare);
+      }
+    }
+
     for (const [poolKey, pool] of pools) {
-      if (pool.sinkEdges.length > 0 && !poolInflowNext.has(poolKey)) {
+      if (
+        (pool.sinkEdges.length > 0 || pool.feedInEdges.length > 0) &&
+        !poolInflowNext.has(poolKey)
+      ) {
         poolInflowNext.set(poolKey, 0);
       }
     }
@@ -1151,7 +1397,9 @@ interface FillResult {
  *                                  priority map in runRound)
  *   2. tanks                      (material already committed into a buffer)
  *   3. machine supply free to idle
- *   4. source drawers             (bottomless makeup, always last)
+ *   4. source drawers             (bottomless makeup, always last - including
+ *                                  drawers with a SOURCE up their feed chain,
+ *                                  which serve here on the chain's behalf)
  *
  * A consumer therefore drinks what EXISTS before asking anybody to make more,
  * and asks everybody real before touching the infinite drawer. This is what
@@ -1170,6 +1418,7 @@ function runFill(
   poolOfferBase: Map<string, number>,
   asks: Map<string, number>,
   unconditionalByBudget: Map<string, number>,
+  backedPools: Set<string>,
 ): FillResult {
   const remainingBudget = new Map(budgetOfferBase);
   const remainingPool = new Map(poolOfferBase);
@@ -1262,7 +1511,14 @@ function runFill(
         }
         const liveEdges = need.storageEdges.filter((edge) => {
           const pool = remainingPool.get(edge.poolKey) ?? 0;
-          return Number.isFinite(pool) === finitePools && pool > EPSILON;
+          if (finitePools) {
+            return Number.isFinite(pool) && pool > EPSILON;
+          }
+          // The last pass also serves lines whose drawer has a SOURCE
+          // somewhere up its feed chain: the drawer's own stock was the
+          // finite pass's business, and what is still wanted pulls through
+          // the chain (the transfer settlement writes it onto those wires).
+          return !Number.isFinite(pool) || backedPools.has(edge.poolKey);
         });
         if (liveEdges.length === 0) {
           continue;
@@ -1284,9 +1540,13 @@ function runFill(
       const shareByPool = new Map<string, number>();
       for (const [poolKey, liveCount] of liveCountByPool) {
         const pool = remainingPool.get(poolKey) ?? 0;
+        // A backed pool in the last pass hands out on its chain's behalf, so
+        // its own (spent) stock is no ceiling.
+        const bottomless =
+          !Number.isFinite(pool) || (!finitePools && backedPools.has(poolKey));
         shareByPool.set(
           poolKey,
-          Number.isFinite(pool) ? pool / Math.max(1, liveCount) : Number.POSITIVE_INFINITY,
+          bottomless ? Number.POSITIVE_INFINITY : pool / Math.max(1, liveCount),
         );
       }
 
@@ -1300,7 +1560,9 @@ function runFill(
         grantsByPool.set(edge.poolKey, (grantsByPool.get(edge.poolKey) ?? 0) + grant);
         const pool = remainingPool.get(edge.poolKey) ?? 0;
         if (Number.isFinite(pool)) {
-          remainingPool.set(edge.poolKey, pool - grant);
+          // Floored: a chain-served grant is the SOURCE's material, not this
+          // drawer's, and must not drive its stock below empty.
+          remainingPool.set(edge.poolKey, Math.max(0, pool - grant));
         }
         remainingNeed.set(edge.needKey, (remainingNeed.get(edge.needKey) ?? 0) - grant);
         granted += grant;
