@@ -316,21 +316,45 @@ function FlowIOPanel() {
             <span className="text-[13px] leading-none">★</span>
           </ToolbarToggle>
 
-          {/* Panel arithmetic, not wiring: an item never moves on the board
-              because of this button. */}
-          <ToolbarToggle
-            on={workspace.netFlowRates}
-            onClick={() => writeWorkspaceView({ netFlowRates: !workspace.netFlowRates })}
-            title={
-              workspace.netFlowRates
-                ? "Net rates: an item in Need and Outputs shows as one number. Click for the raw lists."
-                : "Show net rates: subtract what comes out from what is needed, item by item."
-            }
-            label={workspace.netFlowRates ? "Show raw rates" : "Show net rates"}
-            tone="emerald"
+          {/* RAW against NET, both words always up: a reader who has never met
+              the distinction can see there is one and read both answers before
+              clicking anything - the same rule the drawer mode swap follows.
+              Panel arithmetic, not wiring: an item never moves on the board
+              because of this switch. */}
+          <div
+            role="group"
+            aria-label="Rate display"
+            className="flex h-6 shrink-0 overflow-hidden rounded border border-line-strong"
           >
-            <span className="text-[9px] font-black leading-none tracking-tight">NET</span>
-          </ToolbarToggle>
+            <button
+              type="button"
+              onClick={() => writeWorkspaceView({ netFlowRates: false })}
+              aria-label="Show raw rates"
+              aria-pressed={!workspace.netFlowRates}
+              className={[
+                "px-1.5 text-[9px] font-black leading-none tracking-tight",
+                workspace.netFlowRates
+                  ? "text-fg-muted hover:text-fg"
+                  : "bg-surface-sunken text-fg",
+              ].join(" ")}
+            >
+              RAW
+            </button>
+            <button
+              type="button"
+              onClick={() => writeWorkspaceView({ netFlowRates: true })}
+              aria-label="Show net rates"
+              aria-pressed={workspace.netFlowRates}
+              className={[
+                "border-l border-line-strong px-1.5 text-[9px] font-black leading-none tracking-tight",
+                workspace.netFlowRates
+                  ? "bg-emerald-500/20 text-emerald-200"
+                  : "text-fg-muted hover:text-fg",
+              ].join(" ")}
+            >
+              NET
+            </button>
+          </div>
 
           {hiddenCount > 0 ? (
             <span
@@ -418,15 +442,13 @@ function ToolbarToggle({
   onClick: () => void;
   title: string;
   label: string;
-  tone: "cyan" | "amber" | "emerald";
+  tone: "cyan" | "amber";
   children: React.ReactNode;
 }) {
   const onStyle =
     tone === "cyan"
       ? "border-cyan-500 bg-cyan-500/20 text-cyan-200"
-      : tone === "amber"
-        ? "border-amber-500 bg-amber-500/20 text-amber-200"
-        : "border-emerald-500 bg-emerald-500/20 text-emerald-200";
+      : "border-amber-500 bg-amber-500/20 text-amber-200";
 
   return (
     <button

@@ -76,7 +76,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "The right panel adds up",
     notes: [
       "Products and byproducts are one *Outputs* list again: one row per item, the whole rate that leaves your line. The drawers on the board keep their two jobs.",
-      "New *NET* button by the filter: an item that is both needed and produced shows as one number, on the side its sign says. An item fully covered by its own line reads +0 in Outputs: nothing to source.",
+      "New *RAW / NET* switch above the list: on NET, an item that is both needed and produced shows as one number, on the side its sign says. An item fully covered by its own line reads +0 in Outputs: nothing to source.",
       "It is display math only. Nothing moves on the board, and switching back to raw shows both figures again.",
       "Internal starts folded. It is the long tail; one click opens it.",
     ],
