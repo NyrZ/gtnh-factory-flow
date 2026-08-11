@@ -189,7 +189,7 @@ function FlowIOPanel() {
     return [
       // One line each: the row is a single fixed-height line, so wrapping
       // would clip.
-      build("need", "Need", "Nothing missing.", "need", -1, boundary.needs),
+      build("need", "Inputs", "Nothing missing.", "need", -1, boundary.needs),
       build("output", "Outputs", "Nothing coming out yet.", "output", 1, boundary.outputs),
       build("internal", "Internal", "Nothing internal.", "internal", 0, balanced),
     ];
@@ -344,7 +344,7 @@ function FlowIOPanel() {
             <button
               type="button"
               onClick={() => writeWorkspaceView({ netFlowRates: true })}
-              title="Outputs minus needs."
+              title="Outputs minus inputs."
               aria-label="Show net rates"
               aria-pressed={workspace.netFlowRates}
               className={[

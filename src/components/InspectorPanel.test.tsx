@@ -128,7 +128,7 @@ describe("InspectorPanel", () => {
 
     render(<InspectorPanel />);
 
-    expect(screen.getByText("Need")).toBeDefined();
+    expect(screen.getByText("Inputs")).toBeDefined();
     expect(screen.getByText("Products")).toBeDefined();
     expect(screen.getByText("Byproducts")).toBeDefined();
     expect(screen.getByText("Internal")).toBeDefined();
@@ -214,7 +214,7 @@ describe("InspectorPanel", () => {
     });
 
     render(<InspectorPanel />);
-    const header = screen.getByText("Need").closest("button")!;
+    const header = screen.getByText("Inputs").closest("button")!;
     expect(within(header).getByText("2")).toBeDefined();
   });
 
@@ -337,7 +337,7 @@ describe("InspectorPanel", () => {
 
       // The smelter is outside the box, so its ingots now have to arrive from
       // somewhere: Need gains the ingot and loses the ore the smelter ate.
-      const needHeader = screen.getByText("Need").closest("button")!;
+      const needHeader = screen.getByText("Inputs").closest("button")!;
       expect(within(needHeader).getByText("1")).toBeDefined();
       expect(screen.getByText("Ingot")).toBeDefined();
       expect(screen.queryByText("Ore")).toBeNull();

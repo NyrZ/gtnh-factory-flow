@@ -71,6 +71,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.6.1",
+    date: "2026-08-11",
+    headline: "Clearer names either side",
+    notes: [
+      "The right panel's first list is now called *Inputs*, to sit beside Outputs.",
+      "The tab menu reads on one line: *Close tabs to left*, *Close tabs to right*, *Close other tabs*, and plain *Close* for the tab you opened it on.",
+    ],
+  },
+  {
     version: "2.6.0",
     date: "2026-08-11",
     headline: "The right panel adds up",

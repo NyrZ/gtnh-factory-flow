@@ -11,7 +11,9 @@ import {
 } from "@/lib/tour/welcome-tab";
 import { useDesignStore } from "@/store/design-store";
 
-const MENU_WIDTH = 190;
+// Wide enough for the longest item on one line ("Close tabs to right"); the
+// menu clips rather than wraps, so this and the labels move together.
+const MENU_WIDTH = 230;
 
 /** How far one arrow press travels — roughly one tab. */
 const SCROLL_STEP = 160;
@@ -374,35 +376,31 @@ function DesignMenu({
         Every item below closes designs for good, so each one arms on the first
         click and fires on the second — two steps rather than a native confirm
         dialog, because closing cannot be undone and the second click lands
-        where the first did. The count is in the label: "Close 6 to the right"
-        is a very different proposition from "Close 1", and the whole point of
-        these is that one click takes several tabs with it.
+        where the first did. Labels stay short enough to sit on one line; a
+        count in the label pushed them onto two.
 
         An item with nothing to close is left out rather than shown disabled;
         on the first or last tab half this menu would otherwise be dead text.
       */}
-      {neighbours.right.length > 0 ? (
-        <BulkCloseItem
-          label="Close all to the right"
-          count={neighbours.right.length}
-          armed={armed === "right"}
-          onArm={() => onArm("right")}
-          onFire={() => onCloseMany(neighbours.right)}
-        />
-      ) : null}
       {neighbours.left.length > 0 ? (
         <BulkCloseItem
-          label="Close all to the left"
-          count={neighbours.left.length}
+          label="Close tabs to left"
           armed={armed === "left"}
           onArm={() => onArm("left")}
           onFire={() => onCloseMany(neighbours.left)}
         />
       ) : null}
+      {neighbours.right.length > 0 ? (
+        <BulkCloseItem
+          label="Close tabs to right"
+          armed={armed === "right"}
+          onArm={() => onArm("right")}
+          onFire={() => onCloseMany(neighbours.right)}
+        />
+      ) : null}
       {neighbours.others.length > 0 ? (
         <BulkCloseItem
-          label="Close others"
-          count={neighbours.others.length}
+          label="Close other tabs"
           armed={armed === "others"}
           onArm={() => onArm("others")}
           onFire={() => onCloseMany(neighbours.others)}
@@ -410,32 +408,30 @@ function DesignMenu({
       ) : null}
 
       {armed === "delete" ? (
-        <MenuItem label="Confirm delete" tone="danger" onClick={onDelete} />
+        <MenuItem label="Confirm close" tone="danger" onClick={onDelete} />
       ) : (
-        <MenuItem label="Delete" tone="danger" onClick={() => onArm("delete")} />
+        <MenuItem label="Close" tone="danger" onClick={() => onArm("delete")} />
       )}
     </div>,
     document.body,
   );
 }
 
-/** One armed-then-fires close, with its count in the label. */
+/** One armed-then-fires close. */
 function BulkCloseItem({
   label,
-  count,
   armed,
   onArm,
   onFire,
 }: {
   label: string;
-  count: number;
   armed: boolean;
   onArm: () => void;
   onFire: () => void;
 }) {
   return (
     <MenuItem
-      label={armed ? `Confirm close ${count}` : `${label} (${count})`}
+      label={armed ? "Confirm close" : label}
       tone={armed ? "danger" : undefined}
       onClick={armed ? onFire : onArm}
     />
@@ -494,7 +490,7 @@ function MenuItem({
       role="menuitem"
       onClick={onClick}
       className={[
-        "block w-full px-2 py-1.5 text-left text-xs hover:bg-surface-sunken",
+        "block w-full whitespace-nowrap px-2 py-1.5 text-left text-xs hover:bg-surface-sunken",
         tone === "danger" ? "text-red-400" : "text-fg",
       ].join(" ")}
     >
