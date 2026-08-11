@@ -143,7 +143,6 @@ interface FactoryStore {
   // they are per-person view settings that must survive a reload, so they live
   // in `board-view.ts` behind localStorage. Keeping them in this store would
   // have meant either losing them on refresh or persisting them with the plan.
-  hoveredStorageResourceKey?: string;
   hoveredFlowResourceKey?: string;
   selectedFlowResourceKey?: string;
   /**
@@ -190,7 +189,6 @@ interface FactoryStore {
   selectResourceConnectionSlot: (slot: PendingResourceConnection) => void;
   cancelResourceConnection: () => void;
   setNodeColorPaintMode: (colorTag?: FactoryNodeColorTag | null) => void;
-  setHoveredStorageResourceKey: (key?: string) => void;
   setHoveredFlowResourceKey: (key?: string) => void;
   setHoveredFlowScope: (scope?: {
     edges: Record<string, true>;
@@ -523,7 +521,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   recipeResourceHistory: [],
   pendingResourceConnection: undefined,
   nodeColorPaintMode: undefined,
-  hoveredStorageResourceKey: undefined,
   hoveredFlowResourceKey: undefined,
   hoveredFlowScope: undefined,
   selectedFlowResourceKey: undefined,
@@ -857,9 +854,6 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   },
   setNodeColorPaintMode: (colorTag) => {
     set({ nodeColorPaintMode: colorTag });
-  },
-  setHoveredStorageResourceKey: (key) => {
-    set({ hoveredStorageResourceKey: key });
   },
   setHoveredFlowResourceKey: (key) => {
     set({ hoveredFlowResourceKey: key });
@@ -1296,7 +1290,10 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       return withProjectHistory(state, {
         project: finalProject,
         selectedNodeId: undefined,
-        hoveredStorageResourceKey: getResourceKey(storageResource),
+        // The new drawer announces itself with the placed flash below, which
+        // ends on its own. It used to ALSO switch on the board-wide glow for
+        // its resource, and nothing switched that off until you happened to
+        // hover a drawer or start a wire.
         // Only if the sweep above kept it: a drawer nothing reached is gone, and
         // flashing where it briefly was would point at empty canvas.
         ...(placed

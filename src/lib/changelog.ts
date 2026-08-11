@@ -71,6 +71,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.6.3",
+    date: "2026-08-11",
+    headline: "Hovering a drawer follows its own wires",
+    notes: [
+      "Point at a drawer and it lights the wires plugged into it and the slots on the far end of them. It used to light every wire and drawer on the board holding that item, wired to it or not.",
+      "It also stopped pulsing. A steady outline, the same as pointing at a slot on a machine.",
+      "The item lists on the side panel still light everything carrying an item, wherever it is. That is what they are for.",
+    ],
+  },
+  {
     version: "2.6.2",
     date: "2026-08-11",
     headline: "Menus close when you click away",

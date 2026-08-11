@@ -19,8 +19,52 @@ import { useFactoryStore } from "@/store/factory-store";
 import { useBoardView } from "./board-view";
 import { formatSlotRate } from "./flow-explainers";
 import { makeResourceHandleId } from "./resource-handles";
+import { canonicalizeResourceHandleId } from "@/lib/model/edge-identity";
 import { GT_NODE_COLORS } from "./node-colors";
 import { getPaintBrushCursor } from "./paint-cursor";
+
+/**
+ * The flow neighbourhood a drawer hover lights up: every wire ON this drawer,
+ * the far-end port of each wire, and the nodes those wires reach. The mirror
+ * of `buildPortFlowScope` in RecipeNode.tsx, because a drawer IS a port - it
+ * holds one resource and the card is the row.
+ *
+ * It used to light every wire and card on the board carrying the drawer's
+ * resource, wired to this drawer or not, and breathe while it did. Asking
+ * "where does THIS drawer's copper go" is not asking where copper appears.
+ */
+function buildStorageFlowScope(storage: FactoryStorage) {
+  const { project } = useFactoryStore.getState();
+  const resource = { kind: storage.kind, id: storage.resourceId };
+  const edges: Record<string, true> = {};
+  const nodes: Record<string, true> = { [storage.id]: true };
+  // The drawer's own two handles: whatever side a wire arrives on, the card is
+  // the port it arrives at, so it wears the port rim rather than the quieter
+  // node one.
+  const ports: Record<string, true> = {
+    [`${storage.id}|${makeResourceHandleId("input", resource)}`]: true,
+    [`${storage.id}|${makeResourceHandleId("output", resource)}`]: true,
+  };
+  for (const edge of project.edges) {
+    const leavesHere = edge.source === storage.id;
+    const arrivesHere = edge.target === storage.id;
+    if (!leavesHere && !arrivesHere) {
+      continue;
+    }
+    edges[edge.id] = true;
+    const otherId = leavesHere ? edge.target : edge.source;
+    nodes[otherId] = true;
+    const rawOtherHandle = leavesHere ? edge.targetHandle : edge.sourceHandle;
+    const otherHandle =
+      canonicalizeResourceHandleId(rawOtherHandle) ??
+      makeResourceHandleId(leavesHere ? "input" : "output", {
+        kind: edge.resourceKind,
+        id: edge.resourceId,
+      });
+    ports[`${otherId}|${otherHandle}`] = true;
+  }
+  return { edges, ports, nodes };
+}
 
 export interface StorageNodeData extends Record<string, unknown> {
   storage: FactoryStorage;
@@ -164,12 +208,9 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
     reactFlowStore.getState().addSelectedNodes([storage.id]);
   };
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
-  const hoveredStorageResourceKey = useFactoryStore((state) => state.hoveredStorageResourceKey);
   const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
   const selectedFlowResourceKey = useFactoryStore((state) => state.selectedFlowResourceKey);
-  const setHoveredStorageResourceKey = useFactoryStore(
-    (state) => state.setHoveredStorageResourceKey,
-  );
+  const setHoveredFlowScope = useFactoryStore((state) => state.setHoveredFlowScope);
   // Read off this drawer's own wires rather than through getStorageRoles: the
   // whole-board map would make every drawer re-render whenever any OTHER
   // drawer's wiring changed, and cards are the hot path. Same rule, one card.
@@ -197,13 +238,30 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
         : "idle";
   });
   const resourceKey = makeResourceKey(storage.kind, storage.resourceId);
-  // Lit when a hovered port/label pulls this buffer into its flow scope.
+  // Lit when a hovered port/label/drawer pulls this buffer into its flow scope.
   const isFlowScopeLit = useFactoryStore((state) =>
     Boolean(state.hoveredFlowScope?.nodes[storage.id]),
   );
-  const isHighlighted =
-    hoveredStorageResourceKey === resourceKey ||
-    (hoveredFlowResourceKey ?? selectedFlowResourceKey) === resourceKey;
+  // Lit as the PORT at one end of what is hovered, rather than as a node the
+  // hovered thing merely reaches: this drawer is either the one under the
+  // cursor or the far end of a wire on it. A drawer is a port, so it wears the
+  // stronger rim, the same as a lit port row on a machine.
+  const isFlowScopePort = useFactoryStore((state) => {
+    const ports = state.hoveredFlowScope?.ports;
+    if (!ports) {
+      return false;
+    }
+    const resource = { kind: storage.kind, id: storage.resourceId };
+    return Boolean(
+      ports[`${storage.id}|${makeResourceHandleId("input", resource)}`] ||
+        ports[`${storage.id}|${makeResourceHandleId("output", resource)}`],
+    );
+  });
+  // The board-wide "where is this resource" glow, which BREATHES. It belongs to
+  // the side panel (hover or click a resource row) and to a drawer the app just
+  // placed for you. Hovering a drawer on the board is a different question and
+  // no longer asks this one: see buildStorageFlowScope.
+  const isHighlighted = (hoveredFlowResourceKey ?? selectedFlowResourceKey) === resourceKey;
   const isSearchHighlighted = storageMatchesSearch(storage, recipeSearch);
   const nodeColorPaintMode = useFactoryStore((state) => state.nodeColorPaintMode);
   const { glanceMode } = useBoardView();
@@ -243,7 +301,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
       data-storage-resource-id={storage.resourceId}
       className={[
         "group relative text-[#e8e9ee]",
-        isFlowScopeLit && !isHighlighted ? "flow-scope-glow" : "",
+        (isFlowScopeLit || isFlowScopePort) && !isHighlighted ? "flow-scope-glow" : "",
         isHighlighted ? "resource-glow" : "",
       ].join(" ")}
       style={paintCursor ? { cursor: paintCursor } : undefined}
@@ -273,7 +331,9 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           // TILE: silhouette and colour for the role, the word to say it in
           // letters, icon for the item, net rate for the news.
           "storage-node-card relative flex h-[80px] w-[100px] flex-col p-1",
-          isHighlighted || isSearchHighlighted ? "brightness-125 saturate-150" : "",
+          isHighlighted || isFlowScopePort || isSearchHighlighted
+            ? "brightness-125 saturate-150"
+            : "",
         ].join(" ")}
       >
         {/* The highlight, wearing the silhouette. A slightly larger clone of
@@ -281,13 +341,17 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             cut corners, where the shared box ring drew a square around a
             hexagon. Selection outranks the hover glow; the flow-scope rim is
             the quiet 2px version of the same idea. */}
-        {selected || isHighlighted || isFlowScopeLit ? (
+        {selected || isHighlighted || isFlowScopePort || isFlowScopeLit ? (
           <span
             aria-hidden
             data-storage-shape={role}
             className={[
               "storage-shape pointer-events-none absolute",
-              selected ? "-inset-[3px]" : isHighlighted ? "storage-rim--glow -inset-[3px]" : "storage-rim--glow -inset-[2px]",
+              selected
+                ? "-inset-[3px]"
+                : isHighlighted || isFlowScopePort
+                  ? "storage-rim--glow -inset-[3px]"
+                  : "storage-rim--glow -inset-[2px]",
             ].join(" ")}
             style={{ background: selected ? "#a855f7" : "var(--glow-line)" }}
           />
@@ -429,9 +493,9 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
           <div
             className="relative mx-auto flex min-h-0 w-full flex-1 flex-col"
             onMouseEnter={() =>
-              isWiringConnection() ? undefined : setHoveredStorageResourceKey(resourceKey)
+              isWiringConnection() ? undefined : setHoveredFlowScope(buildStorageFlowScope(storage))
             }
-            onMouseLeave={() => setHoveredStorageResourceKey(undefined)}
+            onMouseLeave={() => setHoveredFlowScope(undefined)}
           >
             <Handle
               id={inputHandleId}

@@ -1354,7 +1354,6 @@ export function FactoryFlow() {
     boardView;
   const anyLineMode = lineHeatMode || lineThicknessMode || linePulseMode;
   const setFlowViewportCenter = useFactoryStore((state) => state.setFlowViewportCenter);
-  const hoveredStorageResourceKey = useFactoryStore((state) => state.hoveredStorageResourceKey);
   const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
   const selectedFlowResourceKey = useFactoryStore((state) => state.selectedFlowResourceKey);
   const hoveredNodeBottlenecks = useFactoryStore((state) => state.hoveredNodeBottlenecks);
@@ -1362,10 +1361,11 @@ export function FactoryFlow() {
   const hoveredUsageNodeId = useFactoryStore((state) => state.hoveredUsageNodeId);
   const recipeSearch = useFactoryStore((state) => state.highlightSearch);
   const isProjectImporting = useFactoryStore((state) => state.isProjectImporting);
-  // Hovering a storage's item is hovering that resource, the same as a port
-  // label: the wires (and cards) carrying it light up in the glow colour.
-  const activeFlowResourceKey =
-    hoveredFlowResourceKey ?? hoveredStorageResourceKey ?? selectedFlowResourceKey;
+  // The side panel's question: hover or click a resource row and every wire and
+  // card carrying it lights up, wherever it is. Hovering a DRAWER on the board
+  // asks a narrower one and takes the flow-scope path instead, so it is not
+  // folded in here any more (it used to be, and lit half the board).
+  const activeFlowResourceKey = hoveredFlowResourceKey ?? selectedFlowResourceKey;
   const activeNodeBottlenecks = hoveredNodeBottlenecks || selectedNodeBottlenecks;
   const recipesById = useMemo(
     () => new Map(project.recipes.map((recipe) => [recipe.id, recipe])),
@@ -2234,11 +2234,6 @@ export function FactoryFlow() {
       const isStarvedEdge =
         isSupplyCapped || (edgeResult?.isLimited === true && !targetStorage);
       const isStorageEdge = Boolean(sourceStorage || targetStorage);
-      const storageResourceKey = sourceStorage
-        ? `${sourceStorage.kind}:${sourceStorage.resourceId}`
-        : targetStorage
-          ? `${targetStorage.kind}:${targetStorage.resourceId}`
-          : undefined;
       const resource = getEdgeResource(project, edge);
       const edgeColor = getInitialResourceColor(resource);
       const sourceHandle = parseResourceHandleId(edge.sourceHandle);
@@ -2278,12 +2273,12 @@ export function FactoryFlow() {
           canonicalizeResourceHandleId(edge.targetHandle) ??
           makeResourceHandleId("input", { kind: edge.resourceKind, id: edge.resourceId }))
         : canonicalizeResourceHandleId(edge.targetHandle);
-      const isStorageEdgeActive =
-        !isStorageEdge || hoveredStorageResourceKey === storageResourceKey;
       const isSearchEdgeActive = edgeMatchesSearch(edge, resource, recipeSearch);
-      const isStorageEdgeEmphasized = Boolean(
-        isStorageEdge && (isStorageEdgeActive || isSearchEdgeActive),
-      );
+      // A drawer's own wires thicken when the search names them. Hovering the
+      // drawer no longer feeds this: that lights the wires ON the drawer
+      // through the flow scope, which is a per-edge subscription and does not
+      // rebuild this memo.
+      const isStorageEdgeEmphasized = isStorageEdge && isSearchEdgeActive;
       const isFlowHighlighted =
         activeFlowResourceKey === makeResourceKey(edge.resourceKind, edge.resourceId);
 
@@ -2452,7 +2447,6 @@ export function FactoryFlow() {
     activeFlowResourceKey,
     anyLineMode,
     freeDockMode,
-    hoveredStorageResourceKey,
     lineHeatMode,
     lineLabelsMode,
     linePulseMode,
@@ -2731,7 +2725,6 @@ export function FactoryFlow() {
     boardRef.current?.classList.add(WIRING_BOARD_CLASS);
     const store = useFactoryStore.getState();
     store.setHoveredFlowScope(undefined);
-    store.setHoveredStorageResourceKey(undefined);
     clearHopMap();
 
     paintNodeDropFit(project, draggedResourceRef.current, false);
