@@ -50,9 +50,11 @@ import {
   tourBottleneckUsageSelector,
   tourBufferDrawerSelector,
   tourByproductDrawerSelector,
-  tourDrawerLabQuiet,
-  tourDrawerLabReset,
-  tourDrawerLabStrict,
+  tourLabArmQuiet,
+  tourLabArmStrict,
+  tourLabQuiet,
+  tourLabReset,
+  tourLabStrict,
   tourProductDrawerSelector,
   tourSourceDrawerSelector,
 } from "./tour-boards";
@@ -550,7 +552,22 @@ const READ_THE_BOARD: TourLesson = {
     {
       anchor: "board",
       side: "inside",
-      before: tourDrawerLabQuiet,
+      before: tourLabArmQuiet,
+      title: "Get ready: the product lets go",
+      rows: [
+        {
+          text: "The whole line, running, and *the blue titanium drawer is blinking*: that is the one about to change.",
+        },
+        {
+          text: "Press *Next* and it becomes a byproduct. Nothing on the board will ask for titanium after that.",
+        },
+        { text: "Keep your eyes on the *freezer* and on the *buffer*." },
+      ],
+    },
+    {
+      anchor: "board",
+      side: "inside",
+      before: tourLabQuiet,
       title: "Watch the product let go",
       rows: [
         {
@@ -570,10 +587,23 @@ const READ_THE_BOARD: TourLesson = {
     {
       anchor: "board",
       side: "inside",
-      before: tourDrawerLabStrict,
-      title: "Now make the buffer strict",
+      before: tourLabArmStrict,
+      title: "Get ready: the buffer goes strict",
       rows: [
-        { text: "One more flip: the buffer now *refuses to bank the surplus*." },
+        { text: "Same picture, and now *the buffer is blinking*." },
+        {
+          text: "Press *Next* and it goes strict: it will *refuse to bank the surplus* it has been catching.",
+        },
+        { text: "Watch the *furnace* first, then everything behind it." },
+      ],
+    },
+    {
+      anchor: "board",
+      side: "inside",
+      before: tourLabStrict,
+      title: "Now the buffer is strict",
+      rows: [
+        { text: "The flip landed: the buffer *refuses to bank the surplus*." },
         {
           chip: "UNUSED",
           tone: "internal",
@@ -582,12 +612,13 @@ const READ_THE_BOARD: TourLesson = {
         {
           text: "Strict is the loud setting: nothing gets stored, so an imbalance stops the line instead of hiding in a tank.",
         },
+        { text: "Press *Next* to put everything back." },
       ],
     },
     {
       anchor: "board",
       side: "inside",
-      before: tourDrawerLabReset,
+      before: tourLabReset,
       title: "And put it back",
       rows: [
         { text: "Product asking, buffer catching. The line breathes again." },

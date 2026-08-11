@@ -63,6 +63,16 @@ function subscribe(listener: () => void) {
   };
 }
 
+/**
+ * The same subscription the hook uses, for module code that has to react to
+ * a step change without being a component - the tour board's get-ready
+ * flash cancels itself through this, so no tile can keep blinking after
+ * the reader moves on, whichever direction they went.
+ */
+export function subscribeTourState(listener: () => void): () => void {
+  return subscribe(listener);
+}
+
 function publish(next: TourState) {
   state = next;
   for (const listener of listeners) {

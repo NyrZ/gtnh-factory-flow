@@ -10,6 +10,7 @@ import { deriveNodeVerdict } from "@/components/flow/node-verdict";
 import { readWorkspaceViewSnapshot, writeWorkspaceView } from "@/lib/workspace-view";
 import { useDesignStore } from "@/store/design-store";
 import { useFactoryStore, type BoardFraming } from "@/store/factory-store";
+import { subscribeTourState } from "./tour-state";
 
 /**
  * Putting a factory on the board for a lesson to point at.
@@ -89,8 +90,12 @@ async function openPlan(): Promise<void> {
     await store.importProjectAsDesign(await fetchTourProject(), TOUR_PLAN_DESIGN_NAME);
   }
 
-  // A fresh plan is a fresh set of picks.
+  // A fresh plan is a fresh set of picks, and a fresh lab: the hydrate above
+  // rebuilt the pristine board, so a stage or snapshot held over from an
+  // earlier run would only lie about it.
   picks = undefined;
+  drawerLabBaseline = undefined;
+  labStageApplied = "baseline";
   moveCamera(() => {
     if (useFactoryStore.getState().project.nodes.length === 0) {
       return false;
@@ -464,50 +469,111 @@ export function frameTourWholeBoard(): void {
  * retry-and-supersede behaviour - it keeps trying until the picks resolve,
  * and a newer intention cancels a flip that has not landed yet.
  */
-let drawerLabBaseline: FactoryProject | undefined;
-
 /**
- * The flip never rides the camera move. Each lab step is two beats: the
- * camera settles on the whole line with NOTHING changed, and only after a
- * pause does the flip land, alone on an unmoving picture, with a flash on
- * the tiles that did it - so what changed is the only thing that moves.
+ * A change never rides a timer and never rides the camera: it lands on the
+ * PRESS. Each flip is two steps. The GET READY step frames the whole line,
+ * changes nothing, and keeps the target tiles FLASHING until the reader
+ * commits; pressing Next enters the flip step, whose arrival applies the
+ * change with one bright pulse on the tiles that did it. The tour is a
+ * TIMELINE: every step's entry rebuilds its own stage from the pristine
+ * snapshot, so stepping back across a flip undoes it the same way stepping
+ * forward made it, and the progress dots can land anywhere on a consistent
+ * frame.
  */
-const LAB_BEAT_MS = 900;
-let labIntent = 0;
+type LabStage = "baseline" | "quiet" | "strict";
+let drawerLabBaseline: FactoryProject | undefined;
+let labStageApplied: LabStage = "baseline";
+let flashing: Animation[] = [];
 
-/** One bright pulse on the cards that just changed the board's mind. */
-function pulseTiles(ids: string[]): void {
-  if (typeof document === "undefined") {
+function stopFlashing(): void {
+  for (const animation of flashing) {
+    animation.cancel();
+  }
+  flashing = [];
+}
+
+// ANY step change cancels the get-ready flash; the incoming step's own
+// `before` re-requests one when it wants it - so leaving the lab sideways
+// (Back into a close-up, a dot jump, Esc) can never leave a tile blinking.
+// Subscribed on first use, not at module scope: lessons -> tour-boards ->
+// tour-state -> lessons is a cycle, and an eval-time call could run against
+// a half-initialised module.
+let flashCancelArmed = false;
+
+function armFlashCancel(): void {
+  if (flashCancelArmed) {
     return;
   }
+  flashCancelArmed = true;
+  subscribeTourState(stopFlashing);
+}
+
+function labTiles(group: "products" | "buffers" | "both"): string[] {
+  const found = ensurePicks();
+  if (!found) {
+    return [];
+  }
+  return group === "products"
+    ? found.productDrawerIds
+    : group === "buffers"
+      ? found.bufferDrawerIds
+      : [...found.productDrawerIds, ...found.bufferDrawerIds];
+}
+
+function tileElement(id: string): HTMLElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  return document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`);
+}
+
+/** "I am about to change THIS one": a slow blink that lasts until the press. */
+function flashTiles(ids: string[]): void {
+  armFlashCancel();
+  stopFlashing();
   for (const id of ids) {
-    const tile = document.querySelector<HTMLElement>(
-      `.react-flow__node[data-id="${CSS.escape(id)}"]`,
-    );
-    tile?.animate(
+    const animation = tileElement(id)?.animate(
       [
-        { filter: "brightness(2.6) saturate(1.4)" },
+        { filter: "brightness(1) saturate(1)" },
+        { filter: "brightness(2.2) saturate(1.5)" },
         { filter: "brightness(1) saturate(1)" },
       ],
+      { duration: 1100, iterations: Number.POSITIVE_INFINITY, easing: "ease-in-out" },
+    );
+    if (animation) {
+      flashing.push(animation);
+    }
+  }
+}
+
+/** "THIS one just did it": a single bright pulse as the change lands. */
+function pulseTiles(ids: string[]): void {
+  for (const id of ids) {
+    tileElement(id)?.animate(
+      [{ filter: "brightness(2.6) saturate(1.4)" }, { filter: "brightness(1) saturate(1)" }],
       { duration: 750, easing: "ease-out" },
     );
   }
 }
 
-function applyDrawerLab(state: "quiet" | "strict" | "reset"): boolean {
+function applyLabStage(stage: LabStage): boolean {
   const found = ensurePicks();
   if (!found) {
     return false;
   }
   const store = useFactoryStore.getState();
-  if (state === "reset") {
-    if (drawerLabBaseline) {
+  if (stage === "baseline") {
+    if (drawerLabBaseline && labStageApplied !== "baseline") {
       store.markHydratedProject(drawerLabBaseline);
-      drawerLabBaseline = undefined;
     }
-    pulseTiles([...found.productDrawerIds, ...found.bufferDrawerIds]);
+    labStageApplied = "baseline";
     return true;
   }
+  if (labStageApplied === stage) {
+    return true;
+  }
+  // The snapshot is only ever taken while the plan is pristine: any other
+  // stage was itself built from a snapshot that already existed.
   drawerLabBaseline ??= store.project;
   const products = new Set(found.productDrawerIds);
   const buffers = new Set(found.bufferDrawerIds);
@@ -516,77 +582,88 @@ function applyDrawerLab(state: "quiet" | "strict" | "reset"): boolean {
     storages: (drawerLabBaseline.storages ?? []).map((storage) =>
       products.has(storage.id)
         ? { ...storage, drainMode: "byproduct" as const }
-        : state === "strict" && buffers.has(storage.id)
+        : stage === "strict" && buffers.has(storage.id)
           ? { ...storage, bufferMode: "strict" as const }
           : storage,
     ),
   });
-  pulseTiles(state === "strict" ? found.bufferDrawerIds : found.productDrawerIds);
+  labStageApplied = stage;
   return true;
 }
 
-function runDrawerLab(state: "quiet" | "strict" | "reset"): void {
-  labIntent += 1;
-  const intent = labIntent;
-  // Beat one: the shot, untouched.
-  let framed = false;
+function runLabStep(
+  stage: LabStage,
+  fx: { flash?: "products" | "buffers" | "both"; pulse?: "products" | "buffers" | "both" },
+): void {
   moveCamera(() => {
     if (!ensurePicks()) {
       return false;
     }
+    // Every lab step frames the SAME whole-board shot, so between any two of
+    // them the stage is the only thing that changes. Framed FIRST, and on
+    // every retry: the board only renders on-screen cards, so a tile hidden
+    // by the previous step's close-up does not exist until this camera move
+    // lands - a guard that waited for the tile before framing would wait on
+    // itself forever.
     useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
-    framed = true;
+    // The flash and the pulse land on real pixels or not at all: until the
+    // target tiles are in the DOM this step has not really arrived, so keep
+    // retrying rather than flipping a board nobody can see yet.
+    const targetGroup = fx.flash ?? fx.pulse;
+    const targetIds = targetGroup ? labTiles(targetGroup) : [];
+    if (targetGroup && targetIds.length > 0 && targetIds.some((id) => !tileElement(id))) {
+      return false;
+    }
+    if (!applyLabStage(stage)) {
+      return false;
+    }
+    if (fx.flash) {
+      flashTiles(targetIds);
+    }
+    if (fx.pulse) {
+      pulseTiles(targetIds);
+    }
     return true;
   });
-  // Beat two: the flip. Superseded by any newer step (the intent check), and
-  // still on the house retry loop so a step entered before the plan finished
-  // arriving keeps trying - framing first if beat one never landed.
-  window.setTimeout(() => {
-    if (intent !== labIntent) {
-      return;
-    }
-    moveCamera(() => {
-      if (intent !== labIntent) {
-        return true;
-      }
-      if (!framed) {
-        if (!ensurePicks()) {
-          return false;
-        }
-        useFactoryStore.getState().frameBoardNodes(undefined, WHOLE_BOARD);
-        framed = true;
-      }
-      return applyDrawerLab(state);
-    });
-  }, LAB_BEAT_MS);
 }
 
-export function tourDrawerLabQuiet(): void {
-  runDrawerLab("quiet");
+/** Get ready: nothing changes, the product drawer blinks until the press. */
+export function tourLabArmQuiet(): void {
+  runLabStep("baseline", { flash: "products" });
 }
 
-export function tourDrawerLabStrict(): void {
-  runDrawerLab("strict");
+/** The press lands: product to byproduct, one pulse on the drawer that did it. */
+export function tourLabQuiet(): void {
+  runLabStep("quiet", { pulse: "products" });
 }
 
-/** Baseline again, same rhythm: settle, beat, restore, flash. */
-export function tourDrawerLabReset(): void {
-  runDrawerLab("reset");
+/** Get ready again: board holds the quiet stage, the buffer blinks. */
+export function tourLabArmStrict(): void {
+  runLabStep("quiet", { flash: "buffers" });
+}
+
+/** The press lands: the buffer refuses the surplus and the line goes dark. */
+export function tourLabStrict(): void {
+  runLabStep("strict", { pulse: "buffers" });
+}
+
+/** Back to the pristine plan, both flipped tiles pulsing their return. */
+export function tourLabReset(): void {
+  runLabStep("baseline", { pulse: "both" });
 }
 
 /**
- * Baseline without the camera or the beat. Runs on the way out of the lesson
- * however it ends - finished, skipped, closed - so the plan the tour borrowed
- * goes back exactly as it loaded. Bumps the intent first, so a flip still
- * waiting on its beat cannot land after the restore.
+ * Baseline without the camera. Runs on the way out of the lesson however it
+ * ends - finished, skipped, closed - so the plan the tour borrowed goes back
+ * exactly as it loaded.
  */
 export function restoreDrawerLab(): void {
-  labIntent += 1;
-  if (!drawerLabBaseline) {
-    return;
+  stopFlashing();
+  if (drawerLabBaseline && labStageApplied !== "baseline") {
+    useFactoryStore.getState().markHydratedProject(drawerLabBaseline);
   }
-  useFactoryStore.getState().markHydratedProject(drawerLabBaseline);
   drawerLabBaseline = undefined;
+  labStageApplied = "baseline";
 }
 
 /**
