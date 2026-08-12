@@ -78,7 +78,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "Share it, make it yours, and watch it move",
     notes: [
       "Share buttons now sit next to Import and Export and on the new plan bar, which holds a plan's icon, name, description and votes.",
-      "The board has papers now: blueprint, chalkboard, parchment, notepad and more, picked from the view tools.",
+      "The board has textured papers now: charcoal, blueprint, chalkboard, parchment and more, picked from the view tools.",
       "Boxes and zones take their own border and fill styles, and your own pictures can go on the board.",
       "The board is alive: cards glide onto the grid, wires follow while you drag, and every rate eases into place, with two view buttons to turn it off.",
     ],
