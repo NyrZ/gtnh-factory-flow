@@ -48,11 +48,18 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
       isVisible={selected}
       minWidth={annotation.kind === "text" ? ANNOTATION_MIN_TEXT.width : ANNOTATION_MIN_BOX}
       minHeight={annotation.kind === "text" ? ANNOTATION_MIN_TEXT.height : ANNOTATION_MIN_ARROW}
-      lineStyle={{ pointerEvents: "all", borderColor: "#22d3ee" }}
+      // A box's edges belong to its MOVE strips (which are fat and overlap the
+      // resize lines); giving both a claim to the same pixels made each a
+      // coin-toss. Corners resize, edges move. A note has no strips, so its
+      // edges keep resizing.
+      lineStyle={{
+        pointerEvents: annotation.kind === "box" ? "none" : "all",
+        borderColor: "#22d3ee",
+      }}
       handleStyle={{
         pointerEvents: "all",
-        width: 10,
-        height: 10,
+        width: 16,
+        height: 16,
         borderRadius: 0,
         backgroundColor: "#22d3ee",
         border: "1px solid #0e7490",
@@ -101,7 +108,8 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
 
 function BoxShape({ swatch }: { swatch: string }) {
   // The visible frame is inert; four invisible strips along the edges are what
-  // take clicks and drags, so the interior stays fully click-through.
+  // take clicks and drags, so the interior stays fully click-through. 24px
+  // deep (12 out, 12 in): grabbing "roughly the frame" has to count.
   const stripBase = `${ANNOTATION_DRAG_HANDLE_CLASS} absolute`;
   return (
     <div className="h-full w-full" style={{ pointerEvents: "none" }}>
@@ -113,10 +121,10 @@ function BoxShape({ swatch }: { swatch: string }) {
           boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.35)`,
         }}
       />
-      <div className={`${stripBase} -top-2 left-0 right-0 h-4 cursor-grab`} style={{ pointerEvents: "all" }} />
-      <div className={`${stripBase} -bottom-2 left-0 right-0 h-4 cursor-grab`} style={{ pointerEvents: "all" }} />
-      <div className={`${stripBase} -left-2 bottom-0 top-0 w-4 cursor-grab`} style={{ pointerEvents: "all" }} />
-      <div className={`${stripBase} -right-2 bottom-0 top-0 w-4 cursor-grab`} style={{ pointerEvents: "all" }} />
+      <div className={`${stripBase} -top-3 left-0 right-0 h-6 cursor-grab`} style={{ pointerEvents: "all" }} />
+      <div className={`${stripBase} -bottom-3 left-0 right-0 h-6 cursor-grab`} style={{ pointerEvents: "all" }} />
+      <div className={`${stripBase} -left-3 bottom-0 top-0 w-6 cursor-grab`} style={{ pointerEvents: "all" }} />
+      <div className={`${stripBase} -right-3 bottom-0 top-0 w-6 cursor-grab`} style={{ pointerEvents: "all" }} />
     </div>
   );
 }
@@ -233,7 +241,11 @@ function ArrowAnnotation({
   );
 }
 
-/** Same cyan square the resize corners wear, sitting on the end it moves. */
+/**
+ * Same cyan square the resize corners wear, sitting on the end it moves. The
+ * visible square rides inside a 32px invisible halo, so "grab the end" works
+ * for a thumb and a rough mouse, not only a pixel-perfect one.
+ */
 function ArrowEndpointHandle({
   point,
   label,
@@ -249,16 +261,20 @@ function ArrowEndpointHandle({
       aria-label={label}
       title={label}
       onPointerDown={onPointerDown}
-      className="nodrag absolute z-10 h-3 w-3 cursor-crosshair"
+      className="nodrag absolute z-10 flex h-8 w-8 cursor-crosshair items-center justify-center"
       style={{
-        left: point.x - 6,
-        top: point.y - 6,
+        left: point.x - 16,
+        top: point.y - 16,
         pointerEvents: "all",
         touchAction: "none",
-        backgroundColor: "#22d3ee",
-        border: "1px solid #0e7490",
       }}
-    />
+    >
+      <div
+        aria-hidden
+        className="h-4 w-4"
+        style={{ backgroundColor: "#22d3ee", border: "1px solid #0e7490" }}
+      />
+    </div>
   );
 }
 
@@ -324,7 +340,7 @@ function ArrowShape({
         d={linePoints}
         className={`${ANNOTATION_DRAG_HANDLE_CLASS} cursor-grab`}
         stroke="transparent"
-        strokeWidth={18}
+        strokeWidth={28}
         strokeLinecap="round"
         fill="none"
         style={{ pointerEvents: "stroke" }}
