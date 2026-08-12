@@ -176,11 +176,15 @@ side (`ensureGridSolve` in FactoryFlow) publishes the edge list from the
 `flowEdges` memo, resolves measured port anchors, fingerprints everything
 (sweep hash + endpoints + widths — never hover state), and parks routes in
 `directRouteCache`; a stamp/epoch gate keeps the check O(1) per edge
-render. Mid-drag, boards under `LIVE_DRAG_ROUTE_EDGE_LIMIT` wires rerun the
-REAL solve on a throttle (`LIVE_DRAG_SOLVE_MS`) so wires follow the held
-card to exactly where they will rest — never a pointer-chasing guess — and
-the route morph (`board-motion.tsx`) glides between beats; bigger boards
-keep every route frozen until the drop re-solves, as all boards once did.
+render. Mid-drag, boards that can afford it rerun the REAL solve on a
+throttle (`LIVE_DRAG_SOLVE_MS`) so wires follow the held card to exactly
+where they will rest — never a pointer-chasing guess — and the route morph
+(`board-motion.tsx`) glides between beats. The board decides affordability
+itself, never a toggle: annotation-only drags never solve (ink is not an
+obstacle), boards past `LIVE_DRAG_ROUTE_EDGE_LIMIT` freeze outright, and
+each solve is timed through to paint — one over `LIVE_DRAG_BUDGET_MS`
+freezes later drags until the board shrinks well below the size that
+lagged. Frozen means what it always did: cached routes until the drop.
 
 ### Rules of thumb for new board code
 

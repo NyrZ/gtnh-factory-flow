@@ -382,6 +382,16 @@ const PLACED_FLASH_MS = 3100;
 const LIVE_DRAG_ROUTE_EDGE_LIMIT = 200;
 const LIVE_DRAG_SOLVE_MS = 120;
 /**
+ * The self-measuring half of the gate above. The wire count is a guess about
+ * cost; this is the receipt. Each mid-drag solve is timed through to the
+ * frame it painted, and one over this budget marks the current board size as
+ * too slow to follow — later drags freeze until the board shrinks well below
+ * the size that lagged. The user never chooses between smooth and laggy:
+ * a board that can afford following gets it, one that cannot goes back to
+ * frozen drags on its own, whatever the motion buttons say.
+ */
+const LIVE_DRAG_BUDGET_MS = 36;
+/**
  * The materialise-on-arrival pop (globals.css), riding the same DOM pass as
  * the flash. Its class outlives the 220ms animation harmlessly — an animation
  * plays once per application — and comes off with the flash's own timers so a
@@ -2040,24 +2050,43 @@ export function FactoryFlow() {
   // Whether the current drag moves anything wires route around; see
   // handleNodeDragStart.
   const dragMovesObstaclesRef = useRef(true);
+  // The smallest wire count a mid-drag solve has ever blown the frame budget
+  // at. Following stays off until the board shrinks well below it.
+  const liveDragSlowAtEdgeCountRef = useRef(Infinity);
+  // Times one live solve through to the frame it painted, and marks the
+  // board size as too slow to follow if it blew the budget.
+  const meterLiveDragSolve = useCallback((edgeCount: number, startedAt: number) => {
+    window.requestAnimationFrame(() => {
+      if (performance.now() - startedAt > LIVE_DRAG_BUDGET_MS) {
+        liveDragSlowAtEdgeCountRef.current = Math.min(
+          liveDragSlowAtEdgeCountRef.current,
+          edgeCount,
+        );
+      }
+    });
+  }, []);
   useLayoutEffect(() => {
-    // Drag frames rewrite positions constantly. On a small board the wires
-    // FOLLOW: a throttled real solve reruns against the card's current cell,
-    // and the route morph glides every wire to it — the same solve the drop
-    // will run, so nothing is ever a guess. Everywhere else measurements
-    // stay frozen exactly as before — a big board, an annotation-only drag
-    // (ink cannot change a route, so a mid-drag solve would be pure cost),
-    // or smooth movement toggled off, which is the ONE switch that turns the
-    // whole mid-drag recalculation off. Untouched edges keep their cached
-    // routes and the drop republishes explicitly (see handleNodeDragStop) —
-    // it has to, because React Flow streams the final position into
-    // `flowNodes` during the last drag frame, so this fingerprint does NOT
-    // change again after the drag ends.
+    // Drag frames rewrite positions constantly. Where the board can afford
+    // it, the wires FOLLOW: a throttled real solve reruns against the card's
+    // current cell, and the route morph glides every wire to it — the same
+    // solve the drop will run, so nothing is ever a guess. The board decides
+    // for itself when it cannot afford it, and freezes exactly as all drags
+    // once did: an annotation-only drag (ink cannot change a route, so a
+    // mid-drag solve would be pure cost), a board past the wire cap, or a
+    // board whose own measured solves blew the frame budget. Deliberately
+    // NOT a setting — a toggle here would just be a button that enables lag.
+    // Untouched edges keep their cached routes and the drop republishes
+    // explicitly (see handleNodeDragStop) — it has to, because React Flow
+    // streams the final position into `flowNodes` during the last drag
+    // frame, so this fingerprint does NOT change again after the drag ends.
     if (draggingNodeRef.current) {
+      const edgeCount = publishedGridRouteEdges.length;
       if (
         !dragMovesObstaclesRef.current ||
-        !readBoardMotionSnapshot().moveMotion ||
-        publishedGridRouteEdges.length > LIVE_DRAG_ROUTE_EDGE_LIMIT
+        edgeCount > LIVE_DRAG_ROUTE_EDGE_LIMIT ||
+        // Well below, not just below: a board hovering at the size that
+        // lagged would flap between following and freezing.
+        edgeCount >= liveDragSlowAtEdgeCountRef.current * 0.8
       ) {
         return;
       }
@@ -2071,13 +2100,16 @@ export function FactoryFlow() {
           if (!draggingNodeRef.current) {
             return; // the drop already published
           }
-          lastLiveDragSolveAtRef.current = performance.now();
+          const trailingStart = performance.now();
+          lastLiveDragSolveAtRef.current = trailingStart;
           publishBoardGeometry();
           setLayoutVersion((version) => version + 1);
+          meterLiveDragSolve(edgeCount, trailingStart);
         }, LIVE_DRAG_SOLVE_MS - sinceLastSolve);
         return;
       }
       lastLiveDragSolveAtRef.current = now;
+      meterLiveDragSolve(edgeCount, now);
     }
 
     publishBoardGeometry();

@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.1",
+    date: "2026-08-12",
+    headline: "The board decides when wires follow",
+    notes: [
+      "Wire-following during a drag now steps aside by itself on boards too big or too slow for it, instead of riding the smooth movement button.",
+    ],
+  },
+  {
     version: "2.11.0",
     date: "2026-08-12",
     headline: "The palette speaks the board's language",
