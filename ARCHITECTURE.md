@@ -176,7 +176,11 @@ side (`ensureGridSolve` in FactoryFlow) publishes the edge list from the
 `flowEdges` memo, resolves measured port anchors, fingerprints everything
 (sweep hash + endpoints + widths — never hover state), and parks routes in
 `directRouteCache`; a stamp/epoch gate keeps the check O(1) per edge
-render. Mid-drag edges fall back to a simple L and the drop re-solves.
+render. Mid-drag, boards under `LIVE_DRAG_ROUTE_EDGE_LIMIT` wires rerun the
+REAL solve on a throttle (`LIVE_DRAG_SOLVE_MS`) so wires follow the held
+card to exactly where they will rest — never a pointer-chasing guess — and
+the route morph (`board-motion.tsx`) glides between beats; bigger boards
+keep every route frozen until the drop re-solves, as all boards once did.
 
 ### Rules of thumb for new board code
 
@@ -190,9 +194,11 @@ render. Mid-drag edges fall back to a simple L and the drop re-solves.
 - Anything O(nodes) per frame is suspect; anything O(nodes × edges) per frame
   is a bug.
 - After touching board internals, re-verify the behavioral contracts with
-  Playwright: edges hold their routes during a drag and reroute precisely on drop;
-  untouched edges' paths do not change during someone else's drag; a node
-  resize reroutes its edges; labels and arrowheads sit on their paths.
+  Playwright: on a small board, mid-drag routes are real solved routes that
+  track the held card and match the drop's final solve; on a board past
+  `LIVE_DRAG_ROUTE_EDGE_LIMIT` wires, edges hold their routes during a drag
+  and reroute precisely on drop; a node resize reroutes its edges; labels
+  and arrowheads sit on their paths.
 
 ### How to profile (the stress workflow)
 

@@ -369,6 +369,19 @@ const MIN_FRAMED_WIDTH = 420;
 const PLACED_FLASH_CLASS = "board-card-placed";
 const PLACED_FLASH_MS = 3100;
 /**
+ * Mid-drag live rerouting. A held card's wires used to keep their last
+ * solved route until the drop; on boards under this many wires the REAL
+ * solve now reruns while the card moves — the same solve the drop runs, so
+ * the wires follow the card to exactly where they will rest, never a guess
+ * (the old pointer-chasing preview lied, which is why drags froze in the
+ * first place). Throttled: with the route morph gliding between solves,
+ * a handful of solves a second reads as continuous. Past the limit the
+ * drag freezes as it always did — a full board solve per beat on a mega
+ * board is exactly the per-frame bill ARCHITECTURE.md forbids.
+ */
+const LIVE_DRAG_ROUTE_EDGE_LIMIT = 200;
+const LIVE_DRAG_SOLVE_MS = 120;
+/**
  * The materialise-on-arrival pop (globals.css), riding the same DOM pass as
  * the flash. Its class outlives the 220ms animation harmlessly — an animation
  * plays once per application — and comes off with the flash's own timers so a
@@ -1641,8 +1654,9 @@ export function FactoryFlow() {
     undefined,
   );
   // Shared by the brush and the annotation tools: the last colour picked in
-  // the palette is what a new box/arrow/note is created with.
-  const [activeColorTag, setActiveColorTag] = useState<FactoryNodeColorTag>("yellow");
+  // the palette is what a new box/arrow/note is created with. Blue to start:
+  // the house colour, and legible on every paper the board ships with.
+  const [activeColorTag, setActiveColorTag] = useState<FactoryNodeColorTag>("blue");
   const [isDeleteMode, setDeleteMode] = useState(false);
   const [annotationDraft, setAnnotationDraft] = useState<AnnotationDraft | undefined>(undefined);
   const annotationDraftRef = useRef<AnnotationDraft | undefined>(undefined);
@@ -1995,15 +2009,42 @@ export function FactoryFlow() {
       .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
     invalidateMeasuredLayout();
   }, [freeDockMode, lineThicknessMode]);
+  // Live-drag throttle state: when the last mid-drag solve ran, and the
+  // trailing timer that guarantees the LAST cell a card entered still gets
+  // its solve when the pointer stops moving inside a throttle window.
+  const lastLiveDragSolveAtRef = useRef(0);
+  const liveDragTrailingTimerRef = useRef<number | undefined>(undefined);
   useLayoutEffect(() => {
-    // Drag frames rewrite positions constantly. Measurements stay frozen for
-    // the whole drag: untouched edges keep their cached routes and edges on
-    // the dragged node use estimated endpoints. The drop republishes
-    // explicitly (see handleNodeDragStop) — it has to, because React Flow
-    // streams the final position into `flowNodes` during the last drag frame,
-    // so this fingerprint does NOT change again after the drag ends.
+    // Drag frames rewrite positions constantly. On a small board the wires
+    // FOLLOW: a throttled real solve reruns against the card's current cell,
+    // and the route morph glides every wire to it — the same solve the drop
+    // will run, so nothing is ever a guess. On a big board (or mid-throttle)
+    // measurements stay frozen exactly as before: untouched edges keep their
+    // cached routes and the drop republishes explicitly (see
+    // handleNodeDragStop) — it has to, because React Flow streams the final
+    // position into `flowNodes` during the last drag frame, so this
+    // fingerprint does NOT change again after the drag ends.
     if (draggingNodeRef.current) {
-      return;
+      if (publishedGridRouteEdges.length > LIVE_DRAG_ROUTE_EDGE_LIMIT) {
+        return;
+      }
+      const now = performance.now();
+      const sinceLastSolve = now - lastLiveDragSolveAtRef.current;
+      if (sinceLastSolve < LIVE_DRAG_SOLVE_MS) {
+        // Inside the throttle window: book the trailing solve instead, so a
+        // pointer that stops moving still sees its final cell routed.
+        window.clearTimeout(liveDragTrailingTimerRef.current);
+        liveDragTrailingTimerRef.current = window.setTimeout(() => {
+          if (!draggingNodeRef.current) {
+            return; // the drop already published
+          }
+          lastLiveDragSolveAtRef.current = performance.now();
+          publishBoardGeometry();
+          setLayoutVersion((version) => version + 1);
+        }, LIVE_DRAG_SOLVE_MS - sinceLastSolve);
+        return;
+      }
+      lastLiveDragSolveAtRef.current = now;
     }
 
     publishBoardGeometry();
@@ -2031,8 +2072,10 @@ export function FactoryFlow() {
   // signature is somehow unstable, and resets as soon as a pass adds nothing.
   const hopSettlePassesRef = useRef(0);
   useEffect(() => {
-    // Mid-drag the cache is deliberately frozen and edges route cheaply; the
-    // drop already forces a full precise pass.
+    // Mid-drag the settle pass stays off: live-drag solves already rerender
+    // every edge a few times a second, and a hop drawn against a partial
+    // cache for a beat is not worth doubling that. The drop's publish forces
+    // the full precise pass either way.
     if (draggingNodeRef.current) {
       return;
     }
@@ -3778,6 +3821,9 @@ export function FactoryFlow() {
     for (const dragged of draggedNodes) {
       activelyDraggedNodeIds.add(dragged.id);
     }
+    // A fresh drag's first cell change solves immediately; the throttle only
+    // paces the changes after it.
+    lastLiveDragSolveAtRef.current = 0;
     draggingNodeRef.current = true;
     // The card-over-wires layering during the drag is pure CSS: the
     // --dragging board class lifts the whole nodes layer above the edge
@@ -3798,6 +3844,8 @@ export function FactoryFlow() {
 
       activelyDraggedNodeIds.clear();
       draggingNodeRef.current = false;
+      // The drop's own publish below supersedes any trailing live-drag solve.
+      window.clearTimeout(liveDragTrailingTimerRef.current);
       // The geometry-publish effect can't see the drop: React Flow streamed
       // the final position into `flowNodes` during the last drag frame, so
       // its fingerprint won't change again. Republish here — the ref already
@@ -5175,8 +5223,9 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
       // annotations, which wires (and so their dashes) legitimately pass
       // straight over. During a drag the whole nodes layer rides above the
       // wires, so EVERY card occludes — and the held cards' rects come from
-      // React Flow live (published geometry is deliberately frozen mid-drag,
-      // so their published entries point at where the drag started).
+      // React Flow live (published geometry mid-drag is at best one live-drag
+      // beat behind on a small board, and frozen at the drag's start on a
+      // big one).
       const dragging = activelyDraggedNodeIds.size > 0;
       let occlusionBounds: Array<{
         left: number;
@@ -6333,12 +6382,14 @@ function ResourceEdgeComponent({
         : data?.bundle?.role === "primary"
           ? Math.max(Number(style?.strokeWidth ?? 3.1) + 0.6, 3.7)
           : Number(style?.strokeWidth ?? 3.1);
-  // Mid-drag, an edge whose endpoint node is moving keeps its LAST solved
-  // route, full stop — no cheap pointer-chasing approximation. The old
+  // Mid-drag, an edge whose endpoint node is moving draws its LAST solved
+  // route — never a cheap pointer-chasing approximation. The old
   // follow-the-pointer preview always guessed differently from what the
-  // drop's real solve produced, which read as the board lying. Measurements
-  // stay frozen for the drag (the flag below), and the drop's geometry
-  // publish re-signs the solve so every touched wire reroutes at once.
+  // drop's real solve produced, which read as the board lying. On a small
+  // board "last solved" is now refreshed a few times a second (the live-drag
+  // solve in the geometry effect), so the wires follow the card to exactly
+  // where they will rest; on a big board it stays the pre-drag route until
+  // the drop's publish re-signs the solve, as it always did.
   const shouldUsePreciseRouting =
     !activelyDraggedNodeIds.has(source) && !activelyDraggedNodeIds.has(target);
   const visualSourceCandidates = getSlotEdgeEndpointCandidates({
@@ -6395,8 +6446,9 @@ function ResourceEdgeComponent({
     targetX: visualTarget.x,
     targetY: visualTarget.y,
     targetPosition: visualTarget.side,
-    // Always the solved route: during a drag the solve signature is frozen,
-    // so this returns the cached pre-drag route unchanged. The simple-L
+    // Always the solved route: mid-drag this is the most recent live-drag
+    // solve on a small board, or the cached pre-drag route on a big one
+    // (where the signature stays frozen until the drop). The simple-L
     // fallback inside only ever covers a brand-new wire the solve has not
     // seen yet.
     useSmartRouting: true,
