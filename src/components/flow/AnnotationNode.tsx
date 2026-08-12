@@ -23,6 +23,7 @@ import {
   getCanvasTheme,
   GRAIN_DARK_URI,
   GRAIN_LIGHT_URI,
+  GRAIN_TILE,
   type CanvasTheme,
 } from "./canvas-themes";
 import {
@@ -1017,9 +1018,9 @@ function ZoneShape({
 function ZoneSurfacePattern({ theme, patternId }: { theme: CanvasTheme; patternId: string }) {
   return (
     <defs>
-      <pattern id={patternId} width={180} height={180} patternUnits="userSpaceOnUse">
-        <rect width={180} height={180} fill={theme.base} />
-        <image href={grainFor(theme.base)} width={180} height={180} />
+      <pattern id={patternId} width={GRAIN_TILE} height={GRAIN_TILE} patternUnits="userSpaceOnUse">
+        <rect width={GRAIN_TILE} height={GRAIN_TILE} fill={theme.base} />
+        <image href={grainFor(theme.base)} width={GRAIN_TILE} height={GRAIN_TILE} />
       </pattern>
     </defs>
   );

@@ -157,7 +157,7 @@ import {
   type GlanceMode,
 } from "./board-view";
 import { CANVAS_THEMES, getCanvasTheme, type CanvasTheme } from "./canvas-themes";
-import { RuledBackground } from "./board-pattern";
+import { GrainBackground, RuledBackground } from "./board-pattern";
 import {
   MotionNumberText,
   readBoardMotionSnapshot,
@@ -4213,15 +4213,16 @@ export function FactoryFlow() {
         {
           ...(paintCursor ? { "--paint-cursor": paintCursor } : undefined),
           ...(isDeleteMode ? { "--delete-cursor": getDeleteCursor() } : undefined),
-          // The theme paints the room: base colour, screen-space texture, and
-          // the --canvas var every canvas-matching surface (edge label
+          // The theme paints the room: base colour, the screen-space edge
+          // vignette (grain moved into the viewport — see GrainBackground),
+          // and the --canvas var every canvas-matching surface (edge label
           // backgrounds) reads. Inside a pocket the violet room always wins -
           // the pocket look is a landmark, not a taste.
           ...(activePocketId
             ? undefined
             : {
                 backgroundColor: canvasTheme.base,
-                backgroundImage: canvasTheme.texture,
+                backgroundImage: canvasTheme.vignette,
                 "--canvas": canvasTheme.base,
                 "--canvas-dot": canvasTheme.patternColor,
               }),
@@ -4334,6 +4335,12 @@ export function FactoryFlow() {
         <HopMapController boardRef={boardRef} />
         <SelectionHandoffController signal={selectionHandoffCount} activePocketId={activePocketId} />
         {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
+        {/* The paper's tooth, in board space so it pans and zooms with the
+            factory. Mounted before the pattern so dots ink OVER the grain.
+            A pocket keeps its flat violet room. */}
+        {!activePocketId && canvasTheme.grain ? (
+          <GrainBackground layers={canvasTheme.grain} />
+        ) : null}
         {boardView.canvasPattern === "none" ? null : boardView.canvasPattern === "ruled" ||
           boardView.canvasPattern === "graph" ? (
           <RuledBackground

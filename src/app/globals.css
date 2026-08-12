@@ -50,8 +50,10 @@
   --surface: #25272c;
   --surface-raised: #303238;
   --surface-sunken: #1b1d21;
-  --canvas: #1b1d21;
-  --canvas-dot: #4a4d55;
+  /* Fallbacks only: the board div stamps the live theme's values over these.
+     Kept in step with the default theme (Charcoal, canvas-themes.ts). */
+  --canvas: #141414;
+  --canvas-dot: #43464d;
   --fg: #f5f5f5;
   --fg-subtle: #e5e5e5;
   --fg-muted: #a3a3a3;

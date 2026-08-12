@@ -3,6 +3,7 @@
 import { useStore } from "@xyflow/react";
 import { useId } from "react";
 import { BOARD_GRID } from "@/lib/board-grid";
+import type { CanvasGrainLayer } from "./canvas-themes";
 
 /**
  * The two paper rulings the stock React Flow Background cannot draw: ruled
@@ -76,6 +77,64 @@ export function RuledBackground({
         )}
       </pattern>
       <rect width="100%" height="100%" fill={`url(#${patternId})`} />
+    </svg>
+  );
+}
+
+/**
+ * The paper's tooth, inked ON the board: each grain layer is a tileable
+ * noise image drawn as an SVG pattern that the viewport transform offsets
+ * and scales, exactly the way the rulings above (and the stock dots) are
+ * drawn. Pan and the grain slides with the factory; zoom and it grows like
+ * paper under a loupe. The old version was a static CSS layer on the board
+ * div, which sat still while everything else moved — a dirty monitor, not
+ * a textured paper.
+ *
+ * Zoomed far out the tile shrinks toward per-pixel fizz, so the whole layer
+ * fades below 0.5 zoom and is gone by 0.2 — tooth is a close-up reading.
+ */
+export function GrainBackground({ layers }: { layers: CanvasGrainLayer[] }) {
+  const [translateX, translateY, zoom] = useStore((state) => state.transform);
+  const baseId = useId();
+  const fade = Math.max(0, Math.min(1, (zoom - 0.2) / 0.3));
+  if (fade <= 0) {
+    return null;
+  }
+
+  return (
+    // Same bare positioning as RuledBackground, and mounted BEFORE the
+    // pattern component so the dots stay inked over the paper, not under it.
+    <svg
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+      aria-hidden
+    >
+      <defs>
+        {layers.map((layer, index) => {
+          const tile = layer.size * zoom;
+          return (
+            <pattern
+              key={index}
+              id={`${baseId}-${index}`}
+              x={translateX % tile}
+              y={translateY % tile}
+              width={tile}
+              height={tile}
+              patternUnits="userSpaceOnUse"
+            >
+              <image href={layer.uri} width={tile} height={tile} preserveAspectRatio="none" />
+            </pattern>
+          );
+        })}
+      </defs>
+      {layers.map((layer, index) => (
+        <rect
+          key={index}
+          width="100%"
+          height="100%"
+          fill={`url(#${baseId}-${index})`}
+          opacity={fade * (layer.opacity ?? 1)}
+        />
+      ))}
     </svg>
   );
 }
