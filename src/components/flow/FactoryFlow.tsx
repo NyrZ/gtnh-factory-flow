@@ -4450,14 +4450,15 @@ interface ToolGroupProps {
 /**
  * A shared plate behind one FAMILY of buttons, so a toolbar reads as its
  * groups — these place things, these change the view — without a word of
- * labelling. The plate is the toolbars' own darkest tone: the buttons'
- * borders melt into it and their faces read as raised keys on one housing.
- * Within a plated row even a lone button (the bin, the fit-view) gets a
- * plate, both so baselines line up and because standing apart IS the point.
+ * labelling. The same bevelled slab the colour palette wears (a darkest-tone
+ * plate vanished against the canvas): visibly lighter than the board, so the
+ * darker button faces read as recessed keys in one housing. Within a plated
+ * row even a lone button (the bin, the fit-view) gets a plate, both so
+ * baselines line up and because standing apart IS the point.
  */
 function ToolTray({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pointer-events-auto flex items-start gap-1 bg-[var(--mc-15)] p-1 shadow-[0_2px_0_rgba(0,0,0,0.35)]">
+    <div className="pointer-events-auto flex items-start gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]">
       {children}
     </div>
   );
@@ -4505,8 +4506,8 @@ function ToolGroup({
         // `w-max`, or the row inherits its shrink-to-fit width from the toolbar
         // root it is positioned against — which folded is one 36px button, so
         // every row wrapped into a vertical column one button wide.
-        // top-12: the plated trigger stands 44px tall now.
-        "absolute top-12 flex w-max max-w-[calc(100vw-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
+        // top-[3.25rem]: the plated trigger stands 48px tall now.
+        "absolute top-[3.25rem] flex w-max max-w-[calc(100vw-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
         side === "left" ? "left-0 justify-start" : "right-0 justify-end",
         isOpen ? "translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0",
       ].join(" ")}
@@ -5584,7 +5585,7 @@ const PaintToolbar = memo(function PaintToolbar({
           "absolute right-0 grid gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
           // On a phone it hangs two lines down — clear of the unfolded paint
           // row on the line between — six across and three down.
-          compact ? "top-24 grid-cols-6" : "top-12 w-[296px] grid-cols-9",
+          compact ? "top-[6.5rem] grid-cols-6" : "top-[3.25rem] w-[296px] grid-cols-9",
           isPaletteOpen
             ? "pointer-events-auto translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-1 opacity-0",
