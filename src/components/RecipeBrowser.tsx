@@ -318,6 +318,9 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
   const clearResourceBrowser = useFactoryStore((state) => state.clearResourceBrowser);
   const selectRecipe = useFactoryStore((state) => state.selectRecipe);
   const addNodeForRecipe = useFactoryStore((state) => state.addNodeForRecipeObject);
+  const beginRecipeAdd = useFactoryStore((state) => state.beginRecipeAdd);
+  const resolveRecipeAdd = useFactoryStore((state) => state.resolveRecipeAdd);
+  const failRecipeAdd = useFactoryStore((state) => state.failRecipeAdd);
   const [selectedRecipeMap, setSelectedRecipeMap] = useState("");
   const [recipePage, setRecipePage] = useState(0);
   const [recipeBookSearch, setRecipeBookSearch] = useState("");
@@ -640,11 +643,42 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
         currentMode,
         recipeSummary,
       );
-      const recipe = await getFullRecipe(recipeSummary.id, Boolean(currentResource));
-      addNodeForRecipe(recipe, contextResource, { machineHandlerId, inputPicks });
+      // The book closes on the press, not on the response. A click that seems
+      // to do nothing gets clicked again; the chip over the board carries the
+      // wait instead, and the apology when the fetch fails.
       clearResourceBrowser();
+      const pendingId = beginRecipeAdd(recipeSummary.name);
+      try {
+        const recipe = await getFullRecipe(recipeSummary.id, Boolean(currentResource));
+        addNodeForRecipe(recipe, contextResource, { machineHandlerId, inputPicks });
+        resolveRecipeAdd(pendingId);
+      } catch (error) {
+        failRecipeAdd(
+          pendingId,
+          error instanceof Error ? error.message : "The recipe could not be loaded.",
+        );
+      }
     },
-    [activeResource, addNodeForRecipe, browserMode, clearResourceBrowser, getFullRecipe],
+    [
+      activeResource,
+      addNodeForRecipe,
+      beginRecipeAdd,
+      browserMode,
+      clearResourceBrowser,
+      failRecipeAdd,
+      getFullRecipe,
+      resolveRecipeAdd,
+    ],
+  );
+
+  const prefetchRecipeAdd = useCallback(
+    (recipeId: string) => {
+      // Warm the session cache while the pointer is still hovering, so the
+      // plus button usually has its recipe before it is pressed. A failure
+      // here is nothing: the click fetches again and reports its own.
+      void getFullRecipe(recipeId, true).catch(() => undefined);
+    },
+    [getFullRecipe],
   );
 
   useEffect(() => {
@@ -1203,6 +1237,7 @@ export function RecipeBrowser({ onLoadDatasetVersion }: RecipeBrowserProps) {
           onMaxTierChange={setMaxTier}
           onAdd={handleAddRecipe}
           onAddConnected={undefined}
+          onPrefetch={prefetchRecipeAdd}
           onBrowseResource={(resource, mode) =>
             browseResource(
               {
@@ -2005,6 +2040,7 @@ function RecipeBookOverlay({
   onMaxTierChange,
   onAdd,
   onAddConnected,
+  onPrefetch,
   onBrowseResource,
   onRecipeMapChange,
   onRecipeMapHover,
@@ -2033,6 +2069,7 @@ function RecipeBookOverlay({
     inputPicks?: RecipeInputPicks,
   ) => void | Promise<void>;
   onAddConnected?: (recipeId: string) => void | Promise<void>;
+  onPrefetch?: (recipeId: string) => void;
   onBrowseResource: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
   onRecipeMapChange: (recipeMap: string) => void;
   onRecipeMapHover: (recipeMap: string) => void;
@@ -2297,6 +2334,7 @@ function RecipeBookOverlay({
                 onSelectRecipe={onSelectRecipe}
                 onAdd={onAdd}
                 onAddConnected={onAddConnected}
+                onPrefetch={onPrefetch}
                 onSlotBrowse={onBrowseResource}
                 contextResource={activeResource}
                 hasMore={hasMore}
@@ -2656,6 +2694,7 @@ function VirtualRecipeResultList({
   onSelectRecipe,
   onAdd,
   onAddConnected,
+  onPrefetch,
   onSlotBrowse,
   contextResource,
   hasMore,
@@ -2676,6 +2715,7 @@ function VirtualRecipeResultList({
     inputPicks?: RecipeInputPicks,
   ) => void | Promise<void>;
   onAddConnected?: (recipeId: string) => void | Promise<void>;
+  onPrefetch?: (recipeId: string) => void;
   onSlotBrowse: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
   contextResource?: PreviewContextResource;
   hasMore: boolean;
@@ -2850,6 +2890,7 @@ function VirtualRecipeResultList({
             onSelectRecipe={onSelectRecipe}
             onAdd={onAdd}
             onAddConnected={onAddConnected}
+            onPrefetch={onPrefetch}
             onSlotBrowse={onSlotBrowse}
             contextResource={contextResource}
             scale={scale}
@@ -2872,6 +2913,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
   onSelectRecipe,
   onAdd,
   onAddConnected,
+  onPrefetch,
   onSlotBrowse,
   contextResource,
   scale = 2,
@@ -2885,6 +2927,7 @@ const RecipeResultCard = memo(function RecipeResultCard({
     inputPicks?: RecipeInputPicks,
   ) => void | Promise<void>;
   onAddConnected?: (recipeId: string) => void | Promise<void>;
+  onPrefetch?: (recipeId: string) => void;
   onSlotBrowse?: (resource: ResourceAmount, mode: "recipes" | "uses") => void;
   contextResource?: PreviewContextResource;
   /** How large to draw the recipe. Set by the grid from the width it has. */
@@ -2902,6 +2945,27 @@ const RecipeResultCard = memo(function RecipeResultCard({
     [facesRef],
   );
   const seconds = recipe.durationTicks / 20;
+  // A pointer that settles on a card is probably about to press its plus, so
+  // the full recipe starts travelling now. The short fuse keeps a pointer
+  // sweeping across the grid from requesting every card it crosses.
+  const prefetchTimerRef = useRef<number | undefined>(undefined);
+  const cancelPrefetch = useCallback(() => {
+    if (prefetchTimerRef.current !== undefined) {
+      window.clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = undefined;
+    }
+  }, []);
+  const armPrefetch = useCallback(() => {
+    if (!onPrefetch) {
+      return;
+    }
+    cancelPrefetch();
+    prefetchTimerRef.current = window.setTimeout(() => {
+      prefetchTimerRef.current = undefined;
+      onPrefetch(recipe.id);
+    }, 150);
+  }, [cancelPrefetch, onPrefetch, recipe.id]);
+  useEffect(() => cancelPrefetch, [cancelPrefetch]);
 
   return (
     <AlternativeCycleScope facesRef={facesRef}>
@@ -2913,6 +2977,8 @@ const RecipeResultCard = memo(function RecipeResultCard({
       data-card-scale={scale}
       onClick={() => onSelectRecipe(recipe.id)}
       onDoubleClick={() => void onAdd(recipe, undefined, currentPicks())}
+      onPointerEnter={armPrefetch}
+      onPointerLeave={cancelPrefetch}
       className={[
         "relative cursor-pointer transition",
         selected ? "ring-1 ring-cyan-400" : "",

@@ -181,6 +181,7 @@ import {
   type EdgeLabelInput,
 } from "./edge-labels";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import { RecipeAddChips } from "@/components/RecipeAddChip";
 import {
   LANE_CAPACITY,
   laneWidthForHeat,
@@ -4560,12 +4561,14 @@ export function FactoryFlow() {
         onFitView={handleFitView}
       />
       <HopMapLegend />
-      {/* Two notices, one column, so neither ever sits on top of the other.
+      {/* The notices share one column, so none ever sits on top of another.
           Unwired goes UNDER the dead loop: a ring is a thing that has gone
-          wrong, unfinished wiring is just work still to do. */}
+          wrong, unfinished wiring is just work still to do. The add chips ride
+          on top: they are the most transient thing here. */}
       <div className="nodrag pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 flex-col-reverse items-center gap-2">
         <UnwiredNotice onShow={handleShowNodes} />
         <DeathSpiralNotice onShow={handleShowNodes} />
+        <RecipeAddChips />
       </div>
       {isProjectImporting ? <FlowLoadingOverlay /> : null}
     </div>

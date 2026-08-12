@@ -87,6 +87,16 @@ export async function initRecipeDatasetVersion(
   return fetchJson<RecipeDataset>(url.toString(), { signal: options.signal });
 }
 
+/**
+ * Full recipes already fetched this session, keyed by their request URL (which
+ * carries the dataset hash, so a republished dataset misses cleanly). The API
+ * answers `no-store`, so without this the plus button pays a fresh round trip
+ * for a recipe it fetched a moment ago. Holds the promise rather than the
+ * recipe so a hover prefetch and the click that follows it share one request.
+ */
+const recipeFetchCache = new Map<string, Promise<Recipe>>();
+const RECIPE_FETCH_CACHE_LIMIT = 256;
+
 export async function getRecipeDatasetRecipe(
   _manifestUrl: string,
   version: DatasetVersion,
@@ -98,7 +108,30 @@ export async function getRecipeDatasetRecipe(
     window.location.origin,
   );
   addDatasetCacheKey(url, version);
-  return fetchJson<Recipe>(url.toString(), { signal: options.signal });
+  const key = url.toString();
+  if (options.signal) {
+    // An abortable request is one caller's alone; caching it would let that
+    // caller's abort reject everyone else's hit.
+    return fetchJson<Recipe>(key, { signal: options.signal });
+  }
+
+  const cached = recipeFetchCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = fetchJson<Recipe>(key).catch((error) => {
+    recipeFetchCache.delete(key);
+    throw error;
+  });
+  if (recipeFetchCache.size >= RECIPE_FETCH_CACHE_LIMIT) {
+    const oldest = recipeFetchCache.keys().next().value;
+    if (oldest !== undefined) {
+      recipeFetchCache.delete(oldest);
+    }
+  }
+  recipeFetchCache.set(key, promise);
+  return promise;
 }
 
 export async function getRecipeDatasetRecipeIds(

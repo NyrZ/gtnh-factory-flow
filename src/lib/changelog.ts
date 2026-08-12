@@ -73,6 +73,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.2",
+    date: "2026-08-12",
+    headline: "The plus button answers the moment you press it",
+    notes: [
+      "The recipe book closes as soon as you press plus, with a small chip over the board while the recipe is on its way.",
+      "If a recipe cannot be fetched, the board says so instead of doing nothing.",
+      "Recipes you have hovered or added before now land instantly.",
+    ],
+  },
+  {
     version: "2.11.1",
     date: "2026-08-12",
     headline: "The board decides when wires follow",

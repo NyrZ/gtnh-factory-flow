@@ -139,6 +139,13 @@ interface FactoryStore {
   recipeBrowserResource?: RecipeBrowserResource;
   recipeBrowserMode: RecipeBrowserMode;
   recipeResourceHistory: RecipeBrowserResource[];
+  /**
+   * Recipes the plus button promised to the board whose full bodies are still
+   * on the wire. The book closes the moment the button is pressed, so these
+   * drive the board's "on its way" chip — and carry the apology when a fetch
+   * fails, because the book that would have shown the error is gone.
+   */
+  pendingRecipeAdds: PendingRecipeAdd[];
   pendingResourceConnection?: PendingResourceConnection;
   nodeColorPaintMode?: FactoryNodeColorTag | null;
   // The read-only display modes (heatmap, the three line modes) are NOT here:
@@ -187,6 +194,9 @@ interface FactoryStore {
   clearResourceHistory: () => void;
   browseResource: (resource: RecipeBrowserResource, mode?: RecipeBrowserMode) => void;
   clearResourceBrowser: () => void;
+  beginRecipeAdd: (label: string) => number;
+  resolveRecipeAdd: (id: number) => void;
+  failRecipeAdd: (id: number, message: string) => void;
   cleanBoard: () => void;
   selectResourceConnectionSlot: (slot: PendingResourceConnection) => void;
   cancelResourceConnection: () => void;
@@ -501,6 +511,14 @@ export interface RecipeBrowserResource {
   anchorNodeId?: string;
 }
 
+export interface PendingRecipeAdd {
+  id: number;
+  /** The recipe's display name, for the board's "on its way" chip. */
+  label: string;
+  /** Set when the fetch failed; the chip switches to this, then clears. */
+  error?: string;
+}
+
 export interface PendingResourceConnection {
   nodeId: string;
   side: "input" | "output";
@@ -513,6 +531,9 @@ export interface PendingResourceConnection {
   dominantColor?: string;
   handleId: string;
 }
+
+/** Never reused within a session, so a chip's dismiss can name its entry. */
+let lastRecipeAddId = 0;
 
 export const useFactoryStore = create<FactoryStore>((set, get) => ({
   project: initialProject,
@@ -531,6 +552,7 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
   recipeBrowserResource: undefined,
   recipeBrowserMode: "recipes",
   recipeResourceHistory: [],
+  pendingRecipeAdds: [],
   pendingResourceConnection: undefined,
   nodeColorPaintMode: undefined,
   hoveredFlowResourceKey: undefined,
@@ -749,6 +771,25 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
       recipeSearch: "",
       highlightSearch: "",
     });
+  },
+  beginRecipeAdd: (label) => {
+    const id = ++lastRecipeAddId;
+    set((state) => ({
+      pendingRecipeAdds: [...state.pendingRecipeAdds, { id, label }],
+    }));
+    return id;
+  },
+  resolveRecipeAdd: (id) => {
+    set((state) => ({
+      pendingRecipeAdds: state.pendingRecipeAdds.filter((entry) => entry.id !== id),
+    }));
+  },
+  failRecipeAdd: (id, message) => {
+    set((state) => ({
+      pendingRecipeAdds: state.pendingRecipeAdds.map((entry) =>
+        entry.id === id ? { ...entry, error: message } : entry,
+      ),
+    }));
   },
   cleanBoard: () => {
     set((state) => {
