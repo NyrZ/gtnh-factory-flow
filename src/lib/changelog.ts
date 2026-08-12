@@ -75,12 +75,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.10.0",
     date: "2026-08-11",
-    headline: "Share up top, and a bar for every plan",
+    headline: "Share it, and make the board yours",
     notes: [
       "Share buttons now sit next to Import and Export and on the new plan bar under the board.",
-      "The plan bar holds your plan's icon, name and description, edited right in place.",
-      "Open someone's setup and the bar shows the author and votes, with a reset back to the posted version.",
-      "While your copy still matches a shared setup, the address bar carries its link, ready to copy.",
+      "The plan bar holds a plan's icon, name and description, and for a shared setup its author, votes and a reset back to the posted version.",
+      "The board has papers now: blueprint, chalkboard, parchment, notepad and more, picked from the view tools.",
+      "Boxes and zones take their own border and fill styles, and your own pictures can go on the board.",
     ],
   },
   {

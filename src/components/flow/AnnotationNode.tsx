@@ -1,10 +1,23 @@
 "use client";
 
-import { NodeResizer, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
+import {
+  NodeResizer,
+  NodeToolbar,
+  Position,
+  useReactFlow,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
+import { Ban, ImageOff } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
-import type { FactoryAnnotation } from "@/lib/model/types";
+import type {
+  FactoryAnnotation,
+  FactoryAnnotationBorderStyle,
+  FactoryAnnotationFillStyle,
+  FactoryAnnotationStyle,
+} from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
-import { GT_NODE_COLORS } from "./node-colors";
+import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE } from "./node-colors";
 import {
   ANNOTATION_MIN_ARROW,
   ANNOTATION_MIN_BOX,
@@ -41,6 +54,59 @@ function clampFontSize(value: number): number {
 const ANNOTATION_STEP_BUTTON_CLASS =
   "flex h-5 w-5 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)] disabled:cursor-not-allowed disabled:opacity-40";
 
+/**
+ * The resolved dressing of a box/zone/image: every optional `style` field
+ * collapsed to a value, and the two colour tags collapsed to hex swatches.
+ */
+interface AnnotationLook {
+  border: FactoryAnnotationBorderStyle;
+  borderSwatch: string;
+  fill: FactoryAnnotationFillStyle;
+  fillSwatch: string;
+}
+
+function annotationLook(annotation: FactoryAnnotation): AnnotationLook {
+  const style = annotation.style;
+  const baseTag = annotation.colorTag ?? DEFAULT_ANNOTATION_COLOR;
+  return {
+    // A dropped picture is its own frame; boxes and zones default to drawn.
+    border: style?.border ?? (annotation.kind === "image" ? "none" : "solid"),
+    borderSwatch: GT_NODE_COLORS[style?.borderColor ?? baseTag].swatch,
+    fill: style?.fill ?? "tint",
+    fillSwatch: GT_NODE_COLORS[style?.fillColor ?? baseTag].swatch,
+  };
+}
+
+/**
+ * The CSS background a fill style paints, in the fill colour. `unit` is the
+ * texture period: the board cell for real shapes, a few px for the little
+ * preview chips in the style panel.
+ */
+function fillBackground(
+  fill: FactoryAnnotationFillStyle,
+  swatch: string,
+  unit: number = BOARD_GRID,
+): { backgroundColor?: string; backgroundImage?: string } {
+  switch (fill) {
+    case "none":
+      return {};
+    case "solid":
+      return { backgroundColor: swatch };
+    case "hatch":
+      return {
+        backgroundColor: `${swatch}0d`,
+        backgroundImage: `repeating-linear-gradient(45deg, ${swatch}38 0 ${unit * 0.3}px, transparent ${unit * 0.3}px ${unit * 0.9}px)`,
+      };
+    case "grid":
+      return {
+        backgroundColor: `${swatch}0d`,
+        backgroundImage: `repeating-linear-gradient(0deg, ${swatch}2e 0 1px, transparent 1px ${unit}px), repeating-linear-gradient(90deg, ${swatch}2e 0 1px, transparent 1px ${unit}px)`,
+      };
+    default:
+      return { backgroundColor: `${swatch}14` };
+  }
+}
+
 function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<AnnotationFlowNode>) {
   const { annotation } = data;
   const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
@@ -53,6 +119,8 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
       isVisible={selected}
       minWidth={annotation.kind === "text" ? ANNOTATION_MIN_TEXT.width : ANNOTATION_MIN_BOX}
       minHeight={annotation.kind === "text" ? ANNOTATION_MIN_TEXT.height : ANNOTATION_MIN_ARROW}
+      // A picture keeps its proportions under a corner drag; boxes are free.
+      keepAspectRatio={annotation.kind === "image"}
       // A box's edges belong to its MOVE strips (which are fat and overlap the
       // resize lines); giving both a claim to the same pixels made each a
       // coin-toss. Corners resize, edges move. A note has no strips, so its
@@ -101,13 +169,16 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
   if (annotation.kind === "zone") {
     // Like the arrow: the outline's own corners are the editor, no resize box.
     return (
-      <ZoneAnnotation
-        annotation={annotation}
-        width={nodeWidth}
-        height={nodeHeight}
-        swatch={color.swatch}
-        selected={selected ?? false}
-      />
+      <>
+        <ZoneAnnotation
+          annotation={annotation}
+          width={nodeWidth}
+          height={nodeHeight}
+          look={annotationLook(annotation)}
+          selected={selected ?? false}
+        />
+        <AnnotationStylePanel annotation={annotation} selected={selected ?? false} />
+      </>
     );
   }
 
@@ -120,27 +191,41 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
     );
   }
 
+  if (annotation.kind === "image") {
+    return (
+      <>
+        {resizer}
+        <ImageShape annotation={annotation} look={annotationLook(annotation)} />
+        <AnnotationStylePanel annotation={annotation} selected={selected ?? false} />
+      </>
+    );
+  }
+
   return (
     <>
       {resizer}
-      <BoxShape swatch={color.swatch} />
+      <BoxShape look={annotationLook(annotation)} />
+      <AnnotationStylePanel annotation={annotation} selected={selected ?? false} />
     </>
   );
 }
 
-function BoxShape({ swatch }: { swatch: string }) {
+function BoxShape({ look }: { look: AnnotationLook }) {
   // The visible frame is inert; four invisible strips along the edges are what
   // take clicks and drags, so the interior stays fully click-through. 24px
   // deep (12 out, 12 in): grabbing "roughly the frame" has to count.
   const stripBase = `${ANNOTATION_DRAG_HANDLE_CLASS} absolute`;
+  const hasBorder = look.border !== "none";
   return (
     <div className="h-full w-full" style={{ pointerEvents: "none" }}>
       <div
-        className="pointer-events-none absolute inset-0 border-4"
+        className="pointer-events-none absolute inset-0"
         style={{
-          borderColor: swatch,
-          backgroundColor: `${swatch}14`,
-          boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.35)`,
+          ...(hasBorder ? { border: `4px ${look.border} ${look.borderSwatch}` } : undefined),
+          ...fillBackground(look.fill, look.fillSwatch),
+          ...(hasBorder
+            ? { boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.35)` }
+            : undefined),
         }}
       />
       {/* Inset from the ends: the corners belong to the resize grabbers. */}
@@ -152,7 +237,230 @@ function BoxShape({ swatch }: { swatch: string }) {
   );
 }
 
+/**
+ * A picture on the board. The whole face is the drag handle - an image is
+ * content, not a frame around other things, so grabbing anywhere moves it -
+ * and the style panel offers the same border dressing a box has.
+ */
+function ImageShape({ annotation, look }: { annotation: FactoryAnnotation; look: AnnotationLook }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="h-full w-full" style={{ pointerEvents: "none" }}>
+      <div
+        className={`${ANNOTATION_DRAG_HANDLE_CLASS} absolute inset-0 cursor-grab overflow-hidden`}
+        style={{
+          pointerEvents: "all",
+          ...(look.border !== "none"
+            ? { border: `4px ${look.border} ${look.borderSwatch}` }
+            : undefined),
+          boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
+        }}
+      >
+        {annotation.imageUrl && !failed ? (
+          // crossOrigin so the PNG/SVG exporter is allowed to read the pixels
+          // back off the canvas; the image bucket serves open CORS.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={annotation.imageUrl}
+            alt={annotation.text ?? "Board image"}
+            crossOrigin="anonymous"
+            draggable={false}
+            className="h-full w-full select-none"
+            style={{ objectFit: "fill" }}
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center gap-2 bg-[var(--mc-49)] text-[var(--mc-ink)]">
+            <ImageOff className="h-5 w-5 opacity-60" />
+            <span className="text-xs opacity-60">image unavailable</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type ArrowPoint = { x: number; y: number };
+
+/** Click-to-cycle orders for the two style chips. */
+const NEXT_BORDER: Record<FactoryAnnotationBorderStyle, FactoryAnnotationBorderStyle> = {
+  solid: "dashed",
+  dashed: "none",
+  none: "solid",
+};
+const NEXT_FILL: Record<FactoryAnnotationFillStyle, FactoryAnnotationFillStyle> = {
+  tint: "solid",
+  solid: "hatch",
+  hatch: "grid",
+  grid: "none",
+  none: "tint",
+};
+const FILL_WORD: Record<FactoryAnnotationFillStyle, string> = {
+  tint: "tinted",
+  solid: "solid",
+  hatch: "hatched",
+  grid: "gridded",
+  none: "off",
+};
+
+const STYLE_CHIP_CLASS =
+  "flex h-7 w-7 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]";
+
+/**
+ * The little settings cluster a selected box/zone/image wears at its top
+ * left: border style, border colour, fill style, fill colour. Each style chip
+ * PREVIEWS its current setting (a square drawn in the actual border, a square
+ * painted in the actual fill) and cycles on click; each colour chip opens the
+ * shared palette row underneath. Rendered through NodeToolbar so it sits in
+ * screen space and never scales with the zoom.
+ */
+function AnnotationStylePanel({
+  annotation,
+  selected,
+}: {
+  annotation: FactoryAnnotation;
+  selected: boolean;
+}) {
+  const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
+  const [paletteFor, setPaletteFor] = useState<"border" | "fill" | undefined>(undefined);
+  useEffect(() => {
+    if (!selected) {
+      setPaletteFor(undefined);
+    }
+  }, [selected]);
+
+  const look = annotationLook(annotation);
+  // A picture is opaque: it has a border to dress and nothing for a fill to do.
+  const hasFill = annotation.kind !== "image";
+  const commitStyle = (patch: Partial<FactoryAnnotationStyle>) => {
+    updateAnnotation(annotation.id, { style: { ...annotation.style, ...patch } });
+  };
+  const stop = (event: React.SyntheticEvent) => event.stopPropagation();
+
+  return (
+    <NodeToolbar
+      isVisible={selected}
+      position={Position.Top}
+      align="start"
+      offset={8}
+      // The toolbar portal carries no z of its own, and this node sits at -5
+      // (a backdrop), so without a lift the PANE hit-tests above the panel
+      // and eats every click. 30: over the board and its z-20 toolbars,
+      // under the z-40 palettes.
+      style={{ zIndex: 30 }}
+    >
+      <div
+        className="nodrag border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]"
+        onPointerDown={stop}
+        onDoubleClick={stop}
+      >
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => commitStyle({ border: NEXT_BORDER[look.border] })}
+            className={STYLE_CHIP_CLASS}
+            title={`Border: ${look.border}. Click to change.`}
+            aria-label={`Border: ${look.border}. Click to change.`}
+          >
+            {look.border === "none" ? (
+              <Ban className="h-3.5 w-3.5 opacity-60" />
+            ) : (
+              <span
+                aria-hidden
+                className="h-4 w-4"
+                style={{ border: `2px ${look.border} ${look.borderSwatch}` }}
+              />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPaletteFor(paletteFor === "border" ? undefined : "border")}
+            className={[
+              STYLE_CHIP_CLASS,
+              paletteFor === "border" ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]" : "",
+            ].join(" ")}
+            title="Border colour"
+            aria-label="Border colour"
+            aria-expanded={paletteFor === "border"}
+          >
+            <span
+              aria-hidden
+              className="h-4 w-4 border border-black/40"
+              style={{ backgroundColor: look.borderSwatch }}
+            />
+          </button>
+          {hasFill ? (
+            <>
+              <span aria-hidden className="mx-0.5 h-5 w-[2px] bg-[var(--mc-33)]" />
+              <button
+                type="button"
+                onClick={() => commitStyle({ fill: NEXT_FILL[look.fill] })}
+                className={STYLE_CHIP_CLASS}
+                title={`Fill: ${FILL_WORD[look.fill]}. Click to change.`}
+                aria-label={`Fill: ${FILL_WORD[look.fill]}. Click to change.`}
+              >
+                {look.fill === "none" ? (
+                  <Ban className="h-3.5 w-3.5 opacity-60" />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="h-4 w-4 border border-black/40"
+                    style={fillBackground(look.fill, look.fillSwatch, 8)}
+                  />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaletteFor(paletteFor === "fill" ? undefined : "fill")}
+                className={[
+                  STYLE_CHIP_CLASS,
+                  paletteFor === "fill" ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]" : "",
+                ].join(" ")}
+                title="Fill colour"
+                aria-label="Fill colour"
+                aria-expanded={paletteFor === "fill"}
+              >
+                <span
+                  aria-hidden
+                  className="h-4 w-4 border border-black/40"
+                  style={{ backgroundColor: look.fillSwatch }}
+                />
+              </button>
+            </>
+          ) : null}
+        </div>
+        {paletteFor ? (
+          <div className="mt-1 grid grid-cols-8 gap-1">
+            {GT_NODE_COLOR_PALETTE.map((entry) => (
+              <button
+                key={entry.tag}
+                type="button"
+                onClick={() =>
+                  commitStyle(
+                    paletteFor === "border"
+                      ? { borderColor: entry.tag }
+                      : { fillColor: entry.tag },
+                  )
+                }
+                className={[
+                  "h-6 w-6 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
+                  (paletteFor === "border"
+                    ? entry.color.swatch === look.borderSwatch
+                    : entry.color.swatch === look.fillSwatch)
+                    ? "border-white ring-2 ring-cyan-300"
+                    : "border-[var(--mc-15)]",
+                ].join(" ")}
+                style={{ backgroundColor: entry.color.swatch }}
+                title={entry.tag}
+                aria-label={`Use ${entry.tag} for the ${paletteFor}`}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </NodeToolbar>
+  );
+}
 
 /**
  * The zone with a grab point on every corner. Same contract as the arrow:
@@ -164,13 +472,13 @@ function ZoneAnnotation({
   annotation,
   width,
   height,
-  swatch,
+  look,
   selected,
 }: {
   annotation: FactoryAnnotation;
   width: number;
   height: number;
-  swatch: string;
+  look: AnnotationLook;
   selected: boolean;
 }) {
   const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
@@ -277,10 +585,11 @@ function ZoneAnnotation({
   return (
     <>
       <ZoneShape
+        zoneId={annotation.id}
         points={points}
         width={width}
         height={height}
-        swatch={swatch}
+        look={look}
         onOutlineDoubleClick={addCornerAt}
       />
       {selected
@@ -312,16 +621,18 @@ function closestPointOnSegment(point: ArrowPoint, a: ArrowPoint, b: ArrowPoint):
 }
 
 function ZoneShape({
+  zoneId,
   points,
   width,
   height,
-  swatch,
+  look,
   onOutlineDoubleClick,
 }: {
+  zoneId: string;
   points: ArrowPoint[];
   width: number;
   height: number;
-  swatch: string;
+  look: AnnotationLook;
   /** Double-clicking the outline mints a corner there. */
   onOutlineDoubleClick?: (event: React.MouseEvent) => void;
 }) {
@@ -333,8 +644,22 @@ function ZoneShape({
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ")} Z`;
 
-  // Like the box: the interior is a faint wash and fully click-through; only
-  // the outline itself (via the fat transparent stroke) takes the pointer.
+  // Hatch and grid fills are SVG patterns, one per zone (ids are global to
+  // the whole board's SVG soup, so the zone id keys them).
+  const patternId = `zone-fill-${zoneId}`;
+  const fill =
+    look.fill === "none"
+      ? "none"
+      : look.fill === "solid"
+        ? look.fillSwatch
+        : look.fill === "tint"
+          ? `${look.fillSwatch}14`
+          : `url(#${patternId})`;
+  const hasBorder = look.border !== "none";
+  const dashArray = look.border === "dashed" ? "14 10" : undefined;
+
+  // Like the box: the interior is a wash and fully click-through; only the
+  // outline itself (via the fat transparent stroke) takes the pointer.
   return (
     <svg
       className="h-full w-full overflow-visible"
@@ -342,14 +667,55 @@ function ZoneShape({
       viewBox={`0 0 ${Math.max(width, 1)} ${Math.max(height, 1)}`}
       preserveAspectRatio="none"
     >
+      {look.fill === "hatch" ? (
+        <defs>
+          <pattern
+            id={patternId}
+            width={18}
+            height={18}
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <rect width={18} height={18} fill={`${look.fillSwatch}0d`} />
+            <rect width={6} height={18} fill={`${look.fillSwatch}38`} />
+          </pattern>
+        </defs>
+      ) : look.fill === "grid" ? (
+        <defs>
+          <pattern
+            id={patternId}
+            width={BOARD_GRID}
+            height={BOARD_GRID}
+            patternUnits="userSpaceOnUse"
+          >
+            <rect width={BOARD_GRID} height={BOARD_GRID} fill={`${look.fillSwatch}0d`} />
+            <path
+              d={`M ${BOARD_GRID} 0 L 0 0 0 ${BOARD_GRID}`}
+              fill="none"
+              stroke={`${look.fillSwatch}2e`}
+              strokeWidth={1}
+            />
+          </pattern>
+        </defs>
+      ) : null}
       <path
         d={outline}
-        fill={`${swatch}14`}
-        stroke="rgba(0,0,0,0.45)"
+        fill={fill}
+        stroke={hasBorder ? "rgba(0,0,0,0.45)" : "none"}
         strokeWidth={7}
+        strokeDasharray={dashArray}
         strokeLinejoin="round"
       />
-      <path d={outline} fill="none" stroke={swatch} strokeWidth={4} strokeLinejoin="round" />
+      {hasBorder ? (
+        <path
+          d={outline}
+          fill="none"
+          stroke={look.borderSwatch}
+          strokeWidth={4}
+          strokeDasharray={dashArray}
+          strokeLinejoin="round"
+        />
+      ) : null}
       <path
         d={outline}
         className={`${ANNOTATION_DRAG_HANDLE_CLASS} cursor-grab`}

@@ -332,7 +332,7 @@ export const factoryStorageSchema = z.object({
 
 export const factoryAnnotationSchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(["box", "arrow", "text", "zone"]),
+  kind: z.enum(["box", "arrow", "text", "zone", "image"]),
   colorTag: factoryNodeColorTagSchema.optional(),
   text: z.string().optional(),
   position: z.object({
@@ -349,6 +349,21 @@ export const factoryAnnotationSchema = z.object({
   points: z.array(z.object({ x: z.number(), y: z.number() })).max(64).optional(),
   // Bounded so an imported plan cannot carry a note that swallows the board.
   fontSize: z.number().min(8).max(96).optional(),
+  // Image annotations: only ever rendered as an <img> src. Bounded, and http
+  // or a data URI only, so a plan cannot smuggle a javascript: URL.
+  imageUrl: z
+    .string()
+    .max(2048)
+    .regex(/^(https?:\/\/|data:image\/)/)
+    .optional(),
+  style: z
+    .object({
+      border: z.enum(["solid", "dashed", "none"]).optional(),
+      borderColor: factoryNodeColorTagSchema.optional(),
+      fill: z.enum(["tint", "solid", "hatch", "grid", "none"]).optional(),
+      fillColor: factoryNodeColorTagSchema.optional(),
+    })
+    .optional(),
   pocketId: z.string().min(1).optional(),
 });
 
@@ -404,6 +419,7 @@ export const fuelProfileSchema = z
  */
 export const planViewStateSchema = z.object({
   canvasPattern: z.string().optional(),
+  canvasTheme: z.string().optional(),
   lineHeatMode: z.boolean().optional(),
   lineThicknessMode: z.boolean().optional(),
   freeDockMode: z.boolean().optional(),

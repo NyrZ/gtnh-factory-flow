@@ -131,6 +131,8 @@ export interface CommunityVoteResponse {
 }
 
 export const COMMUNITY_UPLOAD_MAX_BYTES = 3 * 1024 * 1024;
+/** Board image uploads (the picture annotation): hard cap, client and server. */
+export const BOARD_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 export const COMMUNITY_NAME_MAX_LENGTH = 80;
 export const COMMUNITY_DESCRIPTION_MAX_LENGTH = 2000;
 export const COMMUNITY_RESOURCE_STAT_LIMIT = 40;

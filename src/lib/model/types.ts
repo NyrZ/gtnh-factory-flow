@@ -349,9 +349,32 @@ export interface FactoryStorage {
   };
 }
 
-export type FactoryAnnotationKind = "box" | "arrow" | "text" | "zone";
+export type FactoryAnnotationKind = "box" | "arrow" | "text" | "zone" | "image";
 
 export type FactoryAnnotationArrowDirection = "down-right" | "down-left" | "up-right" | "up-left";
+
+export type FactoryAnnotationBorderStyle = "solid" | "dashed" | "none";
+
+/**
+ * What a box/zone/image paints inside itself. `tint` is the classic faint
+ * wash; `solid` is opaque paint; `hatch` and `grid` draw their own texture in
+ * the fill colour, so a region can carry its own background on the board.
+ */
+export type FactoryAnnotationFillStyle = "tint" | "solid" | "hatch" | "grid" | "none";
+
+/**
+ * How a box, zone or image is dressed. Every field optional: absent means the
+ * classic look (solid border and faint tint, both in `colorTag`), so old plans
+ * render exactly as they always did. The border and the fill each take their
+ * own colour; absent falls back to the annotation's `colorTag`, which is what
+ * keeps the paint tool working on styled shapes.
+ */
+export interface FactoryAnnotationStyle {
+  border?: FactoryAnnotationBorderStyle;
+  borderColor?: FactoryNodeColorTag;
+  fill?: FactoryAnnotationFillStyle;
+  fillColor?: FactoryNodeColorTag;
+}
 
 export interface FactoryAnnotation {
   id: string;
@@ -380,6 +403,10 @@ export interface FactoryAnnotation {
    * ever changed how much room the same small text had to wrap in.
    */
   fontSize?: number;
+  /** Image only: where the picture lives (an uploaded, hosted URL). */
+  imageUrl?: string;
+  /** Box/zone/image: border and fill dressing. Absent = the classic look. */
+  style?: FactoryAnnotationStyle;
   /** The pocket dimension this ink lives in; absent = the root board. */
   pocketId?: string;
 }
@@ -458,6 +485,7 @@ export interface FuelProfile {
  */
 export interface PlanViewState {
   canvasPattern?: string;
+  canvasTheme?: string;
   lineHeatMode?: boolean;
   lineThicknessMode?: boolean;
   freeDockMode?: boolean;

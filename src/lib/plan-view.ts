@@ -7,6 +7,7 @@ import {
   type CanvasPattern,
   type GlanceMode,
 } from "@/components/flow/board-view";
+import { isCanvasThemeId } from "@/components/flow/canvas-themes";
 import { isCompactViewport } from "./compact-view";
 import type { BoardCamera } from "./designs/design-camera";
 import type { PlanViewState } from "./model/types";
@@ -30,6 +31,7 @@ export function capturePlanView(): PlanViewState {
 
   return {
     canvasPattern: board.canvasPattern,
+    canvasTheme: board.canvasTheme,
     lineHeatMode: board.lineHeatMode,
     lineThicknessMode: board.lineThicknessMode,
     freeDockMode: board.freeDockMode,
@@ -107,6 +109,9 @@ function applyViewSettings(view: PlanViewState | undefined, scope: PlanViewScope
 
   if (view.canvasPattern && CANVAS_PATTERNS.includes(view.canvasPattern as CanvasPattern)) {
     boardPatch.canvasPattern = view.canvasPattern as CanvasPattern;
+  }
+  if (isCanvasThemeId(view.canvasTheme)) {
+    boardPatch.canvasTheme = view.canvasTheme;
   }
   if (view.glanceMode === "identity" || view.glanceMode === "status") {
     boardPatch.glanceMode = view.glanceMode as GlanceMode;

@@ -1,6 +1,11 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import {
+  DEFAULT_CANVAS_THEME_ID,
+  isCanvasThemeId,
+  type CanvasThemeId,
+} from "./canvas-themes";
 
 /**
  * Board view settings: how the canvas looks, and which of the read-only display
@@ -44,6 +49,8 @@ export interface BoardView {
   // No `snapToGrid`. Snapping was a preference back when cards were sized by
   // their contents; now they are sized in grid cells, so it is a fact.
   canvasPattern: CanvasPattern;
+  /** The paper the board is drawn on; see canvas-themes.ts. */
+  canvasTheme: CanvasThemeId;
   /**
    * Machines take their colour from how hard they run. Not its own toggle
    * any more: it rides the status glance view (the gauge button, bottom
@@ -75,6 +82,7 @@ const BOARD_VIEW_STORAGE_KEY = "gtnh-factory-flow-board-view";
 
 export const DEFAULT_BOARD_VIEW: BoardView = {
   canvasPattern: "dots",
+  canvasTheme: DEFAULT_CANVAS_THEME_ID,
   heatmapMode: false,
   lineHeatMode: false,
   // On out of the box: between them these two say which way everything runs
@@ -114,6 +122,9 @@ function readBoardView(): BoardView {
       canvasPattern: CANVAS_PATTERNS.includes(parsed.canvasPattern as CanvasPattern)
         ? (parsed.canvasPattern as CanvasPattern)
         : DEFAULT_BOARD_VIEW.canvasPattern,
+      canvasTheme: isCanvasThemeId(parsed.canvasTheme)
+        ? parsed.canvasTheme
+        : DEFAULT_BOARD_VIEW.canvasTheme,
       // Derived, not read: the heatmap rides the status glance view, and a
       // saved blob from when it had its own button must not strand a heated
       // board with no control that turns it off.

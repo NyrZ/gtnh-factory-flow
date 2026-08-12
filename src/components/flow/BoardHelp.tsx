@@ -162,7 +162,8 @@ const CALLOUTS: Array<{
     title: "Paint and notes",
     rows: [
       { icon: Paintbrush, text: "Paint cards" },
-      { icon: Square, text: "Box, zone, arrow, note" },
+      { icon: Square, text: "Box, zone, arrow, note, image" },
+      { text: "Select a box for border and fill styles" },
       { icon: Trash2, text: "*Bin*: delete anything" },
     ],
   },
@@ -173,7 +174,7 @@ const CALLOUTS: Array<{
     title: "View options",
     rows: [
       { text: "View only, *never the plan*" },
-      { icon: Grid3x3, text: "Background pattern" },
+      { icon: Grid3x3, text: "Background style and pattern" },
       { icon: Palette, text: "Shade lines by volume" },
       { icon: Cable, text: "Thicken lines by volume" },
       { icon: Ellipsis, text: "Marching dashes" },

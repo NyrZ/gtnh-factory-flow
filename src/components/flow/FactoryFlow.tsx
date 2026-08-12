@@ -41,6 +41,7 @@ import {
   Grip,
   Hammer,
   Hexagon,
+  ImagePlus,
   LoaderCircle,
   MoveUpRight,
   Paintbrush,
@@ -54,6 +55,7 @@ import {
   Trash2,
   Type,
   Undo2,
+  Wallpaper,
   Wand2,
   X,
   type LucideIcon,
@@ -150,6 +152,8 @@ import {
   type CanvasPattern,
   type GlanceMode,
 } from "./board-view";
+import { CANVAS_THEMES, getCanvasTheme, type CanvasTheme } from "./canvas-themes";
+import { readImageSize, uploadBoardImage } from "@/lib/community/images";
 import { getDeleteCursor, getPaintBrushCursor } from "./paint-cursor";
 import {
   canonicalizeResourceHandleId,
@@ -287,11 +291,9 @@ const connectionLineStyle = {
 const DEFAULT_ITEM_EDGE_COLOR = "#8b8f98";
 const DEFAULT_FLUID_EDGE_COLOR = "#2f89c5";
 
-// React Flow's Background and the html-to-image exporter both need a concrete
-// colour rather than a CSS variable, so these mirror --canvas / --canvas-dot.
-const CANVAS_COLOR = "#1b1d21";
-const CANVAS_DOT_COLOR = "#4a4d55";
-// Inside a pocket dimension the dots go faintly violet with the room.
+// The base colour and pattern ink now come from the active canvas theme
+// (canvas-themes.ts); the Slate theme carries the old --canvas / --canvas-dot
+// values. Inside a pocket dimension the dots go faintly violet with the room.
 const POCKET_CANVAS_DOT_COLOR = "#5b4c7a";
 
 /**
@@ -319,6 +321,14 @@ const CANVAS_PATTERN_VARIANT: Record<
 
 /** Module-level so the board never re-renders on a fresh object identity. */
 const PRO_OPTIONS = { hideAttribution: true };
+
+/**
+ * React Flow's dark colorMode paints its wrapper #141414, which sat invisibly
+ * under everything while the canvas was always #1b1d21 - and silently covered
+ * every OTHER paper the theme picker offers. The board div behind it owns the
+ * background now, so the wrapper must stay glass.
+ */
+const FLOW_WRAPPER_STYLE = { backgroundColor: "transparent" } as const;
 
 /**
  * Narrower than this and a framing request's reserved strip is ignored: about
@@ -1371,6 +1381,7 @@ export function FactoryFlow() {
   const boardView = useBoardView();
   const { freeDockMode, lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode, calmMode } =
     boardView;
+  const canvasTheme = getCanvasTheme(boardView.canvasTheme);
   const anyLineMode = lineHeatMode || lineThicknessMode || linePulseMode;
   const setFlowViewportCenter = useFactoryStore((state) => state.setFlowViewportCenter);
   const hoveredFlowResourceKey = useFactoryStore((state) => state.hoveredFlowResourceKey);
@@ -1528,9 +1539,15 @@ export function FactoryFlow() {
             position: annotation.position,
             width: annotation.size.width,
             height: annotation.size.height,
-            // Boxes sit under everything so they read as grouping frames;
-            // arrows and text notes float above the nodes they point at.
-            zIndex: annotation.kind === "box" || annotation.kind === "zone" ? -5 : 1000,
+            // Boxes, zones and images sit under everything so they read as
+            // grouping frames and backdrops; arrows and text notes float
+            // above the nodes they point at.
+            zIndex:
+              annotation.kind === "box" ||
+              annotation.kind === "zone" ||
+              annotation.kind === "image"
+                ? -5
+                : 1000,
             // Box/arrow interiors must stay click-through; only their
             // drag-handle elements take pointer events (see AnnotationNode).
             dragHandle: annotation.kind === "text" ? undefined : `.${ANNOTATION_DRAG_HANDLE_CLASS}`,
@@ -3123,7 +3140,10 @@ export function FactoryFlow() {
         EXPORT_IMAGE_PADDING / Math.max(imageWidth, imageHeight),
       );
       const options = {
-        backgroundColor: CANVAS_COLOR,
+        // The active theme's paper, so an export looks like the board did.
+        // The screen-space texture is on the container, not the viewport, so
+        // exports get the flat colour - a deliberate simplification.
+        backgroundColor: canvasTheme.base,
         width: imageWidth,
         height: imageHeight,
         style: {
@@ -3176,7 +3196,7 @@ export function FactoryFlow() {
         dispatchImageExportComplete(requestId, capturedDataUrl);
       }
     },
-    [flowNodes],
+    [flowNodes, canvasTheme.base],
   );
 
   useEffect(() => {
@@ -3826,6 +3846,74 @@ export function FactoryFlow() {
     [activeColorTag, addAnnotation],
   );
 
+  /**
+   * A picture becomes a board annotation: uploaded to the image bucket, sized
+   * from its own pixels into a sensible footprint of whole cells, and dropped
+   * where asked (a drag-and-drop point) or in the middle of the view (the
+   * toolbar button, a paste). Every refusal - too big, not an image, hosting
+   * down - surfaces as a plain dialog rather than a silent nothing.
+   */
+  const placeImageFile = useCallback(
+    async (file: File | Blob, dropPoint?: { x: number; y: number }) => {
+      try {
+        const [imageUrl, natural] = await Promise.all([
+          uploadBoardImage(file),
+          readImageSize(file),
+        ]);
+        const scale = Math.min(1, 600 / natural.width, 480 / natural.height);
+        const width = Math.max(
+          BOARD_GRID * 2,
+          Math.round((natural.width * scale) / BOARD_GRID) * BOARD_GRID,
+        );
+        const height = Math.max(
+          BOARD_GRID * 2,
+          Math.round((natural.height * scale) / BOARD_GRID) * BOARD_GRID,
+        );
+        const instance = flowInstanceRef.current;
+        const boardRect = boardRef.current?.getBoundingClientRect();
+        const centre =
+          dropPoint ??
+          (instance && boardRect
+            ? instance.screenToFlowPosition({
+                x: boardRect.left + boardRect.width / 2,
+                y: boardRect.top + boardRect.height / 2,
+              })
+            : { x: 0, y: 0 });
+        addAnnotation({
+          kind: "image",
+          imageUrl,
+          colorTag: activeColorTag,
+          position: { x: centre.x - width / 2, y: centre.y - height / 2 },
+          size: { width, height },
+        });
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Image upload failed.");
+      }
+    },
+    [activeColorTag, addAnnotation],
+  );
+
+  // Ctrl+V with a picture on the OS clipboard drops it on the board. Real
+  // paste events only carry files when there IS an image, so this never
+  // shadows the board's own copy/paste, which rides the keydown handler.
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      if (isEditableKeyboardTarget(event.target)) {
+        return;
+      }
+      const file = Array.from(event.clipboardData?.files ?? []).find((candidate) =>
+        candidate.type.startsWith("image/"),
+      );
+      if (!file) {
+        return;
+      }
+      event.preventDefault();
+      void placeImageFile(file);
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [placeImageFile]);
+
   const handleAnnotationPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const tool = annotationTool;
@@ -4015,9 +4103,43 @@ export function FactoryFlow() {
         {
           ...(paintCursor ? { "--paint-cursor": paintCursor } : undefined),
           ...(isDeleteMode ? { "--delete-cursor": getDeleteCursor() } : undefined),
+          // The theme paints the room: base colour, screen-space texture, and
+          // the --canvas var every canvas-matching surface (edge label
+          // backgrounds) reads. Inside a pocket the violet room always wins -
+          // the pocket look is a landmark, not a taste.
+          ...(activePocketId
+            ? undefined
+            : {
+                backgroundColor: canvasTheme.base,
+                backgroundImage: canvasTheme.texture,
+                "--canvas": canvasTheme.base,
+                "--canvas-dot": canvasTheme.patternColor,
+              }),
         } as CSSProperties
       }
       onPointerDownCapture={handleAnnotationPointerDown}
+      // Dragging a picture file straight onto the board drops it where it
+      // lands, as an image annotation.
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }
+      }}
+      onDrop={(event) => {
+        const file = Array.from(event.dataTransfer.files).find((candidate) =>
+          candidate.type.startsWith("image/"),
+        );
+        if (!file) {
+          return;
+        }
+        event.preventDefault();
+        const point = flowInstanceRef.current?.screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+        void placeImageFile(file, point);
+      }}
     >
       <ReactFlow
         nodes={flowNodes}
@@ -4033,6 +4155,7 @@ export function FactoryFlow() {
         // React Flow styles its own controls and minimap off this; the app has
         // no light palette to switch to.
         colorMode="dark"
+        style={FLOW_WRAPPER_STYLE}
         // The attribution badge sat in the bottom-right corner and pushed the
         // board's own buttons up out of that corner to clear it. The library is
         // MIT and credited in the repo instead.
@@ -4108,7 +4231,10 @@ export function FactoryFlow() {
             // Lines tile edge to edge, so they need to be thinner than a dot
             // to read as a background instead of as graph paper.
             size={boardView.canvasPattern === "lines" ? 1 : 2}
-            color={activePocketId ? POCKET_CANVAS_DOT_COLOR : CANVAS_DOT_COLOR}
+            color={activePocketId ? POCKET_CANVAS_DOT_COLOR : canvasTheme.patternColor}
+            // Like the wrapper: the pattern SVG must not lay its own dark
+            // paper over the themed board div underneath.
+            bgColor="transparent"
           />
         )}
         {annotationDraft && annotationTool ? (
@@ -4126,6 +4252,7 @@ export function FactoryFlow() {
         onColorSelect={handlePaintColorSelect}
         annotationTool={annotationTool}
         onAnnotationToolChange={handleAnnotationToolChange}
+        onPlaceImage={placeImageFile}
         isDeleteMode={isDeleteMode}
         onDeleteModeChange={handleDeleteModeChange}
         compact={isCompact}
@@ -5443,6 +5570,58 @@ function AnnotationDraftPreview({
   );
 }
 
+/**
+ * The picture door: a hidden file input behind a toolbar button. No draw
+ * mode - picking a file IS the gesture - and the button itself spins while
+ * the upload is out, since that is the one wait with a server in it.
+ */
+function AddImageButton({ onPlaceImage }: { onPlaceImage: (file: File) => Promise<void> }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        className="hidden"
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          // Cleared so picking the same file twice still fires onChange.
+          event.target.value = "";
+          if (!file) {
+            return;
+          }
+          setBusy(true);
+          try {
+            await onPlaceImage(file);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        className={[
+          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          TOOL_FACE_OFF,
+          busy ? "cursor-wait opacity-70" : "",
+        ].join(" ")}
+        title="Add an image: pick a picture and it lands on the board"
+        aria-label="Add an image"
+      >
+        {busy ? (
+          <LoaderCircle className="h-4 w-4 animate-spin" />
+        ) : (
+          <ImagePlus className="h-4 w-4" />
+        )}
+      </button>
+    </>
+  );
+}
+
 const ANNOTATION_TOOLS: Array<{
   kind: FactoryAnnotationKind;
   label: string;
@@ -5453,6 +5632,21 @@ const ANNOTATION_TOOLS: Array<{
   { kind: "arrow", label: "Draw arrow", Icon: MoveUpRight },
   { kind: "text", label: "Add text note", Icon: Type },
 ];
+
+/** A theme row's little preview: its paper, its texture, three of its dots. */
+function ThemeSwatch({ theme }: { theme: CanvasTheme }) {
+  return (
+    <span
+      aria-hidden
+      className="flex h-7 w-11 shrink-0 items-center justify-center gap-1 border border-[var(--mc-15)]"
+      style={{ backgroundColor: theme.base, backgroundImage: theme.texture }}
+    >
+      {[0, 1, 2].map((dot) => (
+        <span key={dot} className="h-[3px] w-[3px]" style={{ backgroundColor: theme.patternColor }} />
+      ))}
+    </span>
+  );
+}
 
 // Memoized because FactoryFlow re-renders every frame of a node drag; with
 // stable callbacks this toolbar renders only when a tool or colour changes.
@@ -5502,6 +5696,19 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
       active ? TOOL_FACE_ON : TOOL_FACE_OFF,
     ].join(" ");
+  const activeTheme = getCanvasTheme(view.canvasTheme);
+  // The theme picker opens on hover with the same grace period the paint
+  // palette uses, so the two feel like one family of fold-outs.
+  const [isThemePickerOpen, setThemePickerOpen] = useState(false);
+  const themeCloseTimerRef = useRef<number | undefined>(undefined);
+  const openThemePicker = () => {
+    window.clearTimeout(themeCloseTimerRef.current);
+    setThemePickerOpen(true);
+  };
+  const scheduleCloseThemePicker = () => {
+    window.clearTimeout(themeCloseTimerRef.current);
+    themeCloseTimerRef.current = window.setTimeout(() => setThemePickerOpen(false), 250);
+  };
 
   return (
     <div
@@ -5510,7 +5717,10 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       // point of the grouping.
       data-help-anchor="view"
       className={[
-        "nodrag pointer-events-none absolute z-20 flex items-start gap-1",
+        "nodrag pointer-events-none absolute flex items-start gap-1",
+        // Lifted while the theme list is out so it cannot be painted over by
+        // a later toolbar - the same trap the paint palette fell into once.
+        isThemePickerOpen ? "z-40" : "z-20",
         // Folded, this is one button, and it joins the paint trigger on the top
         // line rather than holding a line of its own below it — which also keeps
         // both fold-out rows on the same clear second line.
@@ -5529,6 +5739,61 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       {/* One plate: every button here changes how the board is DRAWN, never
           what the plan is. */}
       <ToolTray>
+      <div
+        className="flex items-start"
+        onMouseEnter={openThemePicker}
+        onMouseLeave={scheduleCloseThemePicker}
+      >
+        <div
+          className={[
+            // Hangs below the row like the paint palette, absolute against
+            // the toolbar root so it never widens the plate it lives in.
+            "absolute right-0 w-[236px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+            compact ? "top-[6.5rem]" : "top-[3.25rem]",
+            isThemePickerOpen
+              ? "pointer-events-auto translate-y-0 opacity-100"
+              : "pointer-events-none -translate-y-1 opacity-0",
+          ].join(" ")}
+        >
+          <div className="grid gap-1">
+            {CANVAS_THEMES.map((theme) => (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => onChange({ canvasTheme: theme.id })}
+                className={[
+                  "flex items-center gap-2 border-2 p-1 text-left",
+                  view.canvasTheme === theme.id
+                    ? "border-white bg-[var(--mc-85)] ring-2 ring-cyan-300"
+                    : "border-[var(--mc-15)] bg-[var(--mc-49)] hover:bg-[var(--mc-61)]",
+                ].join(" ")}
+                title={theme.blurb}
+                aria-label={`Background style: ${theme.name}`}
+                aria-pressed={view.canvasTheme === theme.id}
+              >
+                <ThemeSwatch theme={theme} />
+                <span className="min-w-0">
+                  <span className="block text-[11px] font-semibold leading-tight text-[var(--mc-ink)]">
+                    {theme.name}
+                  </span>
+                  <span className="block truncate text-[10px] leading-tight text-[var(--mc-ink)] opacity-60">
+                    {theme.blurb}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setThemePickerOpen((open) => !open)}
+          className={buttonClass(isThemePickerOpen)}
+          title={`Background style: ${activeTheme.name}. Click to choose another.`}
+          aria-label="Choose background style"
+        >
+          <Wallpaper className="h-4 w-4" />
+        </button>
+      </div>
       <button
         type="button"
         onClick={() =>
@@ -5655,6 +5920,7 @@ const PaintToolbar = memo(function PaintToolbar({
   onColorSelect,
   annotationTool,
   onAnnotationToolChange,
+  onPlaceImage,
   isDeleteMode,
   onDeleteModeChange,
   compact,
@@ -5668,6 +5934,7 @@ const PaintToolbar = memo(function PaintToolbar({
   onColorSelect: (tag: FactoryNodeColorTag) => void;
   annotationTool?: FactoryAnnotationKind;
   onAnnotationToolChange: (tool: FactoryAnnotationKind | undefined) => void;
+  onPlaceImage: (file: File) => Promise<void>;
   isDeleteMode: boolean;
   onDeleteModeChange: (enabled: boolean) => void;
   compact: boolean;
@@ -5813,6 +6080,7 @@ const PaintToolbar = memo(function PaintToolbar({
           <Icon className="h-4 w-4" />
         </button>
       ))}
+      <AddImageButton onPlaceImage={onPlaceImage} />
       </ToolTray>
       {/* The bin on a plate of its own: it takes things OFF the board, and it
           must never read as one more stamp in the row beside it. */}
