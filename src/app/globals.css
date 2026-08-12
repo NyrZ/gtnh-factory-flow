@@ -540,7 +540,7 @@ textarea {
      scales with edge count: every wire shadows at its own thickness, and a
      fat pipe grounds harder than a hairline exactly as it should. Smaller
      offset and softer than the cards: wires lie closer to the paper. */
-  filter: drop-shadow(2px 3px 2px rgba(0, 0, 0, 0.32));
+  filter: drop-shadow(4px 5px 5px rgba(0, 0, 0, 0.35));
 }
 
 .factory-flow-board .react-flow__nodes {
@@ -572,10 +572,10 @@ textarea {
      PAINTED silhouette rather than its box: a card and a picture cast from
      their whole rectangle, a box or zone mostly from its frame (the
      translucent wash inside casts only a faint one, exactly as translucent
-     things should), an arrow from its line, a hexagon from its outline. A
-     touch of blur so it reads as light rather than a printed double edge;
-     the alpha rises with it since blur spreads the ink thin. */
-  filter: drop-shadow(3px 4px 3px rgba(0, 0, 0, 0.38));
+     things should), an arrow from its line, a hexagon from its outline.
+     Offset far enough to read as height and blurred enough to read as
+     light; the alpha rises with the blur since blur spreads the ink thin. */
+  filter: drop-shadow(6px 8px 7px rgba(0, 0, 0, 0.45));
 }
 
 /* Zoom detail steps. See node-detail.ts for what each step keeps and why, and
@@ -837,6 +837,16 @@ img {
 
 .factory-flow-board .react-flow__node.dragging {
   z-index: 30 !important;
+}
+
+/* Backdrops (boxes, zones, images) never take the lift above: selecting or
+   dragging one must not raise its wash over the very machines it frames.
+   They stay at their published depth; the corner handles stay grabbable
+   because pointer events don't care about paint order between layers that
+   never overlap a hit target. */
+.factory-flow-board .react-flow__node.board-backdrop.selected,
+.factory-flow-board .react-flow__node.board-backdrop.dragging {
+  z-index: -5 !important;
 }
 
 /* While a drag is live the NODES layer rides above the wires: the card in

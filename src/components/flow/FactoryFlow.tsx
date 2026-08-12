@@ -1546,13 +1546,21 @@ export function FactoryFlow() {
             height: annotation.size.height,
             // Boxes, zones and images sit under everything so they read as
             // grouping frames and backdrops; arrows and text notes float
-            // above the nodes they point at.
+            // above the nodes they point at. The class is how the CSS knows
+            // a backdrop from a card: the global "selected nodes rise"
+            // rule must never lift a box's wash over the machines it frames.
             zIndex:
               annotation.kind === "box" ||
               annotation.kind === "zone" ||
               annotation.kind === "image"
                 ? -5
                 : 1000,
+            className:
+              annotation.kind === "box" ||
+              annotation.kind === "zone" ||
+              annotation.kind === "image"
+                ? "board-backdrop"
+                : undefined,
             // Box/arrow interiors must stay click-through; only their
             // drag-handle elements take pointer events (see AnnotationNode).
             dragHandle: annotation.kind === "text" ? undefined : `.${ANNOTATION_DRAG_HANDLE_CLASS}`,
