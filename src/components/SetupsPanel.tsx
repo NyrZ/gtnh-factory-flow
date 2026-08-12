@@ -33,7 +33,12 @@ import type { CommunityPlanSort, CommunityPlanSummary, EntryIcon } from "@/lib/c
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { parseFactoryProjectJson, serializeFactoryProject } from "@/lib/import-export";
 import { applyPlanView, capturePlanView } from "@/lib/plan-view";
-import { OPEN_SETUPS_EVENT, takePendingSetupsScope, type SetupsScope } from "@/lib/setups-tab";
+import {
+  OPEN_SETUPS_EVENT,
+  SETUPS_CHANGED_EVENT,
+  takePendingSetupsScope,
+  type SetupsScope,
+} from "@/lib/setups-tab";
 import { useCommunityUser } from "@/components/community/auth";
 import { SharePlanDialog } from "@/components/community/SharePlanDialog";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
@@ -91,8 +96,8 @@ export function SetupsPanel() {
   const [isShareOpen, setShareOpen] = useState(false);
   // The row whose icon is being picked; the picker itself is one modal.
   const [iconEditId, setIconEditId] = useState<string>();
-  // Bumped when the share dialog closes, so a fresh post shows up without
-  // a manual refresh.
+  // Bumped when a share lands or a post is overwritten, so a fresh post
+  // shows up without a manual refresh.
   const [refreshTick, setRefreshTick] = useState(0);
   const hasBoardContent = useFactoryStore((state) => state.project.nodes.length > 0);
   const activeTabName = useDesignStore(
@@ -110,6 +115,14 @@ export function SetupsPanel() {
     };
     window.addEventListener(OPEN_SETUPS_EVENT, applyScope);
     return () => window.removeEventListener(OPEN_SETUPS_EVENT, applyScope);
+  }, []);
+
+  // A share posted anywhere (this panel's dialog or the top bar's) refetches
+  // the shelf, so the new post is already here when the dialog closes.
+  useEffect(() => {
+    const refresh = () => setRefreshTick((tick) => tick + 1);
+    window.addEventListener(SETUPS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(SETUPS_CHANGED_EVENT, refresh);
   }, []);
 
   const username = user?.username ?? "";
@@ -534,14 +547,7 @@ export function SetupsPanel() {
           </>
         )}
       </div>
-      {isShareOpen ? (
-        <SharePlanDialog
-          onClose={() => {
-            setShareOpen(false);
-            setRefreshTick((tick) => tick + 1);
-          }}
-        />
-      ) : null}
+      {isShareOpen ? <SharePlanDialog onClose={() => setShareOpen(false)} /> : null}
       {iconEditId ? (
         <IconPicker
           title="Pick this setup's icon"

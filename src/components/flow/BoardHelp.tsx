@@ -13,6 +13,7 @@ import {
   Play,
   Presentation,
   Search,
+  Share2,
   Square,
   Tag,
   Trash,
@@ -129,6 +130,7 @@ const CALLOUTS: Array<{
     rows: [
       { icon: Undo2, text: "Undo and redo" },
       { icon: Trash2, text: "Clean the board" },
+      { icon: Share2, text: "Share it with everyone" },
       { icon: Upload, text: "Import a plan" },
       { icon: Download, text: "Export it out" },
     ],

@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.10.0",
+    date: "2026-08-11",
+    headline: "Share sits in the top bar",
+    notes: [
+      "A Share button now lives next to Import and Export, top of the page.",
+      "It posts the board you have open to the Public shelf, link included.",
+    ],
+  },
+  {
     version: "2.9.1",
     date: "2026-08-11",
     headline: "The tours tell it straight",

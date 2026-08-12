@@ -9,6 +9,8 @@ import { MenuLinks } from "./HeaderLinks";
 
 interface AppMenuProps {
   onLoadDatasetVersion: (versionId: string) => void;
+  /** Opens the share dialog, which the header owns; see AppHeader. */
+  onShare: () => void;
 }
 
 /**
@@ -23,7 +25,7 @@ interface AppMenuProps {
  * A sheet under the header rather than a full-screen overlay: it is a handful of
  * rows, the board stays visible behind it, and a tap anywhere else puts it away.
  */
-export function AppMenu({ onLoadDatasetVersion }: AppMenuProps) {
+export function AppMenu({ onLoadDatasetVersion, onShare }: AppMenuProps) {
   const [isOpen, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -78,7 +80,7 @@ export function AppMenu({ onLoadDatasetVersion }: AppMenuProps) {
             </div>
           </MenuSection>
           <MenuSection label="This plan">
-            <BoardActions variant="list" onAction={() => setOpen(false)} />
+            <BoardActions variant="list" onAction={() => setOpen(false)} onShare={onShare} />
           </MenuSection>
           <MenuSection label="Planner">
             <MenuLinks onAction={() => setOpen(false)} />

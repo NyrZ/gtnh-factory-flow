@@ -9,6 +9,7 @@ import {
   ImageDown,
   LoaderCircle,
   Redo2,
+  Share2,
   Trash2,
   Undo2,
   Upload,
@@ -57,6 +58,12 @@ interface BoardActionsProps {
   variant?: "bar" | "list";
   /** Lets the compact menu close itself once one of its rows has fired. */
   onAction?: () => void;
+  /**
+   * Opens the share dialog. The dialog itself is owned by the header, not
+   * rendered here: on compact this component lives inside the menu sheet,
+   * which closes (and unmounts) the moment a row fires.
+   */
+  onShare?: () => void;
 }
 
 /**
@@ -65,7 +72,7 @@ interface BoardActionsProps {
  * Lives on the right of the design tab strip: everything here acts on the plan
  * that strip is switching between, so the two belong on the same bar.
  */
-export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = {}) {
+export function BoardActions({ variant = "bar", onAction, onShare }: BoardActionsProps = {}) {
   const projectInputRef = useRef<HTMLInputElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [isExportMenuOpen, setExportMenuOpen] = useState(false);
@@ -294,6 +301,17 @@ export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = 
   if (variant === "list") {
     return (
       <div data-help-anchor="plan-actions" className="flex flex-col">
+        {onShare ? (
+          <MenuAction
+            icon={Share2}
+            label="Share this setup"
+            disabled={project.nodes.length === 0}
+            onClick={() => {
+              onShare();
+              onAction?.();
+            }}
+          />
+        ) : null}
         <MenuAction
           icon={Trash2}
           label="Clean the board"
@@ -358,6 +376,25 @@ export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = 
             and having them in two places at once only made the header look
             like the authoritative pair. Clean board is a whole-plan action that
             was one slip away from the import button; it lives in the menu. */}
+        {/* Share wears its word, alone on the bar in doing so: it was buried
+            in the Setups tab and people could not find it. Same dialog as the
+            shelf's own button. */}
+        {onShare ? (
+          <button
+            type="button"
+            onClick={onShare}
+            disabled={project.nodes.length === 0}
+            title={
+              project.nodes.length === 0
+                ? "Share this setup: build something on the board first"
+                : "Share this setup with everyone"
+            }
+            className="inline-flex h-7 items-center gap-1 rounded border border-line-strong bg-surface px-1.5 text-xs font-medium text-fg-subtle hover:border-emerald-600 hover:text-emerald-500 disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-fg-muted"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            Share
+          </button>
+        ) : null}
         <ToolbarButton
           icon={Upload}
           label="Import plan"

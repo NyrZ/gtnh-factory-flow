@@ -6,6 +6,17 @@
  */
 export const OPEN_SETUPS_EVENT = "gtnh:open-setups";
 
+/**
+ * Fired when a share lands on the network, wherever it was posted from (the
+ * shelf's own button or the top bar). A mounted Setups panel refetches so the
+ * new post is already on the shelf when the dialog closes.
+ */
+export const SETUPS_CHANGED_EVENT = "gtnh:setups-changed";
+
+export function notifySetupsChanged(): void {
+  window.dispatchEvent(new Event(SETUPS_CHANGED_EVENT));
+}
+
 export type SetupsScope = "network" | "mine";
 
 let pendingScope: SetupsScope | undefined;

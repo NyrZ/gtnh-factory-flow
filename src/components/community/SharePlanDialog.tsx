@@ -13,7 +13,7 @@ import { sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSummary, EntryIcon } from "@/lib/community/types";
 import { serializeFactoryProject } from "@/lib/import-export";
 import { capturePlanView } from "@/lib/plan-view";
-import { openSetupsTab } from "@/lib/setups-tab";
+import { notifySetupsChanged, openSetupsTab } from "@/lib/setups-tab";
 import { useFactoryStore } from "@/store/factory-store";
 import { useDesignStore } from "@/store/design-store";
 import { EntryIconSlot, IconPicker, iconSuggestionsFromStats } from "@/components/IconPicker";
@@ -132,6 +132,7 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
         setShared({ kind: "created", planId: id });
         setProjectCommunityLink(id);
       }
+      notifySetupsChanged();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Sharing failed.");
     } finally {
