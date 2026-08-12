@@ -21,6 +21,7 @@ function balance(key: ResourceKey, netPerSecond: number): ResourceBalance {
     importedPerSecond: Math.max(0, -netPerSecond),
     productPerSecond: Math.max(0, netPerSecond),
     byproductPerSecond: 0,
+    bufferFillPerSecond: 0,
   };
 }
 

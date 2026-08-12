@@ -703,9 +703,9 @@ export interface ResourceBalance {
   surplusPerSecond: number;
   deficitPerSecond: number;
   /**
-   * The three BOUNDARY figures, read off the drawers rather than off the books.
+   * The BOUNDARY figures, read off the drawers rather than off the books.
    *
-   * A resource can carry all three at once, and that is not a contradiction:
+   * A resource can carry several at once, and that is not a contradiction:
    * importing carbon at one drawer and catching spare carbon at another says
    * the plan brings some in over here and has some to haul away over there.
    * Netting the two would claim the spare feeds the need, which is a wire
@@ -714,6 +714,15 @@ export interface ResourceBalance {
   importedPerSecond: number;
   productPerSecond: number;
   byproductPerSecond: number;
+  /**
+   * Spillover piling up in overflow BUFFERS: each buffer's inflow minus its
+   * outflow, floored at zero, summed per resource. A pass-through buffer
+   * contributes nothing; one that catches more than its takers drink is
+   * accumulating real material, and the plan's books surface that as a
+   * positive alongside products and byproducts instead of letting a tank
+   * quietly swallow it. Sources and drains keep their own columns.
+   */
+  bufferFillPerSecond: number;
 }
 
 export interface BottleneckReport {

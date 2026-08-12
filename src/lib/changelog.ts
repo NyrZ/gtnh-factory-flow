@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.5",
+    date: "2026-08-12",
+    headline: "A filling tank counts as an output",
+    notes: [
+      "A tank catching more than its takers drink now shows in Outputs at its fill rate.",
+      "Tanks that pass everything along, and strict tanks, stay out of the list.",
+    ],
+  },
+  {
     version: "2.11.4",
     date: "2026-08-12",
     headline: "A loop that breaks even now runs",

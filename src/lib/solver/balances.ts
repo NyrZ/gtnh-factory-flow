@@ -49,6 +49,7 @@ function ensureBalance(
     importedPerSecond: 0,
     productPerSecond: 0,
     byproductPerSecond: 0,
+    bufferFillPerSecond: 0,
   };
   balances.set(key, balance);
   return balance;
@@ -144,8 +145,12 @@ function settleBalances(balances: Map<ResourceKey, ResourceBalance>): void {
     if (balance.byproductPerSecond !== 0 && balance.byproductPerSecond <= tolerance) {
       balance.byproductPerSecond = 0;
     }
+    if (balance.bufferFillPerSecond !== 0 && balance.bufferFillPerSecond <= tolerance) {
+      balance.bufferFillPerSecond = 0;
+    }
     balance.deficitPerSecond = balance.importedPerSecond;
-    balance.surplusPerSecond = balance.productPerSecond + balance.byproductPerSecond;
+    balance.surplusPerSecond =
+      balance.productPerSecond + balance.byproductPerSecond + balance.bufferFillPerSecond;
 
     if (balance.netPerSecond !== 0 && Math.abs(balance.netPerSecond) <= tolerance) {
       balance.netPerSecond = 0;
@@ -241,6 +246,12 @@ function applyBoundaryDrawerBalances(
     amount: 0,
   });
 
+  // A buffer's spillover is a per-DRAWER figure, not a per-wire one: a
+  // pass-through tank (8/s in, 8/s out) holds level and contributes nothing,
+  // while one catching more than its takers drink is accumulating real
+  // material. Inflow minus outflow, floored at zero, per drawer.
+  const bufferNetById = new Map<string, number>();
+
   for (const edge of project.edges) {
     const transferredPerSecond = edgeResults[edge.id]?.transferredPerSecond ?? 0;
     if (transferredPerSecond <= EPSILON) {
@@ -252,6 +263,9 @@ function applyBoundaryDrawerBalances(
     if (from && roles.get(from.id) === "source") {
       ensureBalance(balances, boundaryResource(from, edge.label)).importedPerSecond +=
         transferredPerSecond;
+    }
+    if (from && roles.get(from.id) === "buffer") {
+      bufferNetById.set(from.id, (bufferNetById.get(from.id) ?? 0) - transferredPerSecond);
     }
 
     // Landing in a DRAIN drawer: the plan declared this an export, and which
@@ -266,6 +280,24 @@ function applyBoundaryDrawerBalances(
         balance.byproductPerSecond += transferredPerSecond;
       }
     }
+    if (into && intoRole === "buffer") {
+      bufferNetById.set(into.id, (bufferNetById.get(into.id) ?? 0) + transferredPerSecond);
+    }
+  }
+
+  // Whatever a buffer caught beyond what its takers drank piles up in the
+  // tank: a positive on the plan's books, next to products and byproducts. A
+  // STRICT buffer never runs net-positive (it hands surplus back as a clog),
+  // so it naturally reports nothing here.
+  for (const [storageId, net] of bufferNetById) {
+    if (net <= EPSILON) {
+      continue;
+    }
+    const storage = storagesById.get(storageId);
+    if (!storage) {
+      continue;
+    }
+    ensureBalance(balances, boundaryResource(storage)).bufferFillPerSecond += net;
   }
 
   // The boundary figures REPLACE the netted ones, so a resource can be short
@@ -274,7 +306,8 @@ function applyBoundaryDrawerBalances(
   // themselves are in balance.
   for (const balance of balances.values()) {
     balance.deficitPerSecond = balance.importedPerSecond;
-    balance.surplusPerSecond = balance.productPerSecond + balance.byproductPerSecond;
+    balance.surplusPerSecond =
+      balance.productPerSecond + balance.byproductPerSecond + balance.bufferFillPerSecond;
   }
 }
 
