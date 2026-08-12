@@ -4465,6 +4465,17 @@ function ToolTray({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * The two faces of a board toggle. ON is the pressed light key the rate units
+ * have always worn; every toggle on the board speaks that one language now,
+ * instead of some pressing in and some growing a blue ring. The palette's
+ * swatches keep their cyan ring alone: a selection mark there has to stand
+ * against any hue, including this very grey.
+ */
+const TOOL_FACE_ON = "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]";
+const TOOL_FACE_OFF =
+  "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110";
+
+/**
  * A toolbar folded into one button, for windows too narrow to carry it.
  *
  * Three rows of nine 36px buttons want 970px between them. A 390px board gave
@@ -4531,8 +4542,8 @@ function ToolGroup({
         aria-label={isOpen ? `Hide ${label}` : `Show ${label}`}
         title={isOpen ? `Hide ${label}` : label}
         className={[
-          "pointer-events-auto relative z-10 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
-          isOpen ? "ring-2 ring-cyan-300" : "",
+          "pointer-events-auto relative z-10 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-[var(--mc-15)]",
+          isOpen ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
       >
         <Icon className="h-4 w-4" />
@@ -4566,8 +4577,8 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
 }) {
   const buttonClass = (active: boolean) =>
     [
-      "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
-      active ? "ring-2 ring-cyan-300" : "",
+      "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+      active ? TOOL_FACE_ON : TOOL_FACE_OFF,
     ].join(" ");
 
   return (
@@ -4718,9 +4729,7 @@ const SourceToolbar = memo(function SourceToolbar({
               aria-pressed={rateUnit === choice.unit}
               className={[
                 "flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black",
-                rateUnit === choice.unit
-                  ? "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
-                  : "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110",
+                rateUnit === choice.unit ? TOOL_FACE_ON : TOOL_FACE_OFF,
               ].join(" ")}
             >
               {choice.label}
@@ -4733,9 +4742,7 @@ const SourceToolbar = memo(function SourceToolbar({
           onClick={() => setAssumeBoundaries(!assumeBoundaries)}
           className={[
             "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-            assumeBoundaries
-              ? "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
-              : "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110",
+            assumeBoundaries ? TOOL_FACE_ON : TOOL_FACE_OFF,
           ].join(" ")}
           title="Sketch mode: every unwired input is supplied for free and every unwired output is exported. Quick math without drawing the boundary. Anything you do wire still behaves as wired."
           aria-label="Sketch mode"
@@ -5356,8 +5363,8 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
           : Grip;
   const buttonClass = (active: boolean) =>
     [
-      "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
-      active ? "ring-2 ring-cyan-300" : "",
+      "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+      active ? TOOL_FACE_ON : TOOL_FACE_OFF,
     ].join(" ");
 
   return (
@@ -5643,8 +5650,8 @@ const PaintToolbar = memo(function PaintToolbar({
           onPaintModeChange(paintMode !== undefined ? undefined : activeColorTag)
         }
         className={[
-          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
-          paintMode !== undefined ? "ring-2 ring-cyan-300" : "",
+          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+          paintMode !== undefined ? TOOL_FACE_ON : TOOL_FACE_OFF,
         ].join(" ")}
         title={
           paintMode !== undefined
@@ -5661,8 +5668,8 @@ const PaintToolbar = memo(function PaintToolbar({
           type="button"
           onClick={() => onAnnotationToolChange(annotationTool === kind ? undefined : kind)}
           className={[
-            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
-            annotationTool === kind ? "ring-2 ring-cyan-300" : "",
+            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+            annotationTool === kind ? TOOL_FACE_ON : TOOL_FACE_OFF,
           ].join(" ")}
           title={annotationTool === kind ? "Cancel" : label}
           aria-label={annotationTool === kind ? "Cancel" : label}
@@ -5679,13 +5686,14 @@ const PaintToolbar = memo(function PaintToolbar({
           onClick={() => onDeleteModeChange(!isDeleteMode)}
           data-help-anchor="paint"
           className={[
-            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
-            isDeleteMode ? "ring-2 ring-red-400" : "",
+            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+            isDeleteMode ? TOOL_FACE_ON : TOOL_FACE_OFF,
           ].join(" ")}
           title={isDeleteMode ? "Stop deleting" : "Delete tool: click anything to remove it"}
           aria-label={isDeleteMode ? "Stop deleting" : "Delete tool"}
         >
-          <Trash2 className={isDeleteMode ? "h-4 w-4 text-red-300" : "h-4 w-4"} />
+          {/* The pressed face says "on"; the red icon still says what is armed. */}
+          <Trash2 className={isDeleteMode ? "h-4 w-4 text-red-500" : "h-4 w-4"} />
         </button>
       </ToolTray>
       </ToolGroup>
