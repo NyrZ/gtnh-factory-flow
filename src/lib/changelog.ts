@@ -73,6 +73,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.0",
+    date: "2026-08-12",
+    headline: "The palette speaks the board's language",
+    notes: [
+      "Six new paint colours: the board's own alarm red, warning amber, output green, product blue and two card greys.",
+    ],
+  },
+  {
     version: "2.10.0",
     date: "2026-08-12",
     headline: "Share it, make it yours, and watch it move",

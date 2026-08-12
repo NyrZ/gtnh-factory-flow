@@ -68,7 +68,15 @@ export type FactoryNodeColorTag =
   | "brown"
   | "green"
   | "red"
-  | "black";
+  | "black"
+  // The app's own ink, offered as paint: the alarm red, the warning amber,
+  // the output emerald, the product blue, and the two card greys.
+  | "scarlet"
+  | "amber"
+  | "emerald"
+  | "azure"
+  | "steel"
+  | "onyx";
 
 export interface ResourceAmount {
   kind: ResourceKind;

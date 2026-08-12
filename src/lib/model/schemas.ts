@@ -49,6 +49,13 @@ export const factoryNodeColorTagSchema = z.enum([
   "green",
   "red",
   "black",
+  // The system swatches: the app's own semantic inks and card greys.
+  "scarlet",
+  "amber",
+  "emerald",
+  "azure",
+  "steel",
+  "onyx",
 ]);
 
 export const resourceAmountSchema = z.object({
