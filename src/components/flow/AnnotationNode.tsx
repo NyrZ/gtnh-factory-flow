@@ -178,6 +178,67 @@ function ZoneAnnotation({
   const [draftPoints, setDraftPoints] = useState<ArrowPoint[]>();
   const points = draftPoints ?? annotation.points ?? [];
 
+  // Rebase onto the new bounding box, which may have moved or grown, and
+  // commit: shared by dragging a corner and minting one on an edge.
+  const commitPoints = (next: ArrowPoint[]) => {
+    const minX = Math.min(...next.map((point) => point.x));
+    const minY = Math.min(...next.map((point) => point.y));
+    updateAnnotation(annotation.id, {
+      position: {
+        x: annotation.position.x + minX,
+        y: annotation.position.y + minY,
+      },
+      size: {
+        width: Math.max(Math.max(...next.map((point) => point.x)) - minX, BOARD_GRID),
+        height: Math.max(Math.max(...next.map((point) => point.y)) - minY, BOARD_GRID),
+      },
+      points: next.map((point) => ({ x: point.x - minX, y: point.y - minY })),
+    });
+  };
+
+  /**
+   * Double-clicking the outline mints a corner right there: the click
+   * projects onto the nearest edge, snaps to the grid, and slots into the
+   * loop between that edge's ends - already selected, already grabbable.
+   */
+  const addCornerAt = (event: React.MouseEvent) => {
+    const settled = annotation.points ?? [];
+    if (settled.length < 3 || settled.length >= 64) {
+      return;
+    }
+
+    const flow = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    const local = { x: flow.x - annotation.position.x, y: flow.y - annotation.position.y };
+    let bestIndex = 0;
+    let bestPoint = local;
+    let bestDistance = Infinity;
+    for (let i = 0; i < settled.length; i += 1) {
+      const projected = closestPointOnSegment(local, settled[i], settled[(i + 1) % settled.length]);
+      const distance = Math.hypot(projected.x - local.x, projected.y - local.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = i;
+        bestPoint = projected;
+      }
+    }
+
+    const minted = {
+      x: Math.round(bestPoint.x / BOARD_GRID) * BOARD_GRID,
+      y: Math.round(bestPoint.y / BOARD_GRID) * BOARD_GRID,
+    };
+    // Landing on either end of the edge would fold two corners into one.
+    const edgeStart = settled[bestIndex];
+    const edgeEnd = settled[(bestIndex + 1) % settled.length];
+    if (
+      (minted.x === edgeStart.x && minted.y === edgeStart.y) ||
+      (minted.x === edgeEnd.x && minted.y === edgeEnd.y)
+    ) {
+      return;
+    }
+
+    commitPoints([...settled.slice(0, bestIndex + 1), minted, ...settled.slice(bestIndex + 1)]);
+  };
+
   const beginCornerDrag =
     (index: number) => (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -198,28 +259,16 @@ function ZoneAnnotation({
         setDraftPoints(undefined);
 
         const moving = localPoint(upEvent);
-        const next = settled.map((point, i) =>
-          i === index
-            ? {
-                x: Math.round(moving.x / BOARD_GRID) * BOARD_GRID,
-                y: Math.round(moving.y / BOARD_GRID) * BOARD_GRID,
-              }
-            : point,
+        commitPoints(
+          settled.map((point, i) =>
+            i === index
+              ? {
+                  x: Math.round(moving.x / BOARD_GRID) * BOARD_GRID,
+                  y: Math.round(moving.y / BOARD_GRID) * BOARD_GRID,
+                }
+              : point,
+          ),
         );
-        // Rebase onto the new bounding box, which may have moved or grown.
-        const minX = Math.min(...next.map((point) => point.x));
-        const minY = Math.min(...next.map((point) => point.y));
-        updateAnnotation(annotation.id, {
-          position: {
-            x: annotation.position.x + minX,
-            y: annotation.position.y + minY,
-          },
-          size: {
-            width: Math.max(Math.max(...next.map((point) => point.x)) - minX, BOARD_GRID),
-            height: Math.max(Math.max(...next.map((point) => point.y)) - minY, BOARD_GRID),
-          },
-          points: next.map((point) => ({ x: point.x - minX, y: point.y - minY })),
-        });
       };
       window.addEventListener("pointermove", handleMove);
       window.addEventListener("pointerup", handleUp);
@@ -227,7 +276,13 @@ function ZoneAnnotation({
 
   return (
     <>
-      <ZoneShape points={points} width={width} height={height} swatch={swatch} />
+      <ZoneShape
+        points={points}
+        width={width}
+        height={height}
+        swatch={swatch}
+        onOutlineDoubleClick={addCornerAt}
+      />
       {selected
         ? points.map((point, index) => (
             <ArrowEndpointHandle
@@ -242,16 +297,33 @@ function ZoneAnnotation({
   );
 }
 
+function closestPointOnSegment(point: ArrowPoint, a: ArrowPoint, b: ArrowPoint): ArrowPoint {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) {
+    return a;
+  }
+  const t = Math.max(
+    0,
+    Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared),
+  );
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
 function ZoneShape({
   points,
   width,
   height,
   swatch,
+  onOutlineDoubleClick,
 }: {
   points: ArrowPoint[];
   width: number;
   height: number;
   swatch: string;
+  /** Double-clicking the outline mints a corner there. */
+  onOutlineDoubleClick?: (event: React.MouseEvent) => void;
 }) {
   if (points.length < 3) {
     return null;
@@ -286,6 +358,11 @@ function ZoneShape({
         strokeWidth={28}
         strokeLinejoin="round"
         style={{ pointerEvents: "stroke" }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onOutlineDoubleClick?.(event);
+        }}
       />
     </svg>
   );
