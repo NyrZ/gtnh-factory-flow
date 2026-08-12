@@ -5,17 +5,18 @@ import crypto from "node:crypto";
 import { PNG } from "pngjs";
 
 /**
- * Make ghost fluids visible: raise the alpha of fluid icons that the game
- * rendered nearly transparent.
+ * Make ghost fluids visible: turn translucent fluid icons into solid chips
+ * of their own colour.
  *
  * The oracle exporter captures fluid icons exactly as the game draws them,
- * and the game draws gases at 10-30% opacity. NEI paints them over a light
- * grey slot where that still reads; the planner's board is dark, so Oxygen,
- * Hydrogen, Nitrogen and friends simply vanish. This pass rescales the alpha
- * channel of any FLUID icon whose most opaque pixel sits under the threshold,
- * so the brightest pixel lands near full opacity while the texture keeps its
- * relative translucency. Item icons are never touched: some are legitimately
- * translucent, and none of them hide behind a fluid's render alpha.
+ * and the game draws gases at 10-30% opacity riding a dim noise texture. The
+ * hue in those pixels is the fluid's real tint - oxygen teal, hydrogen red -
+ * but at that alpha and brightness the capture simply vanishes on the
+ * planner's dark board. This pass rebuilds every translucent FLUID icon as
+ * an opaque chip: the capture's average colour lifted to a readable
+ * luminance, shaded by the original alpha pattern so it still reads as a
+ * liquid. Item icons are never touched: some are legitimately translucent,
+ * and none of them hide behind a fluid's render alpha.
  *
  * Two modes:
  *
@@ -43,10 +44,25 @@ if (!datasetDir || !fs.existsSync(datasetDir)) {
   throw new Error("Usage: normalize-fluid-icon-alpha.mjs <dataset-dir> [--rename]");
 }
 
-/** Below this max alpha (0.7) an icon is illegible on the dark board. */
-const THRESHOLD_ALPHA = 179;
-/** Rescale so the most opaque pixel lands here (0.95): visible, still a fluid. */
-const TARGET_ALPHA = 242;
+/**
+ * Icons whose average visible pixel is at least this opaque (0.95) carry
+ * their own look and are left alone - milk and lava already read fine.
+ */
+const MIN_MEAN_ALPHA = 242;
+/**
+ * Where a translucent fluid's colour is lifted to. The capture's hue is the
+ * game's real tint - oxygen teal, hydrogen red - but it rides a dim noise
+ * texture, so the honest colour arrives too dark to read on a dark board.
+ */
+const TARGET_LUMINANCE = 0.45;
+/**
+ * Cap on the lift, so a genuinely dark fluid stays a dark fluid: crude oil
+ * comes out near-black instead of being hoisted to grey.
+ */
+const MAX_LUMINANCE_GAIN = 10;
+
+/** How a texture reference starts inside every dataset artifact. */
+const RENDERED_PREFIX = Buffer.from("textures/rendered/");
 
 const renderedDir = path.join(datasetDir, "textures", "rendered");
 const indexFiles = ["resource-index.json.gz", "recipe-index.json.gz"]
@@ -86,23 +102,14 @@ for (const basename of [...fluidIconBasenames].sort()) {
   }
 
   const png = PNG.sync.read(fs.readFileSync(filePath));
-  let maxAlpha = 0;
-  for (let i = 3; i < png.data.length; i += 4) {
-    if (png.data[i] > maxAlpha) {
-      maxAlpha = png.data[i];
-    }
-  }
-  if (maxAlpha === 0 || maxAlpha >= THRESHOLD_ALPHA) {
+  const applied = normalizeFluidPng(png);
+  if (!applied) {
     alreadyVisible += 1;
     continue;
   }
 
-  const gain = TARGET_ALPHA / maxAlpha;
-  for (let i = 3; i < png.data.length; i += 4) {
-    png.data[i] = Math.min(255, Math.round(png.data[i] * gain));
-  }
   const buffer = PNG.sync.write(png);
-  report.push(`${basename}: max alpha ${(maxAlpha / 255).toFixed(2)} -> 0.95`);
+  report.push(`${basename}: ${applied}`);
 
   if (!rename) {
     fs.writeFileSync(filePath, buffer);
@@ -154,6 +161,92 @@ if (renames.size > 0) {
   }
 }
 
+/**
+ * Turn one translucent fluid icon into a solid chip of its own colour, in
+ * place: the alpha-weighted average of the capture's pixels is the fluid's
+ * true tint, it gets lifted to a readable luminance, and the capture's alpha
+ * pattern is kept as shading so the chip still moves like a texture. Returns
+ * a short description of what was done, or undefined when the icon already
+ * reads fine - which is also what makes the pass idempotent, since a treated
+ * icon comes out fully opaque and measures healthy on the next run.
+ */
+function normalizeFluidPng(png) {
+  const { data, width, height } = png;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  let painted = 0;
+  let alphaSum = 0;
+  let maxAlpha = 0;
+  let weightedRed = 0;
+  let weightedGreen = 0;
+  let weightedBlue = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const alpha = data[index + 3];
+      if (alpha === 0) {
+        continue;
+      }
+      painted += 1;
+      alphaSum += alpha;
+      if (alpha > maxAlpha) {
+        maxAlpha = alpha;
+      }
+      const weight = alpha / 255;
+      weightedRed += data[index] * weight;
+      weightedGreen += data[index + 1] * weight;
+      weightedBlue += data[index + 2] * weight;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (painted === 0) {
+    // A fully blank capture has nothing to recover; inventing pixels from
+    // nothing is the dataset lying about what the exporter saw.
+    return undefined;
+  }
+
+  const meanAlpha = alphaSum / painted;
+  if (meanAlpha >= MIN_MEAN_ALPHA) {
+    return undefined;
+  }
+
+  const totalWeight = alphaSum / 255;
+  const base = [
+    weightedRed / totalWeight,
+    weightedGreen / totalWeight,
+    weightedBlue / totalWeight,
+  ];
+  const luminance = (0.2126 * base[0] + 0.7152 * base[1] + 0.0722 * base[2]) / 255;
+  const gain =
+    luminance < TARGET_LUMINANCE
+      ? Math.min(TARGET_LUMINANCE / Math.max(luminance, 0.02), MAX_LUMINANCE_GAIN)
+      : 1;
+  const bright = base.map((channel) => Math.min(255, channel * gain));
+
+  // Fill the icon's own bounding box only: the canvas padding around the
+  // fluid square stays transparent, so the icon keeps its shape instead of
+  // becoming a full card.
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const index = (y * width + x) * 4;
+      const shade = 0.78 + 0.27 * (data[index + 3] / maxAlpha);
+      data[index] = Math.min(255, Math.round(bright[0] * shade));
+      data[index + 1] = Math.min(255, Math.round(bright[1] * shade));
+      data[index + 2] = Math.min(255, Math.round(bright[2] * shade));
+      data[index + 3] = 255;
+    }
+  }
+
+  return `chipped at mean alpha ${(meanAlpha / 255).toFixed(2)}, luminance x${gain.toFixed(1)}`;
+}
+
 function collectFluidIcons(value) {
   if (Array.isArray(value)) {
     for (const entry of value) {
@@ -188,8 +281,13 @@ function listShardFiles() {
 }
 
 /**
- * Swap every renamed basename inside one artifact. Old and new names are the
- * same length, so the patch mutates the decompressed buffer in place; only an
+ * Swap every renamed basename inside one artifact. One scan finds each
+ * rendered-texture reference and looks its basename up in the rename map -
+ * never the other way around, which both avoids a pass per renamed file and
+ * cannot clip a longer name that merely ends with a renamed one (fluids that
+ * share a texture share its content-hash suffix, so `latte-<hash>.png` is a
+ * real suffix of `sweet_latte-<hash>.png`). Old and new names are the same
+ * length, so the patch mutates the decompressed buffer in place; only an
  * artifact that actually changed is recompressed and rewritten.
  */
 function patchArtifact(filePath) {
@@ -200,15 +298,19 @@ function patchArtifact(filePath) {
   const buffer = isGz ? zlib.gunzipSync(fs.readFileSync(filePath)) : fs.readFileSync(filePath);
 
   let replaced = 0;
-  for (const [oldBasename, newBasename] of renames) {
-    const needle = Buffer.from(oldBasename);
-    const replacement = Buffer.from(newBasename);
-    let position = 0;
-    while ((position = buffer.indexOf(needle, position)) !== -1) {
-      replacement.copy(buffer, position);
-      position += needle.length;
+  let position = 0;
+  while ((position = buffer.indexOf(RENDERED_PREFIX, position)) !== -1) {
+    position += RENDERED_PREFIX.length;
+    let end = position;
+    while (end < buffer.length && buffer[end] !== 0x22 && end - position < 200) {
+      end += 1;
+    }
+    const replacement = renames.get(buffer.toString("utf8", position, end));
+    if (replacement) {
+      buffer.write(replacement, position);
       replaced += 1;
     }
+    position = end;
   }
   if (replaced === 0) {
     return;
