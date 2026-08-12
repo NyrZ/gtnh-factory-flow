@@ -66,6 +66,16 @@ const EPSILON = 0.000001;
  * feeder is an empty bus and an output with no taker is a full one, and both
  * stop the machine dead. A node standing on the disposal limit is CLOGGED.
  *
+ * A clog has to be JUSTIFIED by what takers would take if nothing were
+ * clogged. Judged on live flows alone, a clog can hold itself in place: the
+ * held machine asks for less, its suppliers read "not wanted", their clogs
+ * deepen, and a one-round allocation wobble becomes a stable answer a fixed
+ * fraction below the truth (the platline board stranded at exactly 90%).
+ * Disposal is therefore judged against a SHADOW of the demand system - same
+ * asks, same fairness, but throttled by pressure-only demand (`demWant`) and
+ * offered capability instead of throttled rates - a world with no clogs in
+ * it, where a suppressed want cannot masquerade as a missing one.
+ *
  * This is a real cost and it is the point. Every plan now has to say where
  * its raw materials come from and where its product goes, in drawers, on the
  * board - and until it does, it reads zero rather than quietly inventing the
@@ -540,10 +550,15 @@ export function solveEquilibrium(
   // ---- Iteration state: everything starts at full blast. -------------------
   const cap = new Map<string, number>();
   const dem = new Map<string, number>();
+  // Pressure-only demand, iterated alongside dem for the shadow fill: how
+  // hard each node is wanted with every clog throttle removed. See the
+  // shadow fill in runRound.
+  const demW = new Map<string, number>();
   const disp = new Map<string, number>();
   for (const info of machineNodes) {
     cap.set(info.id, 1);
     dem.set(info.id, 1);
+    demW.set(info.id, 1);
     disp.set(info.id, 1);
   }
   // The priority tranche starts empty: round one splits fairly, and from the
@@ -564,6 +579,9 @@ export function solveEquilibrium(
   interface RoundOutput {
     capNext: Map<string, number>;
     demNext: Map<string, number>;
+    /** Pressure-only demand: what takers want with clog throttles removed.
+     * Feeds the next round's shadow asks; never takes the disposal min. */
+    demWantNext: Map<string, number>;
     disposalNext: Map<string, number>;
     clogOutputNext: Map<string, ResourceKey>;
     /** Per budget: the rate its owner runs at regardless of this output's
@@ -727,11 +745,13 @@ export function solveEquilibrium(
 
     const askAvailability = new Map<string, number>();
     const askDesire = new Map<string, number>();
+    const askShadow = new Map<string, number>();
     for (const [needKey, need] of needs) {
       const info = infoById.get(need.targetId);
       if (!info || need.nameplatePerSecond <= EPSILON) {
         askAvailability.set(needKey, 0);
         askDesire.set(needKey, 0);
+        askShadow.set(needKey, 0);
         continue;
       }
       const ceiling = sibCeil(info, needKey);
@@ -739,6 +759,13 @@ export function solveEquilibrium(
       askDesire.set(
         needKey,
         need.nameplatePerSecond * Math.min(clampUtilization(dem.get(need.targetId) ?? 1), ceiling),
+      );
+      // The same ask, throttled by demWANT instead of dem: what this consumer
+      // would take if no clog anywhere were holding it back. See the shadow
+      // fill below for why disposal has to be judged on this and not on dem.
+      askShadow.set(
+        needKey,
+        need.nameplatePerSecond * Math.min(clampUtilization(demW.get(need.targetId) ?? 1), ceiling),
       );
     }
 
@@ -755,6 +782,31 @@ export function solveEquilibrium(
       budgetOfferActual,
       poolOffer,
       askDesire,
+      unconditionalByBudget,
+      backedPoolKeys,
+    );
+    // THE SHADOW FILL. Disposal - the clog ceiling below - must not be judged
+    // by the desire fill, because the desire fill is downstream of every clog:
+    // a machine held low asks its suppliers for less, the supplier's output
+    // reads "not wanted", ITS disposal drops, and a slowdown that started as a
+    // one-round allocation wobble justifies itself forever. On a board of
+    // mass-conserving loops (every recycle chain is one) that stranded state
+    // is a genuine fixed point, and the whole plan settles a fixed fraction
+    // below the answer - the platline board that ran at exactly 90% until an
+    // unrelated drawer perturbed it.
+    //
+    // So the clog question is asked in a world with no clogs in it: capability
+    // offers (a supplier competes at what it COULD make, so a source drawer
+    // takes only the true residue), and asks throttled by demWANT - the
+    // pressure-only demand iterated alongside dem, which never takes the
+    // disposal min. A real surplus still clogs: demWant honours what takers
+    // genuinely want (a taker that wants no more asks for no more), it merely
+    // refuses to count a want that a clog itself suppressed.
+    const shadowFill = runFill(
+      needs,
+      budgetOffer,
+      poolOfferCapable,
+      askShadow,
       unconditionalByBudget,
       backedPoolKeys,
     );
@@ -1055,6 +1107,7 @@ export function solveEquilibrium(
     // (plus tank absorption), over its nameplate output.
     const capNext = new Map<string, number>();
     const demNext = new Map<string, number>();
+    const demWantNext = new Map<string, number>();
     const disposalNext = new Map<string, number>();
     const clogOutputNext = new Map<string, ResourceKey>();
     const unconditionalNext = new Map<string, number>();
@@ -1079,6 +1132,7 @@ export function solveEquilibrium(
         // Pure sink: nothing downstream can pace it; it always wants full
         // blast and only its input supply throttles it.
         demNext.set(info.id, 1);
+        demWantNext.set(info.id, 1);
         continue;
       }
       // One walk over the budgets collects everything the three verdicts and
@@ -1090,12 +1144,27 @@ export function solveEquilibrium(
         for (const edge of budget.edges) {
           demandSum += demandByEdge.get(edge.id) ?? 0;
         }
-        let required = demandSum;
+        // The same takers, read in the shadow fill: their pull with every clog
+        // throttle removed. Storage sinks keep their real figures - a tank's
+        // absorption follows production, it has no suppressed want to restore.
+        let shadowSum = 0;
+        for (const edge of budget.edges) {
+          if (!edge.needKey) {
+            shadowSum += demandByEdge.get(edge.id) ?? 0;
+            continue;
+          }
+          const need = needs.get(edge.needKey);
+          const unmet = Math.max(0, shadowFill.remainingNeed.get(edge.needKey) ?? 0);
+          shadowSum +=
+            (shadowFill.grants.get(edge.id) ?? 0) + unmet / Math.max(1, need?.edgeCount ?? 1);
+        }
+        let floorRate = 0;
         for (const floor of info.targetFloors) {
           if (floor.key === budget.outputKey) {
-            required = Math.max(required, floor.amountPerSecond);
+            floorRate = Math.max(floorRate, floor.amountPerSecond);
           }
         }
+        const required = Math.max(demandSum, floorRate);
         // A voided output is a fully demanded output: the can drinks whatever
         // arrives, so this budget can never pace the machine below full blast
         // (the in-game void-pipe semantic, the jump-start trick built in).
@@ -1110,7 +1179,7 @@ export function solveEquilibrium(
         const pinned =
           budget.trashEdges.length > 0 ||
           budget.drainEdges.some((e) => !e.silent && !e.overflow);
-        return { budget, demandSum, required, pinned };
+        return { budget, demandSum, shadowSum, floorRate, required, pinned };
       });
       // Target floors on outputs no wire carries still ask the machine to run.
       let floorPressure = 0;
@@ -1125,14 +1194,24 @@ export function solveEquilibrium(
       }
 
       let pressure = floorPressure;
+      // The shadow pressure: how hard the takers pull with clog throttles
+      // removed. This is what demWant carries into the next round's shadow
+      // asks - never the disposal min, which is the whole point of it.
+      let pressureShadow = floorPressure;
       for (const stat of budgetStats) {
         if (stat.pinned) {
           pressure = Math.max(pressure, 1);
+          pressureShadow = Math.max(pressureShadow, 1);
         }
         if (stat.budget.makePerSecond > EPSILON) {
           pressure = Math.max(pressure, stat.required / stat.budget.makePerSecond);
+          pressureShadow = Math.max(
+            pressureShadow,
+            Math.max(stat.shadowSum, stat.floorRate) / stat.budget.makePerSecond,
+          );
         } else if (stat.required > EPSILON) {
           pressure = Number.POSITIVE_INFINITY;
+          pressureShadow = Number.POSITIVE_INFINITY;
         }
       }
 
@@ -1143,13 +1222,19 @@ export function solveEquilibrium(
       // those is the ceiling. Target floors are asks, not outlets, so they are
       // deliberately absent here: dialling a rate does not create somewhere to
       // put the result.
+      // The ceiling honours the HIGHER of the two readings. The real fill can
+      // dip below the truth for a round while signals cross (the latch the
+      // shadow exists to break); the shadow can sit below the truth when a
+      // competing supplier is genuinely clogged elsewhere and its imagined
+      // unclogged offer absorbs ask it will never really serve. Either alone
+      // understates somewhere; a want is proven by whichever world shows it.
       let disposal = Number.POSITIVE_INFINITY;
       let clogKey: ResourceKey | undefined;
       for (const stat of budgetStats) {
         if (stat.budget.freeDisposal || stat.budget.makePerSecond <= EPSILON) {
           continue;
         }
-        const ceiling = stat.demandSum / stat.budget.makePerSecond;
+        const ceiling = Math.max(stat.demandSum, stat.shadowSum) / stat.budget.makePerSecond;
         if (ceiling < disposal) {
           disposal = ceiling;
           clogKey = stat.budget.outputKey;
@@ -1182,7 +1267,10 @@ export function solveEquilibrium(
             pressureExcl = Number.POSITIVE_INFINITY;
           }
           if (!other.budget.freeDisposal && other.budget.makePerSecond > EPSILON) {
-            dispExcl = Math.min(dispExcl, other.demandSum / other.budget.makePerSecond);
+            dispExcl = Math.min(
+              dispExcl,
+              Math.max(other.demandSum, other.shadowSum) / other.budget.makePerSecond,
+            );
           }
         }
         unconditionalNext.set(
@@ -1209,11 +1297,13 @@ export function solveEquilibrium(
         clogOutputNext.set(info.id, clogKey);
       }
       demNext.set(info.id, Math.min(pressure, disposal));
+      demWantNext.set(info.id, pressureShadow);
     }
 
     return {
       capNext,
       demNext,
+      demWantNext,
       disposalNext,
       clogOutputNext,
       unconditionalNext,
@@ -1253,12 +1343,24 @@ export function solveEquilibrium(
       const dispDelta =
         clampUtilization(disp.get(info.id) ?? 1) -
         clampUtilization(output.disposalNext.get(info.id) ?? 1);
-      maxDelta = Math.max(maxDelta, Math.abs(capDelta), Math.abs(demDelta), Math.abs(dispDelta));
+      // demWant converges like disposal: counted here, never extrapolated
+      // (the jump below routes keys into cap or dem only).
+      const demWDelta =
+        clampUtilization(demW.get(info.id) ?? 1) -
+        clampUtilization(output.demWantNext.get(info.id) ?? 1);
+      maxDelta = Math.max(
+        maxDelta,
+        Math.abs(capDelta),
+        Math.abs(demDelta),
+        Math.abs(dispDelta),
+        Math.abs(demWDelta),
+      );
     }
 
     for (const info of machineNodes) {
       cap.set(info.id, output.capNext.get(info.id) ?? 1);
       dem.set(info.id, output.demNext.get(info.id) ?? 1);
+      demW.set(info.id, output.demWantNext.get(info.id) ?? 1);
       disp.set(info.id, output.disposalNext.get(info.id) ?? 1);
     }
     poolInflow = output.poolInflowNext;
@@ -1332,6 +1434,10 @@ export function solveEquilibrium(
     const demValue = dem.get(info.id) ?? 1;
     if (Number.isFinite(demValue) && demValue < ZERO_SNAP) {
       dem.set(info.id, 0);
+    }
+    const demWValue = demW.get(info.id) ?? 1;
+    if (Number.isFinite(demWValue) && demWValue < ZERO_SNAP) {
+      demW.set(info.id, 0);
     }
   }
   const settled = runRound();
