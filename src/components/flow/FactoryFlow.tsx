@@ -5275,6 +5275,8 @@ function AnnotationDraftPreview({
         className="pointer-events-none absolute"
         style={{ transform: `translate(${x}px, ${y}px)`, width, height }}
       >
+        {/* Drawn solid, exactly as it will land: a shape that changes clothes
+            the moment you let go reads as two different things. */}
         {tool === "arrow" ? (
           <svg
             className="h-full w-full overflow-visible"
@@ -5288,19 +5290,23 @@ function AnnotationDraftPreview({
               y2={draft.end.y - y}
               stroke={swatch}
               strokeWidth={5}
-              strokeDasharray="8 6"
               strokeLinecap="round"
             />
           </svg>
         ) : tool === "box" ? (
           <div
-            className="h-full w-full border-4 border-dashed"
+            className="h-full w-full border-4"
             style={{ borderColor: swatch, backgroundColor: `${swatch}14` }}
           />
         ) : (
           <div
-            className="h-full w-full border-2 border-dashed"
-            style={{ borderColor: swatch, backgroundColor: "var(--mc-78)", opacity: 0.85 }}
+            className="h-full w-full border-2"
+            style={{
+              borderColor: swatch,
+              backgroundColor: "var(--mc-78)",
+              backgroundImage: `linear-gradient(${swatch}33, ${swatch}33)`,
+              opacity: 0.85,
+            }}
           />
         )}
       </div>

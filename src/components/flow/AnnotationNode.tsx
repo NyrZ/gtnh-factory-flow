@@ -1,6 +1,6 @@
 "use client";
 
-import { NodeResizer, type Node, type NodeProps } from "@xyflow/react";
+import { NodeResizer, useReactFlow, type Node, type NodeProps } from "@xyflow/react";
 import { memo, useEffect, useRef, useState } from "react";
 import type { FactoryAnnotation } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
@@ -69,16 +69,16 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
   );
 
   if (annotation.kind === "arrow") {
+    // No resize box: an arrow is two ends and a line, so editing it is
+    // dragging an end, not working out which side of a rectangle to pull.
     return (
-      <>
-        {resizer}
-        <ArrowShape
-          annotation={annotation}
-          width={nodeWidth}
-          height={nodeHeight}
-          swatch={color.swatch}
-        />
-      </>
+      <ArrowAnnotation
+        annotation={annotation}
+        width={nodeWidth}
+        height={nodeHeight}
+        swatch={color.swatch}
+        selected={selected ?? false}
+      />
     );
   }
 
@@ -121,26 +121,160 @@ function BoxShape({ swatch }: { swatch: string }) {
   );
 }
 
-function ArrowShape({
+type ArrowPoint = { x: number; y: number };
+
+/** The arrow's two ends in node-local coordinates, from its direction. */
+function arrowEndpoints(
+  annotation: FactoryAnnotation,
+  width: number,
+  height: number,
+): { from: ArrowPoint; to: ArrowPoint } {
+  const direction = annotation.arrowDirection ?? "down-right";
+  return {
+    from: {
+      x: direction.endsWith("left") ? width : 0,
+      y: direction.startsWith("up") ? height : 0,
+    },
+    to: {
+      x: direction.endsWith("left") ? 0 : width,
+      y: direction.startsWith("up") ? 0 : height,
+    },
+  };
+}
+
+/**
+ * The arrow with its two grab points. Selecting it offers the ends
+ * themselves; dragging one redraws the line live from the other end, and the
+ * new box, size and direction are committed once on release (the store snaps
+ * them to the grid, same as a box resize).
+ */
+function ArrowAnnotation({
   annotation,
   width,
   height,
   swatch,
+  selected,
 }: {
   annotation: FactoryAnnotation;
   width: number;
   height: number;
   swatch: string;
+  selected: boolean;
 }) {
-  const direction = annotation.arrowDirection ?? "down-right";
-  const from = {
-    x: direction.endsWith("left") ? width : 0,
-    y: direction.startsWith("up") ? height : 0,
-  };
-  const to = {
-    x: direction.endsWith("left") ? 0 : width,
-    y: direction.startsWith("up") ? 0 : height,
-  };
+  const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
+  const { screenToFlowPosition } = useReactFlow();
+  const [draft, setDraft] = useState<{ from: ArrowPoint; to: ArrowPoint }>();
+  const { from, to } = draft ?? arrowEndpoints(annotation, width, height);
+
+  const beginEndpointDrag =
+    (which: "from" | "to") => (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const settled = arrowEndpoints(annotation, width, height);
+      const fixedLocal = which === "from" ? settled.to : settled.from;
+      const localPoint = (client: { clientX: number; clientY: number }): ArrowPoint => {
+        const flow = screenToFlowPosition({ x: client.clientX, y: client.clientY });
+        return { x: flow.x - annotation.position.x, y: flow.y - annotation.position.y };
+      };
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const moving = localPoint(moveEvent);
+        setDraft(
+          which === "from" ? { from: moving, to: fixedLocal } : { from: fixedLocal, to: moving },
+        );
+      };
+      const handleUp = (upEvent: PointerEvent) => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+        setDraft(undefined);
+
+        const moving = localPoint(upEvent);
+        const fromLocal = which === "from" ? moving : fixedLocal;
+        const toLocal = which === "to" ? moving : fixedLocal;
+        const base = annotation.position;
+        const fromFlow = { x: base.x + fromLocal.x, y: base.y + fromLocal.y };
+        const toFlow = { x: base.x + toLocal.x, y: base.y + toLocal.y };
+        updateAnnotation(annotation.id, {
+          position: {
+            x: Math.min(fromFlow.x, toFlow.x),
+            y: Math.min(fromFlow.y, toFlow.y),
+          },
+          size: {
+            width: Math.max(Math.abs(toFlow.x - fromFlow.x), ANNOTATION_MIN_ARROW),
+            height: Math.max(Math.abs(toFlow.y - fromFlow.y), ANNOTATION_MIN_ARROW),
+          },
+          arrowDirection: `${toFlow.y < fromFlow.y ? "up" : "down"}-${
+            toFlow.x < fromFlow.x ? "left" : "right"
+          }` as FactoryAnnotation["arrowDirection"],
+        });
+      };
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
+    };
+
+  return (
+    <>
+      <ArrowShape from={from} to={to} width={width} height={height} swatch={swatch} />
+      {selected ? (
+        <>
+          <ArrowEndpointHandle
+            point={from}
+            label="Drag the arrow's tail"
+            onPointerDown={beginEndpointDrag("from")}
+          />
+          <ArrowEndpointHandle
+            point={to}
+            label="Drag the arrow's head"
+            onPointerDown={beginEndpointDrag("to")}
+          />
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** Same cyan square the resize corners wear, sitting on the end it moves. */
+function ArrowEndpointHandle({
+  point,
+  label,
+  onPointerDown,
+}: {
+  point: ArrowPoint;
+  label: string;
+  onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
+}) {
+  return (
+    <div
+      role="button"
+      aria-label={label}
+      title={label}
+      onPointerDown={onPointerDown}
+      className="nodrag absolute z-10 h-3 w-3 cursor-crosshair"
+      style={{
+        left: point.x - 6,
+        top: point.y - 6,
+        pointerEvents: "all",
+        touchAction: "none",
+        backgroundColor: "#22d3ee",
+        border: "1px solid #0e7490",
+      }}
+    />
+  );
+}
+
+function ArrowShape({
+  from,
+  to,
+  width,
+  height,
+  swatch,
+}: {
+  from: ArrowPoint;
+  to: ArrowPoint;
+  width: number;
+  height: number;
+  swatch: string;
+}) {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
   const headLength = 18;
   const headSpread = 0.5;
@@ -237,7 +371,12 @@ function TextShape({
     <div
       className="group/text relative h-full w-full border-2 font-mono shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),3px_3px_0_rgba(0,0,0,0.25)]"
       style={{
+        // The paint reaches the face, not just the frame: a 20% wash of the
+        // border's colour over the slab. Capped low so the ink stays readable
+        // against every swatch - even pure white at 20% leaves the face dark
+        // enough for light text.
         backgroundColor: "var(--mc-78)",
+        backgroundImage: `linear-gradient(${color.swatch}33, ${color.swatch}33)`,
         borderColor: color.swatch,
         color: "var(--mc-ink)",
         fontSize,
