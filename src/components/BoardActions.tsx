@@ -1,7 +1,9 @@
 ﻿"use client";
 
 import {
+  Check,
   ChevronDown,
+  ClipboardList,
   Download,
   FileImage,
   ImageDown,
@@ -33,6 +35,7 @@ import type {
   RecipeOutput,
   ResourceKind,
 } from "@/lib/model/types";
+import { formatBoardDump } from "./flow/board-dump";
 import { makeResourceHandleId, parseResourceHandleId } from "./flow/resource-handles";
 import { isEditableKeyboardTarget } from "./flow/keyboard";
 import {
@@ -81,6 +84,37 @@ export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = 
   const cleanBoard = useFactoryStore((state) => state.cleanBoard);
   const undo = useFactoryStore((state) => state.undo);
   const redo = useFactoryStore((state) => state.redo);
+  const lastResult = useFactoryStore((state) => state.lastResult);
+  const selectedBoardIds = useFactoryStore((state) => state.selectedBoardIds);
+  const [diagnosticsState, setDiagnosticsState] = useState<"idle" | "copied" | "failed">("idle");
+
+  const selectedCardCount = selectedBoardIds.length;
+  const diagnosticsLabel =
+    diagnosticsState === "copied"
+      ? "Copied to clipboard"
+      : diagnosticsState === "failed"
+        ? "Could not reach the clipboard"
+        : selectedCardCount > 0
+          ? `Copy diagnostics (${selectedCardCount} selected)`
+          : "Copy diagnostics (whole plan)";
+
+  /**
+   * The pasteable version of what the board is showing: every selected card's
+   * machine, tier, config, overclock, rates and verdict, in JSON. Select
+   * nothing and it dumps the plan.
+   *
+   * The menu deliberately stays open - the row itself is the receipt, and
+   * closing it would take the only confirmation away with it.
+   */
+  const copyDiagnostics = async () => {
+    const text = formatBoardDump({
+      project,
+      result: lastResult,
+      selectedIds: selectedBoardIds,
+    });
+    setDiagnosticsState((await copyToClipboard(text)) ? "copied" : "failed");
+    window.setTimeout(() => setDiagnosticsState("idle"), 2000);
+  };
 
   const exportJson = async () => {
     const requestId = randomUUID();
@@ -278,6 +312,13 @@ export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = 
           }}
         />
         <MenuAction
+          icon={diagnosticsState === "copied" ? Check : ClipboardList}
+          label={diagnosticsLabel}
+          onClick={() => {
+            void copyDiagnostics();
+          }}
+        />
+        <MenuAction
           icon={Download}
           label="Export as JSON"
           disabled={Boolean(pendingExport)}
@@ -344,6 +385,14 @@ export function BoardActions({ variant = "bar", onAction }: BoardActionsProps = 
           {isExportMenuOpen ? (
             <div className="absolute right-0 top-8 z-50 min-w-44 rounded border border-line-strong bg-surface py-1 text-sm shadow-lg">
               <ExportMenuItem
+                icon={diagnosticsState === "copied" ? Check : ClipboardList}
+                label={diagnosticsLabel}
+                onClick={() => {
+                  void copyDiagnostics();
+                }}
+              />
+              <div className="my-1 border-t border-line-strong" />
+              <ExportMenuItem
                 icon={Download}
                 label="Export plan JSON"
                 onClick={() => {
@@ -401,6 +450,34 @@ function MenuAction({
       <span className="truncate">{label}</span>
     </button>
   );
+}
+
+/**
+ * Write text to the system clipboard, with the old selection-based path behind
+ * it: the async API needs a secure context, and a plan opened from a file or
+ * over plain http has none. Reports whether it landed rather than throwing,
+ * because the caller's whole job is to say so on the button.
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const scratch = document.createElement("textarea");
+      scratch.value = text;
+      scratch.setAttribute("readonly", "");
+      scratch.style.position = "fixed";
+      scratch.style.opacity = "0";
+      document.body.append(scratch);
+      scratch.select();
+      const copied = document.execCommand("copy");
+      scratch.remove();
+      return copied;
+    } catch {
+      return false;
+    }
+  }
 }
 
 function nextAnimationFrame(): Promise<void> {
@@ -771,7 +848,7 @@ function ExportMenuItem({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-2 px-3 py-2 text-left text-fg-subtle hover:bg-surface-sunken"
+      className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-fg-subtle hover:bg-surface-sunken"
     >
       <Icon className="h-4 w-4" />
       <span>{label}</span>

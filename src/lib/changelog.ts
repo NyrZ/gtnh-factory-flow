@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.9.0",
+    date: "2026-08-11",
+    headline: "Copy what your board is doing",
+    notes: [
+      "Export menu, top of the page: Copy diagnostics puts a readable summary of your plan on the clipboard.",
+      "Select some cards first and it copies only those, with what the group needs and what it makes.",
+      "Each machine comes with its tier, config, speed, power and one line on what is holding it back.",
+      "Paste it into a bug report and whoever reads it can see the problem without your board.",
+    ],
+  },
+  {
     version: "2.8.0",
     date: "2026-08-11",
     headline: "Drawers wire from anywhere",
