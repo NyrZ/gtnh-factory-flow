@@ -356,11 +356,22 @@ export type FactoryAnnotationArrowDirection = "down-right" | "down-left" | "up-r
 export type FactoryAnnotationBorderStyle = "solid" | "dashed" | "none";
 
 /**
- * What a box/zone/image paints inside itself. `tint` is the classic faint
- * wash; `solid` is opaque paint; `hatch` and `grid` draw their own texture in
- * the fill colour, so a region can carry its own background on the board.
+ * What a box/zone paints inside itself. `tint` is the classic faint wash and
+ * `solid` opaque paint; `paper` is solid with the themes' grain over it; the
+ * rest draw the board's own marks in the fill colour - dots, a plain grid, a
+ * graph grid with major lines, notepad rules, a diagonal hatch - so a region
+ * can carry its own background on the board.
  */
-export type FactoryAnnotationFillStyle = "tint" | "solid" | "hatch" | "grid" | "none";
+export type FactoryAnnotationFillStyle =
+  | "tint"
+  | "solid"
+  | "paper"
+  | "dots"
+  | "grid"
+  | "graph"
+  | "ruled"
+  | "hatch"
+  | "none";
 
 /**
  * How a box, zone or image is dressed. Every field optional: absent means the

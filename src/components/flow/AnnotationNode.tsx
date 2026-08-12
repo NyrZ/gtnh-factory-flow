@@ -17,7 +17,8 @@ import type {
   FactoryAnnotationStyle,
 } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
-import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE } from "./node-colors";
+import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE, inkFor } from "./node-colors";
+import { GRAIN_DARK_URI, GRAIN_LIGHT_URI } from "./canvas-themes";
 import {
   ANNOTATION_MIN_ARROW,
   ANNOTATION_MIN_BOX,
@@ -76,21 +77,39 @@ function annotationLook(annotation: FactoryAnnotation): AnnotationLook {
   };
 }
 
+/** The grain a `paper` fill wears: dark ink on a light swatch, light on dark. */
+function grainFor(swatch: string): string {
+  return inkFor(swatch).ink === "#f2f3f7" ? GRAIN_LIGHT_URI : GRAIN_DARK_URI;
+}
+
 /**
  * The CSS background a fill style paints, in the fill colour. `unit` is the
  * texture period: the board cell for real shapes, a few px for the little
- * preview chips in the style panel.
+ * preview chips in the style panel. Backgrounds are ordinary CSS pixels
+ * inside the zoomed viewport, so every mark here rides the board exactly as
+ * the shape does.
  */
 function fillBackground(
   fill: FactoryAnnotationFillStyle,
   swatch: string,
   unit: number = BOARD_GRID,
-): { backgroundColor?: string; backgroundImage?: string } {
+): { backgroundColor?: string; backgroundImage?: string; backgroundSize?: string } {
   switch (fill) {
     case "none":
       return {};
     case "solid":
       return { backgroundColor: swatch };
+    case "paper":
+      return {
+        backgroundColor: swatch,
+        backgroundImage: `url("${grainFor(swatch)}")`,
+      };
+    case "dots":
+      return {
+        backgroundColor: `${swatch}0d`,
+        backgroundImage: `radial-gradient(${swatch}59 ${Math.max(1, unit * 0.08)}px, transparent ${Math.max(1, unit * 0.08)}px)`,
+        backgroundSize: `${unit}px ${unit}px`,
+      };
     case "hatch":
       return {
         backgroundColor: `${swatch}0d`,
@@ -100,6 +119,21 @@ function fillBackground(
       return {
         backgroundColor: `${swatch}0d`,
         backgroundImage: `repeating-linear-gradient(0deg, ${swatch}2e 0 1px, transparent 1px ${unit}px), repeating-linear-gradient(90deg, ${swatch}2e 0 1px, transparent 1px ${unit}px)`,
+      };
+    case "graph":
+      return {
+        backgroundColor: `${swatch}0d`,
+        backgroundImage: [
+          `repeating-linear-gradient(0deg, ${swatch}59 0 1px, transparent 1px ${unit * 5}px)`,
+          `repeating-linear-gradient(90deg, ${swatch}59 0 1px, transparent 1px ${unit * 5}px)`,
+          `repeating-linear-gradient(0deg, ${swatch}24 0 1px, transparent 1px ${unit}px)`,
+          `repeating-linear-gradient(90deg, ${swatch}24 0 1px, transparent 1px ${unit}px)`,
+        ].join(", "),
+      };
+    case "ruled":
+      return {
+        backgroundColor: `${swatch}0d`,
+        backgroundImage: `repeating-linear-gradient(180deg, transparent 0 ${unit * 2 - 1}px, ${swatch}45 ${unit * 2 - 1}px ${unit * 2}px)`,
       };
     default:
       return { backgroundColor: `${swatch}14` };
@@ -288,16 +322,24 @@ const NEXT_BORDER: Record<FactoryAnnotationBorderStyle, FactoryAnnotationBorderS
 };
 const NEXT_FILL: Record<FactoryAnnotationFillStyle, FactoryAnnotationFillStyle> = {
   tint: "solid",
-  solid: "hatch",
-  hatch: "grid",
-  grid: "none",
+  solid: "paper",
+  paper: "dots",
+  dots: "grid",
+  grid: "graph",
+  graph: "ruled",
+  ruled: "hatch",
+  hatch: "none",
   none: "tint",
 };
 const FILL_WORD: Record<FactoryAnnotationFillStyle, string> = {
   tint: "tinted",
   solid: "solid",
-  hatch: "hatched",
+  paper: "textured",
+  dots: "dotted",
   grid: "gridded",
+  graph: "graph paper",
+  ruled: "ruled",
+  hatch: "hatched",
   none: "off",
 };
 
@@ -657,7 +699,7 @@ function ZoneShape({
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ")} Z`;
 
-  // Hatch and grid fills are SVG patterns, one per zone (ids are global to
+  // Every patterned fill is an SVG pattern, one per zone (ids are global to
   // the whole board's SVG soup, so the zone id keys them).
   const patternId = `zone-fill-${zoneId}`;
   const fill =
@@ -680,37 +722,7 @@ function ZoneShape({
       viewBox={`0 0 ${Math.max(width, 1)} ${Math.max(height, 1)}`}
       preserveAspectRatio="none"
     >
-      {look.fill === "hatch" ? (
-        <defs>
-          <pattern
-            id={patternId}
-            width={18}
-            height={18}
-            patternUnits="userSpaceOnUse"
-            patternTransform="rotate(45)"
-          >
-            <rect width={18} height={18} fill={`${look.fillSwatch}0d`} />
-            <rect width={6} height={18} fill={`${look.fillSwatch}38`} />
-          </pattern>
-        </defs>
-      ) : look.fill === "grid" ? (
-        <defs>
-          <pattern
-            id={patternId}
-            width={BOARD_GRID}
-            height={BOARD_GRID}
-            patternUnits="userSpaceOnUse"
-          >
-            <rect width={BOARD_GRID} height={BOARD_GRID} fill={`${look.fillSwatch}0d`} />
-            <path
-              d={`M ${BOARD_GRID} 0 L 0 0 0 ${BOARD_GRID}`}
-              fill="none"
-              stroke={`${look.fillSwatch}2e`}
-              strokeWidth={1}
-            />
-          </pattern>
-        </defs>
-      ) : null}
+      <ZoneFillPattern fill={look.fill} swatch={look.fillSwatch} patternId={patternId} />
       <path
         d={outline}
         fill={fill}
@@ -745,6 +757,113 @@ function ZoneShape({
       />
     </svg>
   );
+}
+
+/**
+ * The <defs> a zone's patterned fill needs: the same marks the box fills
+ * paint in CSS, rebuilt as SVG patterns because a zone's interior is a path.
+ * Solid, tint and none use plain fills and need no pattern at all.
+ */
+function ZoneFillPattern({
+  fill,
+  swatch,
+  patternId,
+}: {
+  fill: FactoryAnnotationFillStyle;
+  swatch: string;
+  patternId: string;
+}) {
+  const cell = BOARD_GRID;
+  switch (fill) {
+    case "hatch":
+      return (
+        <defs>
+          <pattern
+            id={patternId}
+            width={18}
+            height={18}
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <rect width={18} height={18} fill={`${swatch}0d`} />
+            <rect width={6} height={18} fill={`${swatch}38`} />
+          </pattern>
+        </defs>
+      );
+    case "grid":
+      return (
+        <defs>
+          <pattern id={patternId} width={cell} height={cell} patternUnits="userSpaceOnUse">
+            <rect width={cell} height={cell} fill={`${swatch}0d`} />
+            <path
+              d={`M ${cell} 0 L 0 0 0 ${cell}`}
+              fill="none"
+              stroke={`${swatch}2e`}
+              strokeWidth={1}
+            />
+          </pattern>
+        </defs>
+      );
+    case "dots":
+      return (
+        <defs>
+          <pattern id={patternId} width={cell} height={cell} patternUnits="userSpaceOnUse">
+            <rect width={cell} height={cell} fill={`${swatch}0d`} />
+            <circle cx={cell / 2} cy={cell / 2} r={1.6} fill={`${swatch}59`} />
+          </pattern>
+        </defs>
+      );
+    case "ruled":
+      return (
+        <defs>
+          <pattern id={patternId} width={cell * 2} height={cell * 2} patternUnits="userSpaceOnUse">
+            <rect width={cell * 2} height={cell * 2} fill={`${swatch}0d`} />
+            <line x1={0} y1={0.5} x2={cell * 2} y2={0.5} stroke={`${swatch}45`} strokeWidth={1} />
+          </pattern>
+        </defs>
+      );
+    case "graph":
+      return (
+        <defs>
+          <pattern id={patternId} width={cell * 5} height={cell * 5} patternUnits="userSpaceOnUse">
+            <rect width={cell * 5} height={cell * 5} fill={`${swatch}0d`} />
+            {[1, 2, 3, 4].map((step) => (
+              <g key={step}>
+                <line
+                  x1={step * cell}
+                  y1={0}
+                  x2={step * cell}
+                  y2={cell * 5}
+                  stroke={`${swatch}24`}
+                  strokeWidth={1}
+                />
+                <line
+                  x1={0}
+                  y1={step * cell}
+                  x2={cell * 5}
+                  y2={step * cell}
+                  stroke={`${swatch}24`}
+                  strokeWidth={1}
+                />
+              </g>
+            ))}
+            <line x1={0.5} y1={0} x2={0.5} y2={cell * 5} stroke={`${swatch}59`} strokeWidth={1} />
+            <line x1={0} y1={0.5} x2={cell * 5} y2={0.5} stroke={`${swatch}59`} strokeWidth={1} />
+          </pattern>
+        </defs>
+      );
+    case "paper":
+      return (
+        <defs>
+          <pattern id={patternId} width={180} height={180} patternUnits="userSpaceOnUse">
+            <rect width={180} height={180} fill={swatch} />
+            <image href={grainFor(swatch)} width={180} height={180} />
+          </pattern>
+        </defs>
+      );
+    default:
+      return null;
+  }
 }
 
 /** The arrow's two ends in node-local coordinates, from its direction. */

@@ -360,7 +360,9 @@ export const factoryAnnotationSchema = z.object({
     .object({
       border: z.enum(["solid", "dashed", "none"]).optional(),
       borderColor: factoryNodeColorTagSchema.optional(),
-      fill: z.enum(["tint", "solid", "hatch", "grid", "none"]).optional(),
+      fill: z
+        .enum(["tint", "solid", "paper", "dots", "grid", "graph", "ruled", "hatch", "none"])
+        .optional(),
       fillColor: factoryNodeColorTagSchema.optional(),
     })
     .optional(),
