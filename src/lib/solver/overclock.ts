@@ -26,7 +26,7 @@ import {
 } from "@/lib/machines/machine-table";
 
 const VOLTAGE_TIER_INDEX_MV = 2;
-import { isIndustrialApiaryMachineType } from "@/lib/model/passive-production";
+import { getCropsNhStats, isIndustrialApiaryMachineType } from "@/lib/model/passive-production";
 import type { FactoryNode, MachineTier, Recipe } from "@/lib/model/types";
 import {
   resolveRuntimeTier,
@@ -46,6 +46,7 @@ type OverclockRecipeInput = Pick<Recipe, "durationTicks" | "eut" | "minimumTier"
       | "machineProfile"
       | "machineConfigControls"
       | "runtimeCalculation"
+      | "metadata"
     >
   >;
 
@@ -88,6 +89,22 @@ export function getOverclockedRecipeStats(
       minimumTier,
       overclockSteps,
       durationTicks: effectiveRecipe.durationTicks,
+      eut: effectiveRecipe.eut,
+    };
+  }
+  if (getCropsNhStats(effectiveRecipe)) {
+    // A crop grows at the world's pace: voltage buys nothing on a crop card,
+    // so a 0 EU recipe must not "afford" free overclock steps. The crop's own
+    // knobs (environment, harvester) move the duration through the machine
+    // duration multiplier instead.
+    return {
+      tier,
+      minimumTier,
+      overclockSteps: 0,
+      durationTicks: Math.max(
+        1,
+        effectiveRecipe.durationTicks * getMachineDurationMultiplier(effectiveRecipe as Recipe, node),
+      ),
       eut: effectiveRecipe.eut,
     };
   }

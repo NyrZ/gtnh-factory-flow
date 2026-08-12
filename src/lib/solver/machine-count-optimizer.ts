@@ -1406,7 +1406,7 @@ function buildRatePlan(node: FactoryNode, recipe: Recipe | undefined): RatePlan 
   for (const output of effectiveRecipe.outputs) {
     const outputRate =
       output.amount *
-      getChanceMultiplier(output) *
+      getChanceMultiplier(effectiveRecipe, output) *
       getMachineOutputMultiplier(effectiveRecipe, node, output, overclockedRecipe.tier) *
       operationRatePerMachine;
     addRate(outputs, makeResourceKey(output.kind, output.id), outputRate);

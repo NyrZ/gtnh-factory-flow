@@ -1434,6 +1434,61 @@ describe("calculateThroughput", () => {
     expect(result.nodes.node.utilization).toBeCloseTo(1);
   });
 
+  it("does not re-apply drop chance to CropsNH crop outputs", () => {
+    // A crop card's baked amounts are already expected values: the drop-table
+    // weight sits inside `amount`, and `chance` is only the display badge.
+    // Blazereed's blaze rods used to come out at a quarter of their real rate.
+    const project: FactoryProject = {
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      id: "crop-chance-project",
+      name: "Crop chance test",
+      recipes: [
+        {
+          id: "crop-blazereed",
+          name: "Crop Farm: Blazereed",
+          machineType: "Crop Farm",
+          minimumTier: "NONE",
+          durationTicks: 2560,
+          eut: 0,
+          inputs: [],
+          outputs: [{ kind: "item", id: "blaze_rod", amount: 0.59, chance: 0.25 }],
+          metadata: {
+            cropsNh: {
+              tier: 4,
+              growthPoints: 1200,
+              dropChance: 0.8145,
+              growthCycleTicks: 256,
+              growthMultiplier: 1,
+              drops: [{ id: "blaze_rod", stackSize: 1, weight: 2500 }],
+            },
+          },
+          source: { recipeMap: "Crop Farm" },
+        },
+      ],
+      nodes: [
+        {
+          id: "crop-node",
+          recipeId: "crop-blazereed",
+          machineCount: 1,
+          parallel: 1,
+          overclockTier: "LV",
+          enabled: true,
+          position: { x: 0, y: 0 },
+        },
+      ],
+      edges: [],
+      fuelProfiles: [],
+    };
+
+    const result = solveClosed(project);
+
+    // 0.59 per 128s harvest, NOT 0.59 x 0.25.
+    expect(result.nodes["crop-node"].outputs["item:blaze_rod"].amountPerSecond).toBeCloseTo(
+      0.59 * (20 / 2560),
+      10,
+    );
+  });
+
   it("applies voltage tier overclocks to speed and EU/t", () => {
     const project: FactoryProject = {
       schemaVersion: PROJECT_SCHEMA_VERSION,

@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.3",
+    date: "2026-08-12",
+    headline: "Crop farms count every drop",
+    notes: [
+      "Crops with chanced drops, like Blazereed or the bonsais, now show their full average yield.",
+      "Raising the voltage tier on a crop card no longer speeds the crop up.",
+    ],
+  },
+  {
     version: "2.11.2",
     date: "2026-08-12",
     headline: "The plus button answers the moment you press it",

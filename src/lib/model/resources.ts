@@ -7,6 +7,7 @@ import type {
   ResourceKind,
 } from "./types";
 import { rateUnitMultiplier, rateUnitSuffix } from "./rate-unit";
+import { getCropsNhStats } from "./passive-production";
 
 export function makeResourceKey(kind: ResourceKind, resourceId: string): ResourceKey {
   return `${kind}:${resourceId}` as ResourceKey;
@@ -164,7 +165,17 @@ export function primaryOutput(recipe: Recipe): RecipeOutput | undefined {
   return recipe.outputs.find((output) => !output.byproduct) ?? recipe.outputs[0];
 }
 
-export function getChanceMultiplier(output: RecipeOutput): number {
+export function getChanceMultiplier(
+  recipe: Pick<Recipe, "metadata">,
+  output: RecipeOutput,
+): number {
+  // A CropsNH card bakes EXPECTED amounts: the drop-table weight is already
+  // inside `amount`, and `chance` is that same weight kept for the display
+  // badge. Multiplying it in again counts the probability twice - Blazereed's
+  // blaze rods came out at a quarter of their real rate.
+  if (getCropsNhStats(recipe)) {
+    return 1;
+  }
   return output.chance ?? 1;
 }
 

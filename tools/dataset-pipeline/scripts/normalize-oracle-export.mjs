@@ -897,6 +897,9 @@ function normalizeCropsNhCrops(domain) {
       amount: roundAmount(
         dropRounds * (entry.weight / 10000) * (entry.stackSize + (CROPSNH_REFERENCE.gain + 1) / 100),
       ),
+      // Display badge only: the weight is ALREADY inside `amount` above, so
+      // the app must never multiply crop amounts by `chance` again
+      // (`getChanceMultiplier` knows this).
       chance: entry.weight < 10000 ? entry.weight / 10000 : undefined,
       neiSlot: outputSlot(index),
     }));

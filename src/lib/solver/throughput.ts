@@ -148,7 +148,7 @@ export function calculateThroughput(
     for (const output of runtimeOutputs ?? effectiveRecipe.outputs) {
       const amountPerSecond =
         output.amount *
-        getChanceMultiplier(output) *
+        getChanceMultiplier(effectiveRecipe, output) *
         (runtimeOutputs
           ? 1
           : getMachineOutputMultiplier(effectiveRecipe, node, output, overclockedRecipe.tier)) *
