@@ -63,6 +63,10 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
         borderRadius: 0,
         backgroundColor: "#22d3ee",
         border: "1px solid #0e7490",
+        // Above the shape and its move strips: the corner grabbers sat half
+        // hidden behind the box frame, which read as "less important" when
+        // they are the whole resize story.
+        zIndex: 10,
       }}
       // The store rounds both the corner and the size to whole cells, so a
       // freehand resize still lands on the grid the moment you let go.
@@ -121,10 +125,11 @@ function BoxShape({ swatch }: { swatch: string }) {
           boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.35)`,
         }}
       />
-      <div className={`${stripBase} -top-3 left-0 right-0 h-6 cursor-grab`} style={{ pointerEvents: "all" }} />
-      <div className={`${stripBase} -bottom-3 left-0 right-0 h-6 cursor-grab`} style={{ pointerEvents: "all" }} />
-      <div className={`${stripBase} -left-3 bottom-0 top-0 w-6 cursor-grab`} style={{ pointerEvents: "all" }} />
-      <div className={`${stripBase} -right-3 bottom-0 top-0 w-6 cursor-grab`} style={{ pointerEvents: "all" }} />
+      {/* Inset from the ends: the corners belong to the resize grabbers. */}
+      <div className={`${stripBase} -top-3 left-4 right-4 h-6 cursor-grab`} style={{ pointerEvents: "all" }} />
+      <div className={`${stripBase} -bottom-3 left-4 right-4 h-6 cursor-grab`} style={{ pointerEvents: "all" }} />
+      <div className={`${stripBase} -left-3 bottom-4 top-4 w-6 cursor-grab`} style={{ pointerEvents: "all" }} />
+      <div className={`${stripBase} -right-3 bottom-4 top-4 w-6 cursor-grab`} style={{ pointerEvents: "all" }} />
     </div>
   );
 }
