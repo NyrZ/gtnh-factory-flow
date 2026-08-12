@@ -45,6 +45,7 @@ import {
   extractProjectJsonFromPng,
   extractProjectJsonFromSvg,
 } from "@/lib/import-export/plan-image";
+import { useWelcomeTab } from "@/lib/tour/welcome-tab";
 import { useFactoryStore } from "@/store/factory-store";
 
 interface BoardActionsProps {
@@ -94,6 +95,16 @@ export function BoardActions({ variant = "bar", onAction, onShare }: BoardAction
   const lastResult = useFactoryStore((state) => state.lastResult);
   const selectedBoardIds = useFactoryStore((state) => state.selectedBoardIds);
   const [diagnosticsState, setDiagnosticsState] = useState<"idle" | "copied" | "failed">("idle");
+  // Welcome COVERS the board, so the design underneath still has content and
+  // Share would happily post it. But sharing a board you cannot see is a
+  // trap, so the button waits until you are looking at the thing it posts.
+  const isWelcomeCoveringBoard = useWelcomeTab().active;
+  const canShare = !isWelcomeCoveringBoard && project.nodes.length > 0;
+  const shareTitle = isWelcomeCoveringBoard
+    ? "Share this setup: open a design tab first"
+    : project.nodes.length === 0
+      ? "Share this setup: build something on the board first"
+      : "Share this setup with everyone";
 
   const selectedCardCount = selectedBoardIds.length;
   const diagnosticsLabel =
@@ -305,7 +316,7 @@ export function BoardActions({ variant = "bar", onAction, onShare }: BoardAction
           <MenuAction
             icon={Share2}
             label="Share this setup"
-            disabled={project.nodes.length === 0}
+            disabled={!canShare}
             onClick={() => {
               onShare();
               onAction?.();
@@ -383,12 +394,8 @@ export function BoardActions({ variant = "bar", onAction, onShare }: BoardAction
           <button
             type="button"
             onClick={onShare}
-            disabled={project.nodes.length === 0}
-            title={
-              project.nodes.length === 0
-                ? "Share this setup: build something on the board first"
-                : "Share this setup with everyone"
-            }
+            disabled={!canShare}
+            title={shareTitle}
             className="inline-flex h-7 items-center gap-1 rounded border border-line-strong bg-surface px-1.5 text-xs font-medium text-fg-subtle hover:border-emerald-600 hover:text-emerald-500 disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-fg-muted"
           >
             <Share2 className="h-3.5 w-3.5" />
