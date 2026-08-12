@@ -332,7 +332,7 @@ export const factoryStorageSchema = z.object({
 
 export const factoryAnnotationSchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(["box", "arrow", "text"]),
+  kind: z.enum(["box", "arrow", "text", "zone"]),
   colorTag: factoryNodeColorTagSchema.optional(),
   text: z.string().optional(),
   position: z.object({
@@ -344,6 +344,9 @@ export const factoryAnnotationSchema = z.object({
     height: z.number(),
   }),
   arrowDirection: z.enum(["down-right", "down-left", "up-right", "up-left"]).optional(),
+  // Zone outlines: bounded so an imported plan cannot carry a pathological
+  // vertex soup; a drawn zone simplifies to a handful of corners.
+  points: z.array(z.object({ x: z.number(), y: z.number() })).max(64).optional(),
   // Bounded so an imported plan cannot carry a note that swallows the board.
   fontSize: z.number().min(8).max(96).optional(),
   pocketId: z.string().min(1).optional(),

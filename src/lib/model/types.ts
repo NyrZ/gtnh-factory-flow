@@ -349,7 +349,7 @@ export interface FactoryStorage {
   };
 }
 
-export type FactoryAnnotationKind = "box" | "arrow" | "text";
+export type FactoryAnnotationKind = "box" | "arrow" | "text" | "zone";
 
 export type FactoryAnnotationArrowDirection = "down-right" | "down-left" | "up-right" | "up-left";
 
@@ -368,6 +368,12 @@ export interface FactoryAnnotation {
   };
   /** Arrow only: which corners of the bounding box the arrow connects (tail → head). */
   arrowDirection?: FactoryAnnotationArrowDirection;
+  /**
+   * Zone only: the outline's vertices, in order, relative to `position`.
+   * Drawn as a closed loop; `position`/`size` stay the bounding box so the
+   * board can frame and drag it like any other annotation.
+   */
+  points?: Array<{ x: number; y: number }>;
   /**
    * Text only: font size in px. A note headlining a whole section and a note
    * labelling one machine want very different sizes, and resizing the box only

@@ -5,7 +5,12 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { FactoryAnnotation } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
 import { GT_NODE_COLORS } from "./node-colors";
-import { ANNOTATION_MIN_ARROW, ANNOTATION_MIN_BOX, ANNOTATION_MIN_TEXT } from "@/lib/board-grid";
+import {
+  ANNOTATION_MIN_ARROW,
+  ANNOTATION_MIN_BOX,
+  ANNOTATION_MIN_TEXT,
+  BOARD_GRID,
+} from "@/lib/board-grid";
 
 export interface AnnotationNodeData extends Record<string, unknown> {
   annotation: FactoryAnnotation;
@@ -93,6 +98,19 @@ function AnnotationNodeComponent({ data, selected, width, height }: NodeProps<An
     );
   }
 
+  if (annotation.kind === "zone") {
+    // Like the arrow: the outline's own corners are the editor, no resize box.
+    return (
+      <ZoneAnnotation
+        annotation={annotation}
+        width={nodeWidth}
+        height={nodeHeight}
+        swatch={color.swatch}
+        selected={selected ?? false}
+      />
+    );
+  }
+
   if (annotation.kind === "text") {
     return (
       <>
@@ -135,6 +153,143 @@ function BoxShape({ swatch }: { swatch: string }) {
 }
 
 type ArrowPoint = { x: number; y: number };
+
+/**
+ * The zone with a grab point on every corner. Same contract as the arrow:
+ * selecting it offers the corners themselves, a dragged corner redraws the
+ * outline live, and the new bounding box and rebased points are committed
+ * once on release (the store snaps them to the grid).
+ */
+function ZoneAnnotation({
+  annotation,
+  width,
+  height,
+  swatch,
+  selected,
+}: {
+  annotation: FactoryAnnotation;
+  width: number;
+  height: number;
+  swatch: string;
+  selected: boolean;
+}) {
+  const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
+  const { screenToFlowPosition } = useReactFlow();
+  const [draftPoints, setDraftPoints] = useState<ArrowPoint[]>();
+  const points = draftPoints ?? annotation.points ?? [];
+
+  const beginCornerDrag =
+    (index: number) => (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const settled = annotation.points ?? [];
+      const localPoint = (client: { clientX: number; clientY: number }): ArrowPoint => {
+        const flow = screenToFlowPosition({ x: client.clientX, y: client.clientY });
+        return { x: flow.x - annotation.position.x, y: flow.y - annotation.position.y };
+      };
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const moving = localPoint(moveEvent);
+        setDraftPoints(settled.map((point, i) => (i === index ? moving : point)));
+      };
+      const handleUp = (upEvent: PointerEvent) => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+        setDraftPoints(undefined);
+
+        const moving = localPoint(upEvent);
+        const next = settled.map((point, i) =>
+          i === index
+            ? {
+                x: Math.round(moving.x / BOARD_GRID) * BOARD_GRID,
+                y: Math.round(moving.y / BOARD_GRID) * BOARD_GRID,
+              }
+            : point,
+        );
+        // Rebase onto the new bounding box, which may have moved or grown.
+        const minX = Math.min(...next.map((point) => point.x));
+        const minY = Math.min(...next.map((point) => point.y));
+        updateAnnotation(annotation.id, {
+          position: {
+            x: annotation.position.x + minX,
+            y: annotation.position.y + minY,
+          },
+          size: {
+            width: Math.max(Math.max(...next.map((point) => point.x)) - minX, BOARD_GRID),
+            height: Math.max(Math.max(...next.map((point) => point.y)) - minY, BOARD_GRID),
+          },
+          points: next.map((point) => ({ x: point.x - minX, y: point.y - minY })),
+        });
+      };
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
+    };
+
+  return (
+    <>
+      <ZoneShape points={points} width={width} height={height} swatch={swatch} />
+      {selected
+        ? points.map((point, index) => (
+            <ArrowEndpointHandle
+              key={index}
+              point={point}
+              label={`Drag corner ${index + 1} of the zone`}
+              onPointerDown={beginCornerDrag(index)}
+            />
+          ))
+        : null}
+    </>
+  );
+}
+
+function ZoneShape({
+  points,
+  width,
+  height,
+  swatch,
+}: {
+  points: ArrowPoint[];
+  width: number;
+  height: number;
+  swatch: string;
+}) {
+  if (points.length < 3) {
+    return null;
+  }
+
+  const outline = `${points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ")} Z`;
+
+  // Like the box: the interior is a faint wash and fully click-through; only
+  // the outline itself (via the fat transparent stroke) takes the pointer.
+  return (
+    <svg
+      className="h-full w-full overflow-visible"
+      style={{ pointerEvents: "none" }}
+      viewBox={`0 0 ${Math.max(width, 1)} ${Math.max(height, 1)}`}
+      preserveAspectRatio="none"
+    >
+      <path
+        d={outline}
+        fill={`${swatch}14`}
+        stroke="rgba(0,0,0,0.45)"
+        strokeWidth={7}
+        strokeLinejoin="round"
+      />
+      <path d={outline} fill="none" stroke={swatch} strokeWidth={4} strokeLinejoin="round" />
+      <path
+        d={outline}
+        className={`${ANNOTATION_DRAG_HANDLE_CLASS} cursor-grab`}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={28}
+        strokeLinejoin="round"
+        style={{ pointerEvents: "stroke" }}
+      />
+    </svg>
+  );
+}
 
 /** The arrow's two ends in node-local coordinates, from its direction. */
 function arrowEndpoints(

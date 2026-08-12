@@ -3730,6 +3730,9 @@ function snapAnnotationToGrid(patch: Partial<FactoryAnnotation>): Partial<Factor
       height: snapSizeUpToGrid(patch.size.height),
     };
   }
+  if (patch.points) {
+    snapped.points = patch.points.map((point) => snapPositionToGrid(point));
+  }
   return snapped;
 }
 

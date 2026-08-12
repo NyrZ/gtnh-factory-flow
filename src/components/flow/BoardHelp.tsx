@@ -162,7 +162,7 @@ const CALLOUTS: Array<{
     title: "Paint and notes",
     rows: [
       { icon: Paintbrush, text: "Paint cards" },
-      { icon: Square, text: "Box, arrow, note" },
+      { icon: Square, text: "Box, zone, arrow, note" },
       { icon: Trash2, text: "*Bin*: delete anything" },
     ],
   },

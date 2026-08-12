@@ -40,6 +40,7 @@ import {
   Grid3x3,
   Grip,
   Hammer,
+  Hexagon,
   LoaderCircle,
   MoveUpRight,
   Paintbrush,
@@ -245,6 +246,7 @@ import {
   AnnotationNode,
   type AnnotationFlowNode,
 } from "./AnnotationNode";
+import { settleZonePoints } from "@/lib/model/zone-points";
 
 const nodeTypes = {
   recipeNode: RecipeNode,
@@ -264,6 +266,8 @@ type BoardFlowNode =
 interface AnnotationDraft {
   start: { x: number; y: number };
   end: { x: number; y: number };
+  /** Every point the pointer passed through; the zone tool settles it. */
+  trail: Array<{ x: number; y: number }>;
 }
 
 const ResourceEdge = memo(ResourceEdgeComponent);
@@ -1526,7 +1530,7 @@ export function FactoryFlow() {
             height: annotation.size.height,
             // Boxes sit under everything so they read as grouping frames;
             // arrows and text notes float above the nodes they point at.
-            zIndex: annotation.kind === "box" ? -5 : 1000,
+            zIndex: annotation.kind === "box" || annotation.kind === "zone" ? -5 : 1000,
             // Box/arrow interiors must stay click-through; only their
             // drag-handle elements take pointer events (see AnnotationNode).
             dragHandle: annotation.kind === "text" ? undefined : `.${ANNOTATION_DRAG_HANDLE_CLASS}`,
@@ -3671,6 +3675,10 @@ export function FactoryFlow() {
       setNodeColorPaintMode(undefined);
       setDeleteMode(false);
       setAnnotationTool(tool);
+      // A half-clicked zone dies with its tool; the other tools never leave a
+      // draft behind (theirs live only inside one press-drag-release).
+      annotationDraftRef.current = undefined;
+      setAnnotationDraft(undefined);
     },
     [setNodeColorPaintMode],
   );
@@ -3769,6 +3777,22 @@ export function FactoryFlow() {
         return;
       }
 
+      if (tool === "zone") {
+        // Nothing to settle means nothing lands: corners that snapped onto
+        // each other or a loop thinner than a cell never made an area.
+        const zone = settleZonePoints(draft.trail, BOARD_GRID_SIZE);
+        if (zone) {
+          addAnnotation({
+            kind: "zone",
+            colorTag: activeColorTag,
+            position: zone.position,
+            size: zone.size,
+            points: zone.points,
+          });
+        }
+        return;
+      }
+
       if (tool === "arrow") {
         const isClick = width < 16 && height < 16;
         addAnnotation({
@@ -3822,7 +3846,38 @@ export function FactoryFlow() {
       event.preventDefault();
       event.stopPropagation();
       const start = instance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      const draft = { start, end: start };
+
+      // The zone is not a drag: corners land click by click, and the loop
+      // closes with a click back on the first corner. Screen distance, so
+      // "back on the first corner" means the same thing at every zoom.
+      if (tool === "zone") {
+        const current = annotationDraftRef.current;
+        if (current) {
+          const firstOnScreen = instance.flowToScreenPosition(current.trail[0]);
+          const isClosing =
+            Math.hypot(firstOnScreen.x - event.clientX, firstOnScreen.y - event.clientY) <= 14;
+          if (isClosing) {
+            if (current.trail.length >= 3) {
+              annotationDraftRef.current = undefined;
+              setAnnotationDraft(undefined);
+              setAnnotationTool(undefined);
+              commitAnnotationDraft(tool, current);
+            }
+            // Two corners cannot close; the click is neither corner nor close.
+            return;
+          }
+          const next = { start: current.start, end: start, trail: [...current.trail, start] };
+          annotationDraftRef.current = next;
+          setAnnotationDraft(next);
+          return;
+        }
+        const draft = { start, end: start, trail: [start] };
+        annotationDraftRef.current = draft;
+        setAnnotationDraft(draft);
+        return;
+      }
+
+      const draft = { start, end: start, trail: [start] };
       annotationDraftRef.current = draft;
       setAnnotationDraft(draft);
 
@@ -3836,7 +3891,7 @@ export function FactoryFlow() {
           x: moveEvent.clientX,
           y: moveEvent.clientY,
         });
-        const next = { start: current.start, end };
+        const next = { start: current.start, end, trail: current.trail };
         annotationDraftRef.current = next;
         setAnnotationDraft(next);
       };
@@ -3856,6 +3911,40 @@ export function FactoryFlow() {
     },
     [annotationTool, commitAnnotationDraft],
   );
+
+  // The zone's rubber band: between clicks the next edge follows the cursor,
+  // and Escape throws the half-drawn loop away, tool and all.
+  useEffect(() => {
+    if (annotationTool !== "zone") {
+      return;
+    }
+
+    const followCursor = (event: PointerEvent) => {
+      const current = annotationDraftRef.current;
+      const instance = flowInstanceRef.current;
+      if (!current || !instance) {
+        return;
+      }
+      const end = instance.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const next = { start: current.start, end, trail: current.trail };
+      annotationDraftRef.current = next;
+      setAnnotationDraft(next);
+    };
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        annotationDraftRef.current = undefined;
+        setAnnotationDraft(undefined);
+        setAnnotationTool(undefined);
+      }
+    };
+
+    window.addEventListener("pointermove", followCursor);
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => {
+      window.removeEventListener("pointermove", followCursor);
+      window.removeEventListener("keydown", cancelOnEscape);
+    };
+  }, [annotationTool]);
 
   // The status smart view brings the heatmap with it: "show me usage" is one
   // mode at every zoom. Turning the heat on drops the brush — painting while
@@ -5264,10 +5353,13 @@ function AnnotationDraftPreview({
   draft: AnnotationDraft;
   swatch: string;
 }) {
-  const x = Math.min(draft.start.x, draft.end.x);
-  const y = Math.min(draft.start.y, draft.end.y);
-  const width = Math.max(Math.abs(draft.end.x - draft.start.x), 2);
-  const height = Math.max(Math.abs(draft.end.y - draft.start.y), 2);
+  // The zone spans its clicked corners plus the cursor; everything else
+  // spans start-to-end.
+  const spanned = tool === "zone" ? [...draft.trail, draft.end] : [draft.start, draft.end];
+  const x = Math.min(...spanned.map((point) => point.x));
+  const y = Math.min(...spanned.map((point) => point.y));
+  const width = Math.max(Math.max(...spanned.map((point) => point.x)) - x, 2);
+  const height = Math.max(Math.max(...spanned.map((point) => point.y)) - y, 2);
 
   return (
     <ViewportPortal>
@@ -5277,7 +5369,44 @@ function AnnotationDraftPreview({
       >
         {/* Drawn solid, exactly as it will land: a shape that changes clothes
             the moment you let go reads as two different things. */}
-        {tool === "arrow" ? (
+        {tool === "zone" ? (
+          <svg
+            className="h-full w-full overflow-visible"
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="none"
+          >
+            {/* The filled loop closes itself under the corners already placed
+                and the edge still following the cursor, so "click the first
+                corner and it becomes a shape" is visible before it happens. */}
+            <path
+              d={`${[...draft.trail, draft.end]
+                .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x - x} ${point.y - y}`)
+                .join(" ")} Z`}
+              fill={`${swatch}14`}
+              stroke="none"
+            />
+            <path
+              d={[...draft.trail, draft.end]
+                .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x - x} ${point.y - y}`)
+                .join(" ")}
+              fill="none"
+              stroke={swatch}
+              strokeWidth={4}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* The first corner is the door out: click it to close the loop. */}
+            <rect
+              x={draft.trail[0].x - x - 6}
+              y={draft.trail[0].y - y - 6}
+              width={12}
+              height={12}
+              fill={swatch}
+              stroke="rgba(0,0,0,0.55)"
+              strokeWidth={2}
+            />
+          </svg>
+        ) : tool === "arrow" ? (
           <svg
             className="h-full w-full overflow-visible"
             viewBox={`0 0 ${width} ${height}`}
@@ -5320,6 +5449,7 @@ const ANNOTATION_TOOLS: Array<{
   Icon: typeof Square;
 }> = [
   { kind: "box", label: "Draw box", Icon: Square },
+  { kind: "zone", label: "Draw zone: click its corners, then click the first one to close", Icon: Hexagon },
   { kind: "arrow", label: "Draw arrow", Icon: MoveUpRight },
   { kind: "text", label: "Add text note", Icon: Type },
 ];
