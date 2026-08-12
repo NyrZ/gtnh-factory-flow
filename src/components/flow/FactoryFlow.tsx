@@ -1771,16 +1771,32 @@ export function FactoryFlow() {
   // resolve, through `onNodesChange`).
   // Dimensions are rounded so re-measure jitter (remounts under culling,
   // sub-pixel differences) can't masquerade as a resize.
-  const nodeGeometryFingerprint = useMemo(
+  // Two fingerprints, not one: the OBSTACLE one (machines, drawers, bins,
+  // pockets) is what routing cares about, and moving it pays the full bill —
+  // measurement invalidation, a re-solve, every edge re-issued. Annotations
+  // are ink the wires pass straight through, so their fingerprint buys only
+  // a cheap geometry refresh; folding both into one fingerprint was how
+  // dragging a NOTE made six hundred wires re-check their routes.
+  const describeNodeGeometry = (node: BoardFlowNode) =>
+    `${node.id}:${node.position.x},${node.position.y},${Math.round(
+      node.measured?.width ?? node.width ?? 0,
+    )}x${Math.round(node.measured?.height ?? node.height ?? 0)}`;
+  const obstacleGeometryFingerprint = useMemo(
     () =>
       flowNodes
-        .map(
-          (node) =>
-            `${node.id}:${node.position.x},${node.position.y},${Math.round(
-              node.measured?.width ?? node.width ?? 0,
-            )}x${Math.round(node.measured?.height ?? node.height ?? 0)}`,
-        )
+        .filter((node) => node.type !== "annotationNode")
+        .map(describeNodeGeometry)
         .join(";"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [flowNodes],
+  );
+  const annotationGeometryFingerprint = useMemo(
+    () =>
+      flowNodes
+        .filter((node) => node.type === "annotationNode")
+        .map(describeNodeGeometry)
+        .join(";"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [flowNodes],
   );
   const flowNodesRef = useRef(flowNodes);
@@ -1945,7 +1961,12 @@ export function FactoryFlow() {
   // DOM-derived obstacle set changed on every pan and invalidated every cached
   // route. Reads through the ref so identity-only `flowNodes` churn (hover
   // zIndex, solver results) doesn't feed it.
-  const publishBoardGeometry = useCallback(() => {
+  const publishBoardGeometry = useCallback((invalidateRoutes = true) => {
+    // `invalidateRoutes: false` is the annotation path: notes and boxes are
+    // not obstacles, so their moves refresh the published geometry maps and
+    // deliberately leave the measurement epoch — and with it every cached
+    // route and the O(edges) solve-signature rebuild — untouched.
+    //
     // Lane width is a routing input just like node bounds, so it is published
     // from here — and because thickness mode is in this callback's deps, the
     // layout effect below re-runs on toggle and bumps the layout epoch, which
@@ -2007,25 +2028,37 @@ export function FactoryFlow() {
       }))
       .filter((entry) => entry.bounds.right > entry.bounds.left)
       .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
-    invalidateMeasuredLayout();
+    if (invalidateRoutes) {
+      invalidateMeasuredLayout();
+    }
   }, [freeDockMode, lineThicknessMode]);
   // Live-drag throttle state: when the last mid-drag solve ran, and the
   // trailing timer that guarantees the LAST cell a card entered still gets
   // its solve when the pointer stops moving inside a throttle window.
   const lastLiveDragSolveAtRef = useRef(0);
   const liveDragTrailingTimerRef = useRef<number | undefined>(undefined);
+  // Whether the current drag moves anything wires route around; see
+  // handleNodeDragStart.
+  const dragMovesObstaclesRef = useRef(true);
   useLayoutEffect(() => {
     // Drag frames rewrite positions constantly. On a small board the wires
     // FOLLOW: a throttled real solve reruns against the card's current cell,
     // and the route morph glides every wire to it — the same solve the drop
-    // will run, so nothing is ever a guess. On a big board (or mid-throttle)
-    // measurements stay frozen exactly as before: untouched edges keep their
-    // cached routes and the drop republishes explicitly (see
-    // handleNodeDragStop) — it has to, because React Flow streams the final
-    // position into `flowNodes` during the last drag frame, so this
-    // fingerprint does NOT change again after the drag ends.
+    // will run, so nothing is ever a guess. Everywhere else measurements
+    // stay frozen exactly as before — a big board, an annotation-only drag
+    // (ink cannot change a route, so a mid-drag solve would be pure cost),
+    // or smooth movement toggled off, which is the ONE switch that turns the
+    // whole mid-drag recalculation off. Untouched edges keep their cached
+    // routes and the drop republishes explicitly (see handleNodeDragStop) —
+    // it has to, because React Flow streams the final position into
+    // `flowNodes` during the last drag frame, so this fingerprint does NOT
+    // change again after the drag ends.
     if (draggingNodeRef.current) {
-      if (publishedGridRouteEdges.length > LIVE_DRAG_ROUTE_EDGE_LIMIT) {
+      if (
+        !dragMovesObstaclesRef.current ||
+        !readBoardMotionSnapshot().moveMotion ||
+        publishedGridRouteEdges.length > LIVE_DRAG_ROUTE_EDGE_LIMIT
+      ) {
         return;
       }
       const now = performance.now();
@@ -2055,7 +2088,19 @@ export function FactoryFlow() {
     // what was just published; this also covers nodes growing when icons or
     // NEI layout resolve.
     setLayoutVersion((version) => version + 1);
-  }, [nodeGeometryFingerprint, publishBoardGeometry]);
+  }, [obstacleGeometryFingerprint, publishBoardGeometry]);
+  useLayoutEffect(() => {
+    // Annotation geometry changed and nothing else: refresh the published
+    // maps so anyone reading a note's rect sees where it is, and touch
+    // nothing routing owns. Mid-drag this stays quiet too — the drop's
+    // explicit publish (handleNodeDragStop) covers the landing, because the
+    // fingerprint settles on the last drag frame and will not fire again.
+    if (draggingNodeRef.current) {
+      return;
+    }
+    publishBoardGeometry(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotationGeometryFingerprint, publishBoardGeometry]);
 
   // Settle the hop pass. Hops are drawn against the routes of lower-index
   // edges, read from directRouteCache — which is filled AS edges render. React
@@ -3821,6 +3866,12 @@ export function FactoryFlow() {
     for (const dragged of draggedNodes) {
       activelyDraggedNodeIds.add(dragged.id);
     }
+    // Annotations are ink, not furniture: wires pass straight through them,
+    // so a drag moving ONLY notes and boxes cannot change any route and must
+    // not spend a single mid-drag solve. Decided once at grab time.
+    dragMovesObstaclesRef.current = [node, ...draggedNodes].some(
+      (dragged) => dragged.type !== "annotationNode",
+    );
     // A fresh drag's first cell change solves immediately; the throttle only
     // paces the changes after it.
     lastLiveDragSolveAtRef.current = 0;
@@ -3846,14 +3897,18 @@ export function FactoryFlow() {
       draggingNodeRef.current = false;
       // The drop's own publish below supersedes any trailing live-drag solve.
       window.clearTimeout(liveDragTrailingTimerRef.current);
-      // The geometry-publish effect can't see the drop: React Flow streamed
+      // The geometry-publish effects can't see the drop: React Flow streamed
       // the final position into `flowNodes` during the last drag frame, so
-      // its fingerprint won't change again. Republish here — the ref already
-      // holds the final layout — so the reroutes triggered by the project
-      // update below compute against current positions, and bump the layout
-      // version so every stale route is reissued.
-      publishBoardGeometry();
-      setLayoutVersion((version) => version + 1);
+      // their fingerprints won't change again. Republish here — the ref
+      // already holds the final layout. A drag that moved OBSTACLES also
+      // invalidates measurements and bumps the layout version so every stale
+      // route is reissued; a drag that moved only ink refreshes the maps and
+      // leaves all six hundred wires alone.
+      const movedObstacles = dragMovesObstaclesRef.current;
+      publishBoardGeometry(movedObstacles);
+      if (movedObstacles) {
+        setLayoutVersion((version) => version + 1);
+      }
       setNodeDragging(false);
       const droppedById = new Map(dropped.map((entry) => [entry.id, entry] as const));
       setFlowNodes((currentNodes) =>

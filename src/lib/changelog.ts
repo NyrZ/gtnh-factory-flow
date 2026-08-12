@@ -78,6 +78,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     headline: "The palette speaks the board's language",
     notes: [
       "Six new paint colours: the board's own alarm red, warning amber, output green, product blue and two card greys.",
+      "Dragging notes and boxes no longer stirs the wires, and mid-drag rerouting turns off with the smooth movement button.",
     ],
   },
   {
