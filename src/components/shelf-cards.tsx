@@ -5,7 +5,7 @@ import type { EntryIcon, PlanResourceStat } from "@/lib/community/types";
 import type { MachineTier } from "@/lib/model/types";
 import { formatSlotRate } from "@/components/flow/flow-explainers";
 import { GT_TIER_COLORS } from "@/components/flow/tier-colors";
-import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import { fluidArtPixels, isSwatchFluid, ResourceIcon } from "@/components/nei/ResourceIcon";
 
 /**
  * Everything the Setups and Pockets shelves render the same way: tag
@@ -126,7 +126,9 @@ function IoSection({
               bare
               tooltip={false}
               showAmount={false}
-              iconPixelSize={stat.kind === "fluid" ? 36 : undefined}
+              iconPixelSize={
+                stat.kind === "fluid" ? (isSwatchFluid(stat) ? 36 : fluidArtPixels(20)) : undefined
+              }
               className={stat.kind === "fluid" ? "!h-5 !w-5" : "!h-5 !w-5 origin-center scale-150"}
             />
           </span>

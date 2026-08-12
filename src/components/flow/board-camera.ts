@@ -37,8 +37,8 @@ import {
  * is roughly a forty-card chain - open a bigger setup than that and the camera
  * would land in the middle of it with the whole thing still off the edges,
  * which is the exact complaint framing exists to answer. Cards are already
- * drawn in the cheap glance view below 0.4 (see node-detail.ts), so the extra
- * range costs nothing per card.
+ * drawn in the cheap glance view below NODE_GLANCE_ENTER_ZOOM (see
+ * node-detail.ts), so the extra range costs nothing per card.
  */
 export const BOARD_MIN_ZOOM = 0.05;
 export const BOARD_MAX_ZOOM = 1.8;

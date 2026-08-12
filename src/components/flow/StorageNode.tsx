@@ -11,7 +11,7 @@ import type {
 import { formatCompact, makeResourceKey, trimTrailingDecimalZeros } from "@/lib/model";
 import { isDrainRole, type StorageRole } from "@/lib/model/storage-role";
 import { rateUnitMultiplier, rateUnitPrecisionScale, rateUnitSuffix } from "@/lib/model/rate-unit";
-import { FLUID_ICON_SCALE, ResourceIcon } from "@/components/nei/ResourceIcon";
+import { FLUID_ICON_SCALE, fluidArtPixels, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { NodeGlanceIcon } from "./NodeGlance";
 import { isWiringConnection } from "./connection-drag";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
@@ -175,8 +175,10 @@ const CARD_ICON_PX = 36;
  * net line below. Shrink only them; items keep the full box.
  */
 const FLUID_BREATHE_PX = 6;
-/** Oversized glance icon (zoomed out) — deliberately larger than the card. */
-const GLANCE_ICON_PX = 128;
+/** Oversized glance icon (zoomed out) — a shade larger than the card FACE so
+    it reads as the node's identity, but well inside the 100px card: at 128
+    and even 112 the art swamped the card instead of riding it. */
+const GLANCE_ICON_PX = 88;
 
 /**
  * Rendered and atlas item sprites carry a big baked-in transparent margin —
@@ -196,6 +198,11 @@ function storageIconPixelSize(
   if (isPlainFluid) {
     // The fluid swatch insets itself to FLUID_ICON_SCALE of the request.
     return Math.round(boxPx / FLUID_ICON_SCALE);
+  }
+  if (storage.kind === "fluid") {
+    // A fluid sprite's full square reads heavier than item art at equal
+    // bounds, so it sits at a fraction of the box (see fluidArtPixels).
+    return fluidArtPixels(boxPx);
   }
   if (storage.kind === "item") {
     return boxPx * ITEM_SPRITE_MARGIN_SCALE;
@@ -415,7 +422,7 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
             showAmount={false}
             bare
             iconPixelSize={storageIconPixelSize(GLANCE_ICON_PX, storage)}
-            className="!h-[128px] !w-[128px]"
+            className="!h-[88px] !w-[88px]"
           />
           {glanceMode === "identity" ? (
             // The hover reveal, same machinery as the recipe cards' (see

@@ -5,7 +5,7 @@ import { memo, useState, type CSSProperties } from "react";
 import { Copy, Expand, PackageOpen, Save } from "lucide-react";
 import type { FactoryPocket } from "@/lib/model/types";
 import { RECIPE_NODE_WIDTH } from "@/lib/board-grid";
-import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import { fluidArtPixels, isSwatchFluid, ResourceIcon } from "@/components/nei/ResourceIcon";
 import { captureBoardSelection, useFactoryStore } from "@/store/factory-store";
 import { useBlueprintStore } from "@/store/blueprint-store";
 
@@ -413,7 +413,9 @@ function PocketGlanceIoRow({ port }: { port: PocketPortSummary }) {
           bare
           tooltip={false}
           showAmount={false}
-          iconPixelSize={port.kind === "fluid" ? 50 : undefined}
+          iconPixelSize={
+            port.kind === "fluid" ? (isSwatchFluid(port) ? 50 : fluidArtPixels(36)) : undefined
+          }
           className={port.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 origin-center scale-150"}
         />
       </span>

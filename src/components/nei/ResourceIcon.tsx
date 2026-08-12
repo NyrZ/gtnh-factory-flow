@@ -572,6 +572,50 @@ const ASPECT_COLORS: Record<string, string> = {
   volatus: "#e7e7d7",
 };
 
+/**
+ * True when this fluid has no sprite and draws the flat colour swatch.
+ *
+ * The distinction the sizing call sites need: a fluid WITH rendered art
+ * carries a baked-in transparent margin like every rendered sprite, so it
+ * must be drawn oversized and cropped; only the artless swatch draws
+ * edge-to-edge. The old rule "fluids are solid squares" dates from datasets
+ * that shipped no fluid art at all, and kept sprite fluids at half the size
+ * of their item neighbours.
+ */
+export function isSwatchFluid(
+  resource: Pick<ResourceAmount, "kind" | "iconPath" | "iconAtlas">,
+): boolean {
+  return resource.kind === "fluid" && !resource.iconPath && !resource.iconAtlas;
+}
+
+/**
+ * The iconPixelSize that makes a rendered sprite's ART fill a box of the
+ * given size, minus a small breathing margin.
+ *
+ * Rendered captures are 256px canvases whose art occupies the middle 128px -
+ * exactly 128 for the fluid square, up to 128 for items - so the image draws
+ * at (box - margins) x 2 and the baked padding crops away. Same convention
+ * as machineArtPixels for machine renders, which have their own art bounds.
+ * Unlike the rows' 1.5x zoom-crop trick for items, nothing is clipped: a
+ * fluid square lands exactly inside the margin, an item a shade under.
+ */
+export function spriteArtPixels(box: number): number {
+  const margin = Math.max(2, Math.round(box * 0.055));
+  return (box - margin * 2) * 2;
+}
+
+/**
+ * The iconPixelSize that draws a FLUID sprite's square at a comfortable
+ * fraction of its box. A fluid square covers every pixel of its bounds where
+ * item art is sparse and irregular, so at equal bounds the fluid reads
+ * heavier; it sits at 78% of the box instead - between the classic swatch's
+ * 56% inset and the edge-to-edge fill that crowded its neighbours. The
+ * canvas is twice its art, so the image doubles the wanted art size.
+ */
+export function fluidArtPixels(box: number): number {
+  return Math.round(box * 0.78 * 2);
+}
+
 function getFallbackIconPath(resource: Pick<ResourceAmount, "kind" | "id">): string | undefined {
   if (resource.kind !== "aspect") {
     return undefined;

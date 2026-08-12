@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
@@ -84,7 +84,12 @@ import { useRenderedHandles } from "./use-rendered-handles";
 import { MinecraftSelect } from "./MinecraftSelect";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { MachineStatsContent } from "./MachineStatsContent";
-import { ResourceIcon } from "@/components/nei/ResourceIcon";
+import {
+  fluidArtPixels,
+  isSwatchFluid,
+  ResourceIcon,
+  spriteArtPixels,
+} from "@/components/nei/ResourceIcon";
 import {
   canonicalizeResourceHandleId,
   makeResourceHandleId,
@@ -179,7 +184,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const isInspectorHighlighted =
     isFlowResourceHighlighted || isNodeBottleneckHighlighted || isUsageHighlighted;
   // Heatmap wins over the paint tag while it is on, and gives it straight back
-  // when it goes off — the tag is never written to or lost.
+  // when it goes off â€” the tag is never written to or lost.
   const { heatmapMode, calmMode, glanceMode } = useBoardView();
   // A custom rate card nobody has painted wears the app's own blue. Painting
   // one still works and still wins.
@@ -376,7 +381,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   // shows no rails at all: a crop farm waiting on a crop has nothing to wire,
   // and a custom rate node shows its two universal sockets instead. Handing
   // the list to React Flow keeps its handle bounds honest when the set changes
-  // without the card changing size — see use-rendered-handles.ts.
+  // without the card changing size â€” see use-rendered-handles.ts.
   useRenderedHandles(
     projectNode.id,
     isCropFarmPlaceholder
@@ -517,7 +522,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       }
       // How far right the tab ART reaches: the widest in-flow child across
       // every row (the baseline strip is absolute and spans the whole zone,
-      // so it is skipped). Top docks refuse to land left of this line — a
+      // so it is skipped). Top docks refuse to land left of this line â€” a
       // stub there would draw straight across a tab.
       let tabsRight = 0;
       const zone = element.firstElementChild;
@@ -544,7 +549,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
   const isPreviewing = hasMachinePicker && previewHandler.id !== selectedMachineHandler.id;
   // The outlines the card is wearing, innermost first. They STACK rather than
   // override: each ring starts where the one inside it stopped. Selection is
-  // innermost, which is also the ring painted on top — clicking a card has to
+  // innermost, which is also the ring painted on top â€” clicking a card has to
   // show that it landed, and a 2px line inside a breathing red dead-loop glow was
   // being lost in it.
   //
@@ -557,8 +562,8 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
     ...(isSearchHighlighted ? [{ width: 4, color: "#7dd3fc" }] : []),
   ];
 
-  // Outputs end in coupling chips at the node's right edge — inside the
-  // card, like inputs — so the node's box is the machine's box again and
+  // Outputs end in coupling chips at the node's right edge â€” inside the
+  // card, like inputs â€” so the node's box is the machine's box again and
   // wires reach the chips the same way they reach input chips.
   return (
     <div
@@ -567,17 +572,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       // couplings, and lighting both at once answers the wrong question.
       data-verdict={verdict.kind}
       className={[
-        // recipe-node-shell scopes the strip↔row hover link (globals.css):
+        // recipe-node-shell scopes the stripâ†”row hover link (globals.css):
         // hovering the verdict lights the input it blames, in pure CSS, so a
         // hover never re-renders a node.
-        // The shell is the node's whole BOX — tab zone plus window — and is
+        // The shell is the node's whole BOX â€” tab zone plus window â€” and is
         // deliberately unpainted: the frame and background live on the window
         // div below, so the tabs protrude over bare canvas. The router still
         // measures the shell, which is what keeps wires out of the tab zone.
         // Nothing that OUTLINES the card belongs on this element: the shell's
         // box includes the tab zone, so a ring here draws around the machine
         // tabs and the bare canvas behind them. Every outline lives on the
-        // window instead — see cardOutlineRings and the dead-loop ring.
+        // window instead â€” see cardOutlineRings and the dead-loop ring.
         "recipe-node-shell group relative font-mono text-[var(--mc-ink)]",
         // Marker for the globals.css layer lift: with a picker popup open the
         // node (and the whole nodes layer) must paint above edges.
@@ -585,11 +590,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       ].join(" ")}
       style={{
         // Every recipe card is the same 18 cells wide. Width used to be
-        // content-driven (`w-max`), which put the card's right edge — and so
-        // every output coupling — at an arbitrary sub-cell offset.
+        // content-driven (`w-max`), which put the card's right edge â€” and so
+        // every output coupling â€” at an arbitrary sub-cell offset.
         width: RECIPE_NODE_WIDTH,
         // The colour, all of it. The ramp goes on the SHELL rather than the
-        // window so the machine tabs above the card take it too — they are
+        // window so the machine tabs above the card take it too â€” they are
         // the card's tabs, and a grey tab on a green card was the tell that
         // the paint was a list of elements rather than a palette.
         ...(nodeRamp as CSSProperties | undefined),
@@ -597,7 +602,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       }}
     >
       {/* The tab zone: rows of whole cells ABOVE the window, over bare
-          canvas — tabs, not a toolbar band inside the card. It is part of
+          canvas â€” tabs, not a toolbar band inside the card. It is part of
           the shell's box, so the router keeps wires out of the space the
           tabs claim; its measured height is published as the dock inset so
           wires never DOCK on its phantom edge (see dock-insets.ts). Normal
@@ -620,7 +625,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         ) : null}
       </div>
       {/* The window: the painted card. The 2px frame is an INSET shadow, not
-          a border — a real border sits outside the content box and would push
+          a border â€” a real border sits outside the content box and would push
           every row 2px off the grid; painted inside, the window's box and its
           content box are the same rectangle, so a head of 40 and rows of 40
           land exactly on cell lines. The bevel is drawn at 4px and the frame
@@ -628,13 +633,13 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           exactly. */}
       <div
         // Glance root is the WINDOW, not the shell: zoomed out the frame and
-        // paint stay and only what is written on them goes — a card still
+        // paint stay and only what is written on them goes â€” a card still
         // reads as a card. The tab zone hides via its own rule in globals.css
         // (it is the shell's child, outside this root).
         data-node-glance-root=""
         // recipe-node-window: the painted rectangle, as opposed to the shell's
         // box (which includes the unpainted tab zone). Anything that outlines
-        // "the card" belongs here — see the dead-loop ring in globals.css.
+        // "the card" belongs here â€” see the dead-loop ring in globals.css.
         // The resource glow is an `outline`, not a box-shadow, so it rides the
         // window directly without touching the frame this element draws.
         className={[
@@ -656,7 +661,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       {/* The ring's mark, and the reason it is an ELEMENT rather than the
           window's ::after: a pseudo-element's box is only as trustworthy as
           the selector that made it, and this one kept coming out around the
-          SHELL — the whole box, tab zone included — so the ring enclosed the
+          SHELL â€” the whole box, tab zone included â€” so the ring enclosed the
           machine tabs and the bare canvas behind them, and the card read as
           floating inside a rectangle that was not its own. A child of the
           window has the window's box by construction; there is no selector
@@ -677,7 +682,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           box-shadow list: shadows paint first-on-top and each spread is
           cumulative, so the list reads outwards from the card edge and the
           innermost ring is also the one nothing can cover. Above the dead-loop
-          ring in z, so a selected card in a ring still shows it is selected —
+          ring in z, so a selected card in a ring still shows it is selected â€”
           the red keeps its breathing halo outside the purple. */}
       {cardOutlineRings.length > 0 ? (
         <div
@@ -696,7 +701,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         />
       ) : null}
       {/* The smart view: what this card leads with zoomed out. Identity mode
-          (the default) is WHAT it is — machine icon, count and name, with the
+          (the default) is WHAT it is â€” machine icon, count and name, with the
           I/O rates revealed on hover by pure CSS. Status mode is the old
           reading: how hard it runs, with the hop map on hover. */}
       {glanceMode === "identity" ? (
@@ -707,7 +712,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           label={
             isCustomRateNode
               ? (effectiveRecipe.name ?? "Custom rate")
-              : `${projectNode.machineCount}× ${selectedMachineHandler.label ?? effectiveRecipe.machineType ?? effectiveRecipe.name}`
+              : `${projectNode.machineCount}Ã— ${selectedMachineHandler.label ?? effectiveRecipe.machineType ?? effectiveRecipe.name}`
           }
           inputs={rails.inputs}
           outputs={rails.outputs}
@@ -716,7 +721,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
         <NodeGlanceText
           text={
             verdict.kind === "off" || verdict.kind === "no-recipe" ? (
-              "—"
+              "â€”"
             ) : (
               <MotionNumberText
                 values={[verdict.pct]}
@@ -735,14 +740,14 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
           all of them off the grid. Horizontal padding is 8, which is what
           makes the rails add up to RECIPE_RAIL_AREA_WIDTH. */}
       <div className="px-2">
-        {/* width:0 + min-width:100% — the picker header adapts to whatever
+        {/* width:0 + min-width:100% â€” the picker header adapts to whatever
             width the recipe card sets and can never widen the node itself,
             no matter how long a machine name or tab strip gets. */}
         <div className="w-0 min-w-full">
         <div
           className={[
             // One head row, exactly two cells tall. The title bar inside it
-            // stays 24px and centres in the row — the extra space is the
+            // stays 24px and centres in the row â€” the extra space is the
             // margin that puts the first port centre on a grid line.
             "grid h-[40px] min-w-0 items-center gap-1",
             // Calm mode drops the delete/clone chrome; the title takes the row.
@@ -934,7 +939,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
             />
             {rails.inputs.length > 0 && rails.outputs.length > 0 ? (
               <div className="flex w-4 shrink-0 items-center justify-center self-stretch text-[15px] font-black text-[var(--mc-ink-muted)]">
-                →
+                â†’
               </div>
             ) : null}
             <PortRail
@@ -960,7 +965,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               crop knobs) and the stat footer, anchored together to the card's
               BOTTOM edge with a 6px inset clearing the frame's bevel. One
               rounded-up block for all of it, so the grid-rounding slack opens
-              between the ports and the controls — never below the controls,
+              between the ports and the controls â€” never below the controls,
               where it read as the card trailing off. Calm mode drops the
               dials and the diagnostics; a custom rate node has no machine
               count, so calm mode drops its footer entirely. */}
@@ -972,7 +977,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               {calmMode ? null : passiveProductionPanel}
               <div
                 // A hairline over the stats: the knobs are one thing, the
-                // verdict below them is another. No background of its own —
+                // verdict below them is another. No background of its own â€”
                 // this strip is card face, and the face is the window behind
                 // it. It used to paint itself with the raw tag colour, which
                 // left the bottom of a painted card a different shade from
@@ -981,11 +986,11 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
               >
                 {calmMode ? (
                   /* Pure presentation: the count as one large line, centred,
-                     on the same bordered tile every other element sits on —
+                     on the same bordered tile every other element sits on â€”
                      bare text floated alone on the card face. */
                   <div className="flex min-w-0 items-center justify-center">
                     <span className="truncate border border-[var(--mc-47)] bg-[var(--mc-71)] px-3 py-0.5 text-[20px] font-bold leading-6 tabular-nums text-[var(--mc-ink)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
-                      {projectNode.machineCount}×{" "}
+                      {projectNode.machineCount}Ã—{" "}
                       {isCropProductionNode
                         ? projectNode.machineCount === 1
                           ? "Seed"
@@ -1003,7 +1008,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                       // takes the slack: a four-digit machine count is the one
                       // number here that legitimately gets wide. Parallel
                       // stretched to fill and then truncated its own label
-                      // ("Parall…").
+                      // ("Parallâ€¦").
                       isCustomRateNode
                         ? "grid-cols-[auto]"
                         : machineParallelMultiplier > 1
@@ -1022,7 +1027,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
                         {machineParallelMultiplier > 1 ? (
                           <Stat
                             label="Parallel"
-                            value={`×${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
+                            value={`Ã—${formatMachineParallelMultiplier(machineParallelMultiplier)}`}
                           />
                         ) : null}
                         <MachineCountStat
@@ -1052,7 +1057,7 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
 }
 
 // React Flow hands node components their live position (and dragging state) as
-// props, so the default prop comparison fails on every drag frame — which
+// props, so the default prop comparison fails on every drag frame â€” which
 // re-rendered this entire NEI window per frame while its box moved. The
 // component only reads `data` and `selected`; comparing exactly those keeps the
 // heavy content inert while the wrapper is translated around it.
@@ -1063,9 +1068,9 @@ export const RecipeNode = memo(
 
 /**
  * The identity glance: zoomed out the card is ONE BIG ICON on its own
- * background — no name, no figures; at that size text is unreadable anyway.
+ * background â€” no name, no figures; at that size text is unreadable anyway.
  * Hovering the card opens the big reveal: name, count and the I/O rates, in
- * a panel that renders at SCREEN size — globals.css scales it by
+ * a panel that renders at SCREEN size â€” globals.css scales it by
  * 1/var(--board-zoom), because a viewer parked way out still has to read it.
  *
  * The panel is in the DOM from the start and pure CSS reveals it
@@ -1084,14 +1089,14 @@ function GlanceIdentityLayer({
 }: {
   machineIcon?: MachineHandlerIcon;
   fallbackResource?: ResourceAmount;
-  /** The card's paint, when painted — it beats the icon's own colour. */
+  /** The card's paint, when painted â€” it beats the icon's own colour. */
   paintTint?: string;
   label: string;
   inputs: RailPort[];
   outputs: RailPort[];
 }) {
   // The LED tile behind the big icon: paint first, then the icon's dominant
-  // sprite colour, then neutral steel — deep-dimmed by glanceTileStyle so
+  // sprite colour, then neutral steel â€” deep-dimmed by glanceTileStyle so
   // the icon stays the bright thing.
   const tileTint =
     paintTint ??
@@ -1134,18 +1139,23 @@ function GlanceIdentityLayer({
             bare
             showAmount={false}
             tooltip={false}
-            iconPixelSize={fallbackResource.kind === "fluid" ? 192 : undefined}
-            className={
-              fallbackResource.kind === "fluid"
-                ? "!h-[192px] !w-[192px]"
-                : "!h-[192px] !w-[192px] origin-center scale-150"
+            // The glance face is measured, not zoom-cropped: the 1.5x trick
+            // the rows use overflows a 192px box and read as art spilling
+            // off the card at LOD.
+            iconPixelSize={
+              isSwatchFluid(fallbackResource)
+                ? 192
+                : fallbackResource.kind === "fluid"
+                  ? fluidArtPixels(192)
+                  : spriteArtPixels(192)
             }
+            className="!h-[192px] !w-[192px]"
           />
         </span>
       ) : null}
       {/* The reveal. Fixed 560px wide and scaled to screen size by the CSS;
           left-1/2 + origin-top keep its top edge pinned to the card's centre
-          at every zoom. Inputs left, arrow, outputs right — the same reading
+          at every zoom. Inputs left, arrow, outputs right â€” the same reading
           order as the card itself zoomed in. */}
       <span className="glance-io absolute left-1/2 top-full z-30 w-[560px] origin-top flex-col gap-2 border-2 border-[var(--mc-15)] bg-[var(--mc-82)] p-3 shadow-[8px_8px_0_rgba(0,0,0,0.55)]">
         {/* The same name bar the card wears zoomed in, at popup scale. */}
@@ -1163,7 +1173,7 @@ function GlanceIdentityLayer({
               ))}
             </span>
             <span className="flex items-start justify-center pt-2 text-[20px] font-black leading-6 text-[var(--mc-ink-muted)]">
-              →
+              â†’
             </span>
             <span className="flex min-w-0 flex-col gap-1">
               {outputs.map((port) => (
@@ -1182,7 +1192,7 @@ function GlanceIoRow({ port }: { port: RailPort }) {
   return (
     <span className="flex items-center gap-1.5 border-2 border-[var(--mc-47)] bg-[var(--mc-71)] px-1 py-0.5 shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
       {/* Same crop treatment as a port chip: items ship transparent padding
-          in the sprite, so they zoom 1.5× inside an overflow-hidden box;
+          in the sprite, so they zoom 1.5Ã— inside an overflow-hidden box;
           fluids are a solid square with nothing to crop. */}
       <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden">
         {port.resource ? (
@@ -1192,7 +1202,13 @@ function GlanceIoRow({ port }: { port: RailPort }) {
             bare
             showAmount={false}
             tooltip={false}
-            iconPixelSize={port.kind === "fluid" ? 50 : undefined}
+            iconPixelSize={
+              port.kind === "fluid"
+                ? isSwatchFluid(port.resource)
+                  ? 50
+                  : fluidArtPixels(36)
+                : undefined
+            }
             className={port.kind === "fluid" ? "!h-9 !w-9" : "!h-9 !w-9 origin-center scale-150"}
           />
         ) : null}
@@ -1215,7 +1231,7 @@ function GlanceIoRow({ port }: { port: RailPort }) {
  * The ladder is the point: plain ink for a card with nothing to answer for,
  * then muted gold, amber and red as the answer gets more urgent. A machine at
  * 40% that hands every asker what it asked for has done nothing wrong and
- * reads as quietly as one at 100% — the percent is a speed, not a grade.
+ * reads as quietly as one at 100% â€” the percent is a speed, not a grade.
  */
 interface VerdictWord {
   word: string;
@@ -1272,7 +1288,7 @@ const VERDICT_WORD_CLASS: Record<VerdictWord["tone"], string> = {
  *   here is a line spent on the whole board; the fix note rides beside the
  *   USAGE label instead of below the number.
  * - the number is never colored. A node at 100% that still can't cover its
- *   asks proves the speed and the problem are different facts — color lives
+ *   asks proves the speed and the problem are different facts â€” color lives
  *   on the state word, which is the thing that says where to act.
  *
  * Everything longer (the honest rates, the culprit's own machine count, the
@@ -1295,7 +1311,7 @@ function UsageStat({
       content={<VerdictHoverContent verdict={verdict} isCustomRate={isCustomRate} />}
     >
       {/* One card, one divider: the number and the word are the same
-          sentence — how hard it runs, and why. Two boxes read as two facts. */}
+          sentence â€” how hard it runs, and why. Two boxes read as two facts. */}
       <div className="flow-usage-stat flex min-w-0 border border-[var(--mc-47)] bg-[var(--mc-71)] shadow-[inset_1px_1px_0_var(--mc-93),inset_-1px_-1px_0_var(--mc-47)]">
         <div className="min-w-0 px-1.5">
           <div className="text-[11px] uppercase leading-[13px] text-[var(--mc-ink-muted)]">
@@ -1304,7 +1320,7 @@ function UsageStat({
           <div className="text-[17px] font-bold leading-5 tabular-nums">
             {showPct ? (
               <>
-                {/* Whole numbers — a decimal on a duty cycle is width, not
+                {/* Whole numbers â€” a decimal on a duty cycle is width, not
                     information. The exception is a node that runs so slowly it
                     would round to a flat 0% and read as dead. Eased on the
                     value-motion clock, so the machine visibly winds up. */}
@@ -1318,7 +1334,7 @@ function UsageStat({
                 <span className="text-[13px]">%</span>
               </>
             ) : (
-              <span className="text-[13px] text-[var(--mc-ink-muted)]">—</span>
+              <span className="text-[13px] text-[var(--mc-ink-muted)]">â€”</span>
             )}
           </div>
         </div>
@@ -1348,7 +1364,7 @@ function UsageStat({
 
 /**
  * The strip's hover: the sentence you'd say out loud, then where to act with
- * the culprit's OWN machine count, then the ladder — what caps this next and
+ * the culprit's OWN machine count, then the ladder â€” what caps this next and
  * where it lands once today's wall is gone.
  */
 function VerdictHoverContent({
@@ -1515,15 +1531,15 @@ function verdictHoverDetail(verdict: NodeVerdict, isCustomRate: boolean): string
  * A block that is always a whole number of grid cells tall, and always tall
  * enough for what is inside it.
  *
- * The rails and the head are deterministic — a port row is 40px because we say
- * so — but the footer and the config panels hold text and controls whose height
+ * The rails and the head are deterministic â€” a port row is 40px because we say
+ * so â€” but the footer and the config panels hold text and controls whose height
  * depends on the recipe, the machine and the browser's font metrics. Pinning
  * those to a fixed height is what made stats hang out of the bottom of the
  * card. So they measure instead, and round UP: never compress to fit the grid,
  * take another cell.
  *
- * The observer fires when the content's own height changes — a different
- * recipe, a wider number — not on drags, hovers or frames, so it costs nothing
+ * The observer fires when the content's own height changes â€” a different
+ * recipe, a wider number â€” not on drags, hovers or frames, so it costs nothing
  * in the cases the board's performance is judged on.
  */
 function GridBlock({
@@ -1542,7 +1558,7 @@ function GridBlock({
   /** Where content sits in the rounded-up block. The footer bottom-aligns. */
   align?: "center" | "end";
   /**
-   * Extra height the measurement must reserve beyond the content itself —
+   * Extra height the measurement must reserve beyond the content itself â€”
    * the caller's own padding and border, which scrollHeight cannot see.
    * Without it a content height near a cell boundary would round to a block
    * the padding no longer fits in.
@@ -1624,7 +1640,7 @@ function PortRail({
         // demanded 210px of chip; with it gone the name is the only wide thing
         // left, and a truncated name plus a hover beats a board you can't fit.
         // The output rail is chip (140) + 2px gap + the coupling (34, in
-        // globals.css) — anything wider and the couplings hang off the card.
+        // globals.css) â€” anything wider and the couplings hang off the card.
         isInput ? PORT_CHIP_WIDTH_CLASS : "w-[176px]",
       ].join(" ")}
     >
@@ -1641,7 +1657,7 @@ function PortRail({
 
 /**
  * An output row: the maker chip plus the coupling chip at the node's right
- * edge — inside the card, like inputs. The row is the edge anchor, so wires
+ * edge â€” inside the card, like inputs. The row is the edge anchor, so wires
  * reach the coupling the same way they reach an input chip.
  */
 export function OutputSocketRow({
@@ -1677,7 +1693,7 @@ export function OutputSocketRow({
               : "Empty socket: nothing plugged in."
           }
         >
-          {/* The mirror of an input's NO SUPPLY. It used to read "—" beside a
+          {/* The mirror of an input's NO SUPPLY. It used to read "â€”" beside a
               tooltip saying the output vanished, which is exactly the thing
               that stopped being true when the plan became a closed system. */}
           <span className="flow-socket-empty nodrag">
@@ -1687,7 +1703,7 @@ export function OutputSocketRow({
                 NO TAKER
               </span>
             ) : (
-              "—"
+              "â€”"
             )}
           </span>
         </MinecraftTooltip>
@@ -1698,7 +1714,7 @@ export function OutputSocketRow({
 
 /**
  * A second source handle over the coupling chip, sharing the port's handle
- * id — a connection dropped on either reads the same port. Geometry is
+ * id â€” a connection dropped on either reads the same port. Geometry is
  * unaffected: edges anchor off the row's `data-resource-edge-anchor`, not
  * React Flow's handle bounds.
  */
@@ -1721,7 +1737,7 @@ function PlugDragHandle({ nodeId, port }: { nodeId: string; port: RailPort }) {
 }
 
 /** Where a dead-end output actually ends. Trash destroys; the rest keeps. */
-// A dead-end drawer is a DRAIN now — the same word its own card wears, so the
+// A dead-end drawer is a DRAIN now â€” the same word its own card wears, so the
 // plug and the thing it points at cannot be read as two different ideas.
 const PLUG_DUMP_WORD: Record<"trash" | "tank" | "store", string> = {
   trash: "TRASH",
@@ -1741,8 +1757,8 @@ const PLUG_GLOW_STYLE: CSSProperties = {
 
 /**
  * The coupling chip: how covered the askers are, as one percent over one
- * bar, colored by the coupling's state. Everything else — who asks, the
- * gets/asks rates, the ×N short multiplier, the fix — lives in the hover.
+ * bar, colored by the coupling's state. Everything else â€” who asks, the
+ * gets/asks rates, the Ã—N short multiplier, the fix â€” lives in the hover.
  */
 function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
   const plug = port.plug!;
@@ -1764,7 +1780,7 @@ function PlugBlock({ nodeId, port }: { nodeId: string; port: RailPort }) {
             wrapper, so hovering the handle still opens the asker's story. */}
         <PlugDragHandle nodeId={nodeId} port={port} />
         {plug.state === "dump" ? (
-          // No ask exists to be a percent of — flow just ends here. Name the
+          // No ask exists to be a percent of â€” flow just ends here. Name the
           // end it reaches: "DUMP" read as destruction even when the flow was
           // going somewhere perfectly safe.
           <span className="flow-plug-top">
@@ -1830,7 +1846,7 @@ function buildPortFlowScope(nodeId: string, port: RailPort) {
  *
  * It used to be the little item icon and nothing else: a 28px square inside a
  * 40px row, carrying click-for-recipes and right-click-for-uses, while the rest
- * of the row — the name, the rate, the bar — was only a wire drag. Aiming at the
+ * of the row â€” the name, the rate, the bar â€” was only a wire drag. Aiming at the
  * icon to ask "what makes this?" is a game of darts, and on a touchscreen the
  * icon has no right button to press and no hover to reveal itself.
  *
@@ -1852,15 +1868,15 @@ function usePortRowBrowse({
   browse: (mode: PortBrowseMode) => void;
 }) {
   // The press gesture, the menu it opens and the one-answer-per-gesture rule are
-  // shared with the items column — see browse-menu.tsx. What stays here is what is
+  // shared with the items column â€” see browse-menu.tsx. What stays here is what is
   // particular to a port: the mouse's two buttons, the keyboard's two keys, and
   // the fact that a drag from here is a wire.
   const { pressHandlers, isPressing, menu, wasDragged, wasTouch, openFromTap } = useBrowseMenu({
     name: port.displayName,
     onPick: browse,
     onPressBecomesMenu: ({ x, y }) => {
-      // React Flow began pulling a wire the instant the finger landed — it has no
-      // way to know a press was coming — and the finger is now going to travel
+      // React Flow began pulling a wire the instant the finger landed â€” it has no
+      // way to know a press was coming â€” and the finger is now going to travel
       // down onto a menu item. Left alone it would drop that wire wherever the
       // finger let go. `mouseup` on the document is what its connection listens
       // for, so this is the wire being put down where it started, which wires
@@ -1885,7 +1901,7 @@ function usePortRowBrowse({
       if (isFromBrowseMenu(event)) {
         return;
       }
-      // A finger gets the menu — a tap and a press open the same two answers, the
+      // A finger gets the menu â€” a tap and a press open the same two answers, the
       // press just gets there early enough to slide onto one. Opening the book
       // straight off a tap would be guessing which of the two was meant.
       //
@@ -1979,7 +1995,7 @@ export function PortChip({
             : port.tone === "idle"
               ? "flow-port--idle"
               : "";
-  // The rate reads under the name in a lighter grey — the number is worth a
+  // The rate reads under the name in a lighter grey â€” the number is worth a
   // line, it just isn't worth competing with the name for attention. The
   // binding input still shows both halves (what it gets over what it asks);
   // every other port shows the one number that matters. Calm mode always
@@ -2000,7 +2016,7 @@ export function PortChip({
   );
 
   // One bar, one ruler: 100% = full blast. Solid = now, hatch = would unlock
-  // if fed. The caret/burst (the want) is an INPUT-side signal — on outputs
+  // if fed. The caret/burst (the want) is an INPUT-side signal â€” on outputs
   // that story belongs to the asker and lives on the plug block instead.
   const nameplate = port.nameplatePerSecond;
   const fillPct = nameplate > 1e-9 ? Math.min(port.currentPerSecond / nameplate, 1) * 100 : 0;
@@ -2014,14 +2030,14 @@ export function PortChip({
   return (
     <div
       className={[
-        // 40px — two grid cells, fixed. The row is the board's vertical unit:
+        // 40px â€” two grid cells, fixed. The row is the board's vertical unit:
         // rails have no gaps and the head above them is a whole number of
         // 40s, so every port centre lands exactly on a grid line. Name, rate
         // and bar total 32px and centre inside it.
         "flow-port relative flex h-[40px] items-center gap-1 px-0.5 py-0",
         // flex-none both ways. An input chip used to be `flex-1`, and in a
         // column flex container that resolves the row's main size from its
-        // content — quietly beating the 40px height and leaving the rail 4px
+        // content â€” quietly beating the 40px height and leaving the rail 4px
         // short per row, which is exactly how ports drift off the grid.
         plugRow ? `${PORT_CHIP_WIDTH_CLASS} flex-none` : "w-full flex-none",
         toneClass,
@@ -2098,13 +2114,21 @@ export function PortChip({
             showAmount={false}
             showConsumedState={false}
             // Item art ships with transparent padding baked into the sprite,
-            // and that padding is a FRACTION of the cell — growing the box
+            // and that padding is a FRACTION of the cell â€” growing the box
             // grows the empty border with it. ResourceIcon's default already
             // zooms to 200%-8px inside an overflow-hidden box; items take
             // another 1.5x on top and get clipped by the box above, which is
-            // what finally puts the art edge to edge. Fluids are a solid
-            // square with nothing to crop, so they keep their exact size.
-            iconPixelSize={port.kind === "fluid" ? 50 : undefined}
+            // what finally puts the art edge to edge. A fluid sprite's art is
+            // exactly the middle half of its canvas, so it takes the precise
+            // spriteArtPixels size instead; only the artless swatch keeps its
+            // exact requested size.
+            iconPixelSize={
+              port.kind === "fluid"
+                ? isSwatchFluid(port.resource)
+                  ? 50
+                  : fluidArtPixels(28)
+                : undefined
+            }
             className={port.kind === "fluid" ? "" : "!h-7 !w-7 origin-center scale-150"}
           />
         ) : (
@@ -2119,7 +2143,7 @@ export function PortChip({
           {port.displayName}
         </span>
         {calmMode ? (
-          /* Presentation: no bar, no want marks — the room they used goes to
+          /* Presentation: no bar, no want marks â€” the room they used goes to
              the number, which is the thing a viewer actually reads. Muted ink
              a step below the name, so the pair still reads name-first. */
           <span className="block truncate text-[13px] font-bold leading-[15px] tabular-nums text-[var(--mc-ink-muted)]">
@@ -2382,7 +2406,7 @@ const STORY_ACTION_TEXT: Record<"fix" | "fine" | "note", string> = {
 };
 
 /**
- * The port hover panel — the big explainer: a thicker copy of the port's bar
+ * The port hover panel â€” the big explainer: a thicker copy of the port's bar
  * with the same landmarks, the honest numbers, the per-line list, then the
  * plain answer to "why is it like this" and what to do. All copy comes from
  * explainPort; styles ride inline so no stale stylesheet chunk can mute the
@@ -2503,7 +2527,7 @@ function StoryBody({ story }: { story: PortStory }) {
 }
 
 /**
- * The plug hover — the asker's story at full length: who is plugged in, what
+ * The plug hover â€” the asker's story at full length: who is plugged in, what
  * they ask, what they get, and the fix. The covered bar rides the asker's
  * own frame: full = the ask is covered.
  */
@@ -2817,7 +2841,7 @@ function getTreeGrowthSimulatorSlotTiers(control: MachineConfigTierControl) {
 
 /**
  * The block a config option means. `sizeClass` must be a literal Tailwind
- * pair — the class list is scanned at build time, so a computed size string
+ * pair â€” the class list is scanned at build time, so a computed size string
  * would silently produce no CSS at all.
  */
 function ConfigTierIcon({
@@ -2881,7 +2905,7 @@ function configTierHint(
   if (eut !== undefined && Math.abs(eut - 1) > 0.005) {
     parts.push(`${formatTimes(eut)} EU/t`);
   }
-  return parts.slice(0, 2).join(" · ") || undefined;
+  return parts.slice(0, 2).join(" Â· ") || undefined;
 }
 
 function MachineConfigControlPanel({
@@ -2898,8 +2922,8 @@ function MachineConfigControlPanel({
     return null;
   }
 
-  // Two controls per row (2 × 168 + 4 gap = the card's 340px inner width),
-  // three cells per row — and GridBlock adds a cell if a label wraps rather
+  // Two controls per row (2 Ã— 168 + 4 gap = the card's 340px inner width),
+  // three cells per row â€” and GridBlock adds a cell if a label wraps rather
   // than letting the controls spill out of the panel.
   const rows = Math.ceil(controls.length / 2);
   return (
@@ -3130,14 +3154,14 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
           title="Gain: how much loot per harvest"
           finePrint={
             <>
-              drop rounds = {stats.dropChance.toFixed(3)} × 1.03^Gain, and every successful drop
+              drop rounds = {stats.dropChance.toFixed(3)} Ã— 1.03^Gain, and every successful drop
               has a (Gain + 1)% chance of one bonus item.
             </>
           }
         >
           <p>
             The higher the Gain stat, the more items each harvest gives. At 31 you collect{" "}
-            {good("roughly 2.5× as much")} as at 1.
+            {good("roughly 2.5Ã— as much")} as at 1.
           </p>
           <p className="text-slate-300">
             Like Growth, it&apos;s raised by cross-breeding. It never changes how fast the plant
@@ -3150,7 +3174,7 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
         <CropHelpPanel
           title="Water: keep it topped up"
           feeding={{ tier: stats.tier }}
-          finePrint={<>water bonus = floor((water + 9) ÷ 10): 0 → +1, 50 → +5, 100 → +10.</>}
+          finePrint={<>water bonus = floor((water + 9) Ã· 10): 0 â†’ +1, 50 â†’ +5, 100 â†’ +10.</>}
         >
           <p>
             Full water is {good("+10 food")}, one of the two biggest boosts you control.
@@ -3166,7 +3190,7 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
         <CropHelpPanel
           title="Fertilizer: extra food"
           feeding={{ tier: stats.tier }}
-          finePrint={<>fertilizer bonus = floor((fertilizer + 9) ÷ 10): 0 → +1, 50 → +5, 100 → +10.</>}
+          finePrint={<>fertilizer bonus = floor((fertilizer + 9) Ã· 10): 0 â†’ +1, 50 â†’ +5, 100 â†’ +10.</>}
         >
           <p>
             Fertilizer works like water: keeping it full is {good("+10 food")}. Without it a
@@ -3198,7 +3222,7 @@ function cropControlHelp(recipe: Recipe, controlId: string): ReactNode {
           finePrint={
             <>
               biome bonus = max(humidity, likes): each matching tag +14, capped at 2 tags; humidity
-              scales 0–14 between 50% and 80% biome humidity.
+              scales 0â€“14 between 50% and 80% biome humidity.
             </>
           }
         >
