@@ -73,6 +73,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.9.1",
+    date: "2026-08-11",
+    headline: "The tours tell it straight",
+    notes: [
+      "Both guided tours were rewritten so every claim matches what the board really does.",
+      "The Read the board tour now explains what a full input bar means on a slowed machine.",
+      "The first tour now covers the calm colours button and uses the panel's real headings.",
+    ],
+    actions: [{ label: "Walk the board tour", lessonId: "read-the-board" }],
+  },
+  {
     version: "2.9.0",
     date: "2026-08-11",
     headline: "Copy what your board is doing",

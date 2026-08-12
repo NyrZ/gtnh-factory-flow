@@ -193,9 +193,9 @@ const CALLOUTS: Array<{
     align: "center",
     title: "Plan totals",
     rows: [
-      { chip: "NEED", tone: "need", text: "Bring this in yourself" },
-      { chip: "OUT", tone: "output", text: "Leaves the plan" },
-      { chip: "IN", tone: "internal", text: "Made and used here" },
+      { chip: "INPUTS", tone: "need", text: "Bring this in yourself" },
+      { chip: "OUTPUTS", tone: "output", text: "Leaves the plan" },
+      { chip: "INTERNAL", tone: "internal", text: "Made and used here" },
       { text: "Hover a row to light up the board" },
     ],
   },

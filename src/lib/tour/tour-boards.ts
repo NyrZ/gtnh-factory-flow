@@ -229,12 +229,20 @@ function pickCards(): TourPicks | undefined {
     (node) => verdicts.get(node.id)?.kind === "bottleneck",
   )?.id;
 
+  // A truly BLOCKED card first: the step's chip says BLOCKED and its copy says
+  // the next machine goes short, neither of which is true of a starved card,
+  // which only stands in when the board has nothing better to show.
   const blockedId = project.nodes
     .filter((node) => {
       const kind = verdicts.get(node.id)?.kind;
       return kind === "blocked" || kind === "starved";
     })
-    .sort((a, b) => inputCount(b.id) - inputCount(a.id))[0]?.id;
+    .sort((a, b) => {
+      const blockedFirst =
+        Number(verdicts.get(b.id)?.kind === "blocked") -
+        Number(verdicts.get(a.id)?.kind === "blocked");
+      return blockedFirst || inputCount(b.id) - inputCount(a.id);
+    })[0]?.id;
 
   const cardId = bottleneckId ?? blockedId ?? project.nodes[0]?.id;
   if (!cardId) {
