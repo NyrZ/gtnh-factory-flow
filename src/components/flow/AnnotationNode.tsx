@@ -371,29 +371,21 @@ function ImageShape({ annotation, look }: { annotation: FactoryAnnotation; look:
 type ArrowPoint = { x: number; y: number };
 
 /** Click-to-cycle orders for the two style chips. */
-const NEXT_BORDER: Record<FactoryAnnotationBorderStyle, FactoryAnnotationBorderStyle> = {
-  solid: "dashed",
-  dashed: "none",
-  none: "solid",
-};
-const NEXT_SURFACE: Record<AnnotationSurface, AnnotationSurface> = {
-  tint: "solid",
-  solid: "none",
-  none: "tint",
-};
+const BORDER_OPTIONS: FactoryAnnotationBorderStyle[] = ["solid", "dashed", "none"];
+const SURFACE_OPTIONS: AnnotationSurface[] = ["tint", "solid", "none"];
 const SURFACE_WORD: Record<AnnotationSurface, string> = {
   tint: "tinted",
   solid: "solid",
   none: "off",
 };
-const NEXT_MARKS: Record<FactoryAnnotationMarks, FactoryAnnotationMarks> = {
-  none: "dots",
-  dots: "grid",
-  grid: "graph",
-  graph: "ruled",
-  ruled: "hatch",
-  hatch: "none",
-};
+const MARKS_OPTIONS: FactoryAnnotationMarks[] = [
+  "none",
+  "dots",
+  "grid",
+  "graph",
+  "ruled",
+  "hatch",
+];
 const MARKS_WORD: Record<FactoryAnnotationMarks, string> = {
   none: "off",
   dots: "dots",
@@ -406,16 +398,26 @@ const MARKS_WORD: Record<FactoryAnnotationMarks, string> = {
 const STYLE_CHIP_CLASS =
   "flex h-7 w-7 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]";
 
+/** An option row's button: same chip, ringed when it is the current value. */
+function optionChipClass(active: boolean): string {
+  return [
+    "flex h-7 w-7 items-center justify-center border-2 bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)]",
+    active ? "border-white ring-2 ring-cyan-300" : "border-[var(--mc-15)]",
+  ].join(" ");
+}
+
 /**
  * The little settings cluster a selected box/zone/image wears at its top
  * left. Three independent choices for the interior - how STRONG the surface
  * is (tint/solid/off), what COLOURS it (any dye, or one of the board's
- * textured papers, both in the fill colour popover), and which MARKS ride
- * over it (dots, grids, rules, hatch) - plus the border pair. Each chip
- * PREVIEWS its current setting and cycles on click; each colour chip opens
- * the palette row underneath. Rendered through NodeToolbar so it sits in
- * screen space and never scales with the zoom.
+ * textured papers, both in the fill colour menu), and which MARKS ride over
+ * it (dots, grids, rules, hatch) - plus the border pair. Every chip PREVIEWS
+ * its current setting and opens a menu of ALL its options underneath, each
+ * option previewed the same way; nothing cycles blind. Rendered through
+ * NodeToolbar so it sits in screen space and never scales with the zoom.
  */
+type StylePanelMenu = "border" | "borderColor" | "surface" | "fillColor" | "marks";
+
 function AnnotationStylePanel({
   annotation,
   selected,
@@ -425,12 +427,14 @@ function AnnotationStylePanel({
 }) {
   const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
   const deleteAnnotation = useFactoryStore((state) => state.deleteAnnotation);
-  const [paletteFor, setPaletteFor] = useState<"border" | "fill" | undefined>(undefined);
+  const [openMenu, setOpenMenu] = useState<StylePanelMenu | undefined>(undefined);
   useEffect(() => {
     if (!selected) {
-      setPaletteFor(undefined);
+      setOpenMenu(undefined);
     }
   }, [selected]);
+  const toggleMenu = (menu: StylePanelMenu) =>
+    setOpenMenu((current) => (current === menu ? undefined : menu));
 
   const look = annotationLook(annotation);
   // A picture is opaque: it has a border to dress and nothing for a fill to do.
@@ -455,7 +459,13 @@ function AnnotationStylePanel({
       isVisible={selected}
       position={Position.Top}
       align="start"
-      offset={8}
+      // INSIDE the shape's top left, not above it: a panel above the box sat
+      // on the top edge's move strip and resize knobs. Position Top pins the
+      // toolbar's BOTTOM edge, so the negative offset reaches 48px into the
+      // shape and the chip row's place never changes - the menus below are
+      // an absolute overlay that grows DOWNWARD without moving a single
+      // button you are about to click.
+      offset={-48}
       // The toolbar portal carries no z of its own, and this node sits at -5
       // (a backdrop), so without a lift the PANE hit-tests above the panel
       // and eats every click. 30: over the board and its z-20 toolbars,
@@ -463,17 +473,21 @@ function AnnotationStylePanel({
       style={{ zIndex: 30 }}
     >
       <div
-        className="nodrag border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]"
+        className="nodrag relative ml-2 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]"
         onPointerDown={stop}
         onDoubleClick={stop}
       >
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => commitStyle({ border: NEXT_BORDER[look.border] })}
-            className={STYLE_CHIP_CLASS}
-            title={`Border: ${look.border}. Click to change.`}
-            aria-label={`Border: ${look.border}. Click to change.`}
+            onClick={() => toggleMenu("border")}
+            className={[
+              STYLE_CHIP_CLASS,
+              openMenu === "border" ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]" : "",
+            ].join(" ")}
+            title={`Border style: ${look.border}`}
+            aria-label={`Border style: ${look.border}`}
+            aria-expanded={openMenu === "border"}
           >
             {look.border === "none" ? (
               <Ban className="h-3.5 w-3.5 opacity-60" />
@@ -487,14 +501,16 @@ function AnnotationStylePanel({
           </button>
           <button
             type="button"
-            onClick={() => setPaletteFor(paletteFor === "border" ? undefined : "border")}
+            onClick={() => toggleMenu("borderColor")}
             className={[
               STYLE_CHIP_CLASS,
-              paletteFor === "border" ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]" : "",
+              openMenu === "borderColor"
+                ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+                : "",
             ].join(" ")}
             title="Border colour"
             aria-label="Border colour"
-            aria-expanded={paletteFor === "border"}
+            aria-expanded={openMenu === "borderColor"}
           >
             <span
               aria-hidden
@@ -507,10 +523,16 @@ function AnnotationStylePanel({
               <span aria-hidden className="mx-0.5 h-5 w-[2px] bg-[var(--mc-33)]" />
               <button
                 type="button"
-                onClick={() => commitStyle({ fill: NEXT_SURFACE[look.surface] })}
-                className={STYLE_CHIP_CLASS}
-                title={`Fill: ${SURFACE_WORD[look.surface]}. Click to change.`}
-                aria-label={`Fill: ${SURFACE_WORD[look.surface]}. Click to change.`}
+                onClick={() => toggleMenu("surface")}
+                className={[
+                  STYLE_CHIP_CLASS,
+                  openMenu === "surface"
+                    ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+                    : "",
+                ].join(" ")}
+                title={`Fill: ${SURFACE_WORD[look.surface]}`}
+                aria-label={`Fill: ${SURFACE_WORD[look.surface]}`}
+                aria-expanded={openMenu === "surface"}
               >
                 {look.surface === "none" ? (
                   <Ban className="h-3.5 w-3.5 opacity-60" />
@@ -524,14 +546,16 @@ function AnnotationStylePanel({
               </button>
               <button
                 type="button"
-                onClick={() => setPaletteFor(paletteFor === "fill" ? undefined : "fill")}
+                onClick={() => toggleMenu("fillColor")}
                 className={[
                   STYLE_CHIP_CLASS,
-                  paletteFor === "fill" ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]" : "",
+                  openMenu === "fillColor"
+                    ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+                    : "",
                 ].join(" ")}
                 title="Fill colour: any dye, or a textured paper"
                 aria-label="Fill colour"
-                aria-expanded={paletteFor === "fill"}
+                aria-expanded={openMenu === "fillColor"}
               >
                 <span
                   aria-hidden
@@ -548,10 +572,16 @@ function AnnotationStylePanel({
               </button>
               <button
                 type="button"
-                onClick={() => commitStyle({ marks: NEXT_MARKS[look.marks] })}
-                className={STYLE_CHIP_CLASS}
-                title={`Marks: ${MARKS_WORD[look.marks]}. Click to change.`}
-                aria-label={`Marks: ${MARKS_WORD[look.marks]}. Click to change.`}
+                onClick={() => toggleMenu("marks")}
+                className={[
+                  STYLE_CHIP_CLASS,
+                  openMenu === "marks"
+                    ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+                    : "",
+                ].join(" ")}
+                title={`Marks: ${MARKS_WORD[look.marks]}`}
+                aria-label={`Marks: ${MARKS_WORD[look.marks]}`}
+                aria-expanded={openMenu === "marks"}
               >
                 {look.marks === "none" ? (
                   <Ban className="h-3.5 w-3.5 opacity-60" />
@@ -580,16 +610,95 @@ function AnnotationStylePanel({
             </>
           ) : null}
         </div>
-        {paletteFor ? (
+        {/* The open menu hangs below the chip row as an absolute overlay on
+            its own plate: the row above it never moves, and the options run
+            downward into the shape. */}
+        {openMenu ? (
+          <div
+            className="absolute left-0 top-[calc(100%+4px)] w-max border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]"
+          >
+        {openMenu === "border" ? (
+          <div className="flex gap-1">
+            {BORDER_OPTIONS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => commitStyle({ border: value })}
+                className={optionChipClass(look.border === value)}
+                title={value}
+                aria-label={`Use ${value === "none" ? "no" : value} border`}
+              >
+                {value === "none" ? (
+                  <Ban className="h-3.5 w-3.5 opacity-60" />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="h-4 w-4"
+                    style={{ border: `2px ${value} ${look.borderSwatch}` }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {openMenu === "surface" ? (
+          <div className="flex gap-1">
+            {SURFACE_OPTIONS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => commitStyle({ fill: value })}
+                className={optionChipClass(look.surface === value)}
+                title={SURFACE_WORD[value]}
+                aria-label={`Use ${value === "none" ? "no" : SURFACE_WORD[value]} fill`}
+              >
+                {value === "none" ? (
+                  <Ban className="h-3.5 w-3.5 opacity-60" />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="h-4 w-4 border border-black/40"
+                    style={surfaceStyle({ ...look, surface: value })}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {openMenu === "marks" ? (
+          <div className="flex gap-1">
+            {MARKS_OPTIONS.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => commitStyle({ marks: value })}
+                className={optionChipClass(look.marks === value)}
+                title={MARKS_WORD[value]}
+                aria-label={value === "none" ? "Use no marks" : `Use ${MARKS_WORD[value]} marks`}
+              >
+                {value === "none" ? (
+                  <Ban className="h-3.5 w-3.5 opacity-60" />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="h-4 w-4 border border-black/40"
+                    style={marksStyle(value, look.markInk, 8)}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {openMenu === "borderColor" || openMenu === "fillColor" ? (
           <>
-            <div className="mt-1 grid grid-cols-8 gap-1">
+            <div className="grid grid-cols-8 gap-1">
               {GT_NODE_COLOR_PALETTE.map((entry) => (
                 <button
                   key={entry.tag}
                   type="button"
                   onClick={() =>
                     commitStyle(
-                      paletteFor === "border"
+                      openMenu === "borderColor"
                         ? { borderColor: entry.tag }
                         : // A dye replaces a paper: the two are one choice.
                           { fillColor: entry.tag, fillTheme: undefined },
@@ -597,7 +706,7 @@ function AnnotationStylePanel({
                   }
                   className={[
                     "h-6 w-6 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
-                    (paletteFor === "border"
+                    (openMenu === "borderColor"
                       ? entry.color.swatch === look.borderSwatch
                       : !look.fillTheme && entry.color.swatch === look.fillSwatch)
                       ? "border-white ring-2 ring-cyan-300"
@@ -605,11 +714,11 @@ function AnnotationStylePanel({
                   ].join(" ")}
                   style={{ backgroundColor: entry.color.swatch }}
                   title={entry.tag}
-                  aria-label={`Use ${entry.tag} for the ${paletteFor}`}
+                  aria-label={`Use ${entry.tag} for the ${openMenu === "borderColor" ? "border" : "fill"}`}
                 />
               ))}
             </div>
-            {paletteFor === "fill" ? (
+            {openMenu === "fillColor" ? (
               // The textured papers, on the same shelf as the dyes: a fill
               // colour is either one.
               <div className="mt-1 grid grid-cols-8 gap-1">
@@ -632,6 +741,8 @@ function AnnotationStylePanel({
               </div>
             ) : null}
           </>
+        ) : null}
+          </div>
         ) : null}
       </div>
     </NodeToolbar>
