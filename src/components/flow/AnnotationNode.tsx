@@ -8,7 +8,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { Ban, ImageOff } from "lucide-react";
+import { Ban, ImageOff, Trash2 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import type {
   FactoryAnnotation,
@@ -69,8 +69,7 @@ function annotationLook(annotation: FactoryAnnotation): AnnotationLook {
   const style = annotation.style;
   const baseTag = annotation.colorTag ?? DEFAULT_ANNOTATION_COLOR;
   return {
-    // A dropped picture is its own frame; boxes and zones default to drawn.
-    border: style?.border ?? (annotation.kind === "image" ? "none" : "solid"),
+    border: style?.border ?? "solid",
     borderSwatch: GT_NODE_COLORS[style?.borderColor ?? baseTag].swatch,
     fill: style?.fill ?? "tint",
     fillSwatch: GT_NODE_COLORS[style?.fillColor ?? baseTag].swatch,
@@ -253,7 +252,6 @@ function ImageShape({ annotation, look }: { annotation: FactoryAnnotation; look:
           ...(look.border !== "none"
             ? { border: `4px ${look.border} ${look.borderSwatch}` }
             : undefined),
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
         }}
       >
         {annotation.imageUrl && !failed ? (
@@ -322,6 +320,7 @@ function AnnotationStylePanel({
   selected: boolean;
 }) {
   const updateAnnotation = useFactoryStore((state) => state.updateAnnotation);
+  const deleteAnnotation = useFactoryStore((state) => state.deleteAnnotation);
   const [paletteFor, setPaletteFor] = useState<"border" | "fill" | undefined>(undefined);
   useEffect(() => {
     if (!selected) {
@@ -425,6 +424,20 @@ function AnnotationStylePanel({
                   className="h-4 w-4 border border-black/40"
                   style={{ backgroundColor: look.fillSwatch }}
                 />
+              </button>
+            </>
+          ) : null}
+          {annotation.kind === "image" ? (
+            <>
+              <span aria-hidden className="mx-0.5 h-5 w-[2px] bg-[var(--mc-33)]" />
+              <button
+                type="button"
+                onClick={() => deleteAnnotation(annotation.id)}
+                className={STYLE_CHIP_CLASS}
+                title="Delete this image"
+                aria-label="Delete this image"
+              >
+                <Trash2 className="h-3.5 w-3.5 text-red-400" />
               </button>
             </>
           ) : null}
@@ -988,7 +1001,10 @@ function TextShape({
 
   return (
     <div
-      className="group/text relative h-full w-full border-2 font-mono shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33),3px_3px_0_rgba(0,0,0,0.25)]"
+      // No outer offset shadow of its own any more: every node casts the
+      // board-wide drop shadow now (globals.css), and a second one here read
+      // as a double edge.
+      className="group/text relative h-full w-full border-2 font-mono shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)]"
       style={{
         // The paint reaches the face, not just the frame: a 20% wash of the
         // border's colour over the slab. Capped low so the ink stays readable

@@ -28,9 +28,11 @@ import {
 } from "@xyflow/react";
 import { toBlob, toSvg } from "html-to-image";
 import {
+  AlignJustify,
   Ban,
   Box,
   Cable,
+  Grid2x2,
   Ellipsis,
   Anchor,
   Eye,
@@ -153,6 +155,7 @@ import {
   type GlanceMode,
 } from "./board-view";
 import { CANVAS_THEMES, getCanvasTheme, type CanvasTheme } from "./canvas-themes";
+import { RuledBackground } from "./board-pattern";
 import { readImageSize, uploadBoardImage } from "@/lib/community/images";
 import { getDeleteCursor, getPaintBrushCursor } from "./paint-cursor";
 import {
@@ -308,10 +311,12 @@ const CANVAS_PATTERN_LABEL: Record<CanvasPattern, string> = {
   dots: "Background: dots",
   lines: "Background: grid lines",
   cross: "Background: crosses",
+  ruled: "Background: ruled lines",
+  graph: "Background: graph paper",
   none: "Background: blank",
 };
 const CANVAS_PATTERN_VARIANT: Record<
-  Exclude<CanvasPattern, "none">,
+  Exclude<CanvasPattern, "none" | "ruled" | "graph">,
   (typeof BackgroundVariant)[keyof typeof BackgroundVariant]
 > = {
   dots: BackgroundVariant.Dots,
@@ -4224,7 +4229,13 @@ export function FactoryFlow() {
         <HopMapController boardRef={boardRef} />
         <SelectionHandoffController signal={selectionHandoffCount} activePocketId={activePocketId} />
         {linePulseMode ? <EdgePulseCanvas edgesUnderNodes={lineThicknessMode} /> : null}
-        {boardView.canvasPattern === "none" ? null : (
+        {boardView.canvasPattern === "none" ? null : boardView.canvasPattern === "ruled" ||
+          boardView.canvasPattern === "graph" ? (
+          <RuledBackground
+            mode={boardView.canvasPattern}
+            color={activePocketId ? POCKET_CANVAS_DOT_COLOR : canvasTheme.patternColor}
+          />
+        ) : (
           <Background
             variant={CANVAS_PATTERN_VARIANT[boardView.canvasPattern]}
             gap={BOARD_GRID_SIZE}
@@ -5688,9 +5699,13 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       ? Grid3x3
       : canvasPattern === "cross"
         ? Plus
-        : canvasPattern === "none"
-          ? Ban
-          : Grip;
+        : canvasPattern === "ruled"
+          ? AlignJustify
+          : canvasPattern === "graph"
+            ? Grid2x2
+            : canvasPattern === "none"
+              ? Ban
+              : Grip;
   const buttonClass = (active: boolean) =>
     [
       "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
@@ -5748,7 +5763,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
           className={[
             // Hangs below the row like the paint palette, absolute against
             // the toolbar root so it never widens the plate it lives in.
-            "absolute right-0 w-[236px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+            "absolute right-0 w-[184px] border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
             compact ? "top-[6.5rem]" : "top-[3.25rem]",
             isThemePickerOpen
               ? "pointer-events-auto translate-y-0 opacity-100"
@@ -5767,18 +5782,12 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
                     ? "border-white bg-[var(--mc-85)] ring-2 ring-cyan-300"
                     : "border-[var(--mc-15)] bg-[var(--mc-49)] hover:bg-[var(--mc-61)]",
                 ].join(" ")}
-                title={theme.blurb}
                 aria-label={`Background style: ${theme.name}`}
                 aria-pressed={view.canvasTheme === theme.id}
               >
                 <ThemeSwatch theme={theme} />
-                <span className="min-w-0">
-                  <span className="block text-[11px] font-semibold leading-tight text-[var(--mc-ink)]">
-                    {theme.name}
-                  </span>
-                  <span className="block truncate text-[10px] leading-tight text-[var(--mc-ink)] opacity-60">
-                    {theme.blurb}
-                  </span>
+                <span className="min-w-0 truncate text-[11px] font-semibold leading-tight text-[var(--mc-ink)]">
+                  {theme.name}
                 </span>
               </button>
             ))}

@@ -536,6 +536,11 @@ textarea {
 
 .factory-flow-board .react-flow__edges {
   z-index: 80 !important;
+  /* The wires cast too, as one filter over the whole layer so the cost never
+     scales with edge count: every wire shadows at its own thickness, and a
+     fat pipe grounds harder than a hairline exactly as it should. Smaller
+     offset than the cards: wires lie closer to the paper. */
+  filter: drop-shadow(2px 3px 0 rgba(0, 0, 0, 0.25));
 }
 
 .factory-flow-board .react-flow__nodes {
@@ -563,6 +568,13 @@ textarea {
 
 .factory-flow-board .react-flow__node {
   contain: layout style;
+  /* Everything on the paper casts a shadow. drop-shadow follows each node's
+     PAINTED silhouette rather than its box: a card and a picture cast from
+     their whole rectangle, a box or zone mostly from its frame (the
+     translucent wash inside casts only a faint one, exactly as translucent
+     things should), an arrow from its line, a hexagon from its outline. Hard
+     offset with no blur, in the app's pixel language. */
+  filter: drop-shadow(3px 4px 0 rgba(0, 0, 0, 0.3));
 }
 
 /* Zoom detail steps. See node-detail.ts for what each step keeps and why, and

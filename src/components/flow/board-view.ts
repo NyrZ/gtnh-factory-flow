@@ -33,9 +33,19 @@ import {
  * on hydration. That is the one shape that neither mismatches the server HTML
  * nor sets state from inside an effect.
  */
-export type CanvasPattern = "dots" | "lines" | "cross" | "none";
+export type CanvasPattern = "dots" | "lines" | "cross" | "ruled" | "graph" | "none";
 
-export const CANVAS_PATTERNS: CanvasPattern[] = ["dots", "lines", "cross", "none"];
+export const CANVAS_PATTERNS: CanvasPattern[] = [
+  "dots",
+  "lines",
+  "cross",
+  // Paper rulings, same selector as the dots: they are marks on the board,
+  // drawn in board space, so they pan and zoom with the factory and never
+  // stack on top of another pattern.
+  "ruled",
+  "graph",
+  "none",
+];
 
 /**
  * What a zoomed-out card leads with. `identity` is the big machine icon with
