@@ -106,6 +106,11 @@ console.log(`Building resource index for ${versionId}.`);
 await buildResourceIndex(recipeDatasetPath);
 console.log(`Building recipe index for ${versionId}.`);
 await buildRecipeIndex(recipeDatasetPath, outDir);
+// After the indexes so the pass can read fluid references from them, before
+// compression so nothing has to be patched. In-place is enough here: a new
+// dataset version has fresh texture URLs, so no browser holds a stale copy.
+console.log(`Normalizing fluid icon alpha for ${versionId}.`);
+await normalizeFluidIconAlpha(outDir);
 
 const compressedRecipeDatasetPath = `${recipeDatasetPath}.gz`;
 const uncompressedSizeBytes = (await fs.stat(recipeDatasetPath)).size;
@@ -320,6 +325,24 @@ async function buildRecipeIndex(datasetPath, datasetOutDir) {
 
   if (exitCode !== 0) {
     throw new Error(`Recipe index build failed with exit code ${exitCode}.`);
+  }
+}
+
+async function normalizeFluidIconAlpha(datasetOutDir) {
+  const exitCode = await new Promise((resolve) => {
+    const child = spawn(
+      "node",
+      ["tools/dataset-pipeline/scripts/normalize-fluid-icon-alpha.mjs", datasetOutDir],
+      {
+        stdio: "inherit",
+        env: process.env,
+      },
+    );
+    child.on("exit", (code) => resolve(code ?? 1));
+  });
+
+  if (exitCode !== 0) {
+    throw new Error(`Fluid icon alpha normalization failed with exit code ${exitCode}.`);
   }
 }
 
