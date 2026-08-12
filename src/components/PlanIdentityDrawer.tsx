@@ -111,6 +111,9 @@ export function PlanIdentityDrawer() {
   );
 
   const linkedPlanId = project.metadata?.communityPlanId;
+  // The unlinked plan's way onto the network, right where its face is. Once
+  // linked, the strip carries its own Share in the same rightmost spot.
+  const [isSharing, setSharing] = useState(false);
 
   return (
     // min-w-0 matters: the board column's grid sizes its one track to its
@@ -152,8 +155,26 @@ export function PlanIdentityDrawer() {
           title="Also the tab's name: renaming here renames the tab"
           className="h-7 min-w-16 flex-1 rounded border border-transparent bg-transparent px-1.5 text-sm font-medium text-fg outline-none hover:border-line focus:border-line-strong focus:bg-surface-sunken"
         />
-        {linkedPlanId ? <LinkedPostStrip key={linkedPlanId} planId={linkedPlanId} /> : null}
+        {linkedPlanId ? (
+          <LinkedPostStrip key={linkedPlanId} planId={linkedPlanId} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            disabled={project.nodes.length === 0}
+            title={
+              project.nodes.length === 0
+                ? "Share this setup: build something on the board first"
+                : "Share this setup with everyone"
+            }
+            aria-label="Share this setup"
+            className={BAR_BUTTON}
+          >
+            <Share2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
+      {isSharing ? <SharePlanDialog onClose={() => setSharing(false)} /> : null}
 
       {isOpen ? (
         <div className="border-t border-line p-1.5">
@@ -436,17 +457,7 @@ function LinkedPostStrip({ planId }: { planId: string }) {
             <Save className="h-3.5 w-3.5" />
           )}
         </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setSharingAsOwn(true)}
-          title="Post this board as your own setup"
-          aria-label="Post this board as your own setup"
-          className={BAR_BUTTON}
-        >
-          <Share2 className="h-3.5 w-3.5" />
-        </button>
-      )}
+      ) : null}
       <button
         type="button"
         onClick={() => void reset()}
@@ -465,10 +476,25 @@ function LinkedPostStrip({ planId }: { planId: string }) {
           <RotateCcw className="h-3.5 w-3.5" />
         )}
       </button>
-      {/* Same dialog as the top bar's Share. This plan is linked to someone
-          else's post, so the dialog offers exactly one thing: a new post of
-          your own, wearing this bar's name, icon and description - and
-          posting relinks the plan to the new post. */}
+      {/* Same dialog as the top bar's Share, in the bar's rightmost spot. On
+          your own post it offers update-or-post-anew; on someone else's the
+          only thing it CAN do is a new post of your own, wearing this bar's
+          name, icon and description - and posting relinks the plan to it. */}
+      <button
+        type="button"
+        onClick={() => setSharingAsOwn(true)}
+        title={
+          post.isMine
+            ? "Share this setup: update your post or post it anew"
+            : "Post this board as your own setup"
+        }
+        aria-label={
+          post.isMine ? "Share this setup" : "Post this board as your own setup"
+        }
+        className={BAR_BUTTON}
+      >
+        <Share2 className="h-3.5 w-3.5" />
+      </button>
       {isSharingAsOwn ? <SharePlanDialog onClose={() => setSharingAsOwn(false)} /> : null}
     </>
   );
