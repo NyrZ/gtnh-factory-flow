@@ -21,6 +21,7 @@ import {
   Trash2,
   Undo2,
   Upload,
+  Wand2,
 } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -143,11 +144,13 @@ const CALLOUTS: Array<{
     // Dropped below the designs card's band; the longer arrow reads better.
     offset: 50,
     title: "Build tools",
+    // Left to right as the plates sit: history, how the numbers read, then
+    // the plate that places cards.
     rows: [
       { icon: Undo2, text: "Undo and redo" },
-      { icon: Trash, text: "*Crop farm* and *trash can*" },
-      { icon: Gauge, text: "*Custom rate*: dial by hand" },
-      { chip: "/s", text: "Per tick, second, minute or hour" },
+      { chip: "/s", text: "Rates per tick, second, minute or hour" },
+      { icon: Wand2, text: "*Sketch mode*: unwired slots come free" },
+      { icon: Trash, text: "Place *farm*, *trash can*, *custom rate*" },
     ],
   },
   {

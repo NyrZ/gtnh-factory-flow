@@ -4448,6 +4448,22 @@ interface ToolGroupProps {
 }
 
 /**
+ * A shared plate behind one FAMILY of buttons, so a toolbar reads as its
+ * groups — these place things, these change the view — without a word of
+ * labelling. The plate is the toolbars' own darkest tone: the buttons'
+ * borders melt into it and their faces read as raised keys on one housing.
+ * Within a plated row even a lone button (the bin, the fit-view) gets a
+ * plate, both so baselines line up and because standing apart IS the point.
+ */
+function ToolTray({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="pointer-events-auto flex items-start gap-1 bg-[var(--mc-15)] p-1 shadow-[0_2px_0_rgba(0,0,0,0.35)]">
+      {children}
+    </div>
+  );
+}
+
+/**
  * A toolbar folded into one button, for windows too narrow to carry it.
  *
  * Three rows of nine 36px buttons want 970px between them. A 390px board gave
@@ -4489,7 +4505,8 @@ function ToolGroup({
         // `w-max`, or the row inherits its shrink-to-fit width from the toolbar
         // root it is positioned against — which folded is one 36px button, so
         // every row wrapped into a vertical column one button wide.
-        "absolute top-11 flex w-max max-w-[calc(100vw-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
+        // top-12: the plated trigger stands 44px tall now.
+        "absolute top-12 flex w-max max-w-[calc(100vw-24px)] flex-wrap items-start gap-1 transition-[opacity,transform] duration-100",
         side === "left" ? "left-0 justify-start" : "right-0 justify-end",
         isOpen ? "translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0",
       ].join(" ")}
@@ -4498,24 +4515,28 @@ function ToolGroup({
     </div>
   );
   const trigger = (
-    <button
-      type="button"
-      onClick={() => onToggle(id)}
-      // Folded, the trigger IS the toolbar as far as a guided tour is
-      // concerned: the row above is still in the DOM, invisible, and the tour
-      // skips invisible anchors, so a phone gets a ring around this button
-      // instead of one around empty board.
-      data-tour-anchor={id}
-      aria-expanded={isOpen}
-      aria-label={isOpen ? `Hide ${label}` : `Show ${label}`}
-      title={isOpen ? `Hide ${label}` : label}
-      className={[
-        "pointer-events-auto relative z-10 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
-        isOpen ? "ring-2 ring-cyan-300" : "",
-      ].join(" ")}
-    >
-      <Icon className="h-4 w-4" />
-    </button>
+    // Plated like everything beside it, so the folded triggers stand level
+    // with the undo/redo plate on the same line.
+    <ToolTray>
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        // Folded, the trigger IS the toolbar as far as a guided tour is
+        // concerned: the row above is still in the DOM, invisible, and the tour
+        // skips invisible anchors, so a phone gets a ring around this button
+        // instead of one around empty board.
+        data-tour-anchor={id}
+        aria-expanded={isOpen}
+        aria-label={isOpen ? `Hide ${label}` : `Show ${label}`}
+        title={isOpen ? `Hide ${label}` : label}
+        className={[
+          "pointer-events-auto relative z-10 flex h-9 w-9 shrink-0 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+          isOpen ? "ring-2 ring-cyan-300" : "",
+        ].join(" ")}
+      >
+        <Icon className="h-4 w-4" />
+      </button>
+    </ToolTray>
   );
 
   return side === "left" ? (
@@ -4552,39 +4573,43 @@ const SmartViewToolbar = memo(function SmartViewToolbar({
     // bottom-3 since the attribution badge left this corner.
     <div
       data-help-anchor="glance"
-      className="nodrag pointer-events-none absolute bottom-3 right-3 z-20 flex items-start gap-1"
+      className="nodrag pointer-events-none absolute bottom-3 right-3 z-20 flex items-start gap-2"
     >
-      {/* Set apart by a wider gap: this one moves the camera, the two beside it
+      {/* On its own plate: this one moves the camera, the pair beside it
           change what every card shows. */}
-      <button
-        type="button"
-        onClick={onFitView}
-        className={`${buttonClass(false)} mr-2`}
-        title="Fit the whole plan on the screen"
-        aria-label="Fit the plan on the screen"
-      >
-        <Focus className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => onModeChange("identity")}
-        className={buttonClass(glanceMode === "identity")}
-        title="Cards show what they are: their own colours up close, the machine icon zoomed out. Hover a card for its rates."
-        aria-label="Show machines"
-        aria-pressed={glanceMode === "identity"}
-      >
-        <Box className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => onModeChange("status")}
-        className={buttonClass(glanceMode === "status")}
-        title="Cards show how hard they run: heat colours up close (red = idle, green = full), percentages zoomed out, and hovering one maps the board by wire distance."
-        aria-label="Show usage"
-        aria-pressed={glanceMode === "status"}
-      >
-        <Gauge className="h-4 w-4" />
-      </button>
+      <ToolTray>
+        <button
+          type="button"
+          onClick={onFitView}
+          className={buttonClass(false)}
+          title="Fit the whole plan on the screen"
+          aria-label="Fit the plan on the screen"
+        >
+          <Focus className="h-4 w-4" />
+        </button>
+      </ToolTray>
+      <ToolTray>
+        <button
+          type="button"
+          onClick={() => onModeChange("identity")}
+          className={buttonClass(glanceMode === "identity")}
+          title="Cards show what they are: their own colours up close, the machine icon zoomed out. Hover a card for its rates."
+          aria-label="Show machines"
+          aria-pressed={glanceMode === "identity"}
+        >
+          <Box className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange("status")}
+          className={buttonClass(glanceMode === "status")}
+          title="Cards show how hard they run: heat colours up close (red = idle, green = full), percentages zoomed out, and hovering one maps the board by wire distance."
+          aria-label="Show usage"
+          aria-pressed={glanceMode === "status"}
+        >
+          <Gauge className="h-4 w-4" />
+        </button>
+      </ToolTray>
     </div>
   );
 });
@@ -4643,9 +4668,9 @@ const SourceToolbar = memo(function SourceToolbar({
         shiftedDown ? "top-14" : "top-3",
       ].join(" ")}
     >
-      {/* History first, and set apart: it undoes everything the rest of the
-          board does, so it does not belong inside the add-a-node group. */}
-      <div className="pointer-events-auto mr-1 flex gap-1">
+      {/* History first, and set apart on its own plate: it undoes everything
+          the rest of the board does, so it belongs to no other group. */}
+      <ToolTray>
         <button
           type="button"
           onClick={undo}
@@ -4666,7 +4691,7 @@ const SourceToolbar = memo(function SourceToolbar({
         >
           <Redo2 className="h-4 w-4" />
         </button>
-      </div>
+      </ToolTray>
       {/* Undo and redo stay out in the open even on a phone: they are the two
           buttons a mistake sends you looking for, and a mistake is not the
           moment to go hunting through a fold-out. */}
@@ -4679,68 +4704,75 @@ const SourceToolbar = memo(function SourceToolbar({
         label="build tools"
         side="left"
       >
-      <button
-        type="button"
-        onClick={addCropFarmNode}
-        className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-        title="Add crop farm: pick a crop and its stats. It produces at the computed rate"
-        aria-label="Add crop farm"
-      >
-        <Sprout className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={addTrashNode}
-        className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-        title="Add trash can: wire any output into it. Whatever flows in is voided and never shows as an output"
-        aria-label="Add trash can"
-      >
-        <Trash className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        onClick={addCustomRateNode}
-        className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
-        title="Add custom rate node: wire it to any port and dial a rate. It supplies the resource, or flips to a constant request drain"
-        aria-label="Add custom rate node"
-      >
-        <Gauge className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        data-tour-anchor="sketch"
-        onClick={() => setAssumeBoundaries(!assumeBoundaries)}
-        className={[
-          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
-          assumeBoundaries
-            ? "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
-            : "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110",
-        ].join(" ")}
-        title="Sketch mode: every unwired input is supplied for free and every unwired output is exported. Quick math without drawing the boundary. Anything you do wire still behaves as wired."
-        aria-label="Sketch mode"
-        aria-pressed={assumeBoundaries}
-      >
-        <Wand2 className="h-4 w-4" />
-      </button>
-      <div className="pointer-events-auto flex">
-        {RATE_UNIT_CHOICES.map((choice) => (
-          <button
-            key={choice.unit}
-            type="button"
-            onClick={() => setRateUnit(choice.unit)}
-            title={choice.title}
-            aria-pressed={rateUnit === choice.unit}
-            className={[
-              "flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black",
-              rateUnit === choice.unit
-                ? "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
-                : "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110",
-            ].join(" ")}
-          >
-            {choice.label}
-          </button>
-        ))}
-      </div>
+      {/* How the numbers read: the rate units and sketch mode change what the
+          existing board says, so they sit nearest the history plate... */}
+      <ToolTray>
+        <div className="pointer-events-auto flex">
+          {RATE_UNIT_CHOICES.map((choice) => (
+            <button
+              key={choice.unit}
+              type="button"
+              onClick={() => setRateUnit(choice.unit)}
+              title={choice.title}
+              aria-pressed={rateUnit === choice.unit}
+              className={[
+                "flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] font-mono text-[12px] font-black",
+                rateUnit === choice.unit
+                  ? "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+                  : "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110",
+              ].join(" ")}
+            >
+              {choice.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          data-tour-anchor="sketch"
+          onClick={() => setAssumeBoundaries(!assumeBoundaries)}
+          className={[
+            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
+            assumeBoundaries
+              ? "bg-[var(--mc-85)] text-[var(--mc-ink)] shadow-[inset_2px_2px_0_var(--mc-100)]"
+              : "bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110",
+          ].join(" ")}
+          title="Sketch mode: every unwired input is supplied for free and every unwired output is exported. Quick math without drawing the boundary. Anything you do wire still behaves as wired."
+          aria-label="Sketch mode"
+          aria-pressed={assumeBoundaries}
+        >
+          <Wand2 className="h-4 w-4" />
+        </button>
+      </ToolTray>
+      {/* ...while the plate on the right is the one that puts new cards down. */}
+      <ToolTray>
+        <button
+          type="button"
+          onClick={addCropFarmNode}
+          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Add crop farm: pick a crop and its stats. It produces at the computed rate"
+          aria-label="Add crop farm"
+        >
+          <Sprout className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={addTrashNode}
+          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Add trash can: wire any output into it. Whatever flows in is voided and never shows as an output"
+          aria-label="Add trash can"
+        >
+          <Trash className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={addCustomRateNode}
+          className="pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)] hover:brightness-110"
+          title="Add custom rate node: wire it to any port and dial a rate. It supplies the resource, or flips to a constant request drain"
+          aria-label="Add custom rate node"
+        >
+          <Gauge className="h-4 w-4" />
+        </button>
+      </ToolTray>
       </ToolGroup>
     </div>
   );
@@ -5350,6 +5382,9 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
         label="view options"
         side="right"
       >
+      {/* One plate: every button here changes how the board is DRAWN, never
+          what the plan is. */}
+      <ToolTray>
       <button
         type="button"
         onClick={() =>
@@ -5463,6 +5498,7 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       >
         <Presentation className="h-4 w-4" />
       </button>
+      </ToolTray>
       </ToolGroup>
     </div>
   );
@@ -5513,7 +5549,7 @@ const PaintToolbar = memo(function PaintToolbar({
     <div
       data-board-toolbar
       className={[
-        "nodrag pointer-events-none absolute right-3 flex items-start",
+        "nodrag pointer-events-none absolute right-3 flex items-start gap-2",
         shiftedDown ? "top-14" : "top-3",
         // An open palette hangs below its own row and crosses the view
         // toolbar underneath. Both toolbars sit at z-20 and the view row is
@@ -5532,6 +5568,7 @@ const PaintToolbar = memo(function PaintToolbar({
         label="paint and annotation tools"
         side="right"
       >
+      <ToolTray>
       <div
         className="flex items-start"
         onMouseEnter={openPalette}
@@ -5539,19 +5576,18 @@ const PaintToolbar = memo(function PaintToolbar({
       >
       <div
         className={[
-          // Nine across, two down: the whole palette reads in one glance, and
-          // it hangs only one row below the toolbar instead of four — a tall
-          // block of swatches covered the view toolbar and half the board.
-          // It grows LEFT into empty canvas, clear of the undo/rate row.
-          "grid gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
-          // On a phone the row it sits in is barely wider than the palette, so
-          // nine across would push the brush off the board. It drops out of the
-          // row and hangs two lines under the trigger instead — clear of the
-          // unfolded paint row on the line between — six across and three down.
-          compact ? "absolute right-0 top-[5.5rem] grid-cols-6" : "mr-0 w-[296px] grid-cols-9",
+          // Nine across, two down: the whole palette reads in one glance.
+          // Absolute on every width — hanging below the row rather than
+          // sitting invisibly IN it, which used to keep a 296px empty layout
+          // box in the row (and would now paint 296px of empty plate). The
+          // paint root already lifts to z-40 while the palette is out.
+          "absolute right-0 grid gap-1 border-2 border-[var(--mc-15)] bg-[var(--mc-78)] p-1 shadow-[inset_2px_2px_0_var(--mc-100),inset_-2px_-2px_0_var(--mc-33)] transition-[opacity,transform] duration-100",
+          // On a phone it hangs two lines down — clear of the unfolded paint
+          // row on the line between — six across and three down.
+          compact ? "top-24 grid-cols-6" : "top-12 w-[296px] grid-cols-9",
           isPaletteOpen
-            ? "pointer-events-auto translate-x-0 opacity-100"
-            : "pointer-events-none translate-x-2 opacity-0",
+            ? "pointer-events-auto translate-y-0 opacity-100"
+            : "pointer-events-none -translate-y-1 opacity-0",
         ].join(" ")}
       >
         <button
@@ -5606,7 +5642,7 @@ const PaintToolbar = memo(function PaintToolbar({
           onPaintModeChange(paintMode !== undefined ? undefined : activeColorTag)
         }
         className={[
-          "pointer-events-auto relative z-10 ml-1 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+          "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
           paintMode !== undefined ? "ring-2 ring-cyan-300" : "",
         ].join(" ")}
         title={
@@ -5624,7 +5660,7 @@ const PaintToolbar = memo(function PaintToolbar({
           type="button"
           onClick={() => onAnnotationToolChange(annotationTool === kind ? undefined : kind)}
           className={[
-            "pointer-events-auto relative z-10 ml-1 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
             annotationTool === kind ? "ring-2 ring-cyan-300" : "",
           ].join(" ")}
           title={annotationTool === kind ? "Cancel" : label}
@@ -5633,19 +5669,24 @@ const PaintToolbar = memo(function PaintToolbar({
           <Icon className="h-4 w-4" />
         </button>
       ))}
-      <button
-        type="button"
-        onClick={() => onDeleteModeChange(!isDeleteMode)}
-        data-help-anchor="paint"
-        className={[
-          "pointer-events-auto relative z-10 ml-1 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
-          isDeleteMode ? "ring-2 ring-red-400" : "",
-        ].join(" ")}
-        title={isDeleteMode ? "Stop deleting" : "Delete tool: click anything to remove it"}
-        aria-label={isDeleteMode ? "Stop deleting" : "Delete tool"}
-      >
-        <Trash2 className={isDeleteMode ? "h-4 w-4 text-red-300" : "h-4 w-4"} />
-      </button>
+      </ToolTray>
+      {/* The bin on a plate of its own: it takes things OFF the board, and it
+          must never read as one more stamp in the row beside it. */}
+      <ToolTray>
+        <button
+          type="button"
+          onClick={() => onDeleteModeChange(!isDeleteMode)}
+          data-help-anchor="paint"
+          className={[
+            "pointer-events-auto relative z-10 flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_2px_2px_0_var(--mc-85),inset_-2px_-2px_0_var(--mc-25)]",
+            isDeleteMode ? "ring-2 ring-red-400" : "",
+          ].join(" ")}
+          title={isDeleteMode ? "Stop deleting" : "Delete tool: click anything to remove it"}
+          aria-label={isDeleteMode ? "Stop deleting" : "Delete tool"}
+        >
+          <Trash2 className={isDeleteMode ? "h-4 w-4 text-red-300" : "h-4 w-4"} />
+        </button>
+      </ToolTray>
       </ToolGroup>
     </div>
   );
