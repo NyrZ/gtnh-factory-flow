@@ -322,6 +322,7 @@ export function useMotionRoute(
   targetPoints: Array<{ x: number; y: number }>,
   targetPath: string,
   enabled: boolean,
+  durationMs: number = ROUTE_MORPH_MS,
 ): MotionRouteState {
   const stateRef = useRef<RouteMorphState | undefined>(undefined);
   if (stateRef.current === undefined) {
@@ -376,7 +377,7 @@ export function useMotionRoute(
       if (state.start === 0) {
         state.start = now;
       }
-      const t = Math.min(1, (now - state.start) / ROUTE_MORPH_MS);
+      const t = Math.min(1, (now - state.start) / durationMs);
       if (t >= 1) {
         state.morphing = false;
         state.step = undefined;
@@ -405,6 +406,20 @@ export function useMotionRoute(
     return { points: state.shownPoints, path: state.shownPath, morphing: true };
   }
   return { points: targetPoints, path: targetPath, morphing: false };
+}
+
+/**
+ * The same shape-morph without a path string: hand it any polyline (a trend
+ * chart's line, say) and it glides from the old shape to the new one on the
+ * value-motion clock.
+ */
+export function useMotionPoints(
+  targetPoints: Array<{ x: number; y: number }>,
+  enabled: boolean,
+  durationMs?: number,
+): Array<{ x: number; y: number }> {
+  const route = useMotionRoute(targetPoints, "", enabled, durationMs);
+  return route.points;
 }
 
 /**

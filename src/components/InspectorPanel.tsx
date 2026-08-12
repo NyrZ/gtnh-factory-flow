@@ -31,6 +31,7 @@ import {
   type ResourceMarks,
 } from "./inspector/flow-sections";
 import { TrendSparkline } from "./inspector/TrendSparkline";
+import { MotionNumberText } from "./flow/board-motion";
 import { ResourceIcon } from "./nei/ResourceIcon";
 
 const FLOW_FILTER_DEBOUNCE_MS = 120;
@@ -1166,7 +1167,12 @@ const FlowResourceRow = memo(function FlowResourceRow({
         >
           <span className="text-base font-bold tabular-nums">
             {prefix}
-            {formatRateValue(Math.abs(value))}
+            {/* Eases to a new solve on the board's value-motion clock; the
+                sign and tone flip immediately, only the digits travel. */}
+            <MotionNumberText
+              values={[Math.abs(value)]}
+              render={(shown) => formatRateValue(shown[0] ?? Math.abs(value))}
+            />
             <span className="ml-0.5 text-[11px] font-semibold opacity-70">{unit}</span>
           </span>
 

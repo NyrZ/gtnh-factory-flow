@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from "react";
 import { formatCompact } from "@/lib/model";
+import { useBoardMotion, useMotionPoints, useMotionValue } from "@/components/flow/board-motion";
 
 /**
  * One resource's balance across recent edits.
@@ -19,8 +20,16 @@ import { formatCompact } from "@/lib/model";
  * Width comes from the box it is given rather than a prop: it lives in a column
  * that changes width when the side panels open and close, and a viewBox with
  * `preserveAspectRatio="none"` rescales without measuring anything.
+ *
+ * The redraw is ANIMATED on the board's value-motion clock: an edit appends a
+ * point and rescales the whole band, and the line glides from its old shape to
+ * the new one (with the zero line and the resting dot easing on the same
+ * clock) instead of snapping. The crosshair, being a pointer, always snaps.
  */
 const VIEW_WIDTH = 100;
+
+/** How long the line takes to lie down on its new shape. */
+const TREND_MORPH_MS = 600;
 
 export function TrendSparkline({
   series,
@@ -37,12 +46,42 @@ export function TrendSparkline({
   const gradientId = useId();
   const hostRef = useRef<HTMLDivElement>(null);
   const [hoverIndex, setHoverIndex] = useState<number>();
+  const { valueMotion } = useBoardMotion();
 
   const latest = series[series.length - 1] ?? 0;
   const stroke = latest >= 0 ? "#34d399" : "#f87171";
+  const hasLine = series.length >= 2;
+
+  const rawMax = Math.max(...series, 0);
+  const rawMin = Math.min(...series, 0);
+  // A dead-flat line would give a zero-height band and divide by zero; give it
+  // something to sit in the middle of.
+  const span = rawMax - rawMin || Math.max(Math.abs(rawMax), 1);
+  const padY = 3;
+  const plotHeight = height - padY * 2;
+  const toY = (value: number) => padY + ((rawMax - value) / span) * plotHeight;
+  const toX = (index: number) => (hasLine ? (index / (series.length - 1)) * VIEW_WIDTH : 0);
+
+  // Hooks before the too-short early return below, so their order never
+  // depends on how many edits the chart holds.
+  const targetPoints = hasLine
+    ? series.map((value, index) => ({ x: toX(index), y: toY(value) }))
+    : [];
+  const shownPoints = useMotionPoints(targetPoints, valueMotion && hasLine, TREND_MORPH_MS);
+  const zeroY = useMotionValue(toY(0), valueMotion && hasLine, TREND_MORPH_MS);
+
+  const readIndex = hoverIndex ?? series.length - 1;
+  const readValue = series[readIndex] ?? 0;
+  // The resting dot rides the line's own clock; a crosshair dot is the
+  // pointer's and must never lag it.
+  const dotY = useMotionValue(
+    toY(readValue),
+    valueMotion && hasLine && hoverIndex === undefined,
+    TREND_MORPH_MS,
+  );
 
   // One point cannot draw a line, so the chart holds its space and says why.
-  if (series.length < 2) {
+  if (!hasLine) {
     return (
       <div
         style={{ height }}
@@ -53,22 +92,9 @@ export function TrendSparkline({
     );
   }
 
-  const rawMax = Math.max(...series, 0);
-  const rawMin = Math.min(...series, 0);
-  // A dead-flat line would give a zero-height band and divide by zero; give it
-  // something to sit in the middle of.
-  const span = rawMax - rawMin || Math.max(Math.abs(rawMax), 1);
-  const padY = 3;
-  const plotHeight = height - padY * 2;
-  const toY = (value: number) => padY + ((rawMax - value) / span) * plotHeight;
-  const toX = (index: number) => (index / (series.length - 1)) * VIEW_WIDTH;
-
-  const line = series.map((value, index) => `${toX(index)},${toY(value)}`).join(" ");
-  const zeroY = toY(0);
-  const lastX = toX(series.length - 1);
-
-  const readIndex = hoverIndex ?? series.length - 1;
-  const readValue = series[readIndex] ?? 0;
+  const line = shownPoints.map((point) => `${point.x},${point.y}`).join(" ");
+  const lastX = shownPoints[shownPoints.length - 1]?.x ?? VIEW_WIDTH;
+  const firstX = shownPoints[0]?.x ?? 0;
 
   const handleMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const box = hostRef.current?.getBoundingClientRect();
@@ -117,7 +143,10 @@ export function TrendSparkline({
 
         {/* Filled down to zero, not to the floor, so the area reads as distance
             from breaking even rather than as an arbitrary column height. */}
-        <polygon points={`0,${zeroY} ${line} ${lastX},${zeroY}`} fill={`url(#${gradientId})`} />
+        <polygon
+          points={`${firstX},${zeroY} ${line} ${lastX},${zeroY}`}
+          fill={`url(#${gradientId})`}
+        />
         <polyline
           points={line}
           fill="none"
@@ -154,7 +183,7 @@ export function TrendSparkline({
         className="pointer-events-none absolute h-[5px] w-[5px] rounded-full"
         style={{
           left: `${toX(readIndex)}%`,
-          top: toY(readValue),
+          top: dotY,
           background: stroke,
           transform: "translate(-50%, -50%)",
         }}
