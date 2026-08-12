@@ -328,6 +328,14 @@ const CANVAS_PATTERN_VARIANT: Record<
 const PRO_OPTIONS = { hideAttribution: true };
 
 /**
+ * Every card's resting depth. Explicit rather than React Flow's default 0
+ * because in thickness mode the nodes layer stops being a stacking context
+ * (globals.css) and each node stacks directly against the edge layer at 10:
+ * cards must land above the pipes, backdrop annotations (-5) below them.
+ */
+const CARD_Z_INDEX = 20;
+
+/**
  * React Flow's dark colorMode paints its wrapper #141414, which sat invisibly
  * under everything while the canvas was always #1b1d21 - and silently covered
  * every OTHER paper the theme picker offers. The board div behind it owns the
@@ -1488,6 +1496,7 @@ export function FactoryFlow() {
             id: node.id,
             type: "trashNode",
             position: node.position,
+            zIndex: CARD_Z_INDEX,
             data: reuseObjectIdentity(trashNodeDataCache, node.id, {
               projectNode: node,
             }),
@@ -1504,7 +1513,7 @@ export function FactoryFlow() {
                 ? 1500
                 : activeFlowResourceKey && recipeContainsResourceKey(recipe, activeFlowResourceKey)
                   ? 1500
-                  : undefined,
+                  : CARD_Z_INDEX,
           // Reusing the previous `data` object when nothing in it moved is what
           // lets RecipeNode's memo actually hold. Rebuilding it â€” which this memo
           // does whenever a resource is hovered or the solver re-runs â€” otherwise
@@ -1527,7 +1536,7 @@ export function FactoryFlow() {
             zIndex:
               activeFlowResourceKey === makeResourceKey(storage.kind, storage.resourceId)
                 ? 1500
-                : undefined,
+                : CARD_Z_INDEX,
             data: reuseObjectIdentity(storageNodeDataCache, storage.id, {
               storage,
               result: result.storages[storage.id],
@@ -1574,6 +1583,7 @@ export function FactoryFlow() {
             id: pocket.id,
             type: "pocketNode",
             position: pocket.position,
+            zIndex: CARD_Z_INDEX,
             data: reuseObjectIdentity(pocketNodeDataCache, pocket.id, {
               pocket,
               summary: pocketSummaries.get(pocket.id),

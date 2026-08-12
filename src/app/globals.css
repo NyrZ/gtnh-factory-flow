@@ -562,6 +562,17 @@ textarea {
   z-index: 10 !important;
 }
 
+/* In that same mode the NODES layer stops being a stacking context, so each
+   node's own depth is compared against the edge layer directly: cards (20)
+   stay on top of the pipes (10), while backdrop annotations (-5) fall
+   beneath them - a box's fill must never cover the wires crossing it, which
+   a sealed layer made inexpressible (the very "above the card, below the
+   ports" note above). The drag and popup lifts further down re-seal the
+   layer while they apply, which is exactly what they are for. */
+.factory-flow-board--edges-under .react-flow__nodes {
+  z-index: auto !important;
+}
+
 .factory-flow-board--moving .react-flow__viewport {
   will-change: transform;
 }
@@ -832,7 +843,8 @@ img {
 }
 
 .factory-flow-board .react-flow__node.selected {
-  z-index: 20 !important;
+  /* Above the resting cards, which publish 20 of their own. */
+  z-index: 25 !important;
 }
 
 .factory-flow-board .react-flow__node.dragging {
