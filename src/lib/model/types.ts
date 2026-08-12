@@ -356,22 +356,28 @@ export type FactoryAnnotationArrowDirection = "down-right" | "down-left" | "up-r
 export type FactoryAnnotationBorderStyle = "solid" | "dashed" | "none";
 
 /**
- * What a box/zone paints inside itself. `tint` is the classic faint wash and
- * `solid` opaque paint; `paper` is solid with the themes' grain over it; the
- * rest draw the board's own marks in the fill colour - dots, a plain grid, a
- * graph grid with major lines, notepad rules, a diagonal hatch - so a region
- * can carry its own background on the board.
+ * How strongly a box/zone paints its surface: a faint wash, opaque, or not at
+ * all. The surface COLOUR is separate (`fillColor` for a dye, `fillTheme` for
+ * a textured paper), and the marks drawn over it are separate again
+ * (`marks`) - three orthogonal choices, not one long list.
+ *
+ * The extra tokens are legacy spellings from when one field carried all
+ * three; they are still accepted on read (a legacy mark token means "tint
+ * surface wearing that mark") so no saved board changes meaning.
  */
 export type FactoryAnnotationFillStyle =
   | "tint"
   | "solid"
+  | "none"
   | "paper"
   | "dots"
   | "grid"
   | "graph"
   | "ruled"
-  | "hatch"
-  | "none";
+  | "hatch";
+
+/** The marks a box/zone draws over its surface: the board's own vocabulary. */
+export type FactoryAnnotationMarks = "none" | "dots" | "grid" | "graph" | "ruled" | "hatch";
 
 /**
  * How a box, zone or image is dressed. Every field optional: absent means the
@@ -385,6 +391,14 @@ export interface FactoryAnnotationStyle {
   borderColor?: FactoryNodeColorTag;
   fill?: FactoryAnnotationFillStyle;
   fillColor?: FactoryNodeColorTag;
+  /**
+   * A textured paper as the surface instead of a dye: one of the canvas
+   * theme ids. Set from the fill colour popover alongside the dyes; wins
+   * over `fillColor` while present.
+   */
+  fillTheme?: string;
+  /** Marks drawn over the surface; absent = none. */
+  marks?: FactoryAnnotationMarks;
 }
 
 export interface FactoryAnnotation {

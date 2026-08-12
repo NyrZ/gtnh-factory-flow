@@ -364,6 +364,9 @@ export const factoryAnnotationSchema = z.object({
         .enum(["tint", "solid", "paper", "dots", "grid", "graph", "ruled", "hatch", "none"])
         .optional(),
       fillColor: factoryNodeColorTagSchema.optional(),
+      // A canvas theme id; unknown ids quietly fall back at render time.
+      fillTheme: z.string().max(32).optional(),
+      marks: z.enum(["none", "dots", "grid", "graph", "ruled", "hatch"]).optional(),
     })
     .optional(),
   pocketId: z.string().min(1).optional(),

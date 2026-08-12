@@ -13,12 +13,18 @@ import { memo, useEffect, useRef, useState } from "react";
 import type {
   FactoryAnnotation,
   FactoryAnnotationBorderStyle,
-  FactoryAnnotationFillStyle,
+  FactoryAnnotationMarks,
   FactoryAnnotationStyle,
 } from "@/lib/model/types";
 import { useFactoryStore } from "@/store/factory-store";
 import { GT_NODE_COLORS, GT_NODE_COLOR_PALETTE, inkFor } from "./node-colors";
-import { GRAIN_DARK_URI, GRAIN_LIGHT_URI } from "./canvas-themes";
+import {
+  CANVAS_THEMES,
+  getCanvasTheme,
+  GRAIN_DARK_URI,
+  GRAIN_LIGHT_URI,
+  type CanvasTheme,
+} from "./canvas-themes";
 import {
   ANNOTATION_MIN_ARROW,
   ANNOTATION_MIN_BOX,
@@ -55,88 +61,128 @@ function clampFontSize(value: number): number {
 const ANNOTATION_STEP_BUTTON_CLASS =
   "flex h-5 w-5 items-center justify-center border-2 border-[var(--mc-15)] bg-[var(--mc-49)] text-white shadow-[inset_1px_1px_0_var(--mc-85),inset_-1px_-1px_0_var(--mc-25)] hover:bg-[var(--mc-61)] disabled:cursor-not-allowed disabled:opacity-40";
 
+type AnnotationSurface = "tint" | "solid" | "none";
+
 /**
- * The resolved dressing of a box/zone/image: every optional `style` field
- * collapsed to a value, and the two colour tags collapsed to hex swatches.
+ * The resolved dressing of a box/zone/image, in three independent choices:
+ * how strong the surface is (tint/solid/none), what colours it (a dye swatch
+ * or a textured canvas paper), and which marks ride over it (dots, grids,
+ * rules, hatch). Legacy single-field styles collapse here: a mark spelled in
+ * `fill` means a tinted surface wearing that mark, `paper` means solid.
  */
 interface AnnotationLook {
   border: FactoryAnnotationBorderStyle;
   borderSwatch: string;
-  fill: FactoryAnnotationFillStyle;
+  surface: AnnotationSurface;
   fillSwatch: string;
+  /** Set = the surface is this textured paper rather than the dye. */
+  fillTheme?: CanvasTheme;
+  marks: FactoryAnnotationMarks;
+  /** What the marks are inked in: the paper's own ink, or the dye. */
+  markInk: string;
 }
+
+const LEGACY_MARK_FILLS = new Set<FactoryAnnotationMarks>([
+  "dots",
+  "grid",
+  "graph",
+  "ruled",
+  "hatch",
+]);
 
 function annotationLook(annotation: FactoryAnnotation): AnnotationLook {
   const style = annotation.style;
   const baseTag = annotation.colorTag ?? DEFAULT_ANNOTATION_COLOR;
+  const rawFill = style?.fill;
+  const surface: AnnotationSurface =
+    rawFill === "none" || rawFill === "solid" ? rawFill : rawFill === "paper" ? "solid" : "tint";
+  const marks: FactoryAnnotationMarks =
+    style?.marks ??
+    (rawFill && LEGACY_MARK_FILLS.has(rawFill as FactoryAnnotationMarks)
+      ? (rawFill as FactoryAnnotationMarks)
+      : "none");
+  const fillTheme = style?.fillTheme ? getCanvasTheme(style.fillTheme) : undefined;
+  const fillSwatch = GT_NODE_COLORS[style?.fillColor ?? baseTag].swatch;
   return {
     border: style?.border ?? "solid",
     borderSwatch: GT_NODE_COLORS[style?.borderColor ?? baseTag].swatch,
-    fill: style?.fill ?? "tint",
-    fillSwatch: GT_NODE_COLORS[style?.fillColor ?? baseTag].swatch,
+    surface,
+    fillSwatch,
+    fillTheme,
+    marks,
+    markInk: fillTheme ? fillTheme.patternColor : fillSwatch,
   };
 }
 
-/** The grain a `paper` fill wears: dark ink on a light swatch, light on dark. */
-function grainFor(swatch: string): string {
-  return inkFor(swatch).ink === "#f2f3f7" ? GRAIN_LIGHT_URI : GRAIN_DARK_URI;
+/** The grain a paper surface wears: dark ink on a light base, light on dark. */
+function grainFor(base: string): string {
+  return inkFor(base).ink === "#f2f3f7" ? GRAIN_LIGHT_URI : GRAIN_DARK_URI;
 }
 
 /**
- * The CSS background a fill style paints, in the fill colour. `unit` is the
- * texture period: the board cell for real shapes, a few px for the little
- * preview chips in the style panel. Backgrounds are ordinary CSS pixels
- * inside the zoomed viewport, so every mark here rides the board exactly as
- * the shape does.
+ * The surface layer's CSS: the dye at the chosen strength, or the textured
+ * paper (tinted papers use element opacity, since their texture layers carry
+ * their own baked alphas). Ordinary CSS pixels inside the zoomed viewport, so
+ * the surface rides the board exactly as the shape does.
  */
-function fillBackground(
-  fill: FactoryAnnotationFillStyle,
-  swatch: string,
+function surfaceStyle(look: AnnotationLook): {
+  backgroundColor?: string;
+  backgroundImage?: string;
+  opacity?: number;
+} {
+  if (look.surface === "none") {
+    return {};
+  }
+  if (look.fillTheme) {
+    return {
+      backgroundColor: look.fillTheme.base,
+      backgroundImage: look.fillTheme.texture,
+      opacity: look.surface === "tint" ? 0.55 : 1,
+    };
+  }
+  return {
+    backgroundColor: look.surface === "tint" ? `${look.fillSwatch}14` : look.fillSwatch,
+  };
+}
+
+/**
+ * The marks layer's CSS, inked in `ink`. `unit` is the mark period: the board
+ * cell for real shapes, a few px for the panel's little preview chips.
+ */
+function marksStyle(
+  marks: FactoryAnnotationMarks,
+  ink: string,
   unit: number = BOARD_GRID,
-): { backgroundColor?: string; backgroundImage?: string; backgroundSize?: string } {
-  switch (fill) {
-    case "none":
-      return {};
-    case "solid":
-      return { backgroundColor: swatch };
-    case "paper":
-      return {
-        backgroundColor: swatch,
-        backgroundImage: `url("${grainFor(swatch)}")`,
-      };
+): { backgroundImage?: string; backgroundSize?: string } {
+  switch (marks) {
     case "dots":
       return {
-        backgroundColor: `${swatch}0d`,
-        backgroundImage: `radial-gradient(${swatch}59 ${Math.max(1, unit * 0.08)}px, transparent ${Math.max(1, unit * 0.08)}px)`,
+        backgroundImage: `radial-gradient(${ink}59 ${Math.max(1, unit * 0.08)}px, transparent ${Math.max(1, unit * 0.08)}px)`,
         backgroundSize: `${unit}px ${unit}px`,
       };
     case "hatch":
       return {
-        backgroundColor: `${swatch}0d`,
-        backgroundImage: `repeating-linear-gradient(45deg, ${swatch}38 0 ${unit * 0.3}px, transparent ${unit * 0.3}px ${unit * 0.9}px)`,
+        backgroundImage: `repeating-linear-gradient(45deg, ${ink}38 0 ${unit * 0.3}px, transparent ${unit * 0.3}px ${unit * 0.9}px)`,
       };
     case "grid":
       return {
-        backgroundColor: `${swatch}0d`,
-        backgroundImage: `repeating-linear-gradient(0deg, ${swatch}2e 0 1px, transparent 1px ${unit}px), repeating-linear-gradient(90deg, ${swatch}2e 0 1px, transparent 1px ${unit}px)`,
+        backgroundImage: `repeating-linear-gradient(0deg, ${ink}2e 0 1px, transparent 1px ${unit}px), repeating-linear-gradient(90deg, ${ink}2e 0 1px, transparent 1px ${unit}px)`,
       };
     case "graph":
       return {
-        backgroundColor: `${swatch}0d`,
         backgroundImage: [
-          `repeating-linear-gradient(0deg, ${swatch}59 0 1px, transparent 1px ${unit * 5}px)`,
-          `repeating-linear-gradient(90deg, ${swatch}59 0 1px, transparent 1px ${unit * 5}px)`,
-          `repeating-linear-gradient(0deg, ${swatch}24 0 1px, transparent 1px ${unit}px)`,
-          `repeating-linear-gradient(90deg, ${swatch}24 0 1px, transparent 1px ${unit}px)`,
+          `repeating-linear-gradient(0deg, ${ink}59 0 1px, transparent 1px ${unit * 5}px)`,
+          `repeating-linear-gradient(90deg, ${ink}59 0 1px, transparent 1px ${unit * 5}px)`,
+          `repeating-linear-gradient(0deg, ${ink}24 0 1px, transparent 1px ${unit}px)`,
+          `repeating-linear-gradient(90deg, ${ink}24 0 1px, transparent 1px ${unit}px)`,
         ].join(", "),
       };
     case "ruled":
       return {
-        backgroundColor: `${swatch}0d`,
-        backgroundImage: `repeating-linear-gradient(180deg, transparent 0 ${unit * 2 - 1}px, ${swatch}45 ${unit * 2 - 1}px ${unit * 2}px)`,
+        backgroundImage: `repeating-linear-gradient(180deg, transparent 0 ${unit * 2 - 1}px, ${ink}45 ${unit * 2 - 1}px ${unit * 2}px)`,
       };
     default:
-      return { backgroundColor: `${swatch}14` };
+      return {};
   }
 }
 
@@ -255,12 +301,22 @@ function BoxShape({ look }: { look: AnnotationLook }) {
         className="pointer-events-none absolute inset-0"
         style={{
           ...(hasBorder ? { border: `4px ${look.border} ${look.borderSwatch}` } : undefined),
-          ...fillBackground(look.fill, look.fillSwatch),
           ...(hasBorder
             ? { boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.35)` }
             : undefined),
         }}
-      />
+      >
+        {/* The surface, then the marks over it: two layers because a tinted
+            PAPER dims through element opacity (its texture carries baked
+            alphas that per-layer colour can't scale), and marks must not
+            dim with it. */}
+        {look.surface !== "none" ? (
+          <div className="absolute inset-0" style={surfaceStyle(look)} />
+        ) : null}
+        {look.marks !== "none" ? (
+          <div className="absolute inset-0" style={marksStyle(look.marks, look.markInk)} />
+        ) : null}
+      </div>
       {/* Inset from the ends: the corners belong to the resize grabbers. */}
       <div className={`${stripBase} -top-3 left-4 right-4 h-6 cursor-grab`} style={{ pointerEvents: "all" }} />
       <div className={`${stripBase} -bottom-3 left-4 right-4 h-6 cursor-grab`} style={{ pointerEvents: "all" }} />
@@ -320,27 +376,31 @@ const NEXT_BORDER: Record<FactoryAnnotationBorderStyle, FactoryAnnotationBorderS
   dashed: "none",
   none: "solid",
 };
-const NEXT_FILL: Record<FactoryAnnotationFillStyle, FactoryAnnotationFillStyle> = {
+const NEXT_SURFACE: Record<AnnotationSurface, AnnotationSurface> = {
   tint: "solid",
-  solid: "paper",
-  paper: "dots",
+  solid: "none",
+  none: "tint",
+};
+const SURFACE_WORD: Record<AnnotationSurface, string> = {
+  tint: "tinted",
+  solid: "solid",
+  none: "off",
+};
+const NEXT_MARKS: Record<FactoryAnnotationMarks, FactoryAnnotationMarks> = {
+  none: "dots",
   dots: "grid",
   grid: "graph",
   graph: "ruled",
   ruled: "hatch",
   hatch: "none",
-  none: "tint",
 };
-const FILL_WORD: Record<FactoryAnnotationFillStyle, string> = {
-  tint: "tinted",
-  solid: "solid",
-  paper: "textured",
-  dots: "dotted",
-  grid: "gridded",
-  graph: "graph paper",
-  ruled: "ruled",
-  hatch: "hatched",
+const MARKS_WORD: Record<FactoryAnnotationMarks, string> = {
   none: "off",
+  dots: "dots",
+  grid: "grid",
+  graph: "graph paper",
+  ruled: "ruled lines",
+  hatch: "hatch",
 };
 
 const STYLE_CHIP_CLASS =
@@ -348,10 +408,12 @@ const STYLE_CHIP_CLASS =
 
 /**
  * The little settings cluster a selected box/zone/image wears at its top
- * left: border style, border colour, fill style, fill colour. Each style chip
- * PREVIEWS its current setting (a square drawn in the actual border, a square
- * painted in the actual fill) and cycles on click; each colour chip opens the
- * shared palette row underneath. Rendered through NodeToolbar so it sits in
+ * left. Three independent choices for the interior - how STRONG the surface
+ * is (tint/solid/off), what COLOURS it (any dye, or one of the board's
+ * textured papers, both in the fill colour popover), and which MARKS ride
+ * over it (dots, grids, rules, hatch) - plus the border pair. Each chip
+ * PREVIEWS its current setting and cycles on click; each colour chip opens
+ * the palette row underneath. Rendered through NodeToolbar so it sits in
  * screen space and never scales with the zoom.
  */
 function AnnotationStylePanel({
@@ -374,7 +436,17 @@ function AnnotationStylePanel({
   // A picture is opaque: it has a border to dress and nothing for a fill to do.
   const hasFill = annotation.kind !== "image";
   const commitStyle = (patch: Partial<FactoryAnnotationStyle>) => {
-    updateAnnotation(annotation.id, { style: { ...annotation.style, ...patch } });
+    updateAnnotation(annotation.id, {
+      style: {
+        ...annotation.style,
+        // Canonical spellings for the split dimensions, so a legacy
+        // single-field style cannot lose its implied mark or strength when
+        // one dimension changes.
+        fill: look.surface,
+        marks: look.marks,
+        ...patch,
+      },
+    });
   };
   const stop = (event: React.SyntheticEvent) => event.stopPropagation();
 
@@ -435,18 +507,18 @@ function AnnotationStylePanel({
               <span aria-hidden className="mx-0.5 h-5 w-[2px] bg-[var(--mc-33)]" />
               <button
                 type="button"
-                onClick={() => commitStyle({ fill: NEXT_FILL[look.fill] })}
+                onClick={() => commitStyle({ fill: NEXT_SURFACE[look.surface] })}
                 className={STYLE_CHIP_CLASS}
-                title={`Fill: ${FILL_WORD[look.fill]}. Click to change.`}
-                aria-label={`Fill: ${FILL_WORD[look.fill]}. Click to change.`}
+                title={`Fill: ${SURFACE_WORD[look.surface]}. Click to change.`}
+                aria-label={`Fill: ${SURFACE_WORD[look.surface]}. Click to change.`}
               >
-                {look.fill === "none" ? (
+                {look.surface === "none" ? (
                   <Ban className="h-3.5 w-3.5 opacity-60" />
                 ) : (
                   <span
                     aria-hidden
                     className="h-4 w-4 border border-black/40"
-                    style={fillBackground(look.fill, look.fillSwatch, 8)}
+                    style={surfaceStyle(look)}
                   />
                 )}
               </button>
@@ -457,15 +529,39 @@ function AnnotationStylePanel({
                   STYLE_CHIP_CLASS,
                   paletteFor === "fill" ? "bg-[var(--mc-85)] shadow-[inset_2px_2px_0_var(--mc-100)]" : "",
                 ].join(" ")}
-                title="Fill colour"
+                title="Fill colour: any dye, or a textured paper"
                 aria-label="Fill colour"
                 aria-expanded={paletteFor === "fill"}
               >
                 <span
                   aria-hidden
                   className="h-4 w-4 border border-black/40"
-                  style={{ backgroundColor: look.fillSwatch }}
+                  style={
+                    look.fillTheme
+                      ? {
+                          backgroundColor: look.fillTheme.base,
+                          backgroundImage: look.fillTheme.texture,
+                        }
+                      : { backgroundColor: look.fillSwatch }
+                  }
                 />
+              </button>
+              <button
+                type="button"
+                onClick={() => commitStyle({ marks: NEXT_MARKS[look.marks] })}
+                className={STYLE_CHIP_CLASS}
+                title={`Marks: ${MARKS_WORD[look.marks]}. Click to change.`}
+                aria-label={`Marks: ${MARKS_WORD[look.marks]}. Click to change.`}
+              >
+                {look.marks === "none" ? (
+                  <Ban className="h-3.5 w-3.5 opacity-60" />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="h-4 w-4 border border-black/40"
+                    style={marksStyle(look.marks, look.markInk, 8)}
+                  />
+                )}
               </button>
             </>
           ) : null}
@@ -485,32 +581,57 @@ function AnnotationStylePanel({
           ) : null}
         </div>
         {paletteFor ? (
-          <div className="mt-1 grid grid-cols-8 gap-1">
-            {GT_NODE_COLOR_PALETTE.map((entry) => (
-              <button
-                key={entry.tag}
-                type="button"
-                onClick={() =>
-                  commitStyle(
-                    paletteFor === "border"
-                      ? { borderColor: entry.tag }
-                      : { fillColor: entry.tag },
-                  )
-                }
-                className={[
-                  "h-6 w-6 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
-                  (paletteFor === "border"
-                    ? entry.color.swatch === look.borderSwatch
-                    : entry.color.swatch === look.fillSwatch)
-                    ? "border-white ring-2 ring-cyan-300"
-                    : "border-[var(--mc-15)]",
-                ].join(" ")}
-                style={{ backgroundColor: entry.color.swatch }}
-                title={entry.tag}
-                aria-label={`Use ${entry.tag} for the ${paletteFor}`}
-              />
-            ))}
-          </div>
+          <>
+            <div className="mt-1 grid grid-cols-8 gap-1">
+              {GT_NODE_COLOR_PALETTE.map((entry) => (
+                <button
+                  key={entry.tag}
+                  type="button"
+                  onClick={() =>
+                    commitStyle(
+                      paletteFor === "border"
+                        ? { borderColor: entry.tag }
+                        : // A dye replaces a paper: the two are one choice.
+                          { fillColor: entry.tag, fillTheme: undefined },
+                    )
+                  }
+                  className={[
+                    "h-6 w-6 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
+                    (paletteFor === "border"
+                      ? entry.color.swatch === look.borderSwatch
+                      : !look.fillTheme && entry.color.swatch === look.fillSwatch)
+                      ? "border-white ring-2 ring-cyan-300"
+                      : "border-[var(--mc-15)]",
+                  ].join(" ")}
+                  style={{ backgroundColor: entry.color.swatch }}
+                  title={entry.tag}
+                  aria-label={`Use ${entry.tag} for the ${paletteFor}`}
+                />
+              ))}
+            </div>
+            {paletteFor === "fill" ? (
+              // The textured papers, on the same shelf as the dyes: a fill
+              // colour is either one.
+              <div className="mt-1 grid grid-cols-8 gap-1">
+                {CANVAS_THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => commitStyle({ fillTheme: theme.id })}
+                    className={[
+                      "h-6 w-6 border-2 shadow-[inset_1px_1px_0_rgba(255,255,255,0.45),inset_-1px_-1px_0_rgba(0,0,0,0.45)]",
+                      look.fillTheme?.id === theme.id
+                        ? "border-white ring-2 ring-cyan-300"
+                        : "border-[var(--mc-15)]",
+                    ].join(" ")}
+                    style={{ backgroundColor: theme.base, backgroundImage: theme.texture }}
+                    title={`${theme.name} paper`}
+                    aria-label={`Use ${theme.name} paper for the fill`}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
     </NodeToolbar>
@@ -699,17 +820,18 @@ function ZoneShape({
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ")} Z`;
 
-  // Every patterned fill is an SVG pattern, one per zone (ids are global to
-  // the whole board's SVG soup, so the zone id keys them).
-  const patternId = `zone-fill-${zoneId}`;
-  const fill =
-    look.fill === "none"
-      ? "none"
-      : look.fill === "solid"
-        ? look.fillSwatch
-        : look.fill === "tint"
+  // Patterned surfaces and marks are SVG patterns, one pair per zone (ids
+  // are global to the whole board's SVG soup, so the zone id keys them).
+  const surfacePatternId = `zone-surface-${zoneId}`;
+  const marksPatternId = `zone-marks-${zoneId}`;
+  const surfaceFill =
+    look.surface === "none"
+      ? undefined
+      : look.fillTheme
+        ? `url(#${surfacePatternId})`
+        : look.surface === "tint"
           ? `${look.fillSwatch}14`
-          : `url(#${patternId})`;
+          : look.fillSwatch;
   const hasBorder = look.border !== "none";
   const dashArray = look.border === "dashed" ? "14 10" : undefined;
 
@@ -722,10 +844,27 @@ function ZoneShape({
       viewBox={`0 0 ${Math.max(width, 1)} ${Math.max(height, 1)}`}
       preserveAspectRatio="none"
     >
-      <ZoneFillPattern fill={look.fill} swatch={look.fillSwatch} patternId={patternId} />
+      {look.fillTheme && look.surface !== "none" ? (
+        <ZoneSurfacePattern theme={look.fillTheme} patternId={surfacePatternId} />
+      ) : null}
+      {look.marks !== "none" ? (
+        <ZoneMarksPattern marks={look.marks} ink={look.markInk} patternId={marksPatternId} />
+      ) : null}
+      {surfaceFill ? (
+        <path
+          d={outline}
+          fill={surfaceFill}
+          // Papers dim as a whole when tinted, exactly like the box layer.
+          fillOpacity={look.fillTheme && look.surface === "tint" ? 0.55 : 1}
+          stroke="none"
+        />
+      ) : null}
+      {look.marks !== "none" ? (
+        <path d={outline} fill={`url(#${marksPatternId})`} stroke="none" />
+      ) : null}
       <path
         d={outline}
-        fill={fill}
+        fill="none"
         stroke={hasBorder ? "rgba(0,0,0,0.45)" : "none"}
         strokeWidth={7}
         strokeDasharray={dashArray}
@@ -760,21 +899,36 @@ function ZoneShape({
 }
 
 /**
- * The <defs> a zone's patterned fill needs: the same marks the box fills
- * paint in CSS, rebuilt as SVG patterns because a zone's interior is a path.
- * Solid, tint and none use plain fills and need no pattern at all.
+ * A textured paper as a zone's surface: base colour under the grain. The
+ * paper's broad washes (vignettes, mottling) stay with the board themes; the
+ * grain is what says "textured" at any patch size.
  */
-function ZoneFillPattern({
-  fill,
-  swatch,
+function ZoneSurfacePattern({ theme, patternId }: { theme: CanvasTheme; patternId: string }) {
+  return (
+    <defs>
+      <pattern id={patternId} width={180} height={180} patternUnits="userSpaceOnUse">
+        <rect width={180} height={180} fill={theme.base} />
+        <image href={grainFor(theme.base)} width={180} height={180} />
+      </pattern>
+    </defs>
+  );
+}
+
+/**
+ * The marks the box layer paints in CSS, rebuilt as SVG patterns because a
+ * zone's interior is a path. Same recipes, same ink.
+ */
+function ZoneMarksPattern({
+  marks,
+  ink,
   patternId,
 }: {
-  fill: FactoryAnnotationFillStyle;
-  swatch: string;
+  marks: FactoryAnnotationMarks;
+  ink: string;
   patternId: string;
 }) {
   const cell = BOARD_GRID;
-  switch (fill) {
+  switch (marks) {
     case "hatch":
       return (
         <defs>
@@ -785,8 +939,7 @@ function ZoneFillPattern({
             patternUnits="userSpaceOnUse"
             patternTransform="rotate(45)"
           >
-            <rect width={18} height={18} fill={`${swatch}0d`} />
-            <rect width={6} height={18} fill={`${swatch}38`} />
+            <rect width={6} height={18} fill={`${ink}38`} />
           </pattern>
         </defs>
       );
@@ -794,11 +947,10 @@ function ZoneFillPattern({
       return (
         <defs>
           <pattern id={patternId} width={cell} height={cell} patternUnits="userSpaceOnUse">
-            <rect width={cell} height={cell} fill={`${swatch}0d`} />
             <path
               d={`M ${cell} 0 L 0 0 0 ${cell}`}
               fill="none"
-              stroke={`${swatch}2e`}
+              stroke={`${ink}2e`}
               strokeWidth={1}
             />
           </pattern>
@@ -808,8 +960,7 @@ function ZoneFillPattern({
       return (
         <defs>
           <pattern id={patternId} width={cell} height={cell} patternUnits="userSpaceOnUse">
-            <rect width={cell} height={cell} fill={`${swatch}0d`} />
-            <circle cx={cell / 2} cy={cell / 2} r={1.6} fill={`${swatch}59`} />
+            <circle cx={cell / 2} cy={cell / 2} r={1.6} fill={`${ink}59`} />
           </pattern>
         </defs>
       );
@@ -817,8 +968,7 @@ function ZoneFillPattern({
       return (
         <defs>
           <pattern id={patternId} width={cell * 2} height={cell * 2} patternUnits="userSpaceOnUse">
-            <rect width={cell * 2} height={cell * 2} fill={`${swatch}0d`} />
-            <line x1={0} y1={0.5} x2={cell * 2} y2={0.5} stroke={`${swatch}45`} strokeWidth={1} />
+            <line x1={0} y1={0.5} x2={cell * 2} y2={0.5} stroke={`${ink}45`} strokeWidth={1} />
           </pattern>
         </defs>
       );
@@ -826,7 +976,6 @@ function ZoneFillPattern({
       return (
         <defs>
           <pattern id={patternId} width={cell * 5} height={cell * 5} patternUnits="userSpaceOnUse">
-            <rect width={cell * 5} height={cell * 5} fill={`${swatch}0d`} />
             {[1, 2, 3, 4].map((step) => (
               <g key={step}>
                 <line
@@ -834,7 +983,7 @@ function ZoneFillPattern({
                   y1={0}
                   x2={step * cell}
                   y2={cell * 5}
-                  stroke={`${swatch}24`}
+                  stroke={`${ink}24`}
                   strokeWidth={1}
                 />
                 <line
@@ -842,22 +991,13 @@ function ZoneFillPattern({
                   y1={step * cell}
                   x2={cell * 5}
                   y2={step * cell}
-                  stroke={`${swatch}24`}
+                  stroke={`${ink}24`}
                   strokeWidth={1}
                 />
               </g>
             ))}
-            <line x1={0.5} y1={0} x2={0.5} y2={cell * 5} stroke={`${swatch}59`} strokeWidth={1} />
-            <line x1={0} y1={0.5} x2={cell * 5} y2={0.5} stroke={`${swatch}59`} strokeWidth={1} />
-          </pattern>
-        </defs>
-      );
-    case "paper":
-      return (
-        <defs>
-          <pattern id={patternId} width={180} height={180} patternUnits="userSpaceOnUse">
-            <rect width={180} height={180} fill={swatch} />
-            <image href={grainFor(swatch)} width={180} height={180} />
+            <line x1={0.5} y1={0} x2={0.5} y2={cell * 5} stroke={`${ink}59`} strokeWidth={1} />
+            <line x1={0} y1={0.5} x2={cell * 5} y2={0.5} stroke={`${ink}59`} strokeWidth={1} />
           </pattern>
         </defs>
       );
