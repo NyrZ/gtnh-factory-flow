@@ -33,6 +33,12 @@ export interface EdgePulseSpec {
   right: number;
   top: number;
   bottom: number;
+  /**
+   * A mid-morph path: one frame of a wire gliding to its new route. Kept out
+   * of the Path2D cache — every frame of every morphing edge is a fresh
+   * string, and caching them would churn the cache straight past its ceiling.
+   */
+  transient?: boolean;
 }
 
 interface CompiledPulse extends EdgePulseSpec {
@@ -47,6 +53,20 @@ interface CompiledPulse extends EdgePulseSpec {
    * the edge id, so a line's phase is stable across rerenders and reloads.
    */
   phase: number;
+  /**
+   * The speed the dashes are ACTUALLY moving at, chasing `velocity`. When the
+   * board's value motion is on, a solver change swings `velocity` in one
+   * step and this eases after it, so the flow reads as speeding up rather
+   * than as a different animation being swapped in.
+   */
+  liveVelocity: number;
+  /**
+   * Distance marched so far, in flow px. The offset used to be derived from
+   * absolute time × velocity, which is only continuous while velocity never
+   * changes — the integral is what lets the speed move without the dashes
+   * teleporting.
+   */
+  travel: number;
 }
 
 const pulses = new Map<string, CompiledPulse>();
@@ -61,7 +81,7 @@ function hashPhase(edgeId: string) {
   return (Math.abs(hash) % 1000) / 1000;
 }
 
-function compilePath(path: string): Path2D | undefined {
+function compilePath(path: string, transient?: boolean): Path2D | undefined {
   if (!path) {
     return undefined;
   }
@@ -72,11 +92,13 @@ function compilePath(path: string): Path2D | undefined {
   // A malformed `d` throws in some engines; a missing pulse beats a dead frame.
   try {
     const compiled = new Path2D(path);
-    // Routes churn while dragging; without a ceiling this grows unbounded.
-    if (path2dCache.size > 4000) {
-      path2dCache.clear();
+    if (!transient) {
+      // Routes churn while dragging; without a ceiling this grows unbounded.
+      if (path2dCache.size > 4000) {
+        path2dCache.clear();
+      }
+      path2dCache.set(path, compiled);
     }
-    path2dCache.set(path, compiled);
     return compiled;
   } catch {
     return undefined;
@@ -98,8 +120,12 @@ export function publishEdgePulse(edgeId: string, spec: EdgePulseSpec) {
 
   pulses.set(edgeId, {
     ...spec,
-    path2d: compilePath(spec.path),
+    path2d: compilePath(spec.path, spec.transient),
     phase: existing?.phase ?? hashPhase(edgeId),
+    // The march continues from wherever it was: a new route or a new speed
+    // target must not reset how far the dashes have walked.
+    liveVelocity: existing?.liveVelocity ?? spec.velocity,
+    travel: existing?.travel ?? 0,
   });
 }
 
@@ -233,18 +259,43 @@ export function retractEdgeWaypointDots(edgeId: string) {
 const PULSE_STROKE = "rgba(255,255,255,0.92)";
 
 /**
+ * How fast the marching speed itself changes, as an exponential time
+ * constant: after 0.45s a speed change is ~63% absorbed, after ~1.4s it is
+ * done. Frame-rate independent by construction.
+ */
+const VELOCITY_SMOOTHING_TAU_SECONDS = 0.45;
+
+/** The draw clock's last tick, for integrating travel. */
+let lastDrawTimeSeconds: number | undefined;
+
+/**
  * Draws every pulse whose route intersects the visible flow rect.
  *
  * The context is expected to be in FLOW coordinates already (the caller
  * applies device pixel ratio and the viewport transform), so widths and dash
  * lengths are the same flow-space numbers the SVG used and scale with zoom the
  * same way.
+ *
+ * `smoothSpeedChanges` is the board's value-motion switch: on, each line's
+ * dash speed chases its target exponentially; off, it snaps as it always did.
+ * Either way the offset is integrated travel, so no speed change ever makes
+ * the dashes jump.
  */
 export function drawEdgePulses(
   context: CanvasRenderingContext2D,
   visible: { left: number; right: number; top: number; bottom: number },
   timeSeconds: number,
+  smoothSpeedChanges = false,
 ) {
+  // Clamped so a backgrounded tab does not integrate its whole absence in
+  // one delta when the loop resumes.
+  const dt =
+    lastDrawTimeSeconds === undefined
+      ? 0
+      : Math.min(Math.max(timeSeconds - lastDrawTimeSeconds, 0), 0.1);
+  lastDrawTimeSeconds = timeSeconds;
+  const blend = 1 - Math.exp(-dt / VELOCITY_SMOOTHING_TAU_SECONDS);
+
   context.strokeStyle = PULSE_STROKE;
   context.lineCap = "butt";
   context.lineJoin = "round";
@@ -253,6 +304,15 @@ export function drawEdgePulses(
   let lastDash = -1;
   let lastGap = -1;
   for (const pulse of pulses.values()) {
+    // Every line keeps walking, visible or not: a culled line that froze
+    // would fall out of step with its neighbours and lurch on re-entry.
+    if (smoothSpeedChanges) {
+      pulse.liveVelocity += (pulse.velocity - pulse.liveVelocity) * blend;
+    } else {
+      pulse.liveVelocity = pulse.velocity;
+    }
+    pulse.travel += pulse.liveVelocity * dt;
+
     if (
       !pulse.path2d ||
       pulse.right < visible.left ||
@@ -274,9 +334,9 @@ export function drawEdgePulses(
     }
     const period = pulse.dash + pulse.gap;
     // Same sign convention as SVG stroke-dashoffset, and the same motion the
-    // keyframes described: one whole period travelled per period/velocity
-    // seconds, forever.
-    context.lineDashOffset = -(((timeSeconds * pulse.velocity) / period + pulse.phase) % 1) * period;
+    // keyframes described — stated over integrated travel rather than
+    // absolute time, so the speed is free to move.
+    context.lineDashOffset = -((pulse.travel / period + pulse.phase) % 1) * period;
     context.stroke(pulse.path2d);
   }
 }

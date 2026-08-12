@@ -17,6 +17,7 @@ import { isWiringConnection } from "./connection-drag";
 import { MinecraftTooltip } from "@/components/nei/MinecraftTooltip";
 import { useFactoryStore } from "@/store/factory-store";
 import { useBoardView } from "./board-view";
+import { MotionNumberText } from "./board-motion";
 import { formatSlotRate } from "./flow-explainers";
 import { makeResourceHandleId } from "./resource-handles";
 import { canonicalizeResourceHandleId } from "@/lib/model/edge-identity";
@@ -436,8 +437,13 @@ function StorageNodeComponent({ data, selected }: NodeProps<StorageFlowNode>) {
                       : "text-[var(--mc-ink-muted)]",
                 ].join(" ")}
               >
-                {net >= 0 ? "+" : ""}
-                {formatCompactRate(net, storage.kind)}
+                <MotionNumberText
+                  values={[net]}
+                  render={(shown) => {
+                    const value = shown[0] ?? net;
+                    return `${value >= 0 ? "+" : ""}${formatCompactRate(value, storage.kind)}`;
+                  }}
+                />
               </span>
             </span>
           ) : null}
@@ -607,6 +613,8 @@ function rateFitClass(label: string, role: StorageRole): string {
 
 /** The tile's one line of news: the net rate, sized to fit its silhouette. */
 function NetLine({ net, kind, role }: { net: number; kind: string; role: StorageRole }) {
+  // The fit class and the colour read the TARGET value: the size and tone
+  // land immediately, and only the digits ease their way there.
   const label = `${net >= 0 ? "+" : ""}${formatCompactRate(net, kind)}`;
   return (
     <div
@@ -618,7 +626,13 @@ function NetLine({ net, kind, role }: { net: number; kind: string; role: Storage
         net > 0.005 ? "text-[#7ede96]" : net < -0.005 ? "text-[#ff9191]" : "text-[#a8afbb]",
       ].join(" ")}
     >
-      {label}
+      <MotionNumberText
+        values={[net]}
+        render={(shown) => {
+          const value = shown[0] ?? net;
+          return `${value >= 0 ? "+" : ""}${formatCompactRate(value, kind)}`;
+        }}
+      />
     </div>
   );
 }

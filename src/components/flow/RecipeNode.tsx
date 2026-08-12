@@ -111,6 +111,7 @@ import {
 import { useFactoryStore } from "@/store/factory-store";
 import { GT_NODE_COLORS, heatmapColorFor, heatmapRamp, rampFor } from "./node-colors";
 import { useBoardView } from "./board-view";
+import { MotionNumberText } from "./board-motion";
 import { getPaintBrushCursor } from "./paint-cursor";
 import { GT_TIER_COLORS } from "./tier-colors";
 
@@ -714,9 +715,17 @@ function RecipeNodeComponent({ data, selected }: NodeProps<RecipeFlowNode>) {
       ) : (
         <NodeGlanceText
           text={
-            verdict.kind === "off" || verdict.kind === "no-recipe"
-              ? "—"
-              : `${verdict.pct > 0 && verdict.pct < 0.5 ? formatRate(verdict.pct, 1) : formatPct(verdict.pct)}%`
+            verdict.kind === "off" || verdict.kind === "no-recipe" ? (
+              "—"
+            ) : (
+              <MotionNumberText
+                values={[verdict.pct]}
+                render={(shown) => {
+                  const pct = shown[0] ?? verdict.pct;
+                  return `${pct > 0 && pct < 0.5 ? formatRate(pct, 1) : formatPct(pct)}%`;
+                }}
+              />
+            )
           }
           className={VERDICT_WORD_CLASS[verdictWord(verdict, isCustomRateNode).tone]}
         />
@@ -1297,10 +1306,15 @@ function UsageStat({
               <>
                 {/* Whole numbers — a decimal on a duty cycle is width, not
                     information. The exception is a node that runs so slowly it
-                    would round to a flat 0% and read as dead. */}
-                {verdict.pct > 0 && verdict.pct < 0.5
-                  ? formatRate(verdict.pct, 1)
-                  : formatPct(verdict.pct)}
+                    would round to a flat 0% and read as dead. Eased on the
+                    value-motion clock, so the machine visibly winds up. */}
+                <MotionNumberText
+                  values={[verdict.pct]}
+                  render={(shown) => {
+                    const pct = shown[0] ?? verdict.pct;
+                    return pct > 0 && pct < 0.5 ? formatRate(pct, 1) : formatPct(pct);
+                  }}
+                />
                 <span className="text-[13px]">%</span>
               </>
             ) : (
@@ -1970,13 +1984,20 @@ export function PortChip({
   // binding input still shows both halves (what it gets over what it asks);
   // every other port shows the one number that matters. Calm mode always
   // shows the bare actual rate: no fraction, nothing to diagnose.
-  const rateText =
-    port.showNameplate && !calmMode
-      ? `${formatSlotRateBare(port.currentPerSecond)} / ${formatSlotRate(
-          port.nameplatePerSecond,
-          port.kind,
-        )}`
-      : formatSlotRate(port.currentPerSecond, port.kind);
+  // The numbers ease to a new solve (value motion, board-motion.tsx): the
+  // leaf re-renders itself per frame while they move, never the row.
+  const rateText = (
+    <MotionNumberText
+      values={[port.currentPerSecond, port.nameplatePerSecond]}
+      render={(shown) => {
+        const current = shown[0] ?? port.currentPerSecond;
+        const nameplate = shown[1] ?? port.nameplatePerSecond;
+        return port.showNameplate && !calmMode
+          ? `${formatSlotRateBare(current)} / ${formatSlotRate(nameplate, port.kind)}`
+          : formatSlotRate(current, port.kind);
+      }}
+    />
+  );
 
   // One bar, one ruler: 100% = full blast. Solid = now, hatch = would unlock
   // if fed. The caret/burst (the want) is an INPUT-side signal — on outputs

@@ -158,22 +158,45 @@ export function describeEdgeRate(data: EdgeLabelInput | undefined): string {
   return `Carrying ${withUnit(flowing, unit)}.`;
 }
 
+/**
+ * The two numbers behind a rate pill, exposed raw so the board can EASE them:
+ * the pill tweens these and formats the in-between values through
+ * formatEdgeRateLabelFrom, landing on exactly what formatEdgeRateLabel says.
+ */
+export function getEdgeRateLabelValues(data: EdgeLabelInput | undefined): {
+  flowing: number;
+  ratio: number | undefined;
+} {
+  if (!data) {
+    return { flowing: 0, ratio: undefined };
+  }
+  const { flowing } = getEdgeFlowFigures(data);
+  return { flowing, ratio: getEdgeSupplyRatio(data) };
+}
+
+/** formatEdgeRateLabel over caller-supplied (possibly mid-tween) values. */
+export function formatEdgeRateLabelFrom(
+  unit: string,
+  flowing: number,
+  ratio: number | undefined,
+): string {
+  // The left side is always the real flow; the percent is how much of the
+  // consumer's need the line can supply. A maker offering 10 to a machine
+  // needing 1 reads 1000%; offering 1 to a machine needing 2 reads 50%.
+  if (ratio !== undefined) {
+    return `${withUnit(flowing, unit)} · ${formatSupplyPercent(ratio)}`;
+  }
+
+  return withUnit(flowing, unit);
+}
+
 export function formatEdgeRateLabel(data: EdgeLabelInput | undefined): string {
   if (!data) {
     return "";
   }
 
-  const { flowing } = getEdgeFlowFigures(data);
-
-  // The left side is always the real flow; the percent is how much of the
-  // consumer's need the line can supply. A maker offering 10 to a machine
-  // needing 1 reads 1000%; offering 1 to a machine needing 2 reads 50%.
-  const ratio = getEdgeSupplyRatio(data);
-  if (ratio !== undefined) {
-    return `${withUnit(flowing, data.unit)} · ${formatSupplyPercent(ratio)}`;
-  }
-
-  return withUnit(flowing, data.unit);
+  const { flowing, ratio } = getEdgeRateLabelValues(data);
+  return formatEdgeRateLabelFrom(data.unit, flowing, ratio);
 }
 
 /** Uncapped except against absurdity: a drawer-scale ratio stays readable. */

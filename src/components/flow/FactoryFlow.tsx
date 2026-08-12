@@ -28,6 +28,7 @@ import {
 } from "@xyflow/react";
 import { toBlob, toSvg } from "html-to-image";
 import {
+  Activity,
   AlignJustify,
   Ban,
   Box,
@@ -45,6 +46,7 @@ import {
   Hexagon,
   ImagePlus,
   LoaderCircle,
+  Magnet,
   MoveUpRight,
   Paintbrush,
   Palette,
@@ -156,6 +158,14 @@ import {
 } from "./board-view";
 import { CANVAS_THEMES, getCanvasTheme, type CanvasTheme } from "./canvas-themes";
 import { RuledBackground } from "./board-pattern";
+import {
+  MotionNumberText,
+  readBoardMotionSnapshot,
+  useBoardMotion,
+  useMotionRoute,
+  useMotionValue,
+  writeBoardMotion,
+} from "./board-motion";
 import { readImageSize, uploadBoardImage } from "@/lib/community/images";
 import { getDeleteCursor, getPaintBrushCursor } from "./paint-cursor";
 import {
@@ -164,7 +174,12 @@ import {
   parseResourceHandleId,
   type ResourceHandleSide,
 } from "./resource-handles";
-import { formatEdgeRateLabel, isEdgeStarved } from "./edge-labels";
+import {
+  formatEdgeRateLabelFrom,
+  getEdgeRateLabelValues,
+  isEdgeStarved,
+  type EdgeLabelInput,
+} from "./edge-labels";
 import { ResourceIcon } from "@/components/nei/ResourceIcon";
 import {
   LANE_CAPACITY,
@@ -353,6 +368,14 @@ const MIN_FRAMED_WIDTH = 420;
 /** The delay plus four pulses of the keyframes in globals.css, plus some slack. */
 const PLACED_FLASH_CLASS = "board-card-placed";
 const PLACED_FLASH_MS = 3100;
+/**
+ * The materialise-on-arrival pop (globals.css), riding the same DOM pass as
+ * the flash. Its class outlives the 220ms animation harmlessly — an animation
+ * plays once per application — and comes off with the flash's own timers so a
+ * later cull remount can never replay it.
+ */
+const BOARD_ARRIVE_CLASS = "board-card-arrive";
+const BOARD_ARRIVE_MS = 600;
 
 /**
  * On a touchscreen a card moves only once it is selected: tap it, then drag it.
@@ -1394,6 +1417,8 @@ export function FactoryFlow() {
   const boardView = useBoardView();
   const { freeDockMode, lineHeatMode, lineLabelsMode, lineThicknessMode, linePulseMode, calmMode } =
     boardView;
+  // Device taste, not plan state: never captured into plan-view snapshots.
+  const boardMotion = useBoardMotion();
   const canvasTheme = getCanvasTheme(boardView.canvasTheme);
   const anyLineMode = lineHeatMode || lineThicknessMode || linePulseMode;
   const setFlowViewportCenter = useFactoryStore((state) => state.setFlowViewportCenter);
@@ -3648,9 +3673,18 @@ export function FactoryFlow() {
       const flashed = ids
         .map((id) => boardRef.current?.querySelector(`.react-flow__node[data-id="${id}"]`))
         .filter((element): element is Element => element !== null && element !== undefined);
+      const arrive = readBoardMotionSnapshot().moveMotion;
       for (const element of flashed) {
         element.classList.add(PLACED_FLASH_CLASS);
+        if (arrive) {
+          element.classList.add(BOARD_ARRIVE_CLASS);
+        }
       }
+      const arriveTimer = window.setTimeout(() => {
+        for (const element of flashed) {
+          element.classList.remove(BOARD_ARRIVE_CLASS);
+        }
+      }, BOARD_ARRIVE_MS);
       const timer = window.setTimeout(() => {
         for (const element of flashed) {
           element.classList.remove(PLACED_FLASH_CLASS);
@@ -3658,8 +3692,9 @@ export function FactoryFlow() {
       }, PLACED_FLASH_MS);
       cleanup = () => {
         window.clearTimeout(timer);
+        window.clearTimeout(arriveTimer);
         for (const element of flashed) {
-          element.classList.remove(PLACED_FLASH_CLASS);
+          element.classList.remove(PLACED_FLASH_CLASS, BOARD_ARRIVE_CLASS);
         }
       };
     });
@@ -4117,6 +4152,10 @@ export function FactoryFlow() {
         isDeleteMode ? "factory-flow-board--deleting" : "",
         lineThicknessMode ? "factory-flow-board--edges-under" : "",
         calmMode ? "factory-flow-board--calm" : "",
+        // The two motion switches (board-motion.tsx): the grid magnet and the
+        // arrival pop hang off the first, the easing gauges off the second.
+        boardMotion.moveMotion ? "factory-flow-board--move-motion" : "",
+        boardMotion.valueMotion ? "factory-flow-board--value-motion" : "",
         // Inside a pocket dimension the room itself says where you are:
         // purple canvas, purple dots, purple window frame (globals.css).
         activePocketId ? "factory-flow-board--pocket-view" : "",
@@ -5128,7 +5167,9 @@ const EdgePulseCanvas = memo(function EdgePulseCanvas({
         right: (-translateX + width) / zoom,
         bottom: (-translateY + height) / zoom,
       };
-      drawEdgePulses(context, visible, timeMs / 1000);
+      // Value motion read per frame, not baked into the loop: flipping the
+      // toggle changes how the dashes accelerate without restarting them.
+      drawEdgePulses(context, visible, timeMs / 1000, readBoardMotionSnapshot().valueMotion);
       // Punch back out what the dashes are supposed to be behind.
       // `publishedBoardBounds` is the card set already — it excludes
       // annotations, which wires (and so their dashes) legitimately pass
@@ -5729,6 +5770,9 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       "pointer-events-auto flex h-9 w-9 items-center justify-center border-2 border-[var(--mc-15)]",
       active ? TOOL_FACE_ON : TOOL_FACE_OFF,
     ].join(" ");
+  // Motion is device taste, not plan state: read and written through its own
+  // store (board-motion.tsx), never through the plan-view snapshot.
+  const boardMotion = useBoardMotion();
   const activeTheme = getCanvasTheme(view.canvasTheme);
   // The theme picker opens on hover with the same grace period the paint
   // palette uses, so the two feel like one family of fold-outs.
@@ -5934,6 +5978,36 @@ const BoardViewToolbar = memo(function BoardViewToolbar({
       >
         <Presentation className="h-4 w-4" />
       </button>
+      {/* The two motion switches. Device taste rather than plan dressing, so
+          they write to their own store and never travel with a shared plan. */}
+      <button
+        type="button"
+        onClick={() => writeBoardMotion({ moveMotion: !boardMotion.moveMotion })}
+        className={buttonClass(boardMotion.moveMotion)}
+        title={
+          boardMotion.moveMotion
+            ? "Smooth movement: cards glide onto the grid and rerouted wires slide to their new line. Click for instant."
+            : "Instant movement. Click to let cards glide onto the grid and wires slide to their new lines."
+        }
+        aria-label={boardMotion.moveMotion ? "Turn smooth movement off" : "Turn smooth movement on"}
+        aria-pressed={boardMotion.moveMotion}
+      >
+        <Magnet className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => writeBoardMotion({ valueMotion: !boardMotion.valueMotion })}
+        className={buttonClass(boardMotion.valueMotion)}
+        title={
+          boardMotion.valueMotion
+            ? "Live numbers: rates, bars, line widths and dash speeds ease into new values. Click for instant."
+            : "Instant numbers. Click to let rates, bars, line widths and dash speeds ease into new values."
+        }
+        aria-label={boardMotion.valueMotion ? "Turn live numbers off" : "Turn live numbers on"}
+        aria-pressed={boardMotion.valueMotion}
+      >
+        <Activity className="h-4 w-4" />
+      </button>
       </ToolTray>
       </ToolGroup>
     </div>
@@ -6132,6 +6206,27 @@ const PaintToolbar = memo(function PaintToolbar({
   );
 });
 
+/**
+ * The pill's numbers, eased: the flow figure and its percent glide to a new
+ * solve on the value-motion clock. A leaf so the per-frame re-render is one
+ * text fragment, not the edge. When the ratio appears or disappears the value
+ * list changes length, which the tween treats as a snap — correct, because
+ * there is no honest halfway between "has a percent" and "has none".
+ */
+function EdgeRateLabelText({ data }: { data: EdgeLabelInput | undefined }) {
+  const { flowing, ratio } = getEdgeRateLabelValues(data);
+  const unit = data?.unit ?? "/s";
+  const hasRatio = ratio !== undefined;
+  return (
+    <MotionNumberText
+      values={hasRatio ? [flowing, ratio] : [flowing]}
+      render={(shown) =>
+        formatEdgeRateLabelFrom(unit, shown[0] ?? flowing, hasRatio ? shown[1] : undefined)
+      }
+    />
+  );
+}
+
 function ResourceEdgeComponent({
   id,
   sourceX,
@@ -6190,11 +6285,23 @@ function ResourceEdgeComponent({
   const flowRate = data?.flowRate;
   const edgeColor =
     flowRate?.color === true ? flowRampColor(flowRate.heat) : resolvedResourceColor;
+  // The board's motion switches. Move motion glides this wire onto a new
+  // route; value motion eases its thickness and dash speed after the solver.
+  const { moveMotion, valueMotion } = useBoardMotion();
   // Likewise the width: the branches below override style.strokeWidth for
   // highlighted and bundle-primary lines, which is exactly why only some lines
   // were thickening. In thickness mode the published width wins for every line.
-  const flowWidth =
+  const flowWidthTarget =
     flowRate?.thickness === true ? Number(style?.strokeWidth ?? FLOW_MODE_MIN_WIDTH) : undefined;
+  // Eased, so a solver change reads as the pipe swelling rather than as a
+  // different pipe being swapped in. Only the volume width tweens: the
+  // highlight thickening below stays instant, because hover feedback that
+  // arrives a second late reads as a miss.
+  const flowWidthShown = useMotionValue(
+    flowWidthTarget ?? FLOW_MODE_MIN_WIDTH,
+    valueMotion && flowWidthTarget !== undefined,
+  );
+  const flowWidth = flowWidthTarget === undefined ? undefined : flowWidthShown;
   // Dash geometry scales with the stroke so the marks read the same on a hair
   // line and on a fat pipe.
   const pulseStroke = flowWidth ?? Number(style?.strokeWidth ?? 3);
@@ -6295,6 +6402,19 @@ function ResourceEdgeComponent({
     useSmartRouting: true,
     strokeWidth: coreStrokeWidth,
   });
+  // The route as DRAWN this frame: the router's line once settled, a morph
+  // between the old and new lines for a beat after a re-solve. Mid-morph the
+  // path is a plain resampled polyline — hop bumps land with the final frame,
+  // exactly as they land after any solve today. Capped by wire count: a
+  // board-wide re-solve morphs every mounted edge at once, each re-rendering
+  // every frame for a quarter second, and past a few hundred wires that is
+  // the O(edges)-per-frame bill ARCHITECTURE.md forbids — those boards snap,
+  // as they always did. (Module state read here is fine; see showArrowHead.)
+  const liveRoute = useMotionRoute(
+    routedEdge.points,
+    routedEdge.path,
+    moveMotion && publishedGridRouteEdges.length <= 300,
+  );
   // The dots the user has pinned — the draft while one is mid-drag. Only
   // the DOT follows the pointer; the wire holds its route and takes the
   // real one on release. Live previews always guessed wrong.
@@ -6389,7 +6509,7 @@ function ResourceEdgeComponent({
   // six hundred of them are the most expensive shimmer on the board.
   const pulseActive =
     flowRate?.pulse === true &&
-    Boolean(routedEdge.path) &&
+    Boolean(liveRoute.path) &&
     hasEdgeDetail(detailLevel, EDGE_DETAIL_PULSE);
   useEffect(() => {
     if (!pulseActive) {
@@ -6401,7 +6521,7 @@ function ResourceEdgeComponent({
     let right = -Infinity;
     let top = Infinity;
     let bottom = -Infinity;
-    for (const point of routedEdge.points) {
+    for (const point of liveRoute.points) {
       if (point.x < left) left = point.x;
       if (point.x > right) right = point.x;
       if (point.y < top) top = point.y;
@@ -6411,7 +6531,7 @@ function ResourceEdgeComponent({
     // would wink out a fraction early at the edge of the screen.
     const margin = EDGE_HOP_MAX_RADIUS + pulseStroke;
     publishEdgePulse(id, {
-      path: routedEdge.path,
+      path: liveRoute.path,
       // Same numbers the SVG overlay used, so the marks are unchanged.
       width: Math.max(2, pulseStroke * 0.38),
       dash: pulseDash,
@@ -6421,6 +6541,8 @@ function ResourceEdgeComponent({
       right: right + margin,
       top: top - margin,
       bottom: bottom + margin,
+      // A morph frame's path is one-of-a-kind; keep it out of the Path2D cache.
+      transient: liveRoute.morphing,
     });
   });
   // Where this edge's waypoint dots sit, for the dash canvas to punch out —
@@ -6460,7 +6582,7 @@ function ResourceEdgeComponent({
             pointerEvents="none"
           />
           <BaseEdge
-            path={routedEdge.path}
+            path={liveRoute.path}
             interactionWidth={0}
             style={{
               // Highlighted, the casing IS the solid part of the glow: the
@@ -6478,7 +6600,7 @@ function ResourceEdgeComponent({
             }}
           />
           <BaseEdge
-            path={routedEdge.path}
+            path={liveRoute.path}
             interactionWidth={0}
             style={{
               ...style,
@@ -6517,7 +6639,7 @@ function ResourceEdgeComponent({
       {data?.isDeadLoop ? (
         <path
           className="dead-loop-wire"
-          d={routedEdge.path}
+          d={liveRoute.path}
           fill="none"
           stroke="#ff6b6b"
           strokeWidth={coreStrokeWidth + 4}
@@ -6535,7 +6657,7 @@ function ResourceEdgeComponent({
           the stroke: a regular little arrow on a thin wire, sitting INSIDE
           the stroke on a fat pipe. */}
       {showArrowHead
-        ? getRouteChevrons(routedEdge.points, coreStrokeWidth).map((chevron, index) => (
+        ? getRouteChevrons(liveRoute.points, coreStrokeWidth).map((chevron, index) => (
             <g key={index} style={{ pointerEvents: "none" }}>
               <polyline
                 points={chevron}
@@ -6741,7 +6863,7 @@ function ResourceEdgeComponent({
               className="!h-[18px] !w-[18px]"
             />
             <span className="leading-none tracking-tight tabular-nums">
-              {formatEdgeRateLabel(data)}
+              <EdgeRateLabelText data={data} />
             </span>
           </div>
         </EdgeLabelRenderer>

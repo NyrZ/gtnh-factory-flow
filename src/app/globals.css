@@ -589,6 +589,68 @@ textarea {
   filter: drop-shadow(6px 8px 7px rgba(0, 0, 0, 0.45));
 }
 
+/* The grid magnet (the movement-motion toggle, board-motion.tsx). Every card
+   position is a whole cell, so a drag is a series of 20px teleports; easing
+   the transform turns each hop into a short glide and the card reads as
+   being PULLED onto its cell. The same ease covers programmatic moves —
+   undo, paste nudges — and multi-select drags for free. Mounting is exempt
+   by construction: a transition needs a previous value, and a node inserted
+   by the viewport cull paints at its position on its first frame. Duration
+   mirrors MOVE_SNAP_MS. */
+.factory-flow-board--move-motion .react-flow__node {
+  transition: transform 120ms cubic-bezier(0.25, 0.9, 0.35, 1);
+}
+
+/* Except an annotation that is not being MOVED. Resizing a box, dragging a
+   zone corner or an arrow end changes position and size in the same frame
+   through its own pointer handlers (no .dragging class), and easing only the
+   translate half makes the far edge wobble. Moves through the move strip are
+   real React Flow drags, carry .dragging, and keep the glide. */
+.factory-flow-board--move-motion .react-flow__node-annotationNode:not(.dragging) {
+  transition: none;
+}
+
+/* Just added (same DOM pass as the placed flash): the card materialises
+   instead of blinking into existence. Opacity rides the wrapper — its
+   transform is React Flow's positioning and must not be animated — and the
+   little scale-up rides the card root inside it. */
+.factory-flow-board--move-motion .board-card-arrive {
+  animation: board-card-arrive 200ms cubic-bezier(0.25, 1, 0.5, 1) backwards;
+}
+
+.factory-flow-board--move-motion .board-card-arrive > * {
+  animation: board-card-arrive-pop 220ms cubic-bezier(0.3, 1.4, 0.5, 1) backwards;
+}
+
+@keyframes board-card-arrive {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes board-card-arrive-pop {
+  from {
+    transform: scale(0.92);
+  }
+}
+
+/* Value motion (board-motion.tsx): the port gauges glide to their new
+   reading on the same clock the numbers ease on (VALUE_TWEEN_MS), so a bar
+   and the rate under it tell one story while they move. */
+.factory-flow-board--value-motion .flow-port-bar > i {
+  transition: width 1000ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.factory-flow-board--value-motion .flow-port-ghost {
+  transition:
+    left 1000ms cubic-bezier(0.33, 1, 0.68, 1),
+    width 1000ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.factory-flow-board--value-motion .flow-port-caret {
+  transition: left 1000ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
 /* Zoom detail steps. See node-detail.ts for what each step keeps and why, and
    for the four numbers that decide when they happen.
 

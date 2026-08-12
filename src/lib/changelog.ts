@@ -74,13 +74,13 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.10.0",
-    date: "2026-08-11",
-    headline: "Share it, and make the board yours",
+    date: "2026-08-12",
+    headline: "Share it, make it yours, and watch it move",
     notes: [
-      "Share buttons now sit next to Import and Export and on the new plan bar under the board.",
-      "The plan bar holds a plan's icon, name and description, and for a shared setup its author, votes and a reset back to the posted version.",
+      "Share buttons now sit next to Import and Export and on the new plan bar, which holds a plan's icon, name, description and votes.",
       "The board has papers now: blueprint, chalkboard, parchment, notepad and more, picked from the view tools.",
       "Boxes and zones take their own border and fill styles, and your own pictures can go on the board.",
+      "The board is alive: cards glide onto the grid, wires slide to their new routes, and every rate eases into place, with two view buttons to turn it off.",
     ],
   },
   {

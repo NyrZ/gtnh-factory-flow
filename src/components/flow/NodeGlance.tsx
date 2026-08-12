@@ -43,7 +43,8 @@ export function NodeGlanceText({
   text,
   className,
 }: {
-  text: string;
+  /** A string, or a text-producing fragment (the eased usage figure). */
+  text: ReactNode;
   /** Tone colour for the figure; `fill` reads it through currentColor. */
   className?: string;
 }) {

@@ -1,4 +1,5 @@
 import {
+  Activity,
   Anchor,
   Box,
   Cable,
@@ -8,6 +9,7 @@ import {
   Focus,
   Gauge,
   Grid3x3,
+  Magnet,
   Paintbrush,
   Palette,
   Play,
@@ -181,6 +183,8 @@ const CALLOUTS: Array<{
       { icon: Tag, text: "Rate labels on the lines" },
       { icon: Anchor, text: "Free or fixed wire ends" },
       { icon: Presentation, text: "Calm colours" },
+      { icon: Magnet, text: "Smooth movement" },
+      { icon: Activity, text: "Numbers ease into place" },
     ],
   },
   {
