@@ -12,6 +12,7 @@ import {
   Palette,
   Play,
   Presentation,
+  RotateCcw,
   Search,
   Share2,
   Square,
@@ -187,6 +188,17 @@ const CALLOUTS: Array<{
       { icon: Focus, text: "Fit the plan on screen" },
       { icon: Box, text: "Cards show their machine" },
       { icon: Gauge, text: "Cards show how hard they run" },
+    ],
+  },
+  {
+    anchor: "plan-card",
+    side: "above",
+    align: "start",
+    title: "Plan card",
+    rows: [
+      { text: "This plan's *icon, name and blurb*" },
+      { icon: Share2, text: "Sharing posts them as its face" },
+      { icon: RotateCcw, text: "An opened setup can *reset to the post*" },
     ],
   },
   {

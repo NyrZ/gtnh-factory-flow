@@ -19,6 +19,21 @@ export interface ResourceIconAtlasRef {
   dominantColor?: string;
 }
 
+/**
+ * One item or fluid picked as the face of a whole entry: a plan, a shared
+ * setup, a blueprint. Same icon plumbing as a resource slot, minus the rate.
+ * Lives here rather than in the community types because a plan carries its
+ * own face now, and the model cannot reach into community code.
+ */
+export interface EntryIcon {
+  kind: ResourceKind;
+  resourceId: string;
+  displayName?: string;
+  iconPath?: string;
+  iconAtlas?: ResourceIconAtlasRef;
+  dominantColor?: string;
+}
+
 export type MachineTier =
   | "ULV"
   | "LV"
@@ -458,6 +473,13 @@ export interface FactoryProject {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
   id: string;
   name: string;
+  /**
+   * The face this plan wears: its blurb and its one-item icon, edited on the
+   * board's plan card and used as the post's face when shared. Part of the
+   * plan JSON, so they travel through export, import and sharing.
+   */
+  description?: string;
+  icon?: EntryIcon;
   /** Only shared setups carry this; see PlanViewState. */
   view?: PlanViewState;
   targetRate?: TargetRate;
@@ -484,6 +506,13 @@ export interface FactoryProject {
     updatedAt?: string;
     /** The community post this design was shared as / imported from. */
     communityPlanId?: string;
+    /**
+     * Fingerprint of the board content as last synced with that post, stamped
+     * on download and on share. While the board still matches it, "reset to
+     * the posted version" has nothing to restore and greys out. Covers what
+     * the board IS, not what it is called; see plan-fingerprint.ts.
+     */
+    communityFingerprint?: string;
   };
 }
 

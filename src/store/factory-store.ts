@@ -43,6 +43,7 @@ import {
   resourceLabel,
 } from "@/lib/model/resources";
 import type {
+  EntryIcon,
   FactoryAnnotation,
   FactoryEdge,
   FactoryNode,
@@ -58,6 +59,7 @@ import type {
   TargetRate,
   ThroughputResult,
 } from "@/lib/model/types";
+import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import {
   collectPocketMembers,
   expandPocketSelection,
@@ -283,6 +285,16 @@ interface FactoryStore {
   setStoragePosition: (storageId: string, position: FactoryStorage["position"]) => void;
   /** Records which community post the current design belongs to (no undo entry). */
   setProjectCommunityLink: (communityPlanId: string) => void;
+  /** Detaches the design from its post: link and fingerprint both go. */
+  clearProjectCommunityLink: () => void;
+  /**
+   * The plan's face - blurb and icon - edited from the plan card. Not the
+   * name: that belongs to the design tab (every save stamps the tab's name
+   * over the plan), so renaming goes through the design store. No undo entry:
+   * typing has its own undo, and one board Ctrl+Z must never swallow half a
+   * sentence.
+   */
+  setProjectIdentity: (identity: { description?: string; icon?: EntryIcon | null }) => void;
   addAnnotation: (annotation: Omit<FactoryAnnotation, "id">) => void;
   updateAnnotation: (annotationId: string, patch: Partial<FactoryAnnotation>) => void;
   deleteAnnotation: (annotationId: string) => void;
@@ -1468,9 +1480,39 @@ export const useFactoryStore = create<FactoryStore>((set, get) => ({
     set((state) => ({
       project: {
         ...state.project,
-        metadata: { ...state.project.metadata, communityPlanId },
+        metadata: {
+          ...state.project.metadata,
+          communityPlanId,
+          // The moment of linking is a moment board and post agree, whichever
+          // direction the plan just travelled.
+          communityFingerprint: planContentFingerprint(state.project),
+        },
       },
     }));
+  },
+  clearProjectCommunityLink: () => {
+    set((state) => {
+      const {
+        communityPlanId: droppedId,
+        communityFingerprint: droppedFingerprint,
+        ...metadata
+      } = state.project.metadata ?? {};
+      void droppedId;
+      void droppedFingerprint;
+      return { project: { ...state.project, metadata } };
+    });
+  },
+  setProjectIdentity: (identity) => {
+    set((state) => {
+      const project = { ...state.project };
+      if (identity.description !== undefined) {
+        project.description = identity.description || undefined;
+      }
+      if (identity.icon !== undefined) {
+        project.icon = identity.icon ?? undefined;
+      }
+      return { project };
+    });
   },
   addAnnotation: (annotation) => {
     set((state) => {

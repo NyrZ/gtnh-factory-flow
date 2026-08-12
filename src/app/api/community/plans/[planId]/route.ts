@@ -25,7 +25,11 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Plan detail. Counts one view per request (client only calls on preview open). */
+/**
+ * Plan detail. Counts one view per request (client only calls on preview
+ * open), except when the caller says `countView=0`: the plan card refreshes
+ * this summary in the background, and background reads are not views.
+ */
 export async function GET(request: Request, { params }: { params: Promise<{ planId: string }> }) {
   if (!isCommunityConfigured()) {
     return NextResponse.json({ error: "Community hub is not configured." }, { status: 503 });
@@ -58,11 +62,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ plan
       return NextResponse.json({ error: "Plan not found." }, { status: 404 });
     }
 
-    await db
-      .from("community_plans")
-      .update({ views: data.views + 1 })
-      .eq("id", planId);
-    const plan = rowToPlanSummary({ ...data, views: data.views + 1 }, sessionUser?.id);
+    const countView = url.searchParams.get("countView") !== "0";
+    if (countView) {
+      await db
+        .from("community_plans")
+        .update({ views: data.views + 1 })
+        .eq("id", planId);
+    }
+    const plan = rowToPlanSummary(
+      { ...data, views: data.views + (countView ? 1 : 0) },
+      sessionUser?.id,
+    );
     if (deviceId) {
       await attachMyVotes([plan], makeActorKey(request, deviceId));
     }

@@ -1,18 +1,16 @@
-import type { MachineTier, ResourceIconAtlasRef, ResourceKind } from "@/lib/model/types";
+import type {
+  EntryIcon,
+  MachineTier,
+  ResourceIconAtlasRef,
+  ResourceKind,
+} from "@/lib/model/types";
 
 /**
  * The face an entry wears in a list: one item or fluid the author picked.
- * Same icon plumbing as stat lines, minus the rate — setups, blueprints
- * and the dialogs all share it.
+ * Defined with the model now that a plan carries its own; re-exported here so
+ * every community consumer keeps its import.
  */
-export interface EntryIcon {
-  kind: ResourceKind;
-  resourceId: string;
-  displayName?: string;
-  iconPath?: string;
-  iconAtlas?: ResourceIconAtlasRef;
-  dominantColor?: string;
-}
+export type { EntryIcon } from "@/lib/model/types";
 
 /** One line of a plan's stat card: an external need or an unconsumed output. */
 export interface PlanResourceStat {
@@ -59,6 +57,8 @@ export interface CommunityPlanSummary extends CommunityPlanStats {
   downloads: number;
   views: number;
   createdAt: string;
+  /** Last touch of any kind: content overwrite or relabel. */
+  updatedAt?: string;
   authorName?: string;
   /** True when the signed-in user owns this post. */
   isMine?: boolean;

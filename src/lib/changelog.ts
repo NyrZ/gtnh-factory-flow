@@ -75,10 +75,12 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: "2.10.0",
     date: "2026-08-11",
-    headline: "Share sits in the top bar",
+    headline: "Share up top, and a card for every plan",
     notes: [
       "A Share button now lives next to Import and Export, top of the page.",
-      "It posts the board you have open to the Public shelf, link included.",
+      "A plan card along the bottom of the board holds your plan's icon, name and description.",
+      "Open someone's setup and the card shows the author and votes, with a reset back to the posted version.",
+      "On your own posts, the card saves a new title, icon or description straight to the post.",
     ],
   },
   {

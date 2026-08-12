@@ -15,6 +15,19 @@ export const resourceIconAtlasRefSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/)
     .optional(),
 });
+/**
+ * A plan's (or post's) one-item face. Deliberately lenient: it only ever
+ * renders as an icon, and a strict field must never sink a whole plan load.
+ */
+export const entryIconSchema = z.object({
+  kind: z.enum(["item", "fluid"]),
+  resourceId: z.string().min(1).max(200),
+  displayName: z.string().max(200).optional(),
+  iconPath: z.string().max(500).optional(),
+  iconAtlas: resourceIconAtlasRefSchema.optional(),
+  dominantColor: z.string().max(32).optional(),
+});
+
 export const dominantColorSchema = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/)
@@ -409,6 +422,10 @@ export const factoryProjectSchema = z.object({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   id: z.string().min(1),
   name: z.string().min(1),
+  // No length cap: the inputs cap at the community limits, and a strict field
+  // here would sink a whole plan load over its blurb.
+  description: z.string().optional(),
+  icon: entryIconSchema.optional(),
   view: planViewStateSchema.optional(),
   targetRate: targetRateSchema.optional(),
   // Sketch mode: solve as if every bare slot had its boundary drawer.
@@ -429,6 +446,7 @@ export const factoryProjectSchema = z.object({
       createdAt: z.string().optional(),
       updatedAt: z.string().optional(),
       communityPlanId: z.string().optional(),
+      communityFingerprint: z.string().optional(),
     })
     .optional(),
 });

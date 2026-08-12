@@ -31,17 +31,20 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
   const manifest = useFactoryStore((state) => state.datasetManifest);
   const selectedDatasetVersionId = useFactoryStore((state) => state.selectedDatasetVersionId);
   const setProjectCommunityLink = useFactoryStore((state) => state.setProjectCommunityLink);
+  const setProjectIdentity = useFactoryStore((state) => state.setProjectIdentity);
   const activeTabName = useDesignStore(
     (state) =>
       state.designs.find((design) => design.id === state.activeDesignId)?.name ?? "Untitled",
   );
   const { user, isLoading: isUserLoading, setUser } = useCommunityUser();
 
+  // The plan's own face comes first: whatever the plan card already says is
+  // what the post should say, and the fields here are one last look at it.
   const [name, setName] = useState(project.name || activeTabName || "My factory");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(project.description ?? "");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
-  const [icon, setIcon] = useState<EntryIcon>();
+  const [icon, setIcon] = useState<EntryIcon | undefined>(project.icon);
   const [isPickingIcon, setPickingIcon] = useState(false);
   const [myPostsFor, setMyPostsFor] = useState<{
     username: string;
@@ -83,14 +86,21 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
     };
   }, [user]);
 
-  // Updating an existing post starts from its current face (tags, icon).
-  // Seeded the moment the linked post arrives (adjust-during-render, so the
-  // user's later edits are never overwritten).
+  // Updating an existing post starts from its current face. Seeded the moment
+  // the linked post arrives (adjust-during-render, so the user's later edits
+  // are never overwritten), and the post only fills what the plan's own
+  // fields left blank: updating a post must never blank its description just
+  // because nobody retyped it.
   const [seededPostId, setSeededPostId] = useState<string>();
   if (linkedPost && seededPostId !== linkedPost.id) {
     setSeededPostId(linkedPost.id);
     setTags(linkedPost.tags ?? []);
-    setIcon(linkedPost.icon);
+    if (!project.icon) {
+      setIcon(linkedPost.icon);
+    }
+    if (!project.description && linkedPost.description) {
+      setDescription(linkedPost.description);
+    }
   }
 
   const addTagFromInput = () => {
@@ -132,6 +142,11 @@ export function SharePlanDialog({ onClose }: { onClose: () => void }) {
         setShared({ kind: "created", planId: id });
         setProjectCommunityLink(id);
       }
+      // The face the post just went out wearing becomes the plan's own, so
+      // the plan card and the next share both start from it. Not the name:
+      // the post's name and the tab's name are allowed to differ, and the
+      // tab stamps its own name back over the plan on every save anyway.
+      setProjectIdentity({ description, icon: icon ?? null });
       notifySetupsChanged();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Sharing failed.");

@@ -314,14 +314,17 @@ export function SetupsPanel() {
   // the new numbers.
   const overwriteWithBoard = async (plan: CommunityPlanSummary) => {
     try {
-      const project = useFactoryStore.getState().project;
+      const state = useFactoryStore.getState();
       await patchCommunityPlan(plan.id, {
         // Overwriting re-shares the workspace too, so an updated post does not
         // quietly keep the arrangement from whenever it was first published.
         plan: JSON.parse(
-          serializeFactoryProject({ ...project, view: capturePlanView() }),
+          serializeFactoryProject({ ...state.project, view: capturePlanView() }),
         ) as unknown,
       });
+      // The open board IS this post's content now, so the design links to it
+      // and its plan card's reset button goes back to sleep.
+      state.setProjectCommunityLink(plan.id);
       setError(undefined);
       setRefreshTick((tick) => tick + 1);
     } catch (overwriteError) {

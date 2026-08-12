@@ -23,6 +23,7 @@ import { useWelcomeTab } from "@/lib/tour/welcome-tab";
 import { AppHeader } from "./AppHeader";
 import { TourOverlay } from "./tour/TourOverlay";
 import { WelcomePage } from "./tour/WelcomePage";
+import { PlanIdentityDrawer } from "./PlanIdentityDrawer";
 import { BlueprintSaveDialog } from "./BlueprintSaveDialog";
 import { DesignTabs } from "./DesignTabs";
 import { FactoryFlow } from "./flow/FactoryFlow";
@@ -317,7 +318,7 @@ function BoardColumn() {
       what is on the board, while the browser and inspector are fixed
       furniture. Rows rather than flex so the board keeps its `h-full`.
     */
-    <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]">
+    <div className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto]">
       <DesignTabs />
       {/*
         Welcome COVERS the board rather than replacing it. Unmounting the board
@@ -334,6 +335,9 @@ function BoardColumn() {
           </div>
         ) : null}
       </div>
+      {/* The plan card describes the board it sits under; while Welcome
+          covers that board, the card goes with it. */}
+      {welcome.active ? null : <PlanIdentityDrawer />}
     </div>
   );
 }

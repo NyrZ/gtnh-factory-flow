@@ -1,7 +1,6 @@
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { z } from "zod";
-import { resourceIconAtlasRefSchema } from "@/lib/model/schemas";
+import { entryIconSchema } from "@/lib/model/schemas";
 import type { CommunityPlanSummary, EntryIcon, PlanResourceStat } from "@/lib/community/types";
 
 /**
@@ -164,17 +163,9 @@ export async function checkRateLimit(
 /**
  * The one item face an author picks for a shared entry. Client-supplied but
  * harmless: it only ever renders as an icon. Anything that doesn't parse
- * becomes "no icon", never a rejection.
+ * becomes "no icon", never a rejection. The schema lives with the model now
+ * (a plan carries its own face); this stays the server's lenient reading.
  */
-const entryIconSchema = z.object({
-  kind: z.enum(["item", "fluid"]),
-  resourceId: z.string().min(1).max(200),
-  displayName: z.string().max(200).optional(),
-  iconPath: z.string().max(500).optional(),
-  iconAtlas: resourceIconAtlasRefSchema.optional(),
-  dominantColor: z.string().max(32).optional(),
-});
-
 export function parseEntryIcon(value: unknown): EntryIcon | null {
   const parsed = entryIconSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
@@ -184,7 +175,8 @@ export function parseEntryIcon(value: unknown): EntryIcon | null {
 export const PLAN_SUMMARY_COLUMNS =
   "id,name,description,game_version,dataset_version,tags,is_public,icon,needs,outputs," +
   "total_eu_t,machine_count,node_count,storage_count,edge_count,highest_tier," +
-  "highest_tier_index,upvotes,downvotes,score,downloads,views,created_at,user_id,author_name";
+  "highest_tier_index,upvotes,downvotes,score,downloads,views,created_at,updated_at," +
+  "user_id,author_name";
 
 export interface PlanRow {
   id: string;
@@ -210,6 +202,7 @@ export interface PlanRow {
   downloads: number;
   views: number;
   created_at: string;
+  updated_at: string | null;
   user_id: string | null;
   author_name: string;
 }
@@ -241,6 +234,7 @@ export function rowToPlanSummary(row: PlanRow, sessionUserId?: string): Communit
     downloads: row.downloads,
     views: row.views,
     createdAt: row.created_at,
+    updatedAt: row.updated_at ?? undefined,
   };
 }
 

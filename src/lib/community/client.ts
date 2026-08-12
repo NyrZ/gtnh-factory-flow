@@ -1,5 +1,8 @@
 "use client";
 
+import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
+import { factoryProjectSchema } from "@/lib/model/schemas";
+import { normalizeLoadedProject } from "@/lib/model/project-normalize";
 import { randomUUID } from "@/lib/random-id";
 import type {
   CommunityPlanListRequest,
@@ -57,9 +60,17 @@ export async function listCommunityPlans(
   return parseJsonOrThrow<CommunityPlanListResponse>(response);
 }
 
-export async function getCommunityPlan(planId: string): Promise<CommunityPlanSummary> {
+export async function getCommunityPlan(
+  planId: string,
+  options: { countView?: boolean } = {},
+): Promise<CommunityPlanSummary> {
+  const search = new URLSearchParams({ deviceId: getDeviceId() });
+  // Background lookups (the plan card refreshing its post) are not views.
+  if (options.countView === false) {
+    search.set("countView", "0");
+  }
   const response = await fetch(
-    `/api/community/plans/${encodeURIComponent(planId)}?deviceId=${encodeURIComponent(getDeviceId())}`,
+    `/api/community/plans/${encodeURIComponent(planId)}?${search.toString()}`,
   );
   const body = await parseJsonOrThrow<{ plan: CommunityPlanSummary }>(response);
   return body.plan;
@@ -110,13 +121,20 @@ export async function updateCommunityPlan(
 }
 
 /**
- * In-place edits of an owned post. Light fields (tags, publish state, icon)
- * travel alone; `plan` overwrites the content with a fresh board and the
- * server re-derives every stat.
+ * In-place edits of an owned post. Light fields (name, description, tags,
+ * publish state, icon) travel alone; `plan` overwrites the content with a
+ * fresh board and the server re-derives every stat.
  */
 export async function patchCommunityPlan(
   planId: string,
-  fields: { tags?: string[]; isPublic?: boolean; icon?: EntryIcon | null; plan?: unknown },
+  fields: {
+    name?: string;
+    description?: string;
+    tags?: string[];
+    isPublic?: boolean;
+    icon?: EntryIcon | null;
+    plan?: unknown;
+  },
 ): Promise<{ id: string }> {
   const response = await fetch(`/api/community/plans/${encodeURIComponent(planId)}`, {
     method: "PUT",
@@ -175,7 +193,9 @@ export async function logoutCommunityUser(): Promise<void> {
 
 /**
  * Stamps a downloaded plan with the community post it came from, so the
- * editor's Share and link actions can target that exact post later.
+ * editor's Share and link actions can target that exact post later — plus a
+ * fingerprint of the content as it arrived, so the plan card can tell an
+ * untouched copy from one that has drifted.
  */
 export function tagPlanWithCommunityId(plan: unknown, planId: string): unknown {
   if (typeof plan !== "object" || plan === null) {
@@ -183,5 +203,24 @@ export function tagPlanWithCommunityId(plan: unknown, planId: string): unknown {
   }
 
   const record = plan as { metadata?: Record<string, unknown> };
-  return { ...record, metadata: { ...record.metadata, communityPlanId: planId } };
+  return {
+    ...record,
+    metadata: {
+      ...record.metadata,
+      communityPlanId: planId,
+      communityFingerprint: downloadedPlanFingerprint(plan),
+    },
+  };
+}
+
+/**
+ * The fingerprint is compared against the LIVE project, which has been
+ * through schema parsing and normalization (default arrays filled in, legacy
+ * wires dropped). Fingerprinting the raw JSON would brand an old post's
+ * untouched copy as "changed" the moment the loader tidied it, so the stamp
+ * goes through the same pipeline the board does.
+ */
+function downloadedPlanFingerprint(plan: unknown): string {
+  const parsed = factoryProjectSchema.safeParse(plan);
+  return planContentFingerprint(parsed.success ? normalizeLoadedProject(parsed.data) : plan);
 }
