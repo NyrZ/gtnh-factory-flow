@@ -1,0 +1,2286 @@
+[
+ {
+  "id": "oracle:local-2.9.0-beta-2:gregtech:gt-recipe-canner:03ddcf43b6c6e15c",
+  "name": "Canner: Empty Cell",
+  "kind": "gregtech_machine",
+  "category": "gregtech",
+  "machineType": "Canner",
+  "minimumTier": "ULV",
+  "durationTicks": 16,
+  "eut": 1,
+  "inputs": [
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@30013",
+    "amount": 1,
+    "displayName": "Oxygen Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/oxygen_cell-78b916e2bc48.png",
+    "dominantColor": "#7f7f7f",
+    "modId": "gregtech"
+   }
+  ],
+  "outputs": [
+   {
+    "kind": "item",
+    "id": "ic2:itemcellempty",
+    "amount": 1,
+    "displayName": "Empty Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/empty_cell-6a4c68f756c7.png",
+    "dominantColor": "#6f6f6f",
+    "modId": "IC2"
+   },
+   {
+    "kind": "fluid",
+    "id": "oxygen",
+    "amount": 1000,
+    "displayName": "Oxygen",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/oxygen-3e8c0de0c100.png",
+    "dominantColor": "#002531"
+   }
+  ],
+  "machineHandlers": [
+   {
+    "id": "canning-machine",
+    "label": "Canning Machine",
+    "kind": "single",
+    "machineType": "Canning Machine",
+    "minimumTier": "LV"
+   },
+   {
+    "id": "can-operator",
+    "label": "Can Operator",
+    "kind": "single",
+    "machineType": "Can Operator",
+    "minimumTier": "UV"
+   },
+   {
+    "id": "turbocan-pro",
+    "label": "TurboCan Pro",
+    "kind": "multiblock",
+    "machineType": "TurboCan Pro",
+    "minimumTier": "ULV",
+    "durationTicks": 8,
+    "machineConfigControls": [
+     {
+      "id": "voltageParallel",
+      "label": "Parallels per Tier",
+      "minimumKey": "per-tier-8",
+      "defaultKey": "per-tier-8",
+      "tiers": [
+       {
+        "key": "per-tier-8",
+        "label": "8 per Voltage Tier",
+        "parallelPerVoltageTier": 8,
+        "resource": {
+         "kind": "item",
+         "id": "factoryflow:machine_config/per_tier_8",
+         "amount": 1,
+         "displayName": "8 Parallels per Voltage Tier",
+         "tooltip": [
+          "Imported from machine catalyst tooltip"
+         ],
+         "consumed": false
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "runtimeCalculation": {
+   "sourceKind": "gregtech-overclock-calculator",
+   "sourceClass": "gregtech.api.util.OverclockCalculator",
+   "recipeMap": "Canner",
+   "status": "computed",
+   "oracleEligible": true,
+   "strict": true,
+   "generatedAt": "2026-08-08T08:47:35.108Z",
+   "variants": [
+    {
+     "id": "tier-ulv",
+     "label": "ULV",
+     "overclockTier": "ULV",
+     "durationTicks": 16,
+     "eut": 1,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-lv",
+     "label": "LV",
+     "overclockTier": "LV",
+     "durationTicks": 16,
+     "eut": 1,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-mv",
+     "label": "MV",
+     "overclockTier": "MV",
+     "durationTicks": 8,
+     "eut": 4,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-hv",
+     "label": "HV",
+     "overclockTier": "HV",
+     "durationTicks": 4,
+     "eut": 16,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-ev",
+     "label": "EV",
+     "overclockTier": "EV",
+     "durationTicks": 2,
+     "eut": 64,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-iv",
+     "label": "IV",
+     "overclockTier": "IV",
+     "durationTicks": 1,
+     "eut": 256,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-luv",
+     "label": "LuV",
+     "overclockTier": "LuV",
+     "durationTicks": 1,
+     "eut": 1024,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-zpm",
+     "label": "ZPM",
+     "overclockTier": "ZPM",
+     "durationTicks": 1,
+     "eut": 4096,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uv",
+     "label": "UV",
+     "overclockTier": "UV",
+     "durationTicks": 1,
+     "eut": 16384,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uhv",
+     "label": "UHV",
+     "overclockTier": "UHV",
+     "durationTicks": 1,
+     "eut": 65536,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uev",
+     "label": "UEV",
+     "overclockTier": "UEV",
+     "durationTicks": 1,
+     "eut": 262144,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uiv",
+     "label": "UIV",
+     "overclockTier": "UIV",
+     "durationTicks": 1,
+     "eut": 1048576,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uxv",
+     "label": "UXV",
+     "overclockTier": "UXV",
+     "durationTicks": 1,
+     "eut": 4194304,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-opv",
+     "label": "OpV",
+     "overclockTier": "OpV",
+     "durationTicks": 1,
+     "eut": 16777216,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-max",
+     "label": "MAX",
+     "overclockTier": "MAX",
+     "durationTicks": 1,
+     "eut": 72057594037927940,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "oxygen",
+       "amount": 1000
+      }
+     ]
+    }
+   ]
+  },
+  "specialValue": 0,
+  "notes": "Exported by the GTNH calculation oracle from gregtech.api.recipe.RecipeMap.",
+  "source": {
+   "datasetVersionId": "local-2.9.0-beta-2",
+   "recipeMap": "Canner",
+   "exporter": "gtnh-oracle",
+   "rawRecipeId": "gt.recipe.canner:03ddcf43b6c6e15c"
+  },
+  "nei": {
+   "additionalInfo": [
+    "Special value: 0"
+   ]
+  },
+  "metadata": {
+   "recipeMapId": "gt.recipe.canner",
+   "specialValue": 0
+  }
+ },
+ {
+  "id": "oracle:local-2.9.0-beta-2:gregtech:gt-recipe-canner:a8e66697a5cc1d7e",
+  "name": "Canner: Empty Cell",
+  "kind": "gregtech_machine",
+  "category": "gregtech",
+  "machineType": "Canner",
+  "minimumTier": "ULV",
+  "durationTicks": 16,
+  "eut": 1,
+  "inputs": [
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@30001",
+    "amount": 1,
+    "displayName": "Hydrogen Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/hydrogen_cell-4f848ba8c21b.png",
+    "dominantColor": "#8e8484",
+    "modId": "gregtech"
+   }
+  ],
+  "outputs": [
+   {
+    "kind": "item",
+    "id": "ic2:itemcellempty",
+    "amount": 1,
+    "displayName": "Empty Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/empty_cell-6a4c68f756c7.png",
+    "dominantColor": "#6f6f6f",
+    "modId": "IC2"
+   },
+   {
+    "kind": "fluid",
+    "id": "hydrogen",
+    "amount": 1000,
+    "displayName": "Hydrogen",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/hydrogen-ca2d2a4b02d7.png",
+    "dominantColor": "#4f1f1f"
+   }
+  ],
+  "machineHandlers": [
+   {
+    "id": "canning-machine",
+    "label": "Canning Machine",
+    "kind": "single",
+    "machineType": "Canning Machine",
+    "minimumTier": "LV"
+   },
+   {
+    "id": "can-operator",
+    "label": "Can Operator",
+    "kind": "single",
+    "machineType": "Can Operator",
+    "minimumTier": "UV"
+   },
+   {
+    "id": "turbocan-pro",
+    "label": "TurboCan Pro",
+    "kind": "multiblock",
+    "machineType": "TurboCan Pro",
+    "minimumTier": "ULV",
+    "durationTicks": 8,
+    "machineConfigControls": [
+     {
+      "id": "voltageParallel",
+      "label": "Parallels per Tier",
+      "minimumKey": "per-tier-8",
+      "defaultKey": "per-tier-8",
+      "tiers": [
+       {
+        "key": "per-tier-8",
+        "label": "8 per Voltage Tier",
+        "parallelPerVoltageTier": 8,
+        "resource": {
+         "kind": "item",
+         "id": "factoryflow:machine_config/per_tier_8",
+         "amount": 1,
+         "displayName": "8 Parallels per Voltage Tier",
+         "tooltip": [
+          "Imported from machine catalyst tooltip"
+         ],
+         "consumed": false
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "runtimeCalculation": {
+   "sourceKind": "gregtech-overclock-calculator",
+   "sourceClass": "gregtech.api.util.OverclockCalculator",
+   "recipeMap": "Canner",
+   "status": "computed",
+   "oracleEligible": true,
+   "strict": true,
+   "generatedAt": "2026-08-08T08:47:35.108Z",
+   "variants": [
+    {
+     "id": "tier-ulv",
+     "label": "ULV",
+     "overclockTier": "ULV",
+     "durationTicks": 16,
+     "eut": 1,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-lv",
+     "label": "LV",
+     "overclockTier": "LV",
+     "durationTicks": 16,
+     "eut": 1,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-mv",
+     "label": "MV",
+     "overclockTier": "MV",
+     "durationTicks": 8,
+     "eut": 4,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-hv",
+     "label": "HV",
+     "overclockTier": "HV",
+     "durationTicks": 4,
+     "eut": 16,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-ev",
+     "label": "EV",
+     "overclockTier": "EV",
+     "durationTicks": 2,
+     "eut": 64,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-iv",
+     "label": "IV",
+     "overclockTier": "IV",
+     "durationTicks": 1,
+     "eut": 256,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-luv",
+     "label": "LuV",
+     "overclockTier": "LuV",
+     "durationTicks": 1,
+     "eut": 1024,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-zpm",
+     "label": "ZPM",
+     "overclockTier": "ZPM",
+     "durationTicks": 1,
+     "eut": 4096,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uv",
+     "label": "UV",
+     "overclockTier": "UV",
+     "durationTicks": 1,
+     "eut": 16384,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uhv",
+     "label": "UHV",
+     "overclockTier": "UHV",
+     "durationTicks": 1,
+     "eut": 65536,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uev",
+     "label": "UEV",
+     "overclockTier": "UEV",
+     "durationTicks": 1,
+     "eut": 262144,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uiv",
+     "label": "UIV",
+     "overclockTier": "UIV",
+     "durationTicks": 1,
+     "eut": 1048576,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-uxv",
+     "label": "UXV",
+     "overclockTier": "UXV",
+     "durationTicks": 1,
+     "eut": 4194304,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-opv",
+     "label": "OpV",
+     "overclockTier": "OpV",
+     "durationTicks": 1,
+     "eut": 16777216,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    },
+    {
+     "id": "tier-max",
+     "label": "MAX",
+     "overclockTier": "MAX",
+     "durationTicks": 1,
+     "eut": 72057594037927940,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "ic2:itemcellempty",
+       "amount": 1
+      },
+      {
+       "kind": "fluid",
+       "id": "hydrogen",
+       "amount": 1000
+      }
+     ]
+    }
+   ]
+  },
+  "specialValue": 0,
+  "notes": "Exported by the GTNH calculation oracle from gregtech.api.recipe.RecipeMap.",
+  "source": {
+   "datasetVersionId": "local-2.9.0-beta-2",
+   "recipeMap": "Canner",
+   "exporter": "gtnh-oracle",
+   "rawRecipeId": "gt.recipe.canner:a8e66697a5cc1d7e"
+  },
+  "nei": {
+   "additionalInfo": [
+    "Special value: 0"
+   ]
+  },
+  "metadata": {
+   "recipeMapId": "gt.recipe.canner",
+   "specialValue": 0
+  }
+ },
+ {
+  "id": "oracle:local-2.9.0-beta-2:gregtech:gt-recipe-canner:e09953ecba003d8b",
+  "name": "Canner: Phosphoric Acid Cell",
+  "kind": "gregtech_machine",
+  "category": "gregtech",
+  "machineType": "Canner",
+  "minimumTier": "ULV",
+  "durationTicks": 16,
+  "eut": 1,
+  "inputs": [
+   {
+    "kind": "item",
+    "id": "ic2:itemcellempty",
+    "amount": 1,
+    "displayName": "Empty Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/empty_cell-6a4c68f756c7.png",
+    "dominantColor": "#6f6f6f",
+    "modId": "IC2"
+   },
+   {
+    "kind": "fluid",
+    "id": "phosphoricacid_gt5u",
+    "amount": 1000,
+    "displayName": "Phosphoric Acid",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/phosphoric_acid-7aea846c1ea1.png",
+    "dominantColor": "#adad00"
+   }
+  ],
+  "outputs": [
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@30689",
+    "amount": 1,
+    "displayName": "Phosphoric Acid Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/phosphoric_acid_cell-88165cdfae7c.png",
+    "dominantColor": "#aeae08",
+    "modId": "gregtech"
+   }
+  ],
+  "machineHandlers": [
+   {
+    "id": "canning-machine",
+    "label": "Canning Machine",
+    "kind": "single",
+    "machineType": "Canning Machine",
+    "minimumTier": "LV"
+   },
+   {
+    "id": "can-operator",
+    "label": "Can Operator",
+    "kind": "single",
+    "machineType": "Can Operator",
+    "minimumTier": "UV"
+   },
+   {
+    "id": "turbocan-pro",
+    "label": "TurboCan Pro",
+    "kind": "multiblock",
+    "machineType": "TurboCan Pro",
+    "minimumTier": "ULV",
+    "durationTicks": 8,
+    "machineConfigControls": [
+     {
+      "id": "voltageParallel",
+      "label": "Parallels per Tier",
+      "minimumKey": "per-tier-8",
+      "defaultKey": "per-tier-8",
+      "tiers": [
+       {
+        "key": "per-tier-8",
+        "label": "8 per Voltage Tier",
+        "parallelPerVoltageTier": 8,
+        "resource": {
+         "kind": "item",
+         "id": "factoryflow:machine_config/per_tier_8",
+         "amount": 1,
+         "displayName": "8 Parallels per Voltage Tier",
+         "tooltip": [
+          "Imported from machine catalyst tooltip"
+         ],
+         "consumed": false
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "runtimeCalculation": {
+   "sourceKind": "gregtech-overclock-calculator",
+   "sourceClass": "gregtech.api.util.OverclockCalculator",
+   "recipeMap": "Canner",
+   "status": "computed",
+   "oracleEligible": true,
+   "strict": true,
+   "generatedAt": "2026-08-08T08:47:35.150Z",
+   "variants": [
+    {
+     "id": "tier-ulv",
+     "label": "ULV",
+     "overclockTier": "ULV",
+     "durationTicks": 16,
+     "eut": 1,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-lv",
+     "label": "LV",
+     "overclockTier": "LV",
+     "durationTicks": 16,
+     "eut": 1,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-mv",
+     "label": "MV",
+     "overclockTier": "MV",
+     "durationTicks": 8,
+     "eut": 4,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-hv",
+     "label": "HV",
+     "overclockTier": "HV",
+     "durationTicks": 4,
+     "eut": 16,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-ev",
+     "label": "EV",
+     "overclockTier": "EV",
+     "durationTicks": 2,
+     "eut": 64,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-iv",
+     "label": "IV",
+     "overclockTier": "IV",
+     "durationTicks": 1,
+     "eut": 256,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-luv",
+     "label": "LuV",
+     "overclockTier": "LuV",
+     "durationTicks": 1,
+     "eut": 1024,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-zpm",
+     "label": "ZPM",
+     "overclockTier": "ZPM",
+     "durationTicks": 1,
+     "eut": 4096,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-uv",
+     "label": "UV",
+     "overclockTier": "UV",
+     "durationTicks": 1,
+     "eut": 16384,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-uhv",
+     "label": "UHV",
+     "overclockTier": "UHV",
+     "durationTicks": 1,
+     "eut": 65536,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-uev",
+     "label": "UEV",
+     "overclockTier": "UEV",
+     "durationTicks": 1,
+     "eut": 262144,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-uiv",
+     "label": "UIV",
+     "overclockTier": "UIV",
+     "durationTicks": 1,
+     "eut": 1048576,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-uxv",
+     "label": "UXV",
+     "overclockTier": "UXV",
+     "durationTicks": 1,
+     "eut": 4194304,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-opv",
+     "label": "OpV",
+     "overclockTier": "OpV",
+     "durationTicks": 1,
+     "eut": 16777216,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    },
+    {
+     "id": "tier-max",
+     "label": "MAX",
+     "overclockTier": "MAX",
+     "durationTicks": 1,
+     "eut": 72057594037927940,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30689",
+       "amount": 1
+      }
+     ]
+    }
+   ]
+  },
+  "specialValue": 0,
+  "notes": "Exported by the GTNH calculation oracle from gregtech.api.recipe.RecipeMap.",
+  "source": {
+   "datasetVersionId": "local-2.9.0-beta-2",
+   "recipeMap": "Canner",
+   "exporter": "gtnh-oracle",
+   "rawRecipeId": "gt.recipe.canner:e09953ecba003d8b"
+  },
+  "nei": {
+   "additionalInfo": [
+    "Special value: 0"
+   ]
+  },
+  "metadata": {
+   "recipeMapId": "gt.recipe.canner",
+   "specialValue": 0
+  }
+ },
+ {
+  "id": "oracle:local-2.9.0-beta-2:gregtech:gt-recipe-chemicalreactor:ec65e3fc64e6c1e8",
+  "name": "Chemical Reactor: Phosphorous Pentoxide Dust",
+  "kind": "gregtech_machine",
+  "category": "gregtech",
+  "machineType": "Chemical Reactor",
+  "minimumTier": "LV",
+  "durationTicks": 40,
+  "eut": 30,
+  "inputs": [
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@2021",
+    "amount": 4,
+    "displayName": "Phosphorus Dust",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/phosphorus_dust-48b60f77e5d7.png",
+    "dominantColor": "#898900",
+    "modId": "gregtech"
+   },
+   {
+    "kind": "fluid",
+    "id": "oxygen",
+    "amount": 10000,
+    "displayName": "Oxygen",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/oxygen-3e8c0de0c100.png",
+    "dominantColor": "#002531"
+   }
+  ],
+  "outputs": [
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@2665",
+    "amount": 14,
+    "displayName": "Phosphorous Pentoxide Dust",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/phosphorous_pentoxide_dust-da71710363f7.png",
+    "dominantColor": "#767600",
+    "modId": "gregtech"
+   }
+  ],
+  "machineHandlers": [
+   {
+    "id": "chemical-reactor",
+    "label": "Chemical Reactor",
+    "kind": "single",
+    "machineType": "Chemical Reactor",
+    "minimumTier": "LV"
+   },
+   {
+    "id": "chemical-performer",
+    "label": "Chemical Performer",
+    "kind": "single",
+    "machineType": "Chemical Performer",
+    "minimumTier": "UV"
+   }
+  ],
+  "runtimeCalculation": {
+   "sourceKind": "gregtech-overclock-calculator",
+   "sourceClass": "gregtech.api.util.OverclockCalculator",
+   "recipeMap": "Chemical Reactor",
+   "status": "computed",
+   "oracleEligible": true,
+   "strict": true,
+   "generatedAt": "2026-08-08T08:47:35.260Z",
+   "variants": [
+    {
+     "id": "tier-lv",
+     "label": "LV",
+     "overclockTier": "LV",
+     "durationTicks": 40,
+     "eut": 30,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-mv",
+     "label": "MV",
+     "overclockTier": "MV",
+     "durationTicks": 20,
+     "eut": 120,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-hv",
+     "label": "HV",
+     "overclockTier": "HV",
+     "durationTicks": 10,
+     "eut": 480,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-ev",
+     "label": "EV",
+     "overclockTier": "EV",
+     "durationTicks": 5,
+     "eut": 1920,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-iv",
+     "label": "IV",
+     "overclockTier": "IV",
+     "durationTicks": 2,
+     "eut": 7680,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-luv",
+     "label": "LuV",
+     "overclockTier": "LuV",
+     "durationTicks": 1,
+     "eut": 30720,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-zpm",
+     "label": "ZPM",
+     "overclockTier": "ZPM",
+     "durationTicks": 1,
+     "eut": 122880,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-uv",
+     "label": "UV",
+     "overclockTier": "UV",
+     "durationTicks": 1,
+     "eut": 491520,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-uhv",
+     "label": "UHV",
+     "overclockTier": "UHV",
+     "durationTicks": 1,
+     "eut": 1966080,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-uev",
+     "label": "UEV",
+     "overclockTier": "UEV",
+     "durationTicks": 1,
+     "eut": 7864320,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-uiv",
+     "label": "UIV",
+     "overclockTier": "UIV",
+     "durationTicks": 1,
+     "eut": 31457280,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-uxv",
+     "label": "UXV",
+     "overclockTier": "UXV",
+     "durationTicks": 1,
+     "eut": 125829120,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-opv",
+     "label": "OpV",
+     "overclockTier": "OpV",
+     "durationTicks": 1,
+     "eut": 503316480,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    },
+    {
+     "id": "tier-max",
+     "label": "MAX",
+     "overclockTier": "MAX",
+     "durationTicks": 1,
+     "eut": 2161727821137838000,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2665",
+       "amount": 14
+      }
+     ]
+    }
+   ]
+  },
+  "specialValue": 0,
+  "notes": "Exported by the GTNH calculation oracle from gregtech.api.recipe.RecipeMap.",
+  "source": {
+   "datasetVersionId": "local-2.9.0-beta-2",
+   "recipeMap": "Chemical Reactor",
+   "exporter": "gtnh-oracle",
+   "rawRecipeId": "gt.recipe.chemicalreactor:ec65e3fc64e6c1e8"
+  },
+  "nei": {
+   "additionalInfo": [
+    "Special value: 0"
+   ]
+  },
+  "metadata": {
+   "recipeMapId": "gt.recipe.chemicalreactor",
+   "specialValue": 0
+  }
+ },
+ {
+  "id": "oracle:local-2.9.0-beta-2:gregtech:gt-recipe-chemicalreactor:35b410e28a37e4d0",
+  "name": "Chemical Reactor: Phosphoric Acid",
+  "kind": "gregtech_machine",
+  "category": "gregtech",
+  "machineType": "Chemical Reactor",
+  "minimumTier": "LV",
+  "durationTicks": 40,
+  "eut": 30,
+  "inputs": [
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@2665",
+    "amount": 14,
+    "displayName": "Phosphorous Pentoxide Dust",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/phosphorous_pentoxide_dust-da71710363f7.png",
+    "dominantColor": "#767600",
+    "modId": "gregtech"
+   },
+   {
+    "kind": "fluid",
+    "id": "water",
+    "amount": 6000,
+    "displayName": "Water",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/water-a9bcacf1db0d.png",
+    "dominantColor": "#2537b3"
+   }
+  ],
+  "outputs": [
+   {
+    "kind": "fluid",
+    "id": "phosphoricacid_gt5u",
+    "amount": 4000,
+    "displayName": "Phosphoric Acid",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/phosphoric_acid-7aea846c1ea1.png",
+    "dominantColor": "#adad00"
+   }
+  ],
+  "machineHandlers": [
+   {
+    "id": "chemical-reactor",
+    "label": "Chemical Reactor",
+    "kind": "single",
+    "machineType": "Chemical Reactor",
+    "minimumTier": "LV"
+   },
+   {
+    "id": "chemical-performer",
+    "label": "Chemical Performer",
+    "kind": "single",
+    "machineType": "Chemical Performer",
+    "minimumTier": "UV"
+   }
+  ],
+  "runtimeCalculation": {
+   "sourceKind": "gregtech-overclock-calculator",
+   "sourceClass": "gregtech.api.util.OverclockCalculator",
+   "recipeMap": "Chemical Reactor",
+   "status": "computed",
+   "oracleEligible": true,
+   "strict": true,
+   "generatedAt": "2026-08-08T08:47:35.276Z",
+   "variants": [
+    {
+     "id": "tier-lv",
+     "label": "LV",
+     "overclockTier": "LV",
+     "durationTicks": 40,
+     "eut": 30,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-mv",
+     "label": "MV",
+     "overclockTier": "MV",
+     "durationTicks": 20,
+     "eut": 120,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-hv",
+     "label": "HV",
+     "overclockTier": "HV",
+     "durationTicks": 10,
+     "eut": 480,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-ev",
+     "label": "EV",
+     "overclockTier": "EV",
+     "durationTicks": 5,
+     "eut": 1920,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-iv",
+     "label": "IV",
+     "overclockTier": "IV",
+     "durationTicks": 2,
+     "eut": 7680,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-luv",
+     "label": "LuV",
+     "overclockTier": "LuV",
+     "durationTicks": 1,
+     "eut": 30720,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-zpm",
+     "label": "ZPM",
+     "overclockTier": "ZPM",
+     "durationTicks": 1,
+     "eut": 122880,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-uv",
+     "label": "UV",
+     "overclockTier": "UV",
+     "durationTicks": 1,
+     "eut": 491520,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-uhv",
+     "label": "UHV",
+     "overclockTier": "UHV",
+     "durationTicks": 1,
+     "eut": 1966080,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-uev",
+     "label": "UEV",
+     "overclockTier": "UEV",
+     "durationTicks": 1,
+     "eut": 7864320,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-uiv",
+     "label": "UIV",
+     "overclockTier": "UIV",
+     "durationTicks": 1,
+     "eut": 31457280,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-uxv",
+     "label": "UXV",
+     "overclockTier": "UXV",
+     "durationTicks": 1,
+     "eut": 125829120,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-opv",
+     "label": "OpV",
+     "overclockTier": "OpV",
+     "durationTicks": 1,
+     "eut": 503316480,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    },
+    {
+     "id": "tier-max",
+     "label": "MAX",
+     "overclockTier": "MAX",
+     "durationTicks": 1,
+     "eut": 2161727821137838000,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "fluid",
+       "id": "phosphoricacid_gt5u",
+       "amount": 4000
+      }
+     ]
+    }
+   ]
+  },
+  "specialValue": 0,
+  "notes": "Exported by the GTNH calculation oracle from gregtech.api.recipe.RecipeMap.",
+  "source": {
+   "datasetVersionId": "local-2.9.0-beta-2",
+   "recipeMap": "Chemical Reactor",
+   "exporter": "gtnh-oracle",
+   "rawRecipeId": "gt.recipe.chemicalreactor:35b410e28a37e4d0"
+  },
+  "nei": {
+   "additionalInfo": [
+    "Special value: 0"
+   ]
+  },
+  "metadata": {
+   "recipeMapId": "gt.recipe.chemicalreactor",
+   "specialValue": 0
+  }
+ },
+ {
+  "id": "oracle:local-2.9.0-beta-2:gregtech:gt-recipe-electrolyzer:372d15dcd0a6cae3",
+  "name": "Electrolyzer: Hydrogen Cell",
+  "kind": "gregtech_machine",
+  "category": "gregtech",
+  "machineType": "Electrolyzer",
+  "minimumTier": "MV",
+  "durationTicks": 540,
+  "eut": 120,
+  "inputs": [
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@30689",
+    "amount": 1,
+    "displayName": "Phosphoric Acid Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/phosphoric_acid_cell-88165cdfae7c.png",
+    "dominantColor": "#aeae08",
+    "modId": "gregtech"
+   },
+   {
+    "kind": "item",
+    "id": "ic2:itemcellempty",
+    "amount": 6,
+    "displayName": "Empty Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/empty_cell-6a4c68f756c7.png",
+    "dominantColor": "#6f6f6f",
+    "modId": "IC2"
+   }
+  ],
+  "outputs": [
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@30001",
+    "amount": 3,
+    "displayName": "Hydrogen Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/hydrogen_cell-4f848ba8c21b.png",
+    "dominantColor": "#8e8484",
+    "modId": "gregtech"
+   },
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@2021",
+    "amount": 1,
+    "displayName": "Phosphorus Dust",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/phosphorus_dust-48b60f77e5d7.png",
+    "dominantColor": "#898900",
+    "modId": "gregtech"
+   },
+   {
+    "kind": "item",
+    "id": "gregtech:gt.metaitem.01@30013",
+    "amount": 4,
+    "displayName": "Oxygen Cell",
+    "iconPath": "/datasets/gtnh/local-2.9.0-beta-2/textures/rendered/oxygen_cell-78b916e2bc48.png",
+    "dominantColor": "#7f7f7f",
+    "modId": "gregtech"
+   }
+  ],
+  "machineHandlers": [
+   {
+    "id": "electrolyzer",
+    "label": "Electrolyzer",
+    "kind": "single",
+    "machineType": "Electrolyzer",
+    "minimumTier": "MV"
+   },
+   {
+    "id": "ionizer",
+    "label": "Ionizer",
+    "kind": "single",
+    "machineType": "Ionizer",
+    "minimumTier": "UV"
+   },
+   {
+    "id": "molecular-disintegrator-e-4908",
+    "label": "Molecular Disintegrator E-4908",
+    "kind": "single",
+    "machineType": "Molecular Disintegrator E-4908",
+    "minimumTier": "IV"
+   }
+  ],
+  "runtimeCalculation": {
+   "sourceKind": "gregtech-overclock-calculator",
+   "sourceClass": "gregtech.api.util.OverclockCalculator",
+   "recipeMap": "Electrolyzer",
+   "status": "computed",
+   "oracleEligible": true,
+   "strict": true,
+   "generatedAt": "2026-08-08T08:47:35.689Z",
+   "variants": [
+    {
+     "id": "tier-mv",
+     "label": "MV",
+     "overclockTier": "MV",
+     "durationTicks": 540,
+     "eut": 120,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-hv",
+     "label": "HV",
+     "overclockTier": "HV",
+     "durationTicks": 270,
+     "eut": 480,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-ev",
+     "label": "EV",
+     "overclockTier": "EV",
+     "durationTicks": 135,
+     "eut": 1920,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-iv",
+     "label": "IV",
+     "overclockTier": "IV",
+     "durationTicks": 67,
+     "eut": 7680,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-luv",
+     "label": "LuV",
+     "overclockTier": "LuV",
+     "durationTicks": 33,
+     "eut": 30720,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-zpm",
+     "label": "ZPM",
+     "overclockTier": "ZPM",
+     "durationTicks": 16,
+     "eut": 122880,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-uv",
+     "label": "UV",
+     "overclockTier": "UV",
+     "durationTicks": 8,
+     "eut": 491520,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-uhv",
+     "label": "UHV",
+     "overclockTier": "UHV",
+     "durationTicks": 4,
+     "eut": 1966080,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-uev",
+     "label": "UEV",
+     "overclockTier": "UEV",
+     "durationTicks": 2,
+     "eut": 7864320,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-uiv",
+     "label": "UIV",
+     "overclockTier": "UIV",
+     "durationTicks": 1,
+     "eut": 31457280,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-uxv",
+     "label": "UXV",
+     "overclockTier": "UXV",
+     "durationTicks": 1,
+     "eut": 125829120,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-opv",
+     "label": "OpV",
+     "overclockTier": "OpV",
+     "durationTicks": 1,
+     "eut": 503316480,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    },
+    {
+     "id": "tier-max",
+     "label": "MAX",
+     "overclockTier": "MAX",
+     "durationTicks": 1,
+     "eut": 8646911284551352000,
+     "parallel": 1,
+     "inputs": [],
+     "outputs": [
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30001",
+       "amount": 3
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@2021",
+       "amount": 1
+      },
+      {
+       "kind": "item",
+       "id": "gregtech:gt.metaitem.01@30013",
+       "amount": 4
+      }
+     ]
+    }
+   ]
+  },
+  "specialValue": 0,
+  "notes": "Exported by the GTNH calculation oracle from gregtech.api.recipe.RecipeMap.",
+  "source": {
+   "datasetVersionId": "local-2.9.0-beta-2",
+   "recipeMap": "Electrolyzer",
+   "exporter": "gtnh-oracle",
+   "rawRecipeId": "gt.recipe.electrolyzer:372d15dcd0a6cae3"
+  },
+  "nei": {
+   "additionalInfo": [
+    "Special value: 0"
+   ]
+  },
+  "metadata": {
+   "recipeMapId": "gt.recipe.electrolyzer",
+   "specialValue": 0
+  }
+ }
+]

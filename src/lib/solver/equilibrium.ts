@@ -80,6 +80,16 @@ const EPSILON = 0.000001;
  * its raw materials come from and where its product goes, in drawers, on the
  * board - and until it does, it reads zero rather than quietly inventing the
  * answer at both ends.
+ *
+ * BALANCED RINGS get one appeal. A ring that conserves its circulating goods
+ * exactly (the cell loops: every cell out of the electrolyzer comes back
+ * through a canner) has a continuum of self-consistent levels and no
+ * restoring force between them, so the descent's transients ratchet it to
+ * zero even though the same ring, primed once in game, runs forever. A ring
+ * whose machines all converge to zero capability is therefore re-solved with
+ * its internal needs allowed to borrow against the ring's own capability
+ * (the solver priming the loop), and that answer is adopted only if the
+ * borrowing idles out - see the balanced-ring rescue below.
  */
 
 export interface EdgeAllocationResult {
@@ -209,6 +219,11 @@ interface Pool {
 
 /** Half a percent: below this, two utilizations are the same number. */
 const CLOG_EPSILON = 0.005;
+
+/** A rescued ring may lean on its anchor for at most this share of its own
+ * internal flow once settled - convergence dust, not real makeup. */
+const RING_ANCHOR_TOLERANCE = 1e-3;
+const RING_ANCHOR_FLOOR = 1e-6;
 
 interface MachineNodeInfo {
   id: string;
@@ -555,12 +570,11 @@ export function solveEquilibrium(
   // shadow fill in runRound.
   const demW = new Map<string, number>();
   const disp = new Map<string, number>();
-  for (const info of machineNodes) {
-    cap.set(info.id, 1);
-    dem.set(info.id, 1);
-    demW.set(info.id, 1);
-    disp.set(info.id, 1);
-  }
+  // The needs a ring under rescue may draw on the anchor for, with the ring
+  // wires the draw lands on, plus each need's allowance bucket - the ring's
+  // own supply of that resource, which is all the anchor may redistribute.
+  // Empty except during the balanced-ring rescue's second descent (see below).
+  let activeAnchors: RingAnchorPlan | undefined;
   // The priority tranche starts empty: round one splits fairly, and from the
   // second round on each output's must-ship rate is served first (see the
   // priority map in runRound).
@@ -568,13 +582,24 @@ export function solveEquilibrium(
   // A tank's sustainable outflow is last round's inflow; before the first
   // round assume every feeder ships nameplate (full blast, like the rest).
   let poolInflow = new Map<string, number>();
-  for (const [poolKey, pool] of pools) {
-    let inflow = 0;
-    for (const sinkEdge of pool.sinkEdges) {
-      inflow += budgets.get(sinkEdge.budgetKey)?.makePerSecond ?? 0;
+  const resetIterationState = () => {
+    for (const info of machineNodes) {
+      cap.set(info.id, 1);
+      dem.set(info.id, 1);
+      demW.set(info.id, 1);
+      disp.set(info.id, 1);
     }
-    poolInflow.set(poolKey, inflow);
-  }
+    unconditionalByBudget = new Map();
+    poolInflow = new Map();
+    for (const [poolKey, pool] of pools) {
+      let inflow = 0;
+      for (const sinkEdge of pool.sinkEdges) {
+        inflow += budgets.get(sinkEdge.budgetKey)?.makePerSecond ?? 0;
+      }
+      poolInflow.set(poolKey, inflow);
+    }
+  };
+  resetIterationState();
 
   interface RoundOutput {
     capNext: Map<string, number>;
@@ -592,6 +617,9 @@ export function solveEquilibrium(
     eatenByEdge: Map<string, number>;
     demandByEdge: Map<string, number>;
     unmetDesireByNeed: Map<string, number>;
+    /** What each anchored need really drew from the rescue anchor (desire
+     * fill): the evidence the balanced-ring rescue judges itself on. */
+    anchorGrantByNeed: Map<string, number>;
   }
 
   const runRound = (): RoundOutput => {
@@ -713,6 +741,28 @@ export function solveEquilibrium(
       }
     }
 
+    // The rescue anchor's allowance: the ring's capability on each anchored
+    // resource this round. Capability, never the throttled actual - a primed
+    // loop's stock covers a dip at the sustainable level (see the anchor pass
+    // in runFill), and it shrinks to zero with the ring's real capability, so
+    // a ring that could not run stays unable to borrow.
+    if (activeAnchors) {
+      activeAnchors.allowanceByBucket = new Map();
+      for (const [bucket, supply] of activeAnchors.supplyByBucket) {
+        let total = 0;
+        for (const budgetKey of supply.budgetKeys) {
+          total += budgetOffer.get(budgetKey) ?? 0;
+        }
+        for (const poolKey of supply.poolKeys) {
+          const capable = poolOfferCapable.get(poolKey) ?? 0;
+          if (Number.isFinite(capable)) {
+            total += capable;
+          }
+        }
+        activeAnchors.allowanceByBucket.set(bucket, total);
+      }
+    }
+
     // Potentials: what each input could draw if everything else wanted it -
     // sibling ceilings judge by capability, never by the current starved
     // state, or the gridlock lie re-enters through the side door.
@@ -776,6 +826,7 @@ export function solveEquilibrium(
       askAvailability,
       unconditionalByBudget,
       backedPoolKeys,
+      activeAnchors,
     );
     const desireFill = runFill(
       needs,
@@ -784,6 +835,7 @@ export function solveEquilibrium(
       askDesire,
       unconditionalByBudget,
       backedPoolKeys,
+      activeAnchors,
     );
     // THE SHADOW FILL. Disposal - the clog ceiling below - must not be judged
     // by the desire fill, because the desire fill is downstream of every clog:
@@ -809,6 +861,7 @@ export function solveEquilibrium(
       askShadow,
       unconditionalByBudget,
       backedPoolKeys,
+      activeAnchors,
     );
 
     // Sinks absorb whatever production the desire fill left unclaimed, so a
@@ -1312,18 +1365,21 @@ export function solveEquilibrium(
       eatenByEdge,
       demandByEdge,
       unmetDesireByNeed: desireFill.remainingNeed,
+      anchorGrantByNeed: desireFill.anchorGrants,
     };
   };
 
   // ---- Descend to the fixed point. ------------------------------------------
-  let lastRound: RoundOutput | undefined;
   let rounds = 0;
-  const prevDelta = new Map<string, number>();
-  let roundsSinceJump = 0;
+
+  const descend = (): RoundOutput => {
+    resetIterationState();
+    const prevDelta = new Map<string, number>();
+    let roundsSinceJump = 0;
 
   for (let round = 0; round < ROUND_CAP; round += 1) {
     const output = runRound();
-    rounds = round + 1;
+    rounds += 1;
     roundsSinceJump += 1;
 
     let maxDelta = 0;
@@ -1365,7 +1421,6 @@ export function solveEquilibrium(
     }
     poolInflow = output.poolInflowNext;
     unconditionalByBudget = output.unconditionalNext;
-    lastRound = output;
 
     if (maxDelta < CONVERGENCE_EPS) {
       break;
@@ -1440,8 +1495,197 @@ export function solveEquilibrium(
       demW.set(info.id, 0);
     }
   }
-  const settled = runRound();
-  lastRound = settled;
+  return runRound();
+  };
+
+  let lastRound = descend();
+
+  interface DeadRing {
+    /** Ring-internal needs, each with the ring wires an anchor grant lands on. */
+    anchoredNeeds: Map<string, PreparedEdge[]>;
+    /** needKey -> `${ring}|${resourceKey}` allowance bucket. */
+    bucketByNeed: Map<string, string>;
+    /** Bucket -> the ring budgets and pools that measure its own supply. */
+    supplyByBucket: Map<string, { budgetKeys: string[]; poolKeys: string[] }>;
+    internalEdgeIds: string[];
+  }
+
+  const findDeadRings = (): DeadRing[] => {
+    // Vertices: machines that converged to zero capability, plus every
+    // drawer (a ring may pass through a buffer). Live machines are pruned
+    // FIRST, so any cycle that survives is dead wall to wall - the exact
+    // signature the dead-loop badge fires on.
+    const vertices = new Set<string>();
+    for (const info of machineNodes) {
+      if ((cap.get(info.id) ?? 1) <= ZERO_SNAP) {
+        vertices.add(info.id);
+      }
+    }
+    for (const poolKey of pools.keys()) {
+      vertices.add(poolKey);
+    }
+    const outgoing = new Map<string, string[]>();
+    const selfLooped = new Set<string>();
+    for (const edge of edges) {
+      if (!vertices.has(edge.sourceId) || !vertices.has(edge.targetId)) {
+        continue;
+      }
+      const bucket = outgoing.get(edge.sourceId);
+      if (bucket) {
+        bucket.push(edge.targetId);
+      } else {
+        outgoing.set(edge.sourceId, [edge.targetId]);
+      }
+      if (edge.sourceId === edge.targetId) {
+        selfLooped.add(edge.sourceId);
+      }
+    }
+
+    const rings: DeadRing[] = [];
+    for (const component of stronglyConnectedComponents([...vertices], outgoing)) {
+      if (component.length < 2 && !selfLooped.has(component[0]!)) {
+        continue;
+      }
+      const members = new Set(component);
+      if (!component.some((id) => infoById.has(id))) {
+        continue;
+      }
+      const ringIndex = rings.length;
+      const anchoredNeeds = new Map<string, PreparedEdge[]>();
+      const bucketByNeed = new Map<string, string>();
+      const supplyByBucket = new Map<string, { budgetKeys: string[]; poolKeys: string[] }>();
+      for (const [needKey, need] of needs) {
+        if (!members.has(need.targetId)) {
+          continue;
+        }
+        const anchorEdges = [...need.machineEdges, ...need.storageEdges].filter((edge) =>
+          members.has(edge.sourceId),
+        );
+        if (anchorEdges.length === 0) {
+          continue;
+        }
+        anchoredNeeds.set(needKey, anchorEdges);
+        const bucket = `${ringIndex}|${need.demandKey}`;
+        bucketByNeed.set(needKey, bucket);
+        if (!supplyByBucket.has(bucket)) {
+          const budgetKeys: string[] = [];
+          for (const [budgetKey, budget] of budgets) {
+            if (members.has(budget.ownerId) && budget.outputKey === need.demandKey) {
+              budgetKeys.push(budgetKey);
+            }
+          }
+          const poolKeys = [
+            ...new Set(
+              anchorEdges
+                .filter((edge) => edge.poolKey && members.has(edge.poolKey))
+                .map((edge) => edge.poolKey),
+            ),
+          ];
+          supplyByBucket.set(bucket, { budgetKeys, poolKeys });
+        }
+      }
+      if (anchoredNeeds.size === 0) {
+        continue;
+      }
+      const internalEdgeIds: string[] = [];
+      for (const edge of edges) {
+        if (members.has(edge.sourceId) && members.has(edge.targetId)) {
+          internalEdgeIds.push(edge.id);
+        }
+      }
+      rings.push({ anchoredNeeds, bucketByNeed, supplyByBucket, internalEdgeIds });
+    }
+    return rings;
+  };
+
+  // ---- THE BALANCED-RING RESCUE. --------------------------------------------
+  // A ring that conserves its circulating goods EXACTLY (loop gain 1.0 - the
+  // in-game cell loop: an electrolyzer eats 1 acid cell + 6 empty and hands
+  // all 7 cells back through its canners) has a continuum of self-consistent
+  // levels and no restoring force between them. The descent's transients -
+  // fair-share splits taken while a sibling ceiling is still settling, a
+  // drawer's one-round offer lag - each shave a little off the circulating
+  // level, and with nothing to put a dip back (a SURPLUS ring re-inflates by
+  // itself, which is why gain > 1 rings hold) the level ratchets down the
+  // continuum to zero. In game the same ring, primed once, runs forever.
+  //
+  // So a ring whose machines all converged to zero CAPABILITY gets one
+  // appeal: solve again with the ring's internal needs allowed to draw their
+  // residual ask from an anchor - thin air, landing on the ring's own wires,
+  // strictly after every real supplier, with potentials untouched so real
+  // constraints (a short water line, machine counts) still pace the level.
+  // The anchor is the solver's own version of the player priming the loop.
+  // The verdict is read off the settled anchors themselves: a ring that
+  // sustains itself leaves them idling at ~0/s (the workaround that exposed
+  // this bug - a source drawer wired into the cell buffer - settles at 0/s
+  // the same way), while a genuinely lossy ring leans on them every round,
+  // and that rescue is thrown away in favour of the honest dead answer.
+  {
+    const deadRings = findDeadRings();
+    if (deadRings.length > 0) {
+      const saved = {
+        cap: new Map(cap),
+        dem: new Map(dem),
+        demW: new Map(demW),
+        disp: new Map(disp),
+        lastRound,
+      };
+      let candidates = deadRings;
+      let adopted = false;
+      // If only SOME rings sustain, retry anchoring just those: a lossy
+      // ring's anchor must not prop up its neighbours' verdicts. Each pass
+      // strictly shrinks the set, so this ends.
+      for (let attempt = 0; attempt <= deadRings.length && candidates.length > 0; attempt += 1) {
+        activeAnchors = {
+          needs: new Map(),
+          bucketByNeed: new Map(),
+          supplyByBucket: new Map(),
+          allowanceByBucket: new Map(),
+        };
+        for (const ring of candidates) {
+          for (const [needKey, anchorEdges] of ring.anchoredNeeds) {
+            activeAnchors.needs.set(needKey, anchorEdges);
+          }
+          for (const [needKey, bucket] of ring.bucketByNeed) {
+            activeAnchors.bucketByNeed.set(needKey, bucket);
+          }
+          for (const [bucket, supply] of ring.supplyByBucket) {
+            activeAnchors.supplyByBucket.set(bucket, supply);
+          }
+        }
+        const settled = descend();
+        const sustained = candidates.filter((ring) => {
+          let anchorFlow = 0;
+          for (const needKey of ring.anchoredNeeds.keys()) {
+            anchorFlow += settled.anchorGrantByNeed.get(needKey) ?? 0;
+          }
+          let ringFlow = 0;
+          for (const edgeId of ring.internalEdgeIds) {
+            ringFlow += settled.eatenByEdge.get(edgeId) ?? 0;
+          }
+          return anchorFlow <= Math.max(RING_ANCHOR_FLOOR, ringFlow * RING_ANCHOR_TOLERANCE);
+        });
+        if (sustained.length === candidates.length) {
+          lastRound = settled;
+          adopted = true;
+          break;
+        }
+        candidates = sustained;
+      }
+      activeAnchors = undefined;
+      if (!adopted) {
+        cap.clear();
+        dem.clear();
+        demW.clear();
+        disp.clear();
+        for (const [key, value] of saved.cap) cap.set(key, value);
+        for (const [key, value] of saved.dem) dem.set(key, value);
+        for (const [key, value] of saved.demW) demW.set(key, value);
+        for (const [key, value] of saved.disp) disp.set(key, value);
+        lastRound = saved.lastRound;
+      }
+    }
+  }
 
   const edgeAllocations = new Map<string, EdgeAllocationResult>();
   for (const edge of edges) {
@@ -1492,6 +1736,8 @@ interface FillResult {
   remainingPool: Map<string, number>;
   /** First-shot storage requests per pool (the honest pull on each tank). */
   poolRequested: Map<string, number>;
+  /** What each anchored need drew from the ring rescue's anchor (see below). */
+  anchorGrants: Map<string, number>;
 }
 
 /**
@@ -1518,6 +1764,25 @@ interface FillResult {
  * Grant factors are frozen per budget per round so iteration order cannot
  * shortchange later edges.
  */
+/**
+ * The balanced-ring rescue's anchor plan: which needs may draw on the anchor,
+ * on which ring wires the draw lands, and - per allowance bucket
+ * (`${ring}|${resourceKey}`) - which ring budgets and pools measure the
+ * ring's own supply of the resource. The anchor may REDISTRIBUTE that supply
+ * (cover a fair-split transient that starved one ring member while another
+ * over-claimed), never invent beyond it: without the bound, a demand-pinned
+ * ring member would happily run flat out on conjured material and the rescue
+ * would always read "lossy" and reject itself.
+ */
+interface RingAnchorPlan {
+  needs: Map<string, PreparedEdge[]>;
+  bucketByNeed: Map<string, string>;
+  supplyByBucket: Map<string, { budgetKeys: string[]; poolKeys: string[] }>;
+  /** Per bucket, this round's capability-measured ring supply of the
+   * resource. Stamped by runRound before the fills run. */
+  allowanceByBucket: Map<string, number>;
+}
+
 function runFill(
   needs: Map<string, Need>,
   budgetOfferBase: Map<string, number>,
@@ -1525,6 +1790,7 @@ function runFill(
   asks: Map<string, number>,
   unconditionalByBudget: Map<string, number>,
   backedPools: Set<string>,
+  anchors?: RingAnchorPlan,
 ): FillResult {
   const remainingBudget = new Map(budgetOfferBase);
   const remainingPool = new Map(poolOfferBase);
@@ -1684,6 +1950,55 @@ function runFill(
   runMachinePass(undefined);
   runStoragePass(false);
 
+  // THE RING ANCHOR, last of all - after every real supplier has spoken. A
+  // need inside a ring under rescue (see the balanced-ring rescue in
+  // solveEquilibrium) may draw its residual ask against the ring's own supply
+  // of the resource, landing the grant on the ring's own wires. `anchorGrants`
+  // is the rescue's evidence: a ring that sustains itself leaves its anchor
+  // idling at ~0/s once settled, a lossy ring leans on it every round and the
+  // rescue is thrown away.
+  const anchorGrants = new Map<string, number>();
+  if (anchors) {
+    // The bound is per CONSUMER, not per resource: no single ring member may
+    // end up holding more of a resource than the ring's whole capability on
+    // it (`allowanceByBucket`, stamped by runRound - capability, never the
+    // throttled actual, because a primed loop's banked stock covers a dip at
+    // the sustainable level). Across consumers the sum may transiently
+    // double-book - that is exactly the wobble the stock exists to absorb
+    // when a fair split hands one member's share to a sibling whose own
+    // ceiling has not settled yet - and the rescue's validation (anchors idle
+    // once settled) guarantees no double-booking survives to the answer. A
+    // demand-pinned member still cannot conjure supply: its real grants
+    // already reach the ring's capability, so its anchor stays shut.
+    for (const [needKey, anchorEdges] of anchors.needs) {
+      const rem = remainingNeed.get(needKey) ?? 0;
+      const bucket = anchors.bucketByNeed.get(needKey);
+      if (rem <= EPSILON || anchorEdges.length === 0 || bucket === undefined) {
+        continue;
+      }
+      const capability = anchors.allowanceByBucket.get(bucket) ?? 0;
+      let granted = 0;
+      for (const edge of anchorEdges) {
+        granted += grants.get(edge.id) ?? 0;
+      }
+      const grant = Math.min(rem, Math.max(0, capability - granted));
+      if (grant <= EPSILON) {
+        continue;
+      }
+      const share = grant / anchorEdges.length;
+      for (const edge of anchorEdges) {
+        grants.set(edge.id, (grants.get(edge.id) ?? 0) + share);
+        // An anchored draw through a drawer still reads as pull on that
+        // drawer, so its feeders keep stocking it while the ring recovers.
+        if (edge.poolKey) {
+          grantsByPool.set(edge.poolKey, (grantsByPool.get(edge.poolKey) ?? 0) + share);
+        }
+      }
+      anchorGrants.set(needKey, grant);
+      remainingNeed.set(needKey, rem - grant);
+    }
+  }
+
   // The honest pull on each tank: what it actually gave, plus its share of
   // whatever the consumers still want after every supplier has spoken.
   const poolRequested = new Map(grantsByPool);
@@ -1698,7 +2013,7 @@ function runFill(
     }
   }
 
-  return { grants, remainingNeed, remainingBudget, remainingPool, poolRequested };
+  return { grants, remainingNeed, remainingBudget, remainingPool, poolRequested, anchorGrants };
 }
 
 type PreparedEdgeRef = Pick<PreparedEdge, "id" | "budgetKey" | "needKey" | "poolKey">;
@@ -1761,6 +2076,82 @@ function calculateProjectTargetShares(
     shares.set(node.id, { key: targetKey, amountPerSecond: share });
   }
   return shares;
+}
+
+/**
+ * Strongly connected components, iteratively (Tarjan).
+ *
+ * Iterative on purpose: a 1,200-node plan is a supported board size and a
+ * recursive walk over a long chain blows the stack. One pass, O(nodes+edges).
+ * The balanced-ring rescue uses it here; death-spiral.ts imports it for the
+ * board's dead-loop badges, so the two always agree on what a ring is.
+ */
+export function stronglyConnectedComponents(
+  nodeIds: string[],
+  outgoing: Map<string, string[]>,
+): string[][] {
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const components: string[][] = [];
+  let counter = 0;
+
+  for (const root of nodeIds) {
+    if (index.has(root)) {
+      continue;
+    }
+
+    // Explicit work stack: (node, how far through its edge list we are).
+    const work: Array<{ id: string; edge: number }> = [{ id: root, edge: 0 }];
+    index.set(root, counter);
+    low.set(root, counter);
+    counter += 1;
+    stack.push(root);
+    onStack.add(root);
+
+    while (work.length > 0) {
+      const frame = work[work.length - 1]!;
+      const frameEdges = outgoing.get(frame.id) ?? [];
+
+      if (frame.edge < frameEdges.length) {
+        const next = frameEdges[frame.edge]!;
+        frame.edge += 1;
+        if (!index.has(next)) {
+          index.set(next, counter);
+          low.set(next, counter);
+          counter += 1;
+          stack.push(next);
+          onStack.add(next);
+          work.push({ id: next, edge: 0 });
+        } else if (onStack.has(next)) {
+          low.set(frame.id, Math.min(low.get(frame.id)!, index.get(next)!));
+        }
+        continue;
+      }
+
+      // Every edge walked: close this node out.
+      work.pop();
+      const parent = work[work.length - 1];
+      if (parent) {
+        low.set(parent.id, Math.min(low.get(parent.id)!, low.get(frame.id)!));
+      }
+      if (low.get(frame.id) === index.get(frame.id)) {
+        const component: string[] = [];
+        for (;;) {
+          const member = stack.pop()!;
+          onStack.delete(member);
+          component.push(member);
+          if (member === frame.id) {
+            break;
+          }
+        }
+        components.push(component);
+      }
+    }
+  }
+
+  return components;
 }
 
 // ---- Shared flow helpers (used by the reporting layer in throughput.ts). ----

@@ -73,6 +73,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.11.4",
+    date: "2026-08-12",
+    headline: "A loop that breaks even now runs",
+    notes: [
+      "A loop that returns exactly what it uses, like cells through canners and back, now runs instead of reading DEAD LOOP.",
+      "Loops that genuinely lose material still read DEAD LOOP until something feeds them.",
+    ],
+  },
+  {
     version: "2.11.3",
     date: "2026-08-12",
     headline: "Crop farms count every drop",

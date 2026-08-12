@@ -1,14 +1,17 @@
 import type { FactoryProject, ThroughputResult } from "@/lib/model/types";
 import { makeResourceKey } from "@/lib/model";
+import { stronglyConnectedComponents } from "@/lib/solver/equilibrium";
 
 /**
  * Death spirals: rings of machines that feed each other and cannot start.
  *
  * The solver already gets these right, and deliberately so. A ring that makes
- * more of the looped good than it eats sustains itself and runs flat out; a
- * ring that loses even a little on every pass winds down geometrically to
- * zero, because that is exactly what would happen in game. Nothing here
- * changes a single number.
+ * AT LEAST as much of the looped good as it eats sustains itself - a surplus
+ * ring by its own excess, an exactly-balanced ring by the balanced-ring
+ * rescue in equilibrium.ts (primed once, it runs forever, so the solver
+ * treats it as primed). A ring that loses even a little on every pass winds
+ * down geometrically to zero, because that is exactly what would happen in
+ * game. Nothing here changes a single number.
  *
  * What it changes is that the board stops keeping the reason a secret. A dead
  * ring reads as a field of 0% cards, and — worse since the verdict split —
@@ -57,79 +60,9 @@ export interface DeathSpiral {
   deadFeeders: Array<{ nodeId: string; name: string; resourceName: string }>;
 }
 
-/**
- * Strongly connected components, iteratively (Tarjan).
- *
- * Iterative on purpose: a 1,200-node plan is a supported board size and a
- * recursive walk over a long chain blows the stack. One pass, O(nodes+edges).
- */
-function stronglyConnectedComponents(
-  nodeIds: string[],
-  outgoing: Map<string, string[]>,
-): string[][] {
-  const index = new Map<string, number>();
-  const low = new Map<string, number>();
-  const onStack = new Set<string>();
-  const stack: string[] = [];
-  const components: string[][] = [];
-  let counter = 0;
-
-  for (const root of nodeIds) {
-    if (index.has(root)) {
-      continue;
-    }
-
-    // Explicit work stack: (node, how far through its edge list we are).
-    const work: Array<{ id: string; edge: number }> = [{ id: root, edge: 0 }];
-    index.set(root, counter);
-    low.set(root, counter);
-    counter += 1;
-    stack.push(root);
-    onStack.add(root);
-
-    while (work.length > 0) {
-      const frame = work[work.length - 1]!;
-      const edges = outgoing.get(frame.id) ?? [];
-
-      if (frame.edge < edges.length) {
-        const next = edges[frame.edge]!;
-        frame.edge += 1;
-        if (!index.has(next)) {
-          index.set(next, counter);
-          low.set(next, counter);
-          counter += 1;
-          stack.push(next);
-          onStack.add(next);
-          work.push({ id: next, edge: 0 });
-        } else if (onStack.has(next)) {
-          low.set(frame.id, Math.min(low.get(frame.id)!, index.get(next)!));
-        }
-        continue;
-      }
-
-      // Every edge walked: close this node out.
-      work.pop();
-      const parent = work[work.length - 1];
-      if (parent) {
-        low.set(parent.id, Math.min(low.get(parent.id)!, low.get(frame.id)!));
-      }
-      if (low.get(frame.id) === index.get(frame.id)) {
-        const component: string[] = [];
-        for (;;) {
-          const member = stack.pop()!;
-          onStack.delete(member);
-          component.push(member);
-          if (member === frame.id) {
-            break;
-          }
-        }
-        components.push(component);
-      }
-    }
-  }
-
-  return components;
-}
+// Tarjan's algorithm lives in the solver (`stronglyConnectedComponents` in
+// equilibrium.ts, shared with the balanced-ring rescue) so the badge and the
+// rescue always agree on what a ring is.
 
 export interface DeathSpiralIndex {
   /** Node id -> the spiral it is trapped in. */
