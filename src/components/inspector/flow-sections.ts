@@ -213,12 +213,20 @@ export function buildFlowRows(
 export function measureFlowRows(
   rows: FlowRow[],
   heights: { header: number; item: number; empty: number; chart: number },
+  /**
+   * Per-row height scale, for rows mid-arrival or mid-departure (the panel's
+   * presence animation). The windowing math reads the ANIMATED height, so
+   * the spacers and the scroll length stay exact while a row grows or
+   * shrinks. Absent = every row at full height.
+   */
+  factorFor?: (row: FlowRow) => number,
 ) {
   const offsets = new Array<number>(rows.length + 1);
   let offset = 0;
   for (let index = 0; index < rows.length; index += 1) {
     offsets[index] = offset;
-    offset += heights[rows[index].type];
+    const base = heights[rows[index].type];
+    offset += factorFor ? Math.round(base * factorFor(rows[index])) : base;
   }
 
   offsets[rows.length] = offset;

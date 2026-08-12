@@ -173,6 +173,45 @@ function easeOutCubic(t: number) {
   return 1 - inverted * inverted * inverted;
 }
 
+/**
+ * One eased 0→1 run on the shared clock, for callers animating something the
+ * value hooks cannot express (list presence, bespoke geometry). Returns a
+ * cancel; `onFrame` receives the EASED progress each frame and is always
+ * called with exactly 1 before `onDone`.
+ */
+export function runMotionTween({
+  durationMs,
+  onFrame,
+  onDone,
+}: {
+  durationMs: number;
+  onFrame: (eased: number) => void;
+  onDone?: () => void;
+}): () => void {
+  let cancelled = false;
+  let start = 0;
+  const step: MotionStep = (now) => {
+    if (cancelled) {
+      return true;
+    }
+    if (start === 0) {
+      start = now;
+    }
+    const t = Math.min(1, (now - start) / durationMs);
+    onFrame(easeOutCubic(t));
+    if (t >= 1) {
+      onDone?.();
+      return true;
+    }
+    return false;
+  };
+  scheduleMotionStep(step);
+  return () => {
+    cancelled = true;
+    cancelMotionStep(step);
+  };
+}
+
 interface NumberTweenState {
   shown: number[];
   from: number[];

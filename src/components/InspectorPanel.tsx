@@ -1,10 +1,27 @@
 "use client";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { formatCompact } from "@/lib/model";
+import { makeResourceKey } from "@/lib/model/resources";
+import { getStorageRoles } from "@/lib/model/storage-role";
 import { rateUnitMultiplier, rateUnitSuffix } from "@/lib/model/rate-unit";
-import type { FactoryProject, ResourceAmount, ResourceBalance } from "@/lib/model/types";
+import type {
+  FactoryProject,
+  ResourceAmount,
+  ResourceBalance,
+  ResourceKey,
+} from "@/lib/model/types";
 import { calculateSelectionFlow, selectInternalBalances } from "@/lib/solver";
 import { selectTrendSeries, useResourceTrends } from "@/lib/resource-trends";
 import { useFactoryStore } from "@/store/factory-store";
@@ -31,7 +48,7 @@ import {
   type ResourceMarks,
 } from "./inspector/flow-sections";
 import { TrendSparkline } from "./inspector/TrendSparkline";
-import { MotionNumberText } from "./flow/board-motion";
+import { MotionNumberText, runMotionTween, useBoardMotion } from "./flow/board-motion";
 import { ResourceIcon } from "./nei/ResourceIcon";
 
 const FLOW_FILTER_DEBOUNCE_MS = 120;
@@ -60,6 +77,208 @@ function formatRateValue(perSecond: number): string {
 
 function rateUnitFor(kind: ResourceBalance["kind"]): string {
   return rateUnitSuffix(kind === "fluid").trim();
+}
+
+/** How long a row takes to grow into the list or fold out of it. */
+const PRESENCE_MS = 240;
+/**
+ * Past this many rows changing at once (a tab switch, a filter keystroke, a
+ * RAW/NET flip) the list snaps: forty rows folding in a wave is churn, not
+ * information.
+ */
+const PRESENCE_BULK_CAP = 16;
+
+interface RowPresence {
+  /** Target rows plus any rows still folding out, held in place. */
+  rows: FlowRow[];
+  /** Bumped every animation frame; put it in measure-memo deps. */
+  version: number;
+  /** Height/opacity scale for one row: 1 settled, 0..1 mid-fold. */
+  factorFor: (row: FlowRow) => number;
+}
+
+/**
+ * List membership, animated: a row that joins the list grows from nothing
+ * and a row that leaves folds away instead of popping, on the same
+ * value-motion clock as the numbers. The windowing stays exact throughout
+ * because measureFlowRows reads the animated heights through `factorFor`.
+ *
+ * Rows are reconciled by KEY in the render phase (idempotent for a repeated
+ * target), so the first frame after a change already shows arrivals at
+ * height zero — an effect-only start would flash them full-size first. The
+ * tweens themselves start from an effect; a render React throws away starts
+ * nothing.
+ */
+function useRowPresence(targetRows: FlowRow[], enabled: boolean): RowPresence {
+  const [, force] = useReducer((count: number) => count + 1, 0);
+  const stateRef = useRef<
+    | {
+        target: FlowRow[];
+        display: FlowRow[];
+        factors: Map<string, number>;
+        /** Where each animating key is heading: 1 arriving, 0 leaving. */
+        directions: Map<string, 0 | 1>;
+        cancels: Map<string, () => void>;
+        pendingEnters: string[];
+        pendingLeaves: string[];
+        pendingSnap: boolean;
+        seq: number;
+        version: number;
+      }
+    | undefined
+  >(undefined);
+  if (stateRef.current === undefined) {
+    stateRef.current = {
+      target: targetRows,
+      display: targetRows,
+      factors: new Map(),
+      directions: new Map(),
+      cancels: new Map(),
+      pendingEnters: [],
+      pendingLeaves: [],
+      pendingSnap: false,
+      seq: 0,
+      version: 0,
+    };
+  }
+  const state = stateRef.current;
+
+  if (state.target !== targetRows) {
+    const targetKeys = new Set(targetRows.map((row) => row.key));
+    const displayedKeys = new Set(state.display.map((row) => row.key));
+    const arrivals: string[] = [];
+    for (const row of targetRows) {
+      // New to the list, or caught on the way out and coming back.
+      if (!displayedKeys.has(row.key) || state.directions.get(row.key) === 0) {
+        arrivals.push(row.key);
+      }
+    }
+    const leavers = state.display.filter(
+      (row) => !targetKeys.has(row.key) && state.directions.get(row.key) !== 0,
+    );
+    const churn = arrivals.length + leavers.length;
+
+    if (!enabled || churn > PRESENCE_BULK_CAP) {
+      state.display = targetRows;
+      state.pendingEnters = [];
+      state.pendingLeaves = [];
+      if (churn > 0 || state.factors.size > 0) {
+        state.pendingSnap = true;
+        state.seq += 1;
+      }
+      state.version += 1;
+    } else if (churn === 0 && state.factors.size === 0) {
+      // Same membership, fresh data: pass the new rows straight through.
+      state.display = targetRows;
+    } else {
+      // Merge: survivors take their fresh target row (in target order),
+      // leavers hold their old row and their old place while they fold.
+      const display: FlowRow[] = [];
+      let cursor = 0;
+      for (const row of state.display) {
+        if (targetKeys.has(row.key)) {
+          while (cursor < targetRows.length) {
+            const next = targetRows[cursor];
+            cursor += 1;
+            display.push(next);
+            if (next.key === row.key) {
+              break;
+            }
+          }
+        } else {
+          display.push(row);
+        }
+      }
+      while (cursor < targetRows.length) {
+        display.push(targetRows[cursor]);
+        cursor += 1;
+      }
+      state.display = display;
+      for (const key of arrivals) {
+        if (!state.factors.has(key)) {
+          state.factors.set(key, 0);
+        }
+        state.pendingEnters.push(key);
+      }
+      for (const row of leavers) {
+        state.pendingLeaves.push(row.key);
+      }
+      if (churn > 0) {
+        state.seq += 1;
+      }
+      state.version += 1;
+    }
+    state.target = targetRows;
+  }
+
+  const seq = state.seq;
+  useEffect(() => {
+    const shared = stateRef.current;
+    if (!shared) {
+      return;
+    }
+    if (shared.pendingSnap) {
+      for (const cancel of shared.cancels.values()) {
+        cancel();
+      }
+      shared.cancels.clear();
+      shared.factors.clear();
+      shared.directions.clear();
+      shared.pendingSnap = false;
+      shared.version += 1;
+      force();
+    }
+    const animateKey = (key: string, to: 0 | 1) => {
+      shared.cancels.get(key)?.();
+      const from = shared.factors.get(key) ?? (to === 1 ? 0 : 1);
+      shared.directions.set(key, to);
+      const cancel = runMotionTween({
+        durationMs: PRESENCE_MS,
+        onFrame: (eased) => {
+          shared.factors.set(key, from + (to - from) * eased);
+          shared.version += 1;
+          force();
+        },
+        onDone: () => {
+          shared.cancels.delete(key);
+          shared.directions.delete(key);
+          shared.factors.delete(key);
+          if (to === 0) {
+            shared.display = shared.display.filter((row) => row.key !== key);
+          }
+          shared.version += 1;
+          force();
+        },
+      });
+      shared.cancels.set(key, cancel);
+    };
+    const enters = shared.pendingEnters;
+    shared.pendingEnters = [];
+    const leaves = shared.pendingLeaves;
+    shared.pendingLeaves = [];
+    for (const key of enters) {
+      animateKey(key, 1);
+    }
+    for (const key of leaves) {
+      animateKey(key, 0);
+    }
+    // The ref box is stable; a new seq is a new batch of arrivals/leavers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seq]);
+  useEffect(
+    () => () => {
+      for (const cancel of stateRef.current?.cancels.values() ?? []) {
+        cancel();
+      }
+    },
+    [],
+  );
+
+  return {
+    rows: state.display,
+    version: state.version,
+    factorFor: (row) => state.factors.get(row.key) ?? 1,
+  };
 }
 
 export function InspectorPanel() {
@@ -156,6 +375,28 @@ function FlowIOPanel() {
       .filter((balance): balance is ResourceBalance => balance !== undefined);
   }, [marks.favourites, scope.resources, workspace.favouriteResourceKeys]);
 
+  // Declared boundary: which resources have a drawer whose JOB is importing
+  // or exporting. A source, product or byproduct drawer is the plan saying
+  // "this comes in" / "this goes out", and that statement does not stop being
+  // true when the rate hits zero — so those rows stay listed at 0/s instead
+  // of vanishing, and only the number moves. Internal rows keep coming and
+  // going with the wiring, which is what the presence animation is for.
+  const boundaryStorageKeys = useMemo(() => {
+    const roles = getStorageRoles(project);
+    const sources = new Set<ResourceKey>();
+    const drains = new Set<ResourceKey>();
+    for (const storage of project.storages ?? []) {
+      const key = makeResourceKey(storage.kind, storage.resourceId);
+      const role = roles.get(storage.id);
+      if (role === "source") {
+        sources.add(key);
+      } else if (role === "product" || role === "byproduct") {
+        drains.add(key);
+      }
+    }
+    return { sources, drains };
+  }, [project]);
+
   const sections = useMemo<FlowSection[]>(() => {
     const build = (
       id: FlowSectionId,
@@ -184,9 +425,40 @@ function FlowIOPanel() {
     // NET collapses any item sitting on both sides of the boundary into one
     // signed figure before the marks and the filter see it, so the count
     // badges and the star float always describe the list actually drawn.
-    const boundary = workspace.netFlowRates
+    let boundary = workspace.netFlowRates
       ? applyNetFlow(scope.externalInputs, scope.unconsumedOutputs)
       : { needs: scope.externalInputs, outputs: scope.unconsumedOutputs };
+    // The declared boundary (see boundaryStorageKeys): rows the drawers vouch
+    // for join at 0/s when the books dropped them. Board scope only — the
+    // selection view is a transient analysis, not the plan's ledger. In NET
+    // mode a resource already listed on EITHER side stays where the sign put
+    // it rather than gaining a zero twin.
+    if (!selection) {
+      const listedEitherSide = workspace.netFlowRates
+        ? new Set([...boundary.needs, ...boundary.outputs].map((balance) => balance.key))
+        : undefined;
+      const augment = (list: ResourceBalance[], keys: ReadonlySet<ResourceKey>) => {
+        const present = listedEitherSide ?? new Set(list.map((balance) => balance.key));
+        const extras: ResourceBalance[] = [];
+        for (const key of keys) {
+          const balance = scope.resources[key];
+          if (!present.has(key) && balance) {
+            extras.push(balance);
+          }
+        }
+        if (extras.length === 0) {
+          return list;
+        }
+        extras.sort((a, b) =>
+          (a.displayName ?? a.resourceId).localeCompare(b.displayName ?? b.resourceId),
+        );
+        return [...list, ...extras];
+      };
+      boundary = {
+        needs: augment(boundary.needs, boundaryStorageKeys.sources),
+        outputs: augment(boundary.outputs, boundaryStorageKeys.drains),
+      };
+    }
     return [
       // One line each: the row is a single fixed-height line, so wrapping
       // would clip.
@@ -196,9 +468,11 @@ function FlowIOPanel() {
     ];
   }, [
     balanced,
+    boundaryStorageKeys,
     debouncedFilter,
     marks,
     scope.externalInputs,
+    scope.resources,
     scope.unconsumedOutputs,
     selection,
     workspace.netFlowRates,
@@ -564,10 +838,15 @@ function FlowVirtualList({
 
   // No chart rows at all when charts are off, so the list closes up rather
   // than leaving gaps where they were.
-  const rows = useMemo(
+  const targetRows = useMemo(
     () => buildFlowRows(sections, collapsed, showCharts ? favourites : EMPTY_KEYS),
     [collapsed, favourites, sections, showCharts],
   );
+  // Membership rides the value-motion clock: rows grow in and fold out, and
+  // `rows` below may briefly hold departed rows mid-fold.
+  const { valueMotion } = useBoardMotion();
+  const presence = useRowPresence(targetRows, valueMotion);
+  const rows = presence.rows;
   const history = useResourceTrends();
   // The pointed-at row, redrawn wide enough for its full name. Kept here
   // rather than in the row so only one can ever be open, and so it can be
@@ -613,7 +892,14 @@ function FlowVirtualList({
     // The row scrolled out from under the pointer, or a solve dropped it.
     return undefined;
   }, [expanded, sections]);
-  const { offsets, totalHeight } = useMemo(() => measureFlowRows(rows, ROW_HEIGHTS), [rows]);
+  // presence.version is what re-measures per animation frame, so the
+  // spacers and the scroll length track the folding rows exactly.
+  const presenceVersion = presence.version;
+  const { offsets, totalHeight } = useMemo(
+    () => measureFlowRows(rows, ROW_HEIGHTS, presence.factorFor),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, presenceVersion],
+  );
 
   /**
    * Glue the wide copy to the row it covers.
@@ -771,6 +1057,8 @@ function FlowVirtualList({
       <div style={{ height: topSpacer }} />
 
       {visibleRows.map((row) => {
+        // Headers are never wrapped: they are permanent (only their sections'
+        // CONTENTS churn), and the shell would cage their sticky pinning.
         if (row.type === "header") {
           return (
             <FlowSectionHeader
@@ -783,10 +1071,30 @@ function FlowVirtualList({
           );
         }
 
+        // Every other row lives in a presence shell: full height at rest, a
+        // clipping box mid-fold. Always mounted so an animation starting is
+        // a style change, never a remount.
+        const factor = presence.factorFor(row);
+        const shell = (content: ReactNode) => (
+          <div
+            key={row.key}
+            style={
+              factor < 1
+                ? {
+                    height: Math.round(ROW_HEIGHTS[row.type] * factor),
+                    opacity: factor,
+                    overflow: "hidden",
+                  }
+                : undefined
+            }
+          >
+            {content}
+          </div>
+        );
+
         if (row.type === "empty") {
-          return (
+          return shell(
             <p
-              key={row.key}
               style={{ height: ROW_HEIGHTS.empty }}
               className={[
                 "flex items-center px-3 text-xs text-fg-muted",
@@ -797,14 +1105,13 @@ function FlowVirtualList({
               <span className="truncate">
                 {isFiltered ? "No matches." : row.section.empty}
               </span>
-            </p>
+            </p>,
           );
         }
 
         if (row.type === "chart") {
-          return (
+          return shell(
             <FlowChartRow
-              key={row.key}
               balance={row.balance}
               series={selectTrendSeries(history, row.balance.key)}
               // A starred row carries its chart directly beneath it, so the
@@ -814,13 +1121,12 @@ function FlowVirtualList({
               onHover={onHover}
               onExpand={setExpanded}
               onFocusBoard={onFocusBoard}
-            />
+            />,
           );
         }
 
-        return (
+        return shell(
           <FlowResourceRow
-            key={row.key}
             balance={row.balance}
             sectionId={row.section.id}
             tone={row.section.tone}
@@ -833,7 +1139,7 @@ function FlowVirtualList({
             onHover={onHover}
             onExpand={setExpanded}
             onFocusBoard={onFocusBoard}
-          />
+          />,
         );
       })}
 
