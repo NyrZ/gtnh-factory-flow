@@ -17,9 +17,21 @@
 
 const EXCLUDED_TOP_LEVEL_KEYS = new Set(["id", "name", "description", "icon", "view", "metadata"]);
 
+/**
+ * Store objects are replaced, never mutated, so a plan object's fingerprint
+ * is computed once however many places ask (the reset button and the
+ * address-bar sync both do, on every edit).
+ */
+const fingerprintCache = new WeakMap<object, string>();
+
 export function planContentFingerprint(plan: unknown): string {
   if (typeof plan !== "object" || plan === null) {
     return "";
+  }
+
+  const cached = fingerprintCache.get(plan);
+  if (cached !== undefined) {
+    return cached;
   }
 
   const record = plan as Record<string, unknown>;
@@ -30,7 +42,9 @@ export function planContentFingerprint(plan: unknown): string {
     }
   }
 
-  return hash53(stableStringify(content)).toString(36);
+  const fingerprint = hash53(stableStringify(content)).toString(36);
+  fingerprintCache.set(plan, fingerprint);
+  return fingerprint;
 }
 
 /**

@@ -24,6 +24,8 @@ import { AppHeader } from "./AppHeader";
 import { TourOverlay } from "./tour/TourOverlay";
 import { WelcomePage } from "./tour/WelcomePage";
 import { PlanIdentityDrawer } from "./PlanIdentityDrawer";
+import { SharedAddressSync } from "./SharedAddressSync";
+import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import { BlueprintSaveDialog } from "./BlueprintSaveDialog";
 import { DesignTabs } from "./DesignTabs";
 import { FactoryFlow } from "./flow/FactoryFlow";
@@ -114,11 +116,27 @@ export function FactoryPlannerApp() {
           try {
             // Shared "open to edit" links: /?plan=<community id>.
             const sharedPlanId = readSharedPlanId();
-            if (sharedPlanId) {
+            // The address carries the id while an open board still matches
+            // its post (see SharedAddressSync), so a reload arrives with the
+            // id of the very setup it is standing on. That is a reload, not
+            // an arrival: importing would open one duplicate tab per F5. A
+            // drifted or unproven copy still imports fresh - a pasted link
+            // means "show me the posted version".
+            const restingProject = useFactoryStore.getState().project;
+            const alreadyStandingOnIt =
+              sharedPlanId !== undefined &&
+              restingProject.metadata?.communityPlanId === sharedPlanId &&
+              Boolean(restingProject.metadata.communityFingerprint) &&
+              planContentFingerprint(restingProject) ===
+                restingProject.metadata.communityFingerprint;
+            if (sharedPlanId && !alreadyStandingOnIt) {
               try {
                 const { plan, name } = await downloadCommunityPlan(sharedPlanId);
                 await importAsDesign(tagPlanWithCommunityId(plan, sharedPlanId), name);
               } finally {
+                // The sync re-advertises the imported copy on its own; this
+                // is for the failure path, so a dead link is not retried on
+                // every reload.
                 forgetSharedPlanId();
               }
             }
@@ -232,6 +250,7 @@ export function FactoryPlannerApp() {
     <div className="flex h-dvh flex-col bg-canvas text-fg">
       <RecipeBookOpener />
       <PlacementRevealer />
+      <SharedAddressSync />
       <AppHeader onLoadDatasetVersion={loadDatasetVersion} />
       {isCompact ? (
         <CompactWorkspace workspace={workspace} onLoadDatasetVersion={loadDatasetVersion} />

@@ -22,7 +22,7 @@ import {
 } from "@/lib/community/client";
 import { planContentFingerprint } from "@/lib/community/plan-fingerprint";
 import { computeCommunityPlanStats } from "@/lib/community/plan-stats";
-import { sharedPlanLink } from "@/lib/community/shared-link";
+import { noteSharedPlanGone, sharedPlanLink } from "@/lib/community/shared-link";
 import type { CommunityPlanSummary } from "@/lib/community/types";
 import { parseFactoryProjectJson } from "@/lib/import-export";
 import { notifySetupsChanged } from "@/lib/setups-tab";
@@ -253,7 +253,13 @@ function LinkedPostStrip({ planId }: { planId: string }) {
           return;
         }
         const message = error instanceof Error ? error.message : "";
-        setLoadState(/not found/i.test(message) ? "gone" : "error");
+        if (/not found/i.test(message)) {
+          setLoadState("gone");
+          // The address bar must not go on advertising a dead link.
+          noteSharedPlanGone(planId);
+        } else {
+          setLoadState("error");
+        }
       },
     );
     return () => {
