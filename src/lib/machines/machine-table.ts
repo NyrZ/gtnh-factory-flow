@@ -641,6 +641,7 @@ const MACHINES: Record<string, MachineBehaviour> = {
     power: 0.85,
     parallels: (c) => (c.tier(ELASTIC_SINGULARITY) === 1 ? 16 : 8) * c.voltageTier,
     controls: [ELASTIC_SINGULARITY_CONTROL],
+    aliases: ["Cable Coating"]
   },
   /**
    * The Utupu-Tanuri, which our dataset lists under its recipe map. Its coils
