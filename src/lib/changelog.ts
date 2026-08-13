@@ -79,6 +79,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     notes: [
       "A tank catching more than its takers drink now shows in Outputs at its fill rate.",
       "Tanks that pass everything along, and strict tanks, stay out of the list.",
+      "A loop that returns its cells through one shared drawer now climbs to full speed instead of stalling partway.",
+      "A stalled loop can no longer show spare cells appearing from nowhere.",
     ],
   },
   {

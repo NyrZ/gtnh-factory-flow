@@ -231,6 +231,40 @@ describe("phosphoric acid cell loop", () => {
     expectLoopRunning(calculateThroughput(project));
   });
 
+  it("with three electrolyzers the ring climbs to their ceiling and conserves cells", () => {
+    // The 2026-08-12 follow-up board: same loop, electrolyzer count raised to
+    // 3, oxygen surplus caught by a BYPRODUCT drawer. Two bugs met here: the
+    // rescue's settled anchor slipped a standing 0.25/s of hydrogen cells
+    // past a ring-total validation gate (fluids at hundreds of L/s drowned
+    // the item-scale leak), so the plan invented cells - a buffer filling
+    // forever on a loop that conserves them exactly - and the ring sat at
+    // 62.5% behind a clog latch relayed through the cell buffer (M3 clogged
+    // on oxygen cells because M5 idled, M5 idling because the buffer's pull
+    // was depressed by M3's clog).
+    const plan = JSON.parse(
+      readFileSync(new URL("./__fixtures__/pa-cell-loop-plan-3x.json", import.meta.url), "utf8"),
+    ) as FactoryProject;
+    const result = calculateThroughput(plan);
+    const byRecipe = new Map(
+      plan.nodes.map((node) => {
+        const recipe = plan.recipes.find((entry) => entry.id === node.recipeId);
+        return [recipe!.id.split(":").pop()!, node.id] as const;
+      }),
+    );
+    const util = (hash: string) => result.nodes[byRecipe.get(hash)!]!.utilization;
+    expect(util("372d15dcd0a6cae3")).toBeCloseTo(1, 3); // electrolyzers flat out
+    expect(util("a8e66697a5cc1d7e")).toBeCloseTo(0.5333, 3); // H canner 0.6667/1.25
+    expect(util("03ddcf43b6c6e15c")).toBeCloseTo(0.7111, 3); // O canner 0.8889/1.25
+    expect(util("e09953ecba003d8b")).toBeCloseTo(0.1778, 3); // acid canner
+    expect(util("35b410e28a37e4d0")).toBeCloseTo(0.1111, 3); // acid reactor
+    expect(util("ec65e3fc64e6c1e8")).toBeCloseTo(0.0556, 3); // P2O5 reactor
+
+    // Cells are conserved: the loop cannot make empty cells from nothing, so
+    // the buffer holds level instead of filling forever.
+    const buffer = plan.storages!.find((s) => s.resourceId === "ic2:itemcellempty")!;
+    expect(result.storages[buffer.id]!.netPerSecond).toBeCloseTo(0, 3);
+  });
+
   it("runs when the player's exported plan is loaded verbatim", () => {
     const plan = JSON.parse(
       readFileSync(new URL("./__fixtures__/pa-cell-loop-plan.json", import.meta.url), "utf8"),

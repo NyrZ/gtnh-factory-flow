@@ -220,6 +220,44 @@ interface Pool {
 /** Half a percent: below this, two utilizations are the same number. */
 const CLOG_EPSILON = 0.005;
 
+/**
+ * Max-min split of `total` across takers with capacities: equal shares,
+ * saturated takers leave their slack to the rest. The same rule the fills
+ * use, packaged for the buffer relays below, where an even split between a
+ * pool's FEEDERS understates the bigger one (two canners feeding one cell
+ * buffer at 0.67/s and 0.89/s are not asked 0.78/s each).
+ */
+function waterFillShares(total: number, caps: number[]): number[] {
+  const takes = caps.map(() => 0);
+  let remaining = total;
+  for (let pass = 0; pass < caps.length; pass += 1) {
+    if (remaining <= EPSILON) {
+      break;
+    }
+    const live: number[] = [];
+    for (let i = 0; i < caps.length; i += 1) {
+      if (caps[i]! - takes[i]! > EPSILON) {
+        live.push(i);
+      }
+    }
+    if (live.length === 0) {
+      break;
+    }
+    const share = remaining / live.length;
+    let moved = 0;
+    for (const i of live) {
+      const take = Math.min(share, caps[i]! - takes[i]!);
+      takes[i] = takes[i]! + take;
+      moved += take;
+    }
+    remaining -= moved;
+    if (moved <= EPSILON) {
+      break;
+    }
+  }
+  return takes;
+}
+
 /** A rescued ring may lean on its anchor for at most this share of its own
  * internal flow once settled - convergence dust, not real makeup. */
 const RING_ANCHOR_TOLERANCE = 1e-3;
@@ -953,6 +991,42 @@ export function solveEquilibrium(
       drainClaimByBudget.set(budgetKey, asking > 0 ? drains / asking : 1);
     }
 
+    // The pull a tank relays back to its feeders, attributed by
+    // saturate-and-reoffer instead of an even split: the pool's requested
+    // pull water-fills across its sink edges, each capped by what that edge
+    // absorbed this round (the real relay) or by its budget's capability
+    // (the shadow relay). An even split understates the bigger feeder - two
+    // canners at 0.67/s and 0.89/s into one cell buffer were each asked for
+    // 0.78/s, the bigger one read "nothing asks for more", and its idling
+    // held a clog upstream that the idling itself justified.
+    const overflowPullByEdge = new Map<string, number>();
+    const shadowRelayByEdge = new Map<string, number>();
+    for (const [poolKey, pool] of pools) {
+      if (pool.sinkEdges.length === 0) {
+        continue;
+      }
+      const absorbedCaps = pool.sinkEdges.map((edge) => {
+        const budget = budgets.get(edge.budgetKey);
+        return edge.freeDisposal
+          ? (freeLeftoverByBudget.get(edge.budgetKey) ?? 0) /
+              Math.max(1, (budget?.drainEdges.length ?? 0) + (budget?.trashEdges.length ?? 0))
+          : (bufferAbsorbByEdge.get(edge.id) ?? 0);
+      });
+      const pullTakes = waterFillShares(
+        desireFill.poolRequested.get(poolKey) ?? 0,
+        absorbedCaps,
+      );
+      const shadowCaps = pool.sinkEdges.map((edge) => budgetOffer.get(edge.budgetKey) ?? 0);
+      const shadowTakes = waterFillShares(
+        shadowFill.poolRequested.get(poolKey) ?? 0,
+        shadowCaps,
+      );
+      pool.sinkEdges.forEach((edge, index) => {
+        overflowPullByEdge.set(edge.id, pullTakes[index]!);
+        shadowRelayByEdge.set(edge.id, shadowTakes[index]!);
+      });
+    }
+
     for (const edge of edges) {
       if (edge.role === "storage-transfer") {
         // Settled after this loop, once the fed drawer's machine deliveries
@@ -992,16 +1066,15 @@ export function solveEquilibrium(
         // more. It still catches the whole surplus (so the feeder never clogs
         // on it), but reporting the catch as demand would drive the feeder to
         // produce FOR the tank, and a buffer that manufactures demand is a
-        // product drawer wearing the wrong badge.
-        const overflowPull =
-          (desireFill.poolRequested.get(edge.poolKey) ?? 0) /
-          Math.max(1, pool?.sinkEdges.length ?? 1);
+        // product drawer wearing the wrong badge. Each feeder's share of the
+        // pull is the water-filled attribution above, already capped by what
+        // this edge absorbed.
         demandByEdge.set(
           edge.id,
           edge.silent
             ? 0
             : edge.overflow
-              ? Math.min(absorbed, overflowPull) + deficitShare
+              ? (overflowPullByEdge.get(edge.id) ?? 0) + deficitShare
               : absorbed *
                   (edge.freeDisposal ? (drainClaimByBudget.get(edge.budgetKey) ?? 1) : 1) +
                 deficitShare,
@@ -1203,7 +1276,23 @@ export function solveEquilibrium(
         let shadowSum = 0;
         for (const edge of budget.edges) {
           if (!edge.needKey) {
-            shadowSum += demandByEdge.get(edge.id) ?? 0;
+            // Tanks keep their real figures in the shadow - absorption
+            // follows production - EXCEPT a buffer, whose demand is its
+            // takers' pull relayed. Judged on the REAL pull, a clog-held
+            // taker depresses the tank's pull, the low pull justifies the
+            // feeder's clog, and the latch the shadow exists to break simply
+            // re-forms one drawer upstream (the three-electrolyzer cell
+            // board: the electrolyzer read clogged on oxygen cells because
+            // the canner idled, and the canner idled because the cell
+            // buffer's pull was depressed by that very clog). So a buffer
+            // relays its takers' SHADOW pull instead.
+            const isBufferSink =
+              edge.overflow || (edge.role === "storage-sink" && !edge.freeDisposal);
+            if (isBufferSink) {
+              shadowSum += shadowRelayByEdge.get(edge.id) ?? 0;
+            } else {
+              shadowSum += demandByEdge.get(edge.id) ?? 0;
+            }
             continue;
           }
           const need = needs.get(edge.needKey);
@@ -1507,7 +1596,6 @@ export function solveEquilibrium(
     bucketByNeed: Map<string, string>;
     /** Bucket -> the ring budgets and pools that measure its own supply. */
     supplyByBucket: Map<string, { budgetKeys: string[]; poolKeys: string[] }>;
-    internalEdgeIds: string[];
   }
 
   const findDeadRings = (): DeadRing[] => {
@@ -1587,13 +1675,7 @@ export function solveEquilibrium(
       if (anchoredNeeds.size === 0) {
         continue;
       }
-      const internalEdgeIds: string[] = [];
-      for (const edge of edges) {
-        if (members.has(edge.sourceId) && members.has(edge.targetId)) {
-          internalEdgeIds.push(edge.id);
-        }
-      }
-      rings.push({ anchoredNeeds, bucketByNeed, supplyByBucket, internalEdgeIds });
+      rings.push({ anchoredNeeds, bucketByNeed, supplyByBucket });
     }
     return rings;
   };
@@ -1654,16 +1736,29 @@ export function solveEquilibrium(
           }
         }
         const settled = descend();
+        // Judged PER NEED against that need's own real flow, never against a
+        // ring total: a ring's fluids run at hundreds of litres a second and
+        // its cells at one, so a ring-relative gate waves through an anchor
+        // that is quietly minting most of an item line (0.25/s of hydrogen
+        // cells hid under 0.05% of a litre-dominated sum, and the plan made
+        // empty cells from nothing).
         const sustained = candidates.filter((ring) => {
-          let anchorFlow = 0;
-          for (const needKey of ring.anchoredNeeds.keys()) {
-            anchorFlow += settled.anchorGrantByNeed.get(needKey) ?? 0;
+          for (const [needKey, anchorEdges] of ring.anchoredNeeds) {
+            const anchorFlow = settled.anchorGrantByNeed.get(needKey) ?? 0;
+            if (anchorFlow <= RING_ANCHOR_FLOOR) {
+              continue;
+            }
+            let realFlow = 0;
+            for (const edge of anchorEdges) {
+              realFlow += settled.eatenByEdge.get(edge.id) ?? 0;
+            }
+            // The wires carry the anchor's own grant too; net it out.
+            realFlow = Math.max(0, realFlow - anchorFlow);
+            if (anchorFlow > Math.max(RING_ANCHOR_FLOOR, realFlow * RING_ANCHOR_TOLERANCE)) {
+              return false;
+            }
           }
-          let ringFlow = 0;
-          for (const edgeId of ring.internalEdgeIds) {
-            ringFlow += settled.eatenByEdge.get(edgeId) ?? 0;
-          }
-          return anchorFlow <= Math.max(RING_ANCHOR_FLOOR, ringFlow * RING_ANCHOR_TOLERANCE);
+          return true;
         });
         if (sustained.length === candidates.length) {
           lastRound = settled;
