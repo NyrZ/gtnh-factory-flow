@@ -265,6 +265,34 @@ describe("phosphoric acid cell loop", () => {
     expect(result.storages[buffer.id]!.netPerSecond).toBeCloseTo(0, 3);
   });
 
+  it("a STRICT buffer changes nothing when the loop is exactly balanced", () => {
+    // Same three-electrolyzer board with the cell buffer set strict. The
+    // loop's cells pass through at net zero, so strict-vs-overflow must not
+    // matter: strict only bites when there is a genuine surplus to decline.
+    // (It used to read DEAD LOOP: the strict absorb rule split the pull
+    // evenly per feeder, the bigger canner's declined share read as a clog,
+    // and the ring collapsed.)
+    const plan = JSON.parse(
+      readFileSync(
+        new URL("./__fixtures__/pa-cell-loop-plan-3x-strict.json", import.meta.url),
+        "utf8",
+      ),
+    ) as FactoryProject;
+    const result = calculateThroughput(plan);
+    const byRecipe = new Map(
+      plan.nodes.map((node) => {
+        const recipe = plan.recipes.find((entry) => entry.id === node.recipeId);
+        return [recipe!.id.split(":").pop()!, node.id] as const;
+      }),
+    );
+    const util = (hash: string) => result.nodes[byRecipe.get(hash)!]!.utilization;
+    expect(util("372d15dcd0a6cae3")).toBeCloseTo(1, 3); // electrolyzers flat out
+    expect(util("a8e66697a5cc1d7e")).toBeCloseTo(0.5333, 3); // H canner
+    expect(util("03ddcf43b6c6e15c")).toBeCloseTo(0.7111, 3); // O canner
+    const buffer = plan.storages!.find((s) => s.resourceId === "ic2:itemcellempty")!;
+    expect(result.storages[buffer.id]!.netPerSecond).toBeCloseTo(0, 3);
+  });
+
   it("runs when the player's exported plan is loaded verbatim", () => {
     const plan = JSON.parse(
       readFileSync(new URL("./__fixtures__/pa-cell-loop-plan.json", import.meta.url), "utf8"),

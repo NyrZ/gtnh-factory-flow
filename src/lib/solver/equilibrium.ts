@@ -926,6 +926,7 @@ export function solveEquilibrium(
     // the last resort by definition.
     const bufferAbsorbByEdge = new Map<string, number>();
     const freeLeftoverByBudget = new Map<string, number>();
+    const strictOfferByEdge = new Map<string, number>();
     for (const [budgetKey, budget] of budgets) {
       // What the owner actually RUNS at, not what it could offer. A sink can
       // never absorb more than the machine makes, and the offer above is
@@ -944,21 +945,35 @@ export function solveEquilibrium(
         0,
         offered - (desireFill.remainingBudget.get(budgetKey) ?? 0),
       );
-      let leftover = Math.max(0, budget.makePerSecond * runs - takenByMachines);
+      const leftover = Math.max(0, budget.makePerSecond * runs - takenByMachines);
+      freeLeftoverByBudget.set(budgetKey, leftover);
       const bufferSinks = budget.sinkEdges.filter((sink) => !sink.freeDisposal);
-      if (bufferSinks.length > 0) {
-        const evenShare = leftover / bufferSinks.length;
-        for (const sink of bufferSinks) {
-          const pool = pools.get(sink.poolKey);
-          const pull =
-            (desireFill.poolRequested.get(sink.poolKey) ?? 0) /
-            Math.max(1, pool?.bufferSinkEdges.length ?? 1);
-          const take = Math.max(0, Math.min(evenShare, pull));
-          bufferAbsorbByEdge.set(sink.id, take);
-          leftover -= take;
-        }
+      for (const sink of bufferSinks) {
+        strictOfferByEdge.set(sink.id, leftover / bufferSinks.length);
       }
-      freeLeftoverByBudget.set(budgetKey, Math.max(0, leftover));
+    }
+    // A STRICT buffer takes exactly what its consumers pull, and the pull is
+    // attributed across its feeders by saturate-and-reoffer, same as the
+    // overflow relay below: split evenly instead, two unequal canners feeding
+    // one cell drawer were each asked for the average, the bigger one's
+    // declined surplus read as a real clog, and a balanced loop died the
+    // moment its buffer went strict. What the pull does not claim stays on
+    // the producer's budget, where either a drain takes it or it clogs the
+    // machine - that is what strict OPTS INTO.
+    for (const [poolKey, pool] of pools) {
+      if (pool.bufferSinkEdges.length === 0) {
+        continue;
+      }
+      const caps = pool.bufferSinkEdges.map((edge) => strictOfferByEdge.get(edge.id) ?? 0);
+      const takes = waterFillShares(desireFill.poolRequested.get(poolKey) ?? 0, caps);
+      pool.bufferSinkEdges.forEach((edge, index) => {
+        const take = takes[index]!;
+        bufferAbsorbByEdge.set(edge.id, take);
+        freeLeftoverByBudget.set(
+          edge.budgetKey,
+          Math.max(0, (freeLeftoverByBudget.get(edge.budgetKey) ?? 0) - take),
+        );
+      });
     }
 
     /**
